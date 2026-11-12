@@ -27,7 +27,6 @@ win:
   # D6：暂无代码签名证书。拿到证书后设置环境变量并取消下面两行注释即可，不改代码。
   # certificateFile: ${env.WIN_CSC_FILE}
   # certificatePassword: ${env.WIN_CSC_KEY_PASSWORD}
-  signingHashAlgorithms: [sha256]
   requestedExecutionLevel: asInvoker
 
 nsis:

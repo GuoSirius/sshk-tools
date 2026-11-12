@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "pnpm --filter @sshk/desktop dev",
     "build": "pnpm --filter @sshk/desktop build",
+    "local": "node scripts/build-local.mjs",
+    "local:dir": "node scripts/build-local.mjs --dir",
     "start": "pnpm --filter @sshk/desktop preview",
     "pack": "pnpm --filter @sshk/desktop build && pnpm --filter @sshk/desktop exec electron-builder --dir",
     "dist": "pnpm --filter @sshk/desktop build && pnpm --filter @sshk/desktop exec electron-builder",

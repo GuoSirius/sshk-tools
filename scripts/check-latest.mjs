@@ -24,7 +24,8 @@ function walk(dir, acc = []) {
 
 // 受控例外：typescript-eslint 8 不支持 TS 7，TypeScript 约束在 6.x 最新版（用户决策）。
 // 其余所有外部依赖仍必须是 "latest"。
-const VERSION_EXCEPTIONS = { typescript: '6' }
+// electron-updater：electron-builder 26 要求 package.json 写明确 semver（不接受 latest 字面量），lockfile 固定实际版本
+const VERSION_EXCEPTIONS = { typescript: '6', 'electron-updater': '^6' }
 
 function isAllowed(dep, spec) {
   if (VERSION_EXCEPTIONS[dep]) return spec === VERSION_EXCEPTIONS[dep]

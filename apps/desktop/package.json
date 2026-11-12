@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "sshk-tools Electron 应用壳",
+  "author": {
+    "name": "SSHK",
+    "email": "dev@sshk.local"
+  },
   "main": "out/main/index.mjs",
   "scripts": {
     "dev": "electron-vite dev",
@@ -20,7 +24,7 @@
     "@sshk/edm-studio": "workspace:*",
     "@sshk/model-console": "workspace:*",
     "dayjs": "latest",
-    "electron-updater": "latest",
+    "electron-updater": "^6",
     "vue": "latest",
     "element-plus": "latest",
     "unocss": "latest"
