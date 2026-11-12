@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'tools/*'
+
+# pnpm 统一配置落在这里；需要执行安装脚本的依赖在此显式放行
+allowBuilds:
+  esbuild: true
+  electron: true
+
+# 依赖版本策略：所有外部 npm 包在各自 package.json 中一律写 "latest"，
+# 由 pnpm-lock.yaml 固定实际版本，CI 使用 --frozen-lockfile 保证可复现。

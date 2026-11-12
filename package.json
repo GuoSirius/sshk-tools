@@ -1,0 +1,29 @@
+{
+  "name": "sshk-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "公司内部本地工具集合桌面客户端（Electron 应用 + 工具包）",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.base.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:latest": "node scripts/check-latest.mjs",
+    "check:structure": "node scripts/verify-structure.mjs",
+    "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:latest && pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "latest",
+    "@commitlint/config-conventional": "latest",
+    "@types/node": "latest",
+    "@typescript-eslint/parser": "latest",
+    "eslint": "latest",
+    "husky": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

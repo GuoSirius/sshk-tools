@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # 依赖策略：pnpm 取 latest，由 lockfile 固定实际版本
+      - name: 启用 pnpm (latest)
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm --version
+
+      - name: lockfile 必须提交
+        run: |
+          if [ ! -f pnpm-lock.yaml ]; then
+            echo "::error::pnpm-lock.yaml 缺失，请在本机执行 pnpm install 并提交 lockfile"
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 结构 / 分层 / latest 策略 / typecheck / lint / test
+        run: pnpm verify

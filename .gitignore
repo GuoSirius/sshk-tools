@@ -1,0 +1,40 @@
+# 依赖与构建产物
+node_modules*/
+node_modules/
+dist*/
+dist/
+out/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# 临时产物：统一 <repo>/.tmp/<用途>/，用完即删
+.tmp/
+
+# 日志与本机文件
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量（密钥不进仓库）
+.env
+.env.*
+!.env.example
+
+# 本地打包产物
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.zip
+!docs/**/*.zip
+
+# 个人工作日志（项目级记忆，不推远程；.workbuddy 其他配置照常保留）
+.workbuddy/memory/
+
+# 注意：pnpm-lock.yaml 必须提交，绝不加入忽略
