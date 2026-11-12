@@ -20,19 +20,20 @@ win:
   icon: build/icon.ico
   target:
     - target: nsis
-      arch: [x64, arm64]
+      arch: [x64]
     - target: portable
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
+  # 需求：应用始终以最高权限运行 —— 每次启动触发 UAC 提权
+  requestedExecutionLevel: requireAdministrator
   # D6：暂无代码签名证书。拿到证书后设置环境变量并取消下面两行注释即可，不改代码。
   # certificateFile: ${env.WIN_CSC_FILE}
   # certificatePassword: ${env.WIN_CSC_KEY_PASSWORD}
-  requestedExecutionLevel: asInvoker
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true   # 允许用户在安装时选择安装目录
-  perMachine: false                          # 当前用户安装，不要求管理员权限
+  perMachine: true                           # 全机安装：写入 Program Files，需要管理员（UAC）
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: sshk-tools
@@ -43,6 +44,9 @@ nsis:
   deleteAppDataOnUninstall: false            # 卸载保留模板/邮件/海报/配置
 
 # ---------------- macOS ----------------
+# ⚠️ 系统硬限制：macOS 不允许应用配置"永久最高权限"——
+#   DMG 安装无法强制提权；运行时提权只能对单个操作逐次授权（受控提权需独立 Privileged Helper）。
+#   如确需受控提权操作，后续为对应功能单独做 Privileged Helper，不在打包配置层面解决。
 mac:
   icon: build/icon.png                       # electron-builder 在 macOS 上自动转 icns
   target:
@@ -61,6 +65,8 @@ dmg:
     height: 380
 
 # ---------------- Linux / 国产 OS ----------------
+# ⚠️ 系统硬限制：deb/rpm 由系统包管理器安装（安装本身即 root 权限）；
+#   AppImage 无法在打包层授予永久 root，运行时提权需按操作逐次 sudo/polkit。
 linux:
   icon: build/icon.png
   target:
