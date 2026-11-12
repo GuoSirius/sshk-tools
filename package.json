@@ -5,6 +5,11 @@
   "type": "module",
   "description": "公司内部本地工具集合桌面客户端（Electron 应用 + 工具包）",
   "scripts": {
+    "dev": "pnpm --filter @sshk/desktop dev",
+    "build": "pnpm --filter @sshk/desktop build",
+    "start": "pnpm --filter @sshk/desktop preview",
+    "pack": "pnpm --filter @sshk/desktop build && pnpm --filter @sshk/desktop exec electron-builder --dir",
+    "dist": "pnpm --filter @sshk/desktop build && pnpm --filter @sshk/desktop exec electron-builder",
     "typecheck": "tsc --noEmit -p tsconfig.base.json",
     "lint": "eslint .",
     "test": "vitest run",
