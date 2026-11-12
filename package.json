@@ -20,7 +20,7 @@
     "@typescript-eslint/parser": "latest",
     "eslint": "latest",
     "husky": "latest",
-    "typescript": "latest",
+    "typescript": "6",
     "vitest": "latest"
   },
   "engines": {

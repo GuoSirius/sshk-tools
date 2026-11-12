@@ -22,7 +22,12 @@ function walk(dir, acc = []) {
   return acc
 }
 
-function isAllowed(spec) {
+// 受控例外：typescript-eslint 8 不支持 TS 7，TypeScript 约束在 6.x 最新版（用户决策）。
+// 其余所有外部依赖仍必须是 "latest"。
+const VERSION_EXCEPTIONS = { typescript: '6' }
+
+function isAllowed(dep, spec) {
+  if (VERSION_EXCEPTIONS[dep]) return spec === VERSION_EXCEPTIONS[dep]
   return spec === 'latest' || spec.startsWith('workspace:') || spec.startsWith('catalog:')
 }
 
@@ -42,7 +47,7 @@ for (const file of files) {
     const deps = pkg[field] || {}
     for (const [dep, spec] of Object.entries(deps)) {
       checked += 1
-      if (!isAllowed(spec)) {
+      if (!isAllowed(dep, spec)) {
         violations.push({ file: relative(ROOT, file), dep, spec })
       }
     }
@@ -56,11 +61,12 @@ console.log('依赖版本巡检 (latest 策略)')
 console.log(`  扫描 package.json : ${files.length}`)
 console.log(`  检查依赖项       : ${checked}`)
 console.log(`  pnpm-lock.yaml   : ${hasLock ? '已存在' : '缺失（首次提交后请执行 pnpm install 并补交）'}`)
+console.log(`  受控例外         : ${Object.entries(VERSION_EXCEPTIONS).map(([k, v]) => `${k}="${v}"`).join(', ')}`)
 
 if (violations.length > 0) {
-  console.error('\n以下依赖未使用 "latest" / "workspace:*"：')
+  console.error('\n以下依赖不符合版本策略（latest / workspace:* / 受控例外）：')
   for (const v of violations) console.error(`  ${v.file} -> ${v.dep} = ${v.spec}`)
   process.exit(1)
 }
 
-console.log('  结论             : 通过（所有外部依赖均为 latest）')
+console.log('  结论             : 通过（除受控例外 typescript=6 外，均为 latest）')

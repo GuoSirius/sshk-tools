@@ -10,18 +10,19 @@
 | `badge-studio` | 上传点击数据 + 选择/上传邮件 HTML → badge 注入 → 生成海报长图 |
 | `model-console` | 模型 provider 配置、连接测试、对话调试、用量日志 |
 
-> **当前阶段：M0 工程骨架（已落地，待装依赖复验）**
+> **当前阶段：M0 工程骨架（已落地，待刷新依赖）**
 > 仓库：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 > M0 只落根配置 + `packages/shared` + 校验脚本 + CI；`apps/desktop` 与其余 packages/tools 按 M1/M3 逐步落地，避免空壳。
+> **实现顺序（D26）**：`M0 → M1 → M2 → M3 → M7 → M6 → M4 → M5`，M6（badge + 海报）最急，先用现有 `juice-email-cli` 产物跑通；详见 [`docs/02-architecture/2026-11-12-实现顺序与M6先行方案.md`](docs/02-architecture/2026-11-12-实现顺序与M6先行方案.md)。
 
 ## 快速开始（安装由你执行，AI 不代跑）
 
 ```bash
-pnpm install          # 生成 pnpm-lock.yaml（必须提交）
+pnpm install          # 按 "typescript": "6" 刷新 pnpm-lock.yaml（必须提交）
 pnpm verify           # 结构/分层/latest 策略 + typecheck + lint + test
 ```
 
-`pnpm-lock.yaml` **必须提交**，CI 用 `pnpm install --frozen-lockfile`；首次推送时若尚未生成，CI 会明确报错提示。
+`pnpm-lock.yaml` **必须提交**，CI 用 `pnpm install --frozen-lockfile`。TypeScript 已按 D24 约束到 6.x，lockfile 已同步到 **6.0.3** 并随仓库提交；`pnpm verify` 在 TS 6.0.3 下全绿（typecheck / lint / 6 tests / 3 个脚本）。
 
 ## 文档入口
 
@@ -31,8 +32,9 @@ pnpm verify           # 结构/分层/latest 策略 + typecheck + lint + test
 | 第一轮原始需求与图片证据 | [`docs/01-requirements/2026-11-12-初始需求.md`](docs/01-requirements/2026-11-12-初始需求.md) |
 | 第二轮需求与拍板结论 | [`docs/01-requirements/2026-11-12-第二轮需求补充与决策.md`](docs/01-requirements/2026-11-12-第二轮需求补充与决策.md) |
 | 第三轮需求与拍板结论 | [`docs/01-requirements/2026-11-12-第三轮需求补充与决策.md`](docs/01-requirements/2026-11-12-第三轮需求补充与决策.md) |
-| **第四轮决策与开工** | [`docs/01-requirements/2026-11-12-第四轮决策与开工.md`](docs/01-requirements/2026-11-12-第四轮决策与开工.md) |
+| 第四轮决策与开工 | [`docs/01-requirements/2026-11-12-第四轮决策与开工.md`](docs/01-requirements/2026-11-12-第四轮决策与开工.md) |
 | 技术选型对比、UI 分层、导入导出、目录迁移、任务拆分 | [`docs/02-architecture/2026-11-12-技术选型与任务拆分.md`](docs/02-architecture/2026-11-12-技术选型与任务拆分.md) |
+| **模块规范（ESM 优先 / 兼容 CJS）** | [`docs/02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md`](docs/02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md) |
 | 数据契约（品牌树 / 配置 / zip / IPC / 组件 / 目录迁移） | [`docs/04-api/2026-11-12-数据契约.md`](docs/04-api/2026-11-12-数据契约.md) |
 | 发布流程与本机提交钩子 | [`docs/05-release/2026-11-12-发布流程与本机提交钩子.md`](docs/05-release/2026-11-12-发布流程与本机提交钩子.md) |
 | 需求原文快照 | `requirement.txt`（只读保留，不修改） |
@@ -49,19 +51,20 @@ Electron + Vue 3 + **Element Plus** + UnoCSS + TypeScript + pnpm workspace
 · 数据落盘 **`@seald-io/nedb`**（纯 JS，免跨架构编译）
 · 海报截图 **`@zumer/snapdom`**（资源预处理 + 长图分段）
 · 发布 **electron-builder + electron-updater + GitHub Actions**，changelog 流程**按 juice-email-cli**（当前无签名证书）
-· 依赖：package.json 直接写 **`"latest"`**（如 `"dayjs": "latest"`），**`pnpm-lock.yaml` 必须提交** + CI `--frozen-lockfile`
+· 依赖：外部包一律 **`"latest"`**（如 `"dayjs": "latest"`）；**唯一受控例外 `typescript: "6"`**（6.x 最新版 6.0.3，`typescript-eslint` 8 不支持 TS 7）；**`pnpm-lock.yaml` 必须提交** + CI `--frozen-lockfile`
 
 ## 全局规范
 
-1. **时间一律北京时间（Asia/Shanghai, UTC+8），不使用 UTC**；统一 `packages/shared/time.ts`（dayjs），禁 `toISOString()`。
-2. **应用配置可自定义产物目录** `app.outputDir`；改目录只迁移 `outputs/` + `assets/`，成功后按清单清理旧数据，**绝不递归删用户目录本身**。
-3. 所有 HTML / 海报产物**直接覆盖、不留历史副本**（D19）；后悔药只有手动导出 zip 快照。
-4. 导入导出 zip 包内**全相对路径**；模型密钥默认不进包，设置 `SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1` 后走口令加密的 100% 还原。
-5. `docs/` 是**唯一**沟通文档区；一次性记录 `YYYY-MM-DD-主题.md`，长期维护用 `NN-` 前缀；头部写 `状态/版本/最后更新/关联需求`。
-6. 定稿后不原地大改，改结论按主题新开 ADR；过期文档移入 `99-archive/`，**不删除**。
-7. **能共用的必须提取到 `packages/`，禁止重复实现**（需求 15，监督清单在 `00-index.md` 第八节）。
-8. 临时产物统一 `.tmp/<用途>/`，用完即删。
-9. Git 小步提交 + 推送；本机 husky 跑不起来，用 `.git/cph` 的 `#!/bin/sh` 钩子：`git -c core.hooksPath=.git/cph commit -m "..."`，**绝不用 `--no-verify`**。
+1. **ESM 优先、兼容 CJS**：所有包 `"type": "module"`；条件导出同时给 `import`/`require`；**Electron preload 因 `sandbox: true` 必须用 `.cjs`**；CJS 依赖用 `createRequire`。详见模块规范文档。
+2. **时间一律北京时间（Asia/Shanghai, UTC+8），不使用 UTC**；统一 `packages/shared/time.ts`（dayjs），禁 `toISOString()`。
+3. **应用配置可自定义产物目录** `app.outputDir`；改目录只迁移 `outputs/` + `assets/`，成功后按清单清理旧数据，**绝不递归删用户目录本身**。
+4. 所有 HTML / 海报产物**直接覆盖、不留历史副本**（D19）；后悔药只有手动导出 zip 快照。
+5. 导入导出 zip 包内**全相对路径**；模型密钥默认不进包，设置 `SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1` 后走口令加密的 100% 还原。
+6. `docs/` 是**唯一**沟通文档区；一次性记录 `YYYY-MM-DD-主题.md`，长期维护用 `NN-` 前缀；头部写 `状态/版本/最后更新/关联需求`。
+7. 定稿后不原地大改，改结论按主题新开 ADR；过期文档移入 `99-archive/`，**不删除**。
+8. **能共用的必须提取到 `packages/`，禁止重复实现**（需求 15，监督清单在 `00-index.md` 第八节）。
+9. 临时产物统一 `.tmp/<用途>/`，用完即删。
+10. Git 小步提交 + 推送；本机 husky 跑不起来，用 `.git/cph` 的 `#!/bin/sh` 钩子：`git -c core.hooksPath=.git/cph commit -m "..."`，**绝不用 `--no-verify`**。
 
 ## 注意
 

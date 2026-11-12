@@ -1,0 +1,82 @@
+# Electron 打包配置草案（M1 接入时生效；D6 无签名证书）
+# 参考：选型稿 T1、docs/05-release/2026-11-12-发布流程与本机提交钩子.md 第九节
+appId: cn.sshk.tools
+productName: sshk-tools
+copyright: Copyright © 2026 SSHK
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+# ---------------- Windows ----------------
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # D6：暂无代码签名证书。拿到证书后只需设置环境变量并取消下面两行注释，不改代码。
+  # certificateFile: ${env.WIN_CSC_FILE}
+  # certificatePassword: ${env.WIN_CSC_KEY_PASSWORD}
+  signingHashAlgorithms: [sha256]
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true   # ★ 允许用户在安装时选择安装目录
+  perMachine: false                          # 默认当前用户安装，不要求管理员权限
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: sshk-tools
+  language: "2052"                           # 简体中文
+  multiLanguageInstaller: true
+  deleteAppDataOnUninstall: false            # 卸载保留用户数据（模板/邮件/配置/产物）
+  include: build/installer.nsh               # M2 提供；可选
+
+# ---------------- macOS ----------------
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  category: public.app-category.productivity
+  # 暂无 Developer ID：不签名、不公证，见《首次安装指引》；拿到账号后再启用 identity/hardenedRuntime
+  identity: null
+  hardenedRuntime: false
+
+dmg:
+  # dmg 天然可拖拽到任意目录（含「应用程序」），此处只控制窗口布局
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 140
+      y: 190
+      type: file
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications
+
+# ---------------- Linux / 国产 OS ----------------
+linux:
+  target:
+    - deb
+    - rpm
+    - AppImage
+  category: Utility
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # deb/rpm 由系统包管理器决定安装位置；AppImage 用户可放任意目录
+
+# ---------------- 自动更新 ----------------
+publish:
+  provider: github
+  owner: GuoSirius
+  repo: sshk-tools
+  releaseType: release

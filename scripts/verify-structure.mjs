@@ -32,7 +32,11 @@ const all = walk(ROOT)
 for (const file of all.filter((f) => f.endsWith('.json'))) {
   jsonCount += 1
   try {
-    JSON.parse(readFileSync(file, 'utf8'))
+    const parsed = JSON.parse(readFileSync(file, 'utf8'))
+    // 模块规范：ESM 优先，所有包必须声明 type: module
+    if (file.endsWith('package.json') && parsed.type !== 'module') {
+      errors.push(`模块规范违规 ${relative(ROOT, file)}: 必须声明 "type": "module"（ESM 优先）`)
+    }
   } catch (err) {
     errors.push(`JSON 解析失败 ${relative(ROOT, file)}: ${err.message}`)
   }
