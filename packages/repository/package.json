@@ -1,0 +1,22 @@
+{
+  "name": "@sshk/repository",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 公共数据层：NeDB 存储、配置服务、产物路径、ID 生成",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/shared": "workspace:*",
+    "@seald-io/nedb": "latest",
+    "ulid": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  }
+}
