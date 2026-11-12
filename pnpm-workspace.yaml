@@ -3,10 +3,15 @@ packages:
   - 'packages/*'
   - 'tools/*'
 
-# pnpm 统一配置落在这里；需要执行安装脚本的依赖在此显式放行
+# pnpm 12 默认不执行依赖的构建脚本；需要跑 install/postinstall 的依赖在此显式放行。
+# - electron: postinstall 下载运行时二进制，不放行则 electron/dist 为空，pnpm dev 起不来
+# - esbuild: postinstall 安装平台二进制
+# - electron-winstaller: install 脚本 select-7z-arch.js 选择 7z 架构二进制（electron-builder 传递依赖）
+# 注意：allowBuilds 是 pnpm 12 的规范写法，与 onlyBuiltDependencies 不必同时存在。
 allowBuilds:
-  esbuild: true
   electron: true
+  esbuild: true
+  electron-winstaller: true
 
 # 依赖版本策略：所有外部 npm 包在各自 package.json 中一律写 "latest"，
 # 由 pnpm-lock.yaml 固定实际版本，CI 使用 --frozen-lockfile 保证可复现。

@@ -4,7 +4,7 @@ node_modules/
 dist*/
 dist/
 out/
-build/
+# 注意：不要忽略 build/ —— apps/desktop/build/ 是必须提交的应用图标与品牌资源
 .vite/
 coverage/
 *.tsbuildinfo

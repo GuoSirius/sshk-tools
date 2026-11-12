@@ -5,12 +5,13 @@ sshk-tools 品牌图标生成器 —— 纯 Python 标准库，零第三方依�
 设计：深色圆角方底 + 2x2 彩色模块（工具集合）+ 中心连接点 + 右上 AI 星芒。
 小尺寸(16px)仍可辨识为四色模块，适合做应用图标 / 桌面图标 / 托盘图标。
 
-产物：
-  apps/desktop/build/icon.png      1024x1024  主图标（mac/Linux 源）
-  apps/desktop/build/icon.ico      多尺寸     Windows 图标
-  apps/desktop/build/tray.png      32x32      托盘图标（透明底）
-  apps/desktop/build/tray@2x.png   64x64      托盘图标 @2x
-  docs/assets/logo-mark.png        256x256    Logo 图形（文档用）
+所有品牌资源统一放 apps/desktop/build/（electron-builder 的 buildResources），
+不散落在 docs/ 下。产物：
+  apps/desktop/build/icon.png        1024x1024  主图标（mac/Linux 源）
+  apps/desktop/build/icon.ico        多尺寸     Windows 图标
+  apps/desktop/build/tray.png        32x32      托盘图标（透明底）
+  apps/desktop/build/tray@2x.png     64x64      托盘图标 @2x
+  apps/desktop/build/logo-mark.png   256x256    Logo 图形（README/文档用）
 
 运行： python scripts/generate-icons.py
 """
@@ -23,7 +24,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "apps" / "desktop" / "build"
-DOCS = ROOT / "docs" / "assets"
 
 BG_TOP = (26, 31, 54)
 BG_BOTTOM = (11, 14, 28)
@@ -59,7 +59,6 @@ def cover(sd: float, aa: float) -> float:
 
 
 def star_cover(dx, dy, r, aa):
-    # 两条交叉菱形 -> 四角星
     d = min(abs(dx) + abs(dy) * 2.3, abs(dx) * 2.3 + abs(dy))
     return cover(d - r, aa)
 
@@ -77,14 +76,12 @@ def shade(x, y, aa: float, tray: bool):
                 alpha = max(alpha, c)
         return col, alpha
 
-    # 背景圆角方形
     sd_bg = sd_round(x, y, 0.5, 0.5, 0.478, 0.478, 0.215)
     a = cover(sd_bg, aa)
     if a <= 0:
         return (0.0, 0.0, 0.0), 0.0
 
     col = mix(BG_TOP, BG_BOTTOM, y)
-    # 内边缘高光细线
     rim = cover(abs(sd_bg + 0.010) - 0.0035, aa)
     col = mix(col, RIM, rim * 0.55)
 
@@ -97,11 +94,8 @@ def shade(x, y, aa: float, tray: bool):
             tone = tuple(min(255.0, v + 255.0 * hi) for v in BLOCKS[idx])
             col = mix(col, tone, c)
 
-    # 中心连接点
     d = math.hypot(x - 0.5, y - 0.5)
     col = mix(col, (242, 247, 255), cover(d - 0.036, aa) * 0.92)
-
-    # 右上 AI 星芒
     col = mix(col, (255, 255, 255), star_cover(x - 0.67, y - 0.33, 0.070, aa) * 0.95)
     return col, a
 
@@ -160,10 +154,9 @@ def write_ico(path: Path, sizes):
 
 def main():
     BUILD.mkdir(parents=True, exist_ok=True)
-    DOCS.mkdir(parents=True, exist_ok=True)
     made = {
         "icon.png": write_png(BUILD / "icon.png", 1024),
-        "logo-mark.png": write_png(DOCS / "logo-mark.png", 256),
+        "logo-mark.png": write_png(BUILD / "logo-mark.png", 256),
         "tray.png": write_png(BUILD / "tray.png", 32, tray=True),
         "tray@2x.png": write_png(BUILD / "tray@2x.png", 64, tray=True),
         "icon.ico": write_ico(BUILD / "icon.ico", [16, 24, 32, 48, 64, 128, 256]),
@@ -172,7 +165,6 @@ def main():
     for name, size in made.items():
         print(f"  {name:<16} {size:>8,} bytes")
     print(f"  输出目录       : {BUILD}")
-    print(f"  文档图形       : {DOCS / 'logo-mark.png'}")
 
 
 if __name__ == "__main__":

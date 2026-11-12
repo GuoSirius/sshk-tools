@@ -1,6 +1,6 @@
 # sshk-tools
 
-![sshk-tools](docs/assets/logo.svg)
+![sshk-tools](apps/desktop/build/logo.svg)
 
 公司内部本地工具集合的桌面客户端（**应用**），供各部门开发、定制并使用日常工具。具备操作系统调用与大模型调用能力，支持本地模型 / 云模型 / 自部署模型服务。
 
