@@ -1,0 +1,24 @@
+{
+  "name": "@sshk/model-console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 模型控制台：provider 配置、连通性测试、对话调试",
+  "exports": {
+    ".": "./src/index.ts",
+    "./renderer": "./src/renderer/ModelConsolePage.vue"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/repository": "workspace:*",
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6"
+  }
+}

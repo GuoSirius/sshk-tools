@@ -1,0 +1,17 @@
+{
+  "name": "@sshk/llm-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 模型网关：OpenAI 兼容协议（本地 Ollama / 远端 API），chat / stream / models / health",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  }
+}

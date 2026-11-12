@@ -13,6 +13,10 @@
   },
   "dependencies": {
     "@sshk/shared": "workspace:*",
+    "@sshk/repository": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "@sshk/llm-gateway": "workspace:*",
+    "@sshk/model-console": "workspace:*",
     "dayjs": "latest",
     "electron-updater": "latest",
     "vue": "latest",

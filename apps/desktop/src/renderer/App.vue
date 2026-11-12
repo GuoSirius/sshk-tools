@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, type Component } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
 import { TOOLS, TOOL_GROUPS } from './registry/tools'
 import { useTheme } from './composables/useTheme'
 import logoUrl from '../../build/icon.svg'
+
+// 工具页按需加载；新增工具在此登记一条映射即可
+const TOOL_COMPONENTS: Record<string, Component> = {
+  'model-console': defineAsyncComponent(() => import('@sshk/model-console/renderer')),
+}
 
 const { mode, setMode } = useTheme()
 const activeToolId = ref<string | null>(null)
@@ -123,16 +128,19 @@ onMounted(async () => {
 
         <!-- 工具内页：顶部操作 / 中间唯一滚动 / 底部分页（与需求 8 同构） -->
         <template v-else>
-          <div class="tool-page-head">
-            <strong>{{ currentTool.name }}</strong>
-            <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
-          </div>
-          <div class="tool-page-body">
-            <div class="empty-state">
-              该工具的功能页将在对应里程碑落地（当前顺序：M0 → 1 → 2 → 3 → 7 → 6 → 4 → 5）
+          <component :is="TOOL_COMPONENTS[currentTool.id]" v-if="TOOL_COMPONENTS[currentTool.id]" />
+          <template v-else>
+            <div class="tool-page-head">
+              <strong>{{ currentTool.name }}</strong>
+              <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
             </div>
-          </div>
-          <div class="tool-page-foot muted">共 0 项 · 已选 0 项（跨页保留）</div>
+            <div class="tool-page-body">
+              <div class="empty-state">
+                该工具的功能页将在对应里程碑落地（当前顺序：M0 → 1 → 2 → 3 → 7 → 6 → 4 → 5）
+              </div>
+            </div>
+            <div class="tool-page-foot muted">共 0 项 · 已选 0 项（跨页保留）</div>
+          </template>
         </template>
       </main>
     </div>

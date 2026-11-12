@@ -38,9 +38,21 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@sshk/llm-gateway':
+        specifier: workspace:*
+        version: link:../../packages/llm-gateway
+      '@sshk/model-console':
+        specifier: workspace:*
+        version: link:../../tools/model-console
+      '@sshk/repository':
+        specifier: workspace:*
+        version: link:../../packages/repository
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@sshk/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
       dayjs:
         specifier: latest
         version: 1.11.23
@@ -95,6 +107,15 @@ importers:
         specifier: latest
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
 
+  packages/llm-gateway:
+    devDependencies:
+      typescript:
+        specifier: '6'
+        version: 6.0.3
+      vitest:
+        specifier: latest
+        version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0))
+
   packages/repository:
     dependencies:
       '@seald-io/nedb':
@@ -129,6 +150,28 @@ importers:
 
   packages/ui-kit:
     dependencies:
+      element-plus:
+        specifier: latest
+        version: 2.14.8(vue@3.5.45(typescript@6.0.3))
+      vue:
+        specifier: latest
+        version: 3.5.45(typescript@6.0.3)
+    devDependencies:
+      typescript:
+        specifier: '6'
+        version: 6.0.3
+
+  tools/model-console:
+    dependencies:
+      '@sshk/repository':
+        specifier: workspace:*
+        version: link:../../packages/repository
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@sshk/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
       element-plus:
         specifier: latest
         version: 2.14.8(vue@3.5.45(typescript@6.0.3))

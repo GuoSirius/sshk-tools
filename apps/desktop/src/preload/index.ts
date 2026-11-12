@@ -8,6 +8,9 @@ const api = {
     get: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.configGet, key),
     set: (key: string, value: unknown): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.configSet, key, value),
+    onChanged: (callback: (payload: { namespace: string; key: string }) => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.configChanged, (_event, payload) => callback(payload))
+    },
   },
   theme: {
     set: (mode: string): Promise<boolean> =>
@@ -24,6 +27,35 @@ const api = {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.updateCheck),
     quitAndInstall: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.updateQuitAndInstall),
+  },
+  llm: {
+    /** 密钥在主进程注入，渲染层只传 provider 元信息 */
+    chat: (
+      provider: unknown,
+      messages: unknown,
+      options?: { onDelta?: boolean },
+    ): Promise<{ content: string; model: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmChat, provider, messages, options),
+    /** 流式回调经事件通道分片推送 */
+    onDelta: (callback: (delta: string) => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.llmChat, (_event, payload: { delta?: string }) => {
+        if (typeof payload?.delta === 'string') callback(payload.delta)
+      })
+    },
+    listModels: (provider: unknown): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmListModels, provider),
+    healthCheck: (provider: unknown): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmHealthCheck, provider),
+    setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
+  },
+  os: {
+    pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.osPickFile, opts),
+    pickDir: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.osPickDir),
+    clipboardWrite: (text: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.osClipboardWrite, text),
+    shellOpen: (target: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.osShellOpen, target),
   },
 }
 
