@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v0.1.0）'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            label: win-x64
+          - os: macos-latest
+            arch: universal
+            label: mac-universal
+          - os: ubuntu-latest
+            arch: x64
+            label: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 启用 pnpm (latest)
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm --version
+
+      - name: 安装依赖（lockfile 必须一致）
+        run: pnpm install --frozen-lockfile
+
+      - name: 门禁
+        run: pnpm verify
+
+      - name: 构建三端产物
+        run: pnpm --filter @sshk/desktop build
+
+      - name: 打包安装包（D6：无签名，签名位留开关）
+        run: pnpm --filter @sshk/desktop exec electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 拿到证书后填入仓库 Secrets 即可启用，无需改代码：
+          # WIN_CSC_FILE / WIN_CSC_KEY_PASSWORD / CSC_LINK / CSC_KEY_PASSWORD
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.rpm
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/latest*.yml
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # conventional commits -> GitHub 自动生成 changelog / Release notes
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*

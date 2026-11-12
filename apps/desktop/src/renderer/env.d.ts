@@ -26,5 +26,9 @@ interface Window {
       version(): Promise<string>
       openDataDir(): Promise<void>
     }
+    update: {
+      check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }>
+      quitAndInstall(): Promise<void>
+    }
   }
 }

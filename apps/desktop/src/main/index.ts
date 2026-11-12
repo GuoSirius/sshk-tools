@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, Tray, Menu } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { DEFAULT_THEME_MODE, IPC_CHANNELS } from '@sshk/shared'
@@ -73,12 +74,32 @@ function registerIpc(): void {
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send(IPC_CHANNELS.themeSystemChanged)
   })
+
+  ipcMain.handle(IPC_CHANNELS.updateCheck, async () => {
+    if (isDev) return { dev: true }
+    const result = await autoUpdater.checkForUpdates()
+    const version = result?.updateInfo?.version ?? null
+    return { updateAvailable: Boolean(version && version !== app.getVersion()), version }
+  })
+  ipcMain.handle(IPC_CHANNELS.updateQuitAndInstall, () => {
+    autoUpdater.quitAndInstall()
+  })
+}
+
+function setupAutoUpdate(): void {
+  if (isDev) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  void autoUpdater.checkForUpdatesAndNotify().catch((err: unknown) => {
+    console.warn('[sshk] 自动更新检查失败：', err)
+  })
 }
 
 void app.whenReady().then(() => {
   registerIpc()
   createTray()
   createWindow()
+  setupAutoUpdate()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

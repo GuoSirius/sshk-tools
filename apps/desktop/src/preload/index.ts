@@ -20,6 +20,11 @@ const api = {
     version: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.appVersion),
     openDataDir: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appOpenDataDir),
   },
+  update: {
+    check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.updateCheck),
+    quitAndInstall: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.updateQuitAndInstall),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
 import { TOOLS, TOOL_GROUPS } from './registry/tools'
@@ -11,6 +12,7 @@ const activeToolId = ref<string | null>(null)
 const sidebarCollapsed = ref(false)
 const query = ref('')
 const version = ref('0.1.0')
+const updateChecking = ref(false)
 
 const currentTool = computed(() => TOOLS.find((tool) => tool.id === activeToolId.value) ?? null)
 const visibleTools = computed(() => {
@@ -30,6 +32,25 @@ function openTool(id: string): void { activeToolId.value = id }
 function goHome(): void { activeToolId.value = null }
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
+
+async function checkUpdate(): Promise<void> {
+  if (updateChecking.value) return
+  updateChecking.value = true
+  try {
+    const result = await window.api.update.check()
+    if (result.dev) {
+      ElMessage.info('开发环境不检查更新')
+    } else if (result.updateAvailable) {
+      ElMessage.success(`发现新版本 ${result.version ?? ''}，可在发布页下载或稍后自动安装`)
+    } else {
+      ElMessage.success('当前已是最新版本')
+    }
+  } catch {
+    ElMessage.error('检查更新失败，请稍后重试')
+  } finally {
+    updateChecking.value = false
+  }
+}
 
 onMounted(async () => {
   version.value = await window.api.app.version().catch(() => '0.1.0')
@@ -54,7 +75,7 @@ onMounted(async () => {
       </el-select>
       <el-button size="small" text @click="openDataDir">数据目录</el-button>
       <el-tag size="small" type="info">模型：未配置</el-tag>
-      <el-button size="small" text>检查更新</el-button>
+      <el-button size="small" text :loading="updateChecking" @click="checkUpdate">检查更新</el-button>
     </header>
 
     <div class="app-body">

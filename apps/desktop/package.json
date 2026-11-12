@@ -14,12 +14,14 @@
   "dependencies": {
     "@sshk/shared": "workspace:*",
     "dayjs": "latest",
+    "electron-updater": "latest",
     "vue": "latest",
     "element-plus": "latest",
     "unocss": "latest"
   },
   "devDependencies": {
     "electron": "latest",
+    "electron-builder": "latest",
     "electron-vite": "latest",
     "vite": "latest",
     "@vitejs/plugin-vue": "latest",

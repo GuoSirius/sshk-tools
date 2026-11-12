@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
-- 状态：**M0 已推送；M1 应用壳/热更新/图标资源已落，待用户装依赖验证**
-- 版本：v0.7
-- 最后更新：2026-11-12 22:19（北京时间）
+- 状态：**M0/M1 已推送；M2 发布与更新链路已落（release.yml + 首次安装指引 + electron-updater）；待用户装依赖验证**
+- 版本：v0.8
+- 最后更新：2026-11-12 15:12（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -24,8 +24,10 @@
 | **开发环境与热更新** | `02-architecture/2026-11-12-开发环境与热更新.md` | 已定（D27） | 方案对比、三端行为对照、命令、M7 依赖修正说明 |
 | **数据契约 v0.2** | `04-api/2026-11-12-数据契约.md` | 讨论中 | 品牌树、黑白名单、北京时间、配置、zip + 加密密钥、IPC、组件、目录迁移 |
 | **发布流程与本机提交钩子** | `05-release/2026-11-12-发布流程与本机提交钩子.md` | 讨论中 | 按 juice-email-cli、`.git/cph` 钩子、Git 铁律、lockfile、无签名发布、**Electron 配置与缺失项清单** |
+| **首次安装指引** | `05-release/2026-11-12-首次安装指引.md` | 已落 | Windows SmartScreen / macOS Gatekeeper / deb·rpm·AppImage 无签名安装说明 |
+| **发布工作流** | `.github/workflows/release.yml` | 已落 | tag 触发三平台矩阵（win-x64 / mac-universal / linux-x64），`--publish never` + GH Release notes |
 | **打包配置** | `apps/desktop/electron-builder.yml` | 已接入 | NSIS 允许选择安装目录；图标已配置；签名位留注释 |
-| **图标资源** | `apps/desktop/build/` + `docs/assets/` | 已生成 | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png；生成脚本 `scripts/generate-icons.py` |
+| **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
 | UI / 交互稿 | `03-design/` | 待建 | M1 产出 |
 | ADR 决策记录 | `01-requirements/decisions/` | 待建 | 按主题一文件，明细记本文件看板 |
@@ -41,9 +43,11 @@ docs/
 ├── 03-design/           ← UI 稿、交互说明、公共组件说明
 ├── 04-api/              ← 数据契约（品牌树/配置/zip/IPC/组件/目录迁移）
 ├── 05-release/          ← 发布流程、签名开关、changelog、首次安装指引、缺失项
-├── assets/              ← Logo 等文档图片资源
 └── 99-archive/          ← 归档（只移不删）
 ```
+
+> `assets/` 已从 docs 下移除：项目自有图标/logo 统一在 `apps/desktop/build/`（electron-builder `buildResources`）；
+> 不设仓库根 `public/`（见 D28）。
 
 | 规则 | 内容 |
 |---|---|
@@ -71,6 +75,8 @@ docs/
 | **M1 应用壳** | ✅ `apps/desktop/`：main / preload / renderer、四层布局、三态换肤、3 个工具注册、UnoCSS、`electron.vite.config.ts`（三端热更新）、`electron-builder.yml` |
 | **图标资源** | ✅ 已生成并接入打包配置（纯标准库脚本，零依赖） |
 | TS 6 切换 | ✅ `typescript: "6"` → 6.0.3，lockfile 已同步 |
+| **M2 发布与更新** | ✅ `release.yml`（tag 触发三平台）、`05-release/首次安装指引.md`、autoUpdater IPC + 检查更新按钮 |
+| **构建脚本白名单** | ✅ `allowBuilds: electron / esbuild / electron-winstaller`（pnpm 12 规范写法，修复 `ERR_PNPM_IGNORED_BUILDS`） |
 | **待验证** | ⏳ 前端/Electron 依赖尚未安装；`pnpm install` 后跑 `pnpm verify` 与 `pnpm --filter @sshk/desktop dev`（**由用户执行**） |
 | 功能页 | ❌ 三个工具的具体功能页按 M7→M6→M4→M5 顺序落地 |
 
@@ -97,6 +103,7 @@ docs/
 | **D25** | **Electron 打包** | 允许选择安装目录（NSIS）；缺失项及时上报；**图标已补齐** |
 | **D26** | **实现顺序 / M6 先行** | **M0→1→2→3→7→6→4→5** |
 | **D27** | **开发热更新** | **electron-vite**：主进程改即重启、preload 改即重载、渲染 HMR；ESM main + CJS preload |
+| **D28** | **共享静态资源位置** | **不建仓库根 `public/`**：图标/logo 归 `apps/desktop/build/`（buildResources，打包必需）；渲染层静态资源归各 Vite 应用自己的 `public/`；跨工具数据类资产归 `assets/` 数据目录（D21），不进代码仓库 |
 
 ### M7 依赖修正（用户 22:19 质疑）
 
@@ -123,6 +130,7 @@ docs/
 | v0.5 | 21:52 | **D23 ESM 优先兼容 CJS**、**D24 TypeScript 6.x** | 降 TS 大版本 |
 | v0.6 | 22:02 | **D25 Electron 打包 + 允许选安装目录**、**D26 顺序改为 M0→1→2→3→7→6→4→5**；`b40186a` | 覆盖原里程碑顺序 |
 | **v0.7** | 22:19 | **D27 electron-vite 三端热更新**、**M7 依赖修正为仅 M1**、**图标资源生成并接入**、M1 应用壳骨架落地 | 修正 M7 依赖笔误 |
+| **v0.8** | 15:12 | **D28 不设根 public/**；修复 `.gitignore` 误屏蔽 `apps/desktop/build/`；M2 落地（release.yml、首次安装指引、electron-updater IPC + 检查更新按钮）；pnpm 构建脚本白名单收敛为 `allowBuilds` | 删除 docs/assets |
 
 ## 六、ADR 记录格式（按主题）
 
@@ -140,7 +148,7 @@ docs/
 |---|---|---|---|
 | 1 | M0 | 骨架、latest + lockfile、北京时间、提交钩子、分层检查、CI | ✅ 已推送 |
 | 2 | M1 | 应用壳 + 四层 UI + 三态换肤 + 3 个工具注册 + **electron-vite 热更新** + electron-builder 接入 + 图标 | **骨架已落，待装依赖验证** |
-| 3 | M2 | 发布与更新（按 juice-email-cli、无签名）、changelog、首次安装指引 | 待开始 |
+| 3 | M2 | 发布与更新（按 juice-email-cli、无签名）、changelog、首次安装指引 | **已落**：release.yml + 指引 + autoUpdater IPC；待 tag 实测 |
 | 4 | M3 | 公共底座（ui-kit / repository / backup） | 待开始 |
 | 5 | **M7** | `llm-gateway` + `model-console` + OS 能力（仅依赖 M1） | 待开始 |
 | 6 | **M6** | **Badge Studio（最急）**：外部 HTML 上传 + 四种数据源 + badge + snapdom 海报 | 待开始 |
