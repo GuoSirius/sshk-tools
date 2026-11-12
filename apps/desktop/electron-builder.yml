@@ -1,5 +1,6 @@
-# Electron 打包配置草案（M1 接入时生效；D6 无签名证书）
-# 参考：选型稿 T1、docs/05-release/2026-11-12-发布流程与本机提交钩子.md 第九节
+# Electron 打包配置（M1 应用壳已接入；D6 无签名证书）
+# 参考：热更新文档、发布流程文档第九节
+# 图标由 scripts/generate-icons.py 生成，位于 build/
 appId: cn.sshk.tools
 productName: sshk-tools
 copyright: Copyright © 2026 SSHK
@@ -8,19 +9,22 @@ directories:
   output: dist
   buildResources: build
 
+# electron-vite 的产物目录是 out/，不是 dist/（dist 只放安装包）
 files:
-  - dist/**/*
+  - out/**/*
+  - build/**/*
   - package.json
 
 # ---------------- Windows ----------------
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64, arm64]
     - target: portable
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
-  # D6：暂无代码签名证书。拿到证书后只需设置环境变量并取消下面两行注释，不改代码。
+  # D6：暂无代码签名证书。拿到证书后设置环境变量并取消下面两行注释即可，不改代码。
   # certificateFile: ${env.WIN_CSC_FILE}
   # certificatePassword: ${env.WIN_CSC_KEY_PASSWORD}
   signingHashAlgorithms: [sha256]
@@ -28,44 +32,38 @@ win:
 
 nsis:
   oneClick: false
-  allowToChangeInstallationDirectory: true   # ★ 允许用户在安装时选择安装目录
-  perMachine: false                          # 默认当前用户安装，不要求管理员权限
+  allowToChangeInstallationDirectory: true   # 允许用户在安装时选择安装目录
+  perMachine: false                          # 当前用户安装，不要求管理员权限
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: sshk-tools
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   language: "2052"                           # 简体中文
   multiLanguageInstaller: true
-  deleteAppDataOnUninstall: false            # 卸载保留用户数据（模板/邮件/配置/产物）
-  include: build/installer.nsh               # M2 提供；可选
+  deleteAppDataOnUninstall: false            # 卸载保留模板/邮件/海报/配置
 
 # ---------------- macOS ----------------
 mac:
+  icon: build/icon.png                       # electron-builder 在 macOS 上自动转 icns
   target:
     - target: dmg
       arch: [universal]
     - target: zip
       arch: [universal]
   category: public.app-category.productivity
-  # 暂无 Developer ID：不签名、不公证，见《首次安装指引》；拿到账号后再启用 identity/hardenedRuntime
-  identity: null
+  # 暂无 Developer ID：不签名、不公证，见《首次安装指引》
   hardenedRuntime: false
 
 dmg:
-  # dmg 天然可拖拽到任意目录（含「应用程序」），此处只控制窗口布局
+  # dmg 天然可拖拽到任意目录（含「应用程序」）
   window:
     width: 540
     height: 380
-  contents:
-    - x: 140
-      y: 190
-      type: file
-    - x: 400
-      y: 190
-      type: link
-      path: /Applications
 
 # ---------------- Linux / 国产 OS ----------------
 linux:
+  icon: build/icon.png
   target:
     - deb
     - rpm

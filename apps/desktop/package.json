@@ -1,0 +1,29 @@
+{
+  "name": "@sshk/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools Electron 应用壳",
+  "main": "out/main/index.mjs",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/shared": "workspace:*",
+    "dayjs": "latest",
+    "vue": "latest",
+    "element-plus": "latest",
+    "unocss": "latest"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-vite": "latest",
+    "vite": "latest",
+    "@vitejs/plugin-vue": "latest",
+    "typescript": "6",
+    "vitest": "latest"
+  }
+}

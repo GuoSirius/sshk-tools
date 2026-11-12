@@ -6,6 +6,8 @@ export const IPC_CHANNELS = {
   configGet: 'config:get',
   configSet: 'config:set',
   configChanged: 'config:changed',
+  appVersion: 'app:version',
+  appOpenDataDir: 'app:openDataDir',
   backupExport: 'backup:export',
   backupImport: 'backup:import',
   backupRollback: 'backup:rollback',

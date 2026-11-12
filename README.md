@@ -1,5 +1,7 @@
 # sshk-tools
 
+![sshk-tools](docs/assets/logo.svg)
+
 公司内部本地工具集合的桌面客户端（**应用**），供各部门开发、定制并使用日常工具。具备操作系统调用与大模型调用能力，支持本地模型 / 云模型 / 自部署模型服务。
 
 **工具**（`tools/` 下的独立工具包，D13/D16 已定）：
@@ -18,8 +20,10 @@
 ## 快速开始（安装由你执行，AI 不代跑）
 
 ```bash
-pnpm install          # 按 "typescript": "6" 刷新 pnpm-lock.yaml（必须提交）
-pnpm verify           # 结构/分层/latest 策略 + typecheck + lint + test
+pnpm install                          # 安装依赖（含 Electron 二进制，已配国内镜像）
+pnpm verify                           # 结构/分层/latest 策略 + typecheck + lint + test
+pnpm --filter @sshk/desktop dev       # 开发态：主进程 / preload / 渲染三端热更新
+pnpm --filter @sshk/desktop build     # 产出 out/ 供 electron-builder 打包
 ```
 
 `pnpm-lock.yaml` **必须提交**，CI 用 `pnpm install --frozen-lockfile`。TypeScript 已按 D24 约束到 6.x，lockfile 已同步到 **6.0.3** 并随仓库提交；`pnpm verify` 在 TS 6.0.3 下全绿（typecheck / lint / 6 tests / 3 个脚本）。
