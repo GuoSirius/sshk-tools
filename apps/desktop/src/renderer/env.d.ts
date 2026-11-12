@@ -80,5 +80,8 @@ interface Window {
       listPosters(): Promise<PosterRecord[]>
       deletePoster(posterId: string): Promise<boolean>
     }
+    edm: {
+      api(action: string, data?: Record<string, unknown>): Promise<unknown>
+    }
   }
 }

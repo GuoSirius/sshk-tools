@@ -1,0 +1,30 @@
+{
+  "name": "@sshk/edm-studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools EDM Studio：品牌树、模板片段版本、三阶段渲染产物、邮件列表与分享",
+  "exports": {
+    ".": "./src/index.ts",
+    "./main": "./src/main/index.ts",
+    "./renderer": "./src/renderer/EdmStudioPage.vue"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/repository": "workspace:*",
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "html-minifier-terser": "latest",
+    "juice": "latest",
+    "nunjucks": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@types/nunjucks": "latest",
+    "typescript": "6",
+    "vitest": "latest"
+  }
+}

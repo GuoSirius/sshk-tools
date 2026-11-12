@@ -70,6 +70,11 @@ const api = {
     deletePoster: (posterId: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
   },
+  edm: {
+    /** action 白名单单通道：brands / tpl / frg / mail / share */
+    api: (action: string, data?: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.edmApi, { action, data }),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

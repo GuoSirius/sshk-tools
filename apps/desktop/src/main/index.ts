@@ -5,6 +5,7 @@ import path from 'node:path'
 import { IPC_CHANNELS } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { registerBadgeIpc } from '@sshk/badge-studio/main'
+import { registerEdmIpc } from '@sshk/edm-studio/main'
 import { setupServices, type AppServices } from './services'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -129,6 +130,12 @@ function registerIpc(): void {
 
   // ── Badge Studio（M6）：原 HTML 只读、副本打标、覆盖式海报产物 ──
   registerBadgeIpc(ipcMain, {
+    repository: services!.repository,
+    outputRoot: services!.outputRoot,
+  })
+
+  // ── EDM Studio（M4/M5）：品牌树、模板片段、三阶段渲染、邮件与分享 ──
+  registerEdmIpc(ipcMain, {
     repository: services!.repository,
     outputRoot: services!.outputRoot,
   })

@@ -11,6 +11,7 @@ import logoUrl from '../../build/icon.svg'
 const TOOL_COMPONENTS: Record<string, Component> = {
   'model-console': defineAsyncComponent(() => import('@sshk/model-console/renderer')),
   'badge-studio': defineAsyncComponent(() => import('@sshk/badge-studio/renderer')),
+  'edm-studio': defineAsyncComponent(() => import('@sshk/edm-studio/renderer')),
 }
 
 const { mode, setMode } = useTheme()

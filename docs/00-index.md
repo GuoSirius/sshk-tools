@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
-- 状态：**M0/M1 已推送；M2 发布与更新链路已落（release.yml + 首次安装指引 + electron-updater）；待用户装依赖验证**
-- 版本：v0.8
-- 最后更新：2026-11-12 15:12（北京时间）
+- 状态：**M0~M7 全部落地并推送（M0/M1/M2/M3/M7/M6/M4/M5）；60 单测全绿；待用户 dev 实测与 tag 发布**
+- 版本：v0.9
+- 最后更新：2026-11-13 00:12（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -105,6 +105,7 @@ docs/
 | **D27** | **开发热更新** | **electron-vite**：主进程改即重启、preload 改即重载、渲染 HMR；ESM main + CJS preload |
 | **D28** | **共享静态资源位置** | **不建仓库根 `public/`**：图标/logo 归 `apps/desktop/build/`（buildResources，打包必需）；渲染层静态资源归各 Vite 应用自己的 `public/`；跨工具数据类资产归 `assets/` 数据目录（D21），不进代码仓库 |
 | **D29** | **品牌管理独立页面** | 品牌列表 + 增删改独立页面，纳入 M4（品牌树本就含 Brand 实体）与 M4 一起执行 |
+| **D31** | **图标库** | 需要图标的界面优先用 FontAwesome（`@fortawesome/fontawesome-free` CSS 版或 `@fortawesome/vue-fontawesome` 组件版），与 Element Plus 图标并存不冲突 |
 | **D30** | **造轮子禁令** | 能用成熟 npm 包就不再手写：`ulid`（替代手写 ULID）、`nanoid`、`es-toolkit` 等按需引入；自研仅限零依赖校验脚本与 icon 生成（无合适包） |
 
 ### M7 依赖修正（用户 22:19 质疑）
@@ -152,10 +153,10 @@ docs/
 | 2 | M1 | 应用壳 + 四层 UI + 三态换肤 + 3 个工具注册 + **electron-vite 热更新** + electron-builder 接入 + 图标 | **骨架已落，待装依赖验证** |
 | 3 | M2 | 发布与更新（按 juice-email-cli、无签名）、changelog、首次安装指引 | **已落**：release.yml + 指引 + autoUpdater IPC；待 tag 实测 |
 | 4 | M3 | 公共底座（ui-kit / repository / backup） | **已落**：repository（NeDB + 配置 + 产物路径 + ulid，22 测试）、backup（zip + manifest checksum + AES-GCM 密钥迁移，9 测试）、ui-kit（ToolPageLayout / EmptyState / ConfirmDialog / TimeText / useSelection） |
-| 5 | **M7** | `llm-gateway` + `model-console` + OS 能力（仅依赖 M1） | 待开始 |
-| 6 | **M6** | **Badge Studio（最急）**：外部 HTML 上传 + 四种数据源 + badge + snapdom 海报 | 待开始 |
-| 7 | M4 | EDM Studio · 品牌树、模板片段版本、三阶段产物 | 待开始 |
-| 8 | M5 | EDM Studio · 邮件列表、批量、导出、局域网分享 | 待开始 |
+| 5 | **M7** | `llm-gateway` + `model-console` + OS 能力（仅依赖 M1） | **已落**：gateway（fetch/SSE，3 测试）、model-console 页、os/llm/secrets IPC（safeStorage） |
+| 6 | **M6** | **Badge Studio（最急）**：外部 HTML 上传 + 四种数据源 + badge + snapdom 海报 | **已落**：URL 归一/数据源/badge 注入 16 测试、主进程 badge IPC、上传+粘贴+最近使用、批量补属性、覆盖式海报产物 |
+| 7 | M4 | EDM Studio · 品牌树、模板片段版本、三阶段产物 | **已落**：品牌管理页（D29）、模板/片段版本（不可变 D8、黑白名单 D14）、nunjucks+juice+minify 三阶段（4 测试） |
+| 8 | M5 | EDM Studio · 邮件列表、批量、导出、局域网分享 | **已落**：邮件 CRUD+生成+复制代码、覆盖式产物、局域网分享（token+TTL） |
 
 ## 八、复用监督清单（需求 15）
 
