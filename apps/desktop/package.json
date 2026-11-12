@@ -16,6 +16,7 @@
     "@sshk/repository": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@sshk/llm-gateway": "workspace:*",
+    "@sshk/badge-studio": "workspace:*",
     "@sshk/model-console": "workspace:*",
     "dayjs": "latest",
     "electron-updater": "latest",

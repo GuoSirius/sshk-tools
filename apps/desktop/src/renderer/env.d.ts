@@ -21,6 +21,20 @@ interface LlmProvider {
   enabled: boolean
 }
 
+interface PosterRecord {
+  _id: string
+  name: string
+  source: { type: 'mail' | 'upload'; mailId?: string; htmlPath: string }
+  datasources: { file: string; kind: string; ocrReviewed?: boolean }[]
+  configSnapshot: { badgeAttr: string; clicksField: string; posterWidth: number; scale: number }
+  outputs: { badged?: string; poster?: string }
+  status: string
+  lastGeneratedAt?: string
+  createdAt: string
+  updatedAt: string
+  archived: boolean
+}
+
 interface Window {
   api: {
     config: {
@@ -56,6 +70,15 @@ interface Window {
       pickDir(): Promise<string>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
+    }
+    badge: {
+      parseDatasource(file: string): Promise<{ kind: string; rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[] }>
+      readHtml(file: string): Promise<{ html: string; hash: string }>
+      markBadges(payload: unknown): Promise<string>
+      generate(payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string }>
+      savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
+      listPosters(): Promise<PosterRecord[]>
+      deletePoster(posterId: string): Promise<boolean>
     }
   }
 }

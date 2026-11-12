@@ -10,6 +10,7 @@ import logoUrl from '../../build/icon.svg'
 // 工具页按需加载；新增工具在此登记一条映射即可
 const TOOL_COMPONENTS: Record<string, Component> = {
   'model-console': defineAsyncComponent(() => import('@sshk/model-console/renderer')),
+  'badge-studio': defineAsyncComponent(() => import('@sshk/badge-studio/renderer')),
 }
 
 const { mode, setMode } = useTheme()

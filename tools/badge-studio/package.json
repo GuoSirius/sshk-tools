@@ -1,0 +1,29 @@
+{
+  "name": "@sshk/badge-studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools Badge Studio：点击统计解析、URL 归一、badge 注入、海报长图",
+  "exports": {
+    ".": "./src/index.ts",
+    "./main": "./src/main/index.ts",
+    "./renderer": "./src/renderer/BadgeStudioPage.vue"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/repository": "workspace:*",
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "@zumer/snapdom": "latest",
+    "cheerio": "latest",
+    "element-plus": "latest",
+    "vue": "latest",
+    "xlsx": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  }
+}

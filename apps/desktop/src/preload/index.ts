@@ -57,6 +57,19 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.osClipboardWrite, text),
     shellOpen: (target: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.osShellOpen, target),
   },
+  badge: {
+    parseDatasource: (file: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.badgeParseDatasource, file),
+    readHtml: (file: string): Promise<{ html: string; hash: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeReadHtml, file),
+    markBadges: (payload: unknown): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.badgeMarkBadges, payload),
+    generate: (payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeGenerate, payload),
+    savePosterPng: (payload: { posterId: string; base64: string }): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeSavePosterPng, payload),
+    listPosters: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.badgeListPosters),
+    deletePoster: (posterId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

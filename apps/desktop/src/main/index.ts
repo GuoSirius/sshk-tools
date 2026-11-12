@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { IPC_CHANNELS } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
+import { registerBadgeIpc } from '@sshk/badge-studio/main'
 import { setupServices, type AppServices } from './services'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -124,6 +125,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.llmSetApiKey, (_event, providerId: string, apiKey: string) => {
     services!.setApiKey(providerId, String(apiKey ?? ''))
     return true
+  })
+
+  // ── Badge Studio（M6）：原 HTML 只读、副本打标、覆盖式海报产物 ──
+  registerBadgeIpc(ipcMain, {
+    repository: services!.repository,
+    outputRoot: services!.outputRoot,
   })
 
   // ── OS 能力（M7）：文件选择 / 剪贴板 / shell 白名单 ──
