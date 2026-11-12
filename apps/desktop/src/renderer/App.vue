@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref, type Component } from '
 import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
-import { TOOLS, TOOL_GROUPS } from './registry/tools'
+import { TOOLS } from './registry/tools'
 import { useTheme } from './composables/useTheme'
 import logoUrl from '../../build/icon.svg'
 
@@ -16,6 +16,7 @@ const TOOL_COMPONENTS: Record<string, Component> = {
 
 const { mode, setMode } = useTheme()
 const activeToolId = ref<string | null>(null)
+const activeMenu = ref('')
 const sidebarCollapsed = ref(false)
 const query = ref('')
 const version = ref('0.1.0')
@@ -35,7 +36,10 @@ const themeOptions: { label: string; value: ThemeMode }[] = [
   { label: '跟随系统', value: 'system' },
 ]
 
-function openTool(id: string): void { activeToolId.value = id }
+function openTool(id: string): void {
+  activeToolId.value = id
+  activeMenu.value = TOOLS.find((tool) => tool.id === id)?.menus[0]?.id ?? ''
+}
 function goHome(): void { activeToolId.value = null }
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
@@ -86,23 +90,18 @@ onMounted(async () => {
     </header>
 
     <div class="app-body">
-      <!-- 工具级：工具内页才有 -->
+      <!-- 工具级：工具内页才有；左侧 = 当前工具的全部功能菜单（需求 8） -->
       <aside v-if="currentTool" class="tool-sidebar" :class="{ collapsed: sidebarCollapsed }">
         <el-button size="small" text @click="sidebarCollapsed = !sidebarCollapsed">
-          {{ sidebarCollapsed ? '展开' : '收起' }}
+          {{ sidebarCollapsed ? '»' : '« 收起' }}
         </el-button>
         <template v-if="!sidebarCollapsed">
-          <div v-for="group in TOOL_GROUPS" :key="group" style="margin-top: 14px">
-            <div class="muted" style="font-size: 12px; padding: 0 8px 6px">{{ group }}</div>
-            <el-menu :default-active="currentTool?.entryRoute">
-              <el-menu-item :index="currentTool?.entryRoute">
-                {{ currentTool?.name }} 首页
-              </el-menu-item>
-            </el-menu>
-          </div>
-          <div style="margin-top: 18px; padding: 0 8px">
-            <el-button size="small" text>工具配置</el-button>
-          </div>
+          <div class="sidebar-tool-name">{{ currentTool.name }}</div>
+          <el-menu :default-active="activeMenu" @select="(id: string) => (activeMenu = id)">
+            <el-menu-item v-for="m in currentTool.menus" :key="m.id" :index="m.id">
+              {{ m.label }}
+            </el-menu-item>
+          </el-menu>
         </template>
       </aside>
 
@@ -130,7 +129,11 @@ onMounted(async () => {
 
         <!-- 工具内页：顶部操作 / 中间唯一滚动 / 底部分页（与需求 8 同构） -->
         <template v-else>
-          <component :is="TOOL_COMPONENTS[currentTool.id]" v-if="TOOL_COMPONENTS[currentTool.id]" />
+          <component
+            :is="TOOL_COMPONENTS[currentTool.id]"
+            v-if="TOOL_COMPONENTS[currentTool.id]"
+            :menu="activeMenu"
+          />
           <template v-else>
             <div class="tool-page-head">
               <strong>{{ currentTool.name }}</strong>

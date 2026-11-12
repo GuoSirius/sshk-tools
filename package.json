@@ -16,6 +16,7 @@
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:latest": "node scripts/check-latest.mjs",
     "check:structure": "node scripts/verify-structure.mjs",
+    "postinstall": "node scripts/ensure-electron.mjs",
     "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:latest && pnpm typecheck && pnpm lint && pnpm test"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
@@ -12,6 +12,9 @@ interface RecentHtml {
   usedAt: string
 }
 
+// 左侧菜单：generate=生成视图 / posters=列表视图（需求 8）
+const props = defineProps<{ menu?: string }>()
+const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
 const clicksField = ref<'clicks' | 'totalClicks'>('clicks')
 
@@ -231,7 +234,7 @@ onMounted(() => {
       <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
     </template>
 
-    <div class="badge-grid">
+    <div v-if="view !== 'posters'" class="badge-grid">
       <!-- 左：输入区 -->
       <div class="col">
         <div class="panel">
@@ -313,7 +316,7 @@ onMounted(() => {
     </div>
 
     <!-- 海报列表 -->
-    <div class="panel" style="margin-top: 8px">
+    <div v-if="view !== 'generate'" class="panel" style="margin-top: 8px">
       <div class="panel-title">海报列表（覆盖式产物；删除仅归档记录）</div>
       <el-table v-if="posters.length > 0" v-loading="listLoading" :data="posters" size="small">
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />

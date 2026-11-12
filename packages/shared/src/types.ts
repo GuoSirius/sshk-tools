@@ -12,6 +12,14 @@ export interface ToolDescriptor {
   icon: string
   entryRoute: string
   enabled: boolean
+  /** 工具内左侧功能菜单（需求 8：所有菜单功能都在左侧） */
+  menus: ToolMenu[]
+}
+
+export interface ToolMenu {
+  /** 菜单 ID，传给工具页做视图切换 */
+  id: string
+  label: string
 }
 
 /** 四种上传来源统一归一后的点击统计行 */

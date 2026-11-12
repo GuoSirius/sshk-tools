@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, TimeText, ToolPageLayout } from '@sshk/ui-kit'
 
@@ -9,7 +9,10 @@ interface BrandRow extends Named { code: string }
 interface VersionRow extends Named { version: number; label?: string; source?: { html: string }; templateId?: string; fragmentId?: string; slots?: { key: string; type: string }[]; policy?: { blacklist: string[]; whitelist: string[] }; sampleData?: Record<string, unknown> }
 interface MailRow extends Named { templateVersionId: string; bindings?: { slot: string; fragmentVersionId: string }[]; outputs?: Record<string, string>; lastGeneratedAt?: string; data?: Record<string, unknown> }
 
+// 左侧菜单驱动页签（需求 8：工具所有功能菜单在左侧）
+const props = defineProps<{ menu?: string }>()
 const tab = ref('brands')
+watch(() => props.menu, (v) => { if (v) tab.value = v }, { immediate: true })
 const api = (action: string, data?: Record<string, unknown>) => window.api.edm.api(action, data)
 
 /** 统一删除确认（危险操作二次确认） */

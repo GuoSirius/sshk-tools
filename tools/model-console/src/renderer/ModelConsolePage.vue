@@ -4,6 +4,10 @@ import { ElMessage } from 'element-plus'
 import { ToolPageLayout, EmptyState, ConfirmDialog } from '@sshk/ui-kit'
 import { entityId } from '@sshk/shared'
 
+// 左侧菜单：providers=Provider 管理 / chat=对话调试（需求 8）
+const props = defineProps<{ menu?: string }>()
+const view = computed(() => props.menu ?? 'providers')
+
 interface Provider {
   _id: string
   name: string
@@ -138,9 +142,32 @@ onMounted(() => {
     description="配置模型 provider（本地 Ollama / 云 API），测试连通性并试聊；apiKey 单独加密存储"
   >
     <template #actions>
-      <el-button type="primary" size="small" @click="openCreate">新增 Provider</el-button>
+      <el-button v-if="view === 'providers'" type="primary" size="small" @click="openCreate">新增 Provider</el-button>
     </template>
 
+    <template v-if="view === 'chat'">
+      <div class="panel" style="min-height: 240px; display: flex; flex-direction: column">
+        <div class="panel-title">对话调试（流式输出；apiKey 在主进程注入，不落渲染层）</div>
+        <div class="chat-output">{{ chatOutput || '（输出将显示在这里）' }}</div>
+        <div style="display: flex; gap: 8px; margin-top: 10px">
+          <el-select v-model="chatProviderId" size="small" placeholder="选择 Provider" style="width: 220px">
+            <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
+          </el-select>
+          <el-input
+            v-model="chatInput"
+            size="small"
+            placeholder="输入测试内容，回车发送"
+            :disabled="!activeProvider"
+            @keydown.enter="sendChat"
+          />
+          <el-button size="small" type="primary" :loading="chatting" :disabled="!activeProvider" @click="sendChat">
+            发送
+          </el-button>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
     <EmptyState
       v-if="providers.length === 0"
       description="还没有配置任何模型 Provider"
@@ -180,28 +207,10 @@ onMounted(() => {
         </template>
       </el-table-column>
     </el-table>
+    </template>
 
     <template #footer>
-      <el-select
-        v-model="chatProviderId"
-        size="small"
-        placeholder="选择 Provider 试聊"
-        style="width: 200px"
-      >
-        <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
-      </el-select>
-      <el-input
-        v-model="chatInput"
-        size="small"
-        placeholder="输入测试内容"
-        style="width: 320px; margin-left: 8px"
-        :disabled="!activeProvider"
-        @keydown.enter="sendChat"
-      />
-      <el-button size="small" type="primary" :loading="chatting" :disabled="!activeProvider" @click="sendChat">
-        发送
-      </el-button>
-      <span v-if="chatOutput" class="chat-out">{{ chatOutput }}</span>
+      <span class="panel-title">apiKey 单独加密存储（safeStorage）· 测试与试聊走 llm 网关</span>
     </template>
 
     <el-dialog v-model="dialogOpen" :title="editingId ? '编辑 Provider' : '新增 Provider'" width="480px">
@@ -250,6 +259,9 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.panel { border: 1px solid rgba(128,128,128,.25); border-radius: 6px; padding: 12px; }
+.panel-title { font-size: 12px; opacity: .7; margin-bottom: 8px; }
+.chat-output { flex: 1; min-height: 160px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; border: 1px dashed rgba(128,128,128,.3); border-radius: 4px; padding: 10px; }
 .masked {
   letter-spacing: 2px;
 }
