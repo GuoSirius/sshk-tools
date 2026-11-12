@@ -38,7 +38,11 @@ function createWindow(): void {
     },
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
+  mainWindow.on('ready-to-show', () => {
+    mainWindow?.show()
+    // 开发模式默认打开开发者工具
+    if (isDev) mainWindow?.webContents.openDevTools()
+  })
   mainWindow.on('closed', () => { mainWindow = null })
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -181,6 +185,8 @@ function setupAutoUpdate(): void {
 void app.whenReady().then(() => {
   services = setupServices()
   registerIpc()
+  // 应用内自绘标题栏与工具栏，去掉系统默认菜单（File/Edit/View/Window）
+  Menu.setApplicationMenu(null)
   createTray()
   createWindow()
   setupAutoUpdate()

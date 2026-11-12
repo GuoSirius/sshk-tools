@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import { normalizeUrl, type UrlNormConfig } from './url-norm.js'
 import type { StatRow } from './datasource.js'
@@ -72,9 +71,4 @@ export function markBadges(html: string, stats: StatRow[], cfg: Pick<BadgeInject
     if (keys.has(normalizeUrl(href, cfg.urlNorm))) $(el).attr(cfg.badgeAttr, '')
   }
   return $.html()
-}
-
-/** 源文件指纹：poster.sourceHash，用于「源已更新」提示（数据契约 §7） */
-export function hashHtml(html: string): string {
-  return `sha256:${createHash('sha256').update(html, 'utf8').digest('hex')}`
 }

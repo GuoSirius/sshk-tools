@@ -1,13 +1,3 @@
-import { monotonicFactory } from 'ulid'
-
-/** 使用成熟 ulid 库（Crockford Base32，时间可排序）；monotonicFactory 保证同毫秒内单调递增 */
-const monotonicUlid = monotonicFactory()
-
-export function ulid(nowMs: number = Date.now()): string {
-  return monotonicUlid(nowMs)
-}
-
-/** 生成带业务前缀的实体 ID，如 `brd_01hq…`（数据契约 §1） */
-export function entityId(prefix: string, nowMs: number = Date.now()): string {
-  return `${prefix}_${ulid(nowMs).toLowerCase()}`
-}
+// ulid 实现已下沉到 @sshk/shared（纯包，渲染层可用）；此处按仓库约定再导出，
+// 主进程侧代码继续从 @sshk/repository 引用不影响行为。
+export { ulid, entityId } from '@sshk/shared'

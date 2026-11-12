@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hashHtml, injectBadges, markBadges } from './badge'
+import { injectBadges, markBadges } from './badge'
 import type { BadgeInjectConfig } from './badge'
 
 const cfg: BadgeInjectConfig = {
@@ -42,10 +42,5 @@ describe('badge 注入（严格门控）', () => {
     const marked = markBadges(html, stats, cfg)
     expect(marked).toContain('href="https://a.com/p/1" data-edm-badge')
     expect(marked).not.toContain('href="https://other.com" data-edm-badge')
-  })
-
-  it('hashHtml 稳定（源更新检测）', () => {
-    expect(hashHtml('<p>x</p>')).toBe(hashHtml('<p>x</p>'))
-    expect(hashHtml('<p>x</p>')).not.toBe(hashHtml('<p>y</p>'))
   })
 })

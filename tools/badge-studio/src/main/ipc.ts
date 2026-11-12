@@ -10,7 +10,8 @@ import {
   type Poster,
   type Repository,
 } from '@sshk/repository'
-import { hashHtml, injectBadges, markBadges, parseDatasource } from '../core/index.js'
+import { injectBadges, markBadges, parseDatasource } from '../core/index.js'
+import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
 import type { BadgeInjectConfig } from '../core/badge.js'

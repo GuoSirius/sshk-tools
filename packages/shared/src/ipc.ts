@@ -24,11 +24,25 @@ export const IPC_CHANNELS = {
   shareCopyLink: 'share:copyLink',
   llmChat: 'llm:chat',
   llmListModels: 'llm:listModels',
+  llmHealthCheck: 'llm:healthCheck',
+  llmSetApiKey: 'llm:setApiKey',
+  osPickFile: 'os:pickFile',
+  osPickDir: 'os:pickDir',
+  osClipboardWrite: 'os:clipboardWrite',
+  osShellOpen: 'os:shellOpen',
   edmListMails: 'edm:listMails',
   edmGenerate: 'edm:generate',
   edmRegenerate: 'edm:regenerate',
+  /** M4/M5：EDM 全量能力走单通道 action 白名单（brands/tpl/frg/mail/share） */
+  edmApi: 'edm:api',
   badgeGenerate: 'badge:generate',
   badgeRegenerate: 'badge:regenerate',
+  badgeParseDatasource: 'badge:parseDatasource',
+  badgeReadHtml: 'badge:readHtml',
+  badgeMarkBadges: 'badge:markBadges',
+  badgeSavePosterPng: 'badge:savePosterPng',
+  badgeListPosters: 'badge:listPosters',
+  badgeDeletePoster: 'badge:deletePoster',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

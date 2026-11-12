@@ -146,6 +146,9 @@ importers:
       dayjs:
         specifier: latest
         version: 1.11.23
+      ulid:
+        specifier: latest
+        version: 3.0.2
     devDependencies:
       typescript:
         specifier: '6'

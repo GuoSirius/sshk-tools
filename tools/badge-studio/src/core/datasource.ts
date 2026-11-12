@@ -1,5 +1,3 @@
-import * as XLSX from 'xlsx'
-
 export interface StatRow {
   url: string
   clicks: number
@@ -10,9 +8,7 @@ export interface ParsedDatasource {
   kind: 'xlsx' | 'csv' | 'json' | 'image'
   rows: StatRow[]
   warnings: string[]
-}
-
-/** URL / 链接列的候选名（宽松匹配） */
+}/** URL / 链接列的候选名（宽松匹配） */
 const URL_KEYS = ['url', '链接', '链接地址', 'link', 'href', '地址']
 const CLICKS_KEYS = ['clicks', '点击次数', '点击', 'click_count']
 const TOTAL_KEYS = ['totalclicks', '总点击', '总点击次数', 'total_clicks']
@@ -68,8 +64,9 @@ export function parseCsvText(text: string, warnings: string[] = []): StatRow[] {
   return rows
 }
 
-/** 四种数据源统一入口（D10）；image 走人工校对文本（OCR 集成留接口） */
-export function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', content: Buffer | string): ParsedDatasource {
+/** 四种数据源统一入口（D10）；image 走人工校对文本（OCR 集成留接口）。
+ *  xlsx 解析用动态导入：本模块同时被渲染层引用（parseCsvText），不能在顶层引入 Node 侧依赖 */
+export async function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', content: Buffer | string): Promise<ParsedDatasource> {
   const warnings: string[] = []
   let rows: StatRow[] = []
   switch (kind) {
@@ -86,6 +83,7 @@ export function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', content
       break
     }
     case 'xlsx': {
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(content, { type: 'buffer' })
       const sheet = wb.Sheets[wb.SheetNames[0]!]
       if (!sheet) throw new Error('xlsx 无工作表')

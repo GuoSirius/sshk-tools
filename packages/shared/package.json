@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "dayjs": "latest"
+    "dayjs": "latest",
+    "ulid": "latest"
   },
   "devDependencies": {
     "typescript": "6",

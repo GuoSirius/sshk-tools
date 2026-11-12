@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ToolPageLayout, EmptyState, ConfirmDialog } from '@sshk/ui-kit'
-import { entityId } from '@sshk/repository'
+import { entityId } from '@sshk/shared'
 
 interface Provider {
   _id: string
