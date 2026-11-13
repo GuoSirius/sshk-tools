@@ -622,11 +622,10 @@ function locateInHtml(term: string): void {
   const idx = positions[htmlSearchCursor.value] ?? 0
   const el = htmlInputRef.value?.$el?.querySelector("textarea") as HTMLTextAreaElement | null
   if (!el) return
-  el.focus()
+  // 标准做法：blur → 设选区 → focus，浏览器自动把光标滚入视野（软换行下最可靠，不手动算滚动）
+  el.blur()
   el.setSelectionRange(idx, idx + query.length)
-  // textarea 有软换行（逻辑行 != 视觉行），按比例定位到选区附近，误差可接受
-  const ratio = el.scrollHeight > el.clientHeight ? idx / Math.max(1, text.length) : 0
-  el.scrollTop = Math.max(0, ratio * el.scrollHeight - el.clientHeight / 2)
+  el.focus()
   htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: positions.length }
 }
 const previewFrame = ref<HTMLIFrameElement | null>(null)
