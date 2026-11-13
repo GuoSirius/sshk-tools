@@ -15,7 +15,9 @@
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
+    "dompurify": "latest",
     "element-plus": "latest",
+    "marked": "latest",
     "vue": "latest"
   },
   "devDependencies": {

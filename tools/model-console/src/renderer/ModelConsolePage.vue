@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ToolPageLayout, EmptyState, ConfirmDialog } from '@sshk/ui-kit'
 import { entityId } from '@sshk/shared'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
-// 左侧菜单：providers=Provider 管理 / chat=对话调试（需求 8）
+// LLM 输出为不可信内容：先 markdown 解析再 DOMPurify 净化，避免 v-html XSS
+marked.setOptions({ gfm: true, breaks: true })
+
+// 左侧菜单：providers=Provider 管理 / chat=对话调试（需求 8）；默认进入对话调试
 const props = defineProps<{ menu?: string }>()
-const view = computed(() => props.menu ?? 'providers')
+const view = computed(() => props.menu ?? 'chat')
 
 interface Provider {
   _id: string
@@ -51,11 +56,49 @@ interface HealthState { ok: boolean; message: string; at: string }
 const health = reactive<Record<string, HealthState>>({})
 const testingId = ref<string | null>(null)
 
-// 对话调试
+// 对话调试（多轮 · 流式打字 · Markdown 回显）
+interface ChatMessage { role: 'user' | 'assistant'; content: string; error?: boolean }
+const messages = ref<ChatMessage[]>([])
 const chatProviderId = ref('')
 const chatInput = ref('')
-const chatOutput = ref('')
 const chatting = ref(false)
+const chatScroller = ref<HTMLElement | null>(null)
+/**
+ * 是否"钉在底部"：用户滚到接近底部时为真，往上滚则为假（暂停自动滚动）。
+ * 自主判定逻辑（类 WorkBuddy 输出区）：用户上滚→不抢滚；用户回到底部→恢复自动滚。
+ */
+const chatAutoScroll = ref(true)
+/** 距底多少像素内算"在底部"（容差，规避小数/滚动惯性误判） */
+const CHAT_BOTTOM_THRESHOLD = 48
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= CHAT_BOTTOM_THRESHOLD
+}
+/** 滚动事件：自主判定是否允许自动滚到底部 */
+function onChatScroll(): void {
+  const el = chatScroller.value
+  if (el) chatAutoScroll.value = isNearBottom(el)
+}
+/** 仅当钉在底部才自动滚底；force 用于用户主动发送时强制回底 */
+function scrollChatToBottom(force = false): void {
+  if (!force && !chatAutoScroll.value) return
+  requestAnimationFrame(() => {
+    const el = chatScroller.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+/** 点击"回到底部"：立即滚底并恢复自动滚动 */
+function scrollToBottomNow(): void {
+  const el = chatScroller.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+  chatAutoScroll.value = true
+}
+
+/** Markdown 解析 + 净化（防 XSS）；流式过程中随增量内容实时重渲染即"打字式"效果 */
+function renderMd(src: string): string {
+  return DOMPurify.sanitize(marked.parse(src || '', { async: false }) as string)
+}
 
 const activeProvider = computed(
   () => providers.value.find((p) => p._id === chatProviderId.value) ?? null,
@@ -71,7 +114,17 @@ async function load(): Promise<void> {
   presets.value = Array.isArray(rawPresets)
     ? rawPresets.filter((p) => p && typeof p.baseURL === 'string' && Array.isArray(p.models))
     : []
+  // 记忆上次选择的模型（Provider）：下次进入对话调试保持同一选择
+  const savedChat = (await window.api.config.get('tools.model-console.chat.providerId')) as string | null
+  if (typeof savedChat === 'string' && providers.value.some((p) => p._id === savedChat)) {
+    chatProviderId.value = savedChat
+  }
 }
+
+// 选择变化时持久化（记忆模型）
+watch(chatProviderId, (id) => {
+  if (id) void window.api.config.set('tools.model-console.chat.providerId', id)
+})
 
 async function persist(): Promise<void> {
   await window.api.config.set('app.llm.providers', providers.value)
@@ -240,27 +293,42 @@ async function revealKey(): Promise<void> {
 
 async function sendChat(): Promise<void> {
   const provider = activeProvider.value
-  if (!provider || !chatInput.value.trim()) return
+  const text = chatInput.value.trim()
+  if (!provider || !text || chatting.value) return
+  chatInput.value = ''
+  // 多轮：把用户消息入栈，再压一个空 assistant 占位，流式追加
+  messages.value.push({ role: 'user', content: text })
+  messages.value.push({ role: 'assistant', content: '' })
   chatting.value = true
-  chatOutput.value = ''
+  scrollChatToBottom(true)
   try {
     const res = await window.api.llm.chat(
       provider,
-      [{ role: 'user', content: chatInput.value }],
+      // 发送完整历史，但去掉末尾空 assistant 占位
+      messages.value.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
       { onDelta: true },
     )
-    chatOutput.value = res.content || chatOutput.value
+    const last = messages.value[messages.value.length - 1]
+    if (last) last.content = res.content || last.content
   } catch (err) {
-    chatOutput.value = `错误：${(err as Error).message}`
+    const last = messages.value[messages.value.length - 1]
+    if (last) { last.content = `错误：${(err as Error).message}`; last.error = true }
   } finally {
     chatting.value = false
+    scrollChatToBottom()
   }
 }
 
 onMounted(() => {
   void load()
+  // 流式分片：仅当正在对话且末尾是 assistant 占位时追加，实时渲染即打字效果
   window.api.llm.onDelta((delta) => {
-    chatOutput.value += delta
+    if (!chatting.value) return
+    const last = messages.value[messages.value.length - 1]
+    if (last && last.role === 'assistant') {
+      last.content += delta
+      scrollChatToBottom()
+    }
   })
 })
 </script>
@@ -275,21 +343,41 @@ onMounted(() => {
     </template>
 
     <template v-if="view === 'chat'">
-      <div class="panel" style="min-height: 240px; display: flex; flex-direction: column">
-        <div class="panel-title">对话调试（流式输出；apiKey 在主进程注入，不落渲染层）</div>
-        <div class="chat-output">{{ chatOutput || '（输出将显示在这里）' }}</div>
-        <div style="display: flex; gap: 8px; margin-top: 10px">
-          <el-select v-model="chatProviderId" size="small" placeholder="选择 Provider" style="width: 220px">
+      <div class="chat-panel">
+        <div class="panel-title">对话调试（多轮 · 流式打字 · Markdown 回显；apiKey 在主进程注入，不落渲染层）</div>
+        <div ref="chatScroller" class="chat-scroller" @scroll="onChatScroll">
+          <div v-if="!messages.length" class="chat-empty">（在下方输入内容开始对话；上方选择 Provider 决定使用的模型）</div>
+          <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
+            <div class="chat-role">{{ m.role === 'user' ? '你' : '模型' }}</div>
+            <div class="chat-body" :class="{ error: m.error }" v-html="renderMd(m.content)"></div>
+          </div>
+        </div>
+        <transition name="el-fade-in">
+          <button v-if="!chatAutoScroll" type="button" class="chat-to-bottom" @click="scrollToBottomNow">
+            ↓ 回到底部
+          </button>
+        </transition>
+        <div class="chat-input-row">
+          <el-select v-model="chatProviderId" size="small" placeholder="选择模型（Provider）" style="width: 240px">
             <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
           </el-select>
           <el-input
             v-model="chatInput"
+            type="textarea"
+            :rows="3"
             size="small"
-            placeholder="输入测试内容，回车发送"
-            :disabled="!activeProvider"
-            @keydown.enter="sendChat"
+            resize="none"
+            placeholder="输入测试内容；Enter 发送，Shift+Enter 换行"
+            :disabled="!activeProvider || chatting"
+            @keydown.enter.exact.prevent="sendChat"
           />
-          <el-button size="small" type="primary" :loading="chatting" :disabled="!activeProvider" @click="sendChat">
+          <el-button
+            size="small"
+            type="primary"
+            :loading="chatting"
+            :disabled="!activeProvider || !chatInput.trim()"
+            @click="sendChat"
+          >
             发送
           </el-button>
         </div>
@@ -455,7 +543,35 @@ onMounted(() => {
 .form-hint { font-size: 11px; opacity: .6; line-height: 1.5; margin-top: 4px; }
 .panel { border: 1px solid rgba(128,128,128,.25); border-radius: 6px; padding: 12px; }
 .panel-title { font-size: 12px; opacity: .7; margin-bottom: 8px; }
-.chat-output { flex: 1; min-height: 160px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; border: 1px dashed rgba(128,128,128,.3); border-radius: 4px; padding: 10px; }
+.chat-panel { display: flex; flex-direction: column; position: relative; }
+.chat-scroller {
+  max-height: 460px;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(128,128,128,.3);
+  border-radius: 6px;
+  padding: 12px;
+  background: rgba(128,128,128,.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-empty { opacity: .55; font-size: 13px; text-align: center; margin: 24px 0; }
+.chat-msg { display: flex; flex-direction: column; max-width: 88%; }
+.chat-msg.user { align-self: flex-end; align-items: flex-end; }
+.chat-msg.assistant { align-self: flex-start; align-items: flex-start; }
+.chat-role { font-size: 11px; opacity: .6; margin-bottom: 2px; }
+.chat-body {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  border: 1px solid rgba(128,128,128,.25);
+}
+.chat-msg.user .chat-body { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
+.chat-msg.assistant .chat-body { background: rgba(128,128,128,.06); }
+.chat-body.error { color: var(--el-color-danger); border-color: var(--el-color-danger); }
 .masked {
   letter-spacing: 2px;
 }
@@ -468,13 +584,45 @@ onMounted(() => {
 .muted {
   opacity: 0.6;
 }
-.chat-out {
-  margin-left: 12px;
+.chat-body :deep(p) { margin: 0 0 8px; }
+.chat-body :deep(p:last-child) { margin-bottom: 0; }
+.chat-body :deep(pre) {
+  background: rgba(0,0,0,.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
   font-size: 12px;
-  opacity: 0.8;
-  max-width: 480px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
 }
+.chat-body :deep(code) {
+  font-family: var(--el-font-family-mono, monospace);
+  font-size: 12px;
+  background: rgba(0,0,0,.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.chat-body :deep(pre code) { background: transparent; padding: 0; }
+.chat-body :deep(ul), .chat-body :deep(ol) { margin: 0 0 8px; padding-left: 20px; }
+.chat-body :deep(li) { margin: 2px 0; }
+.chat-body :deep(a) { color: var(--el-color-primary); }
+.chat-body :deep(table) { border-collapse: collapse; font-size: 12px; }
+.chat-body :deep(th), .chat-body :deep(td) { border: 1px solid rgba(128,128,128,.3); padding: 2px 6px; }
+.chat-body :deep(blockquote) { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid rgba(128,128,128,.4); opacity: .8; }
+.chat-input-row { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
+.chat-input-row .el-input { flex: 1; }
+.chat-to-bottom {
+  position: absolute;
+  right: 18px;
+  bottom: 80px;
+  z-index: 5;
+  border: 1px solid var(--el-color-primary);
+  background: var(--el-color-primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
+}
+.chat-to-bottom:hover { opacity: .9; }
 </style>
