@@ -367,7 +367,8 @@ onMounted(async () => {
               <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
             </div>
             <div class="tool-page-body">
-              <div class="empty-state">该工具没有可用的渲染插件</div>
+              <div v-if="currentTool.runtime && runtimeLoading" class="empty-state">运行时组件加载中…</div>
+              <div v-else class="empty-state">该工具没有可用的渲染插件</div>
             </div>
             <div class="tool-page-foot muted">共 0 项 · 已选 0 项</div>
           </template>

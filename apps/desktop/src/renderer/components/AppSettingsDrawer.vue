@@ -13,7 +13,7 @@ import { useTheme } from '../composables/useTheme'
 
 const props = defineProps<{ modelValue: boolean; group?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
-const { payload, accept } = useToolCatalog()
+const { payload, accept, refresh: refreshCatalog } = useToolCatalog()
 const { mode, setMode } = useTheme()
 
 /** 后期新增应用级菜单：只加一个分组 + 一个 section，不挤占顶部栏 */
@@ -147,6 +147,8 @@ async function pickRuntimePackage(): Promise<void> {
     for (const w of warnings) ElMessage.warning(w)
     ElMessage.success(`已安装 ${record.id}@${record.version}（${record.trustLevel} / ${record.sandbox} 沙箱）`)
     await refreshRuntime()
+    // 导入即刷新桌面目录：新工具即时上桌面，无需手动 F5（契约校验已通过才会到这里）
+    await refreshCatalog()
   } catch (err) {
     ElMessage.error(`安装失败：${(err as Error).message}`)
   }
@@ -181,6 +183,7 @@ async function removeRuntime(id: string): Promise<void> {
     await window.api.runtime.uninstall(id)
     ElMessage.success(`已卸载 ${id}`)
     await refreshRuntime()
+    await refreshCatalog()
   } catch (err) {
     ElMessage.error(`卸载失败：${(err as Error).message}`)
   }
