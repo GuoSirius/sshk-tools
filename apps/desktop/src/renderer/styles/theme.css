@@ -488,3 +488,26 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* ── 全局滚动条定制：细、圆角、跟随主题色（亮/暗自动适配） ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--sshk-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sshk-muted);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Element Plus 内部滚动条同规格 */
+.el-scrollbar__bar .el-scrollbar__thumb {
+  border-radius: 4px;
+}
