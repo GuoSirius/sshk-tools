@@ -21,8 +21,11 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { config as dotenvConfig } from 'dotenv'
 
 const ROOT = process.cwd()
+// 统一加载根目录 .env（见 .env.example）：开发/构建/发布共用一套环境变量
+dotenvConfig({ path: join(ROOT, '.env'), quiet: true })
 const DRY_RUN = process.argv.includes('--dry-run')
 const BLUE = (t) => `\x1b[36m${t}\x1b[0m`
 const RED = (t) => `\x1b[31m${t}\x1b[0m`
@@ -35,16 +38,11 @@ const die = (msg) => { console.error(`${RED('✖')} ${msg}`); process.exit(1) }
 function git(args, opts = {}) {
   return execFileSync('git', args, { encoding: 'utf8', cwd: ROOT, ...opts }).trim()
 }
-function sh(cmd, args, opts = {}) {
-  const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
-  if (r.status !== 0) die(`命令失败：${cmd} ${args.join(' ')}`)
-}
-/** 同 sh，但失败抛异常（供需要回滚的构建阶段捕获），不直接退出 */
+/** 子命令执行（stdio 直通）。win32 走 shell 可同时解析 .cmd shim（pnpm）与 .exe（git），跨平台 */
 function shThrow(cmd, args, opts = {}) {
-  const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
+  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
   if (r.status !== 0) throw new Error(`命令失败：${cmd} ${args.join(' ')}`)
 }
-function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
 
 /* ── @inquirer/prompts：未安装给友好提示；Ctrl+C 优雅退出 ── */
 let select, confirm, input
@@ -144,7 +142,7 @@ ok(`当前版本 ${current.prerelease ? DIM(current.prerelease) : GREEN(fmt(curr
 if (!DRY_RUN) {
   step('pnpm verify（结构/分层/弹框/契约/typecheck/lint/test）')
   console.log(DIM('  运行中，预计 1-2 分钟，请稍候…'))
-  const r = spawnSync(win('pnpm'), ['verify'], { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT })
+  const r = spawnSync('pnpm', ['verify'], { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT })
   if (r.status !== 0) die('pnpm verify 未通过，已中止')
   ok('门禁全绿')
 }
@@ -238,10 +236,14 @@ if (!DRY_RUN) {
     shThrow('pnpm', ['build'])
     step('electron-builder 打包（--publish never，先验证可出包）')
     // 公司网络 TLS 中间人：electron-builder 下载打包工具（NSIS/winCodeSign）时证书校验失败。
-    // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA（装了 MITM 根证书即可通过），
-    // 并对打包子进程放宽 TLS 校验——仅作用于此子进程，不影响仓库其他命令。
+    // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA，再放宽 TLS 校验兜底。
+    // 默认值可在根目录 .env 覆盖（见 .env.example），仅作用于本子进程。
     shThrow('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
-      env: { ...process.env, NODE_USE_SYSTEM_CA: '1', NODE_TLS_REJECT_UNAUTHORIZED: '0' },
+      env: {
+        ...process.env,
+        NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA || '1',
+        NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED || '0',
+      },
     })
     const distDir = join(ROOT, 'dist')
     const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
@@ -256,14 +258,28 @@ if (!DRY_RUN) {
   }
 }
 
-/* ── 5. 提交 + tag + 推送 ── */
+/* ── 5. 提交 + tag + 推送（任一步失败：回滚提交/tag/文件，同版本可重发） ── */
 if (!DRY_RUN) {
   step('提交 release 与 tag')
-  sh('git', ['add', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'])
-  sh('git', ['-c', 'core.hooksPath=.git/cph', 'commit', '-m', `chore(release): ${next}`])
-  git(['tag', next])
-  sh('git', ['push', 'origin', `HEAD:refs/heads/main`, next])
-  ok(`已推送 ${next}（提交 + tag）`)
+  const preSha = git(['rev-parse', 'HEAD'])
+  let committed = false
+  let tagged = false
+  try {
+    git(['add', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'])
+    git(['-c', 'core.hooksPath=.git/cph', 'commit', '-m', `chore(release): ${next}`])
+    committed = true
+    git(['tag', next])
+    tagged = true
+    git(['push', 'origin', 'HEAD:refs/heads/main', next])
+    ok(`已推送 ${next}（提交 + tag）`)
+  } catch (err) {
+    step('提交/推送失败，回滚本次发布写入')
+    // 起步时门禁已保证树干净，reset --hard preSha 只会丢弃脚本刚创建的 release 提交
+    if (tagged) git(['tag', '-d', next])
+    if (committed) git(['reset', '--hard', preSha])
+    else rollbackBump()
+    die(`发布失败：${err instanceof Error ? err.message : err}`)
+  }
 }
 
 /* ── 6. GitHub Release 指引 ── */

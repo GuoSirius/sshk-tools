@@ -1,3 +1,4 @@
+import './env-load'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tray, Menu } from 'electron'
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
