@@ -12,9 +12,19 @@ export interface BadgeStyle {
 
 export interface BadgeInjectConfig {
   badgeAttr: string
-  clicksField: 'clicks' | 'totalClicks'
+  /** 角标取值列：clicks / totalClicks / 任意自定义数值列名 */
+  clicksField: string
   urlNorm: UrlNormConfig
   badgeStyle: BadgeStyle
+}
+
+/** 取角标数值：内置两列优先，其余从用户自定义数值列 metrics 里取，缺失时回退 clicks */
+export function metricValue(row: StatRow, field: string): number {
+  const key = (field || 'clicks').trim()
+  if (key === 'clicks') return row.clicks
+  if (key.toLowerCase() === 'totalclicks') return row.totalClicks
+  const custom = row.metrics?.[key] ?? row.metrics?.[key.toLowerCase()]
+  return typeof custom === 'number' && Number.isFinite(custom) ? custom : row.clicks
 }
 
 /**
@@ -39,7 +49,7 @@ export function injectBadges(html: string, stats: StatRow[], cfg: BadgeInjectCon
     const stat = statMap.get(normalizeUrl(href, cfg.urlNorm))
     if (!stat) continue
     matched += 1
-    const value = String(cfg.clicksField === 'totalClicks' ? stat.totalClicks : stat.clicks)
+    const value = String(metricValue(stat, cfg.clicksField))
     // 角标以行内 sup 附加，样式由 configSnapshot 决定
     $(el).attr(cfg.badgeAttr, value)
     $(el).after(

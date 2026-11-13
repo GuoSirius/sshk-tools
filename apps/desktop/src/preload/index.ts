@@ -92,11 +92,12 @@ const api = {
     parseImage: (payload: {
       file: string
       provider: 'cloud' | 'paddleocr' | 'manual'
-      baseURL?: string
+      providerId?: string
       model?: string
       paddleCommand?: string
       paddleArgs?: string
-    }): Promise<{ rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[]; csv: string; raw: string }> =>
+      ocrLayout?: Record<string, unknown>
+    }): Promise<{ rows: { url: string; clicks: number; totalClicks: number; metrics?: Record<string, number> }[]; warnings: string[]; csv: string; raw: string }> =>
       invoke(IPC_CHANNELS.badgeParseImage, payload),
     setVisionKey: (key: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.badgeSetVisionKey, key),

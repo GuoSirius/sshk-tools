@@ -11,7 +11,13 @@ import {
   type Repository,
 } from '@sshk/repository'
 import { injectBadges, markBadges, parseDatasource } from '../core/index.js'
-import { buildVisionMessages, parseVisionResult, toCsvText } from '../core/vision.js'
+import {
+  buildVisionMessages,
+  DEFAULT_OCR_LAYOUT,
+  parseVisionResult,
+  toCsvText,
+  type OcrLayoutConfig,
+} from '../core/vision.js'
 import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
@@ -72,10 +78,14 @@ export interface GenerateInput {
 export interface ParseImageInput {
   file: string
   provider: 'cloud' | 'paddleocr' | 'manual'
-  baseURL?: string
+  /** 应用级 Provider id：baseURL / 密钥由主进程注入，工具不重复配置 */
+  providerId?: string
+  /** 覆盖 Provider 上的模型名（用户可在页面上直接选） */
   model?: string
   paddleCommand?: string
   paddleArgs?: string
+  /** 本机 OCR 版式：来自工具配置，宿主不猜 */
+  ocrLayout?: OcrLayoutConfig
 }
 
 export interface BadgeIpcDeps {
@@ -119,30 +129,34 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     let text: string
 
     if (input.provider === 'cloud') {
-      const apiKey = host.getToolSecret(TOOL_ID, VISION_KEY_NAME)
-      if (!apiKey) throw new Error('请先在「图片识别」里填写视觉模型 API Key')
-      if (!/^https?:\/\//i.test(input.baseURL ?? '')) throw new Error('视觉模型 Base URL 必须是 http(s) 地址')
-      if (!input.model?.trim()) throw new Error('请配置视觉模型名称')
-      text = await host.chat({
-        baseURL: input.baseURL!,
-        model: input.model,
-        apiKey,
-        messages: buildVisionMessages(readImageDataUri(abs)),
+      if (!input.providerId?.trim()) {
+        throw new Error('请先在「模型控制台」配置 Provider，再在图片识别里选择')
+      }
+      // 复用应用级 Provider：端点、密钥一律由主进程注入，工具侧不再存 baseURL / apiKey
+      text = await host.chatByProvider({
+        providerId: input.providerId,
+        model: input.model?.trim() || undefined,
+        messages: buildVisionMessages([readImageDataUri(abs)]),
         temperature: 0,
         maxTokens: 4096,
       })
     } else if (input.provider === 'paddleocr') {
       if (!input.paddleCommand?.trim()) throw new Error('请先在工具配置里填写本机 PaddleOCR 命令')
+      // 版式规则由应用配置注入，适配器不再硬编码「同行 / 千分位 / 合计行 / 列顺序」
+      const args = parseArgs(input.paddleArgs ?? '{image}')
+      if (!args.includes('--layout')) {
+        args.push('--layout', JSON.stringify(input.ocrLayout ?? DEFAULT_OCR_LAYOUT))
+      }
       text = await host.runLocalOcr({
         command: input.paddleCommand,
-        args: parseArgs(input.paddleArgs ?? '{image}'),
+        args,
         imagePath: abs,
       })
     } else {
       throw new Error('当前为「仅人工校对」模式，请直接粘贴 CSV 文本')
     }
 
-    const rows = parseVisionResult(text, warnings)
+    const rows = parseVisionResult(text, warnings, { layout: input.ocrLayout })
     // 回填可校对 CSV：识别结果永远先过人眼，再进 badge 注入链路
     return { rows, warnings, csv: toCsvText(rows), raw: text.slice(0, 20_000) }
   }))

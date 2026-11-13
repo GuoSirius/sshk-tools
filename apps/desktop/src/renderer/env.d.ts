@@ -97,12 +97,13 @@ interface Window {
       parseImage(payload: {
         file: string
         provider: 'cloud' | 'paddleocr' | 'manual'
-        baseURL?: string
+        providerId?: string
         model?: string
         paddleCommand?: string
         paddleArgs?: string
+        ocrLayout?: import('@sshk/badge-studio').OcrLayoutConfig
       }): Promise<{
-        rows: { url: string; clicks: number; totalClicks: number }[]
+        rows: { url: string; clicks: number; totalClicks: number; metrics?: Record<string, number> }[]
         warnings: string[]
         csv: string
         raw: string

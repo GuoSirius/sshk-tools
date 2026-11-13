@@ -33,11 +33,8 @@
       "fields": [
         { "key": "badgeAttr", "label": "badge 属性", "type": "string", "hint": "注入到 HTML 的自定义属性名" },
         {
-          "key": "clicksField", "label": "角标数值列", "type": "select",
-          "options": [
-            { "label": "clicks", "value": "clicks" },
-            { "label": "totalClicks", "value": "totalClicks" }
-          ]
+          "key": "clicksField", "label": "角标数值列", "type": "string",
+          "hint": "clicks / totalClicks，或表格里任意自定义数值列名"
         },
         { "key": "posterWidth", "label": "海报宽度", "type": "number", "min": 320, "max": 1600 },
         { "key": "scale", "label": "截图像素比", "type": "number", "min": 1, "max": 4 }
@@ -65,12 +62,23 @@
             { "label": "本机 PaddleOCR", "value": "paddleocr" },
             { "label": "仅人工校对", "value": "manual" }
           ],
-          "hint": "API Key 在生成页填写，只存系统凭据库，不写入配置文件"
+          "hint": "云端模型直接复用「模型控制台」已配置的 Provider 与密钥，工具不再重复配置"
         },
-        { "key": "vision.baseURL", "label": "模型 Base URL", "type": "string", "hint": "OpenAI 兼容 /v1 地址" },
-        { "key": "vision.model", "label": "模型名", "type": "string" },
-        { "key": "vision.paddleCommand", "label": "本机 OCR 命令", "type": "string", "hint": "可执行文件，如 python / conda 环境下的 python.exe 绝对路径" },
-        { "key": "vision.paddleArgs", "label": "命令参数", "type": "string", "hint": "支持双引号包裹；{image} 会替换为图片绝对路径" }
+        { "key": "vision.providerId", "label": "默认 Provider ID", "type": "string", "hint": "留空则用应用当前激活的 Provider；生成页可临时改选" },
+        { "key": "vision.modelOverride", "label": "默认模型名", "type": "string", "hint": "留空用 Provider 自带模型；生成页可下拉选真实 /models 或手填" },
+        { "key": "vision.paddleCommand", "label": "Python 绝对路径", "type": "string", "hint": "Anaconda 环境 python.exe 绝对路径，例如 D:\\Anaconda3\\python.exe；自查命令见生成页" },
+        { "key": "vision.paddleArgs", "label": "OCR 调用参数", "type": "string", "hint": "PaddleOCR 实际调用方式（脚本/模块/CLI）；支持双引号，{image} 替换为图片绝对路径" }
+      ]
+    },
+    {
+      "id": "config-ocr",
+      "label": "OCR 截图版式",
+      "fields": [
+        { "key": "ocrLayout.linkNumberSameLine", "label": "链接与数字同行", "type": "boolean", "hint": "关掉表示 URL 行的下一行才是数字行" },
+        { "key": "ocrLayout.thousandsSeparator", "label": "数字含千分位", "type": "boolean", "hint": "如 1,234 会清洗成 1234" },
+        { "key": "ocrLayout.skipTotalRow", "label": "跳过合计行", "type": "boolean" },
+        { "key": "ocrLayout.skipKeywords", "label": "跳过关键字", "type": "string", "hint": "逗号分隔，命中即跳过该行" },
+        { "key": "ocrLayout.columnOrder", "label": "列顺序", "type": "string", "hint": "逗号分隔；除 url/clicks/totalClicks 外都作为自定义数值列，如 url,clicks,uv" }
       ]
     },
     {
@@ -98,10 +106,17 @@
     "commonHtmlDir": null,
     "vision": {
       "provider": "cloud",
-      "baseURL": "https://apihub.agnes-ai.com/v1",
-      "model": "agnes-3.0-flash",
+      "providerId": "",
+      "modelOverride": "",
       "paddleCommand": "python",
       "paddleArgs": "{image}"
+    },
+    "ocrLayout": {
+      "linkNumberSameLine": true,
+      "thousandsSeparator": true,
+      "skipTotalRow": true,
+      "skipKeywords": "合计,总计,小计,total,sum",
+      "columnOrder": "url,clicks,totalClicks"
     }
   }
 }

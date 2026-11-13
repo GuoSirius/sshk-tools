@@ -3,8 +3,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
-import { parseCsvText } from '@sshk/badge-studio'
-import type { StatRow } from '@sshk/badge-studio'
+import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv } from '@sshk/badge-studio'
+import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
+import type { LlmProviderInfo } from '@sshk/shared'
 
 interface RecentHtml {
   path: string
@@ -12,54 +13,80 @@ interface RecentHtml {
   usedAt: string
 }
 
-// 左侧菜单：generate=生成视图 / posters=列表视图（需求 8）
 const props = defineProps<{ menu?: string }>()
 const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
-const clicksField = ref<'clicks' | 'totalClicks'>('clicks')
+/** 角标取值列：可填 clicks / totalClicks / 任意自定义数值列名 */
+const clicksField = ref('clicks')
 
-// HTML 输入：选择文件 / 粘贴源码（二选一）
+// HTML 输入：选择文件 / 粘贴源码（二选一）；最近使用是持久化在本机配置里的历史记录
 const htmlPath = ref('')
 const pastedHtml = ref('')
 const recentHtmls = ref<RecentHtml[]>([])
 
-// 数据源：文件（xlsx/csv/json）、图片识别（云端视觉 / 本机 PaddleOCR）或粘贴 csv 文本
+// 数据源：文件 / 粘贴文本 / 图片识别，最终统一进同一张可编辑表格
 const statsFile = ref('')
 const pastedStats = ref('')
 const statRows = ref<StatRow[]>([])
 const statsWarnings = ref<string[]>([])
+const definedMetrics = ref<string[]>([])
+const newMetricKey = ref('')
 
-// 图片识别：模型 / OCR 参数由「工具配置 → 图片识别」统一管理，这里只读取
+// 图片识别：模型复用应用级 Provider，工具不再配置 baseURL / apiKey
 const vision = reactive({
   provider: 'cloud' as 'cloud' | 'paddleocr' | 'manual',
-  baseURL: '',
-  model: '',
   paddleCommand: '',
   paddleArgs: '{image}',
 })
-const imageFile = ref('')
+const providers = ref<LlmProviderInfo[]>([])
+const visionProviderId = ref('')
+const visionModel = ref('')
+const modelOptions = ref<string[]>([])
+const modelsLoading = ref(false)
+const imageFiles = ref<string[]>([])
 const recognizing = ref(false)
 const visionRaw = ref('')
-const visionKey = ref('')
-const hasVisionKey = ref(false)
+const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT })
 const providerLabel = computed(() => ({
   cloud: '云端视觉模型',
   paddleocr: '本机 PaddleOCR',
   manual: '仅人工校对',
 })[vision.provider])
+const activeProvider = computed(() => providers.value.find((p) => p._id === visionProviderId.value) ?? null)
 
-// 生成结果
+// 生成结果 / 海报列表
 const generating = ref(false)
 const currentPosterId = ref('')
 const previewHtml = ref('')
 const capturing = ref(false)
-
-// 海报列表
 const posters = ref<PosterRecord[]>([])
 const listLoading = ref(false)
 
 const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
 const hasStats = computed(() => statRows.value.length > 0)
+/** 列定义 + 实际数据里的自定义列并集，保证空表格也能先建列 */
+const customMetricKeys = computed(() => Array.from(new Set([
+  ...definedMetrics.value,
+  ...statRows.value.flatMap((row) => Object.keys(row.metrics ?? {})),
+])))
+const fieldOptions = computed(() => Array.from(new Set(['clicks', 'totalClicks', ...customMetricKeys.value])))
+
+/** 本机自查命令：三项信息都由用户自己跑出来，宿主不猜 */
+const selfCheckCommand = computed(() => {
+  const py = `"${vision.paddleCommand || '<python.exe 绝对路径>'}"`
+  const adapter = '<paddleocr_adapter.py 绝对路径>'
+  return [
+    '# 1. 确认 Anaconda 环境的 python.exe 绝对路径',
+    'where python',
+    'python -c "import sys; print(sys.executable)"',
+    '',
+    '# 2. 用同一个解释器确认 Paddle / PaddleOCR 版本与实际调用方式',
+    `${py} ${adapter} --self-check`,
+    '',
+    '# 3. 用一张真实截图试跑，把 stdout 原文贴回来校准版式',
+    `${py} ${adapter} "C:\\path\\to\\screenshot.png" --layout '${JSON.stringify(ocrLayout)}'`,
+  ].join('\n')
+})
 
 async function textConfig(key: string, fallback: string): Promise<string> {
   const value = await window.api.config.get(`tools.badge-studio.${key}`)
@@ -68,15 +95,52 @@ async function textConfig(key: string, fallback: string): Promise<string> {
 
 async function loadConfigAndRecent(): Promise<void> {
   badgeAttr.value = await textConfig('badgeAttr', 'data-edm-badge')
+  clicksField.value = await textConfig('clicksField', 'clicks')
   const recent = (await window.api.config.get('tools.badge-studio.recentHtmls')) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
   const provider = await textConfig('vision.provider', 'cloud')
   vision.provider = provider === 'paddleocr' || provider === 'manual' ? provider : 'cloud'
-  vision.baseURL = await textConfig('vision.baseURL', '')
-  vision.model = await textConfig('vision.model', '')
   vision.paddleCommand = await textConfig('vision.paddleCommand', 'python')
   vision.paddleArgs = await textConfig('vision.paddleArgs', '{image}')
-  hasVisionKey.value = (await window.api.badge.visionState()).hasKey
+  const savedLayout = (await window.api.config.get('tools.badge-studio.ocrLayout')) as Partial<OcrLayoutConfig> | null
+  if (savedLayout && typeof savedLayout === 'object') Object.assign(ocrLayout, savedLayout)
+  await loadProviders()
+}
+
+async function loadProviders(): Promise<void> {
+  providers.value = await window.api.llm.providers().catch(() => [])
+  if (!visionProviderId.value) {
+    const active = await window.api.config.get('app.llm.activeProviderId')
+    visionProviderId.value = (typeof active === 'string' && active)
+      || (await textConfig('vision.providerId', ''))
+      || providers.value.find((p) => p.enabled)?._id
+      || ''
+  }
+  visionModel.value = (await textConfig('vision.modelOverride', '')) || activeProvider.value?.model || ''
+  modelOptions.value = activeProvider.value?.model ? [activeProvider.value.model] : []
+}
+
+function onProviderChange(): void {
+  visionModel.value = activeProvider.value?.model ?? ''
+  modelOptions.value = activeProvider.value?.model ? [activeProvider.value.model] : []
+}
+
+async function fetchProviderModels(): Promise<void> {
+  if (!visionProviderId.value) {
+    ElMessage.warning('请先在「模型控制台」新增 Provider')
+    return
+  }
+  modelsLoading.value = true
+  try {
+    const list = await window.api.llm.providerModels(visionProviderId.value)
+    modelOptions.value = Array.from(new Set([...modelOptions.value, ...list.filter(Boolean)]))
+    if (!visionModel.value && modelOptions.value[0]) visionModel.value = modelOptions.value[0]
+    ElMessage.success(`拉取到 ${list.length} 个模型`)
+  } catch (err) {
+    ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；可手动输入模型名`)
+  } finally {
+    modelsLoading.value = false
+  }
 }
 
 async function rememberRecent(path: string): Promise<void> {
@@ -97,16 +161,38 @@ async function pickHtml(): Promise<void> {
   await rememberRecent(file)
 }
 
-function useRecent(item: RecentHtml): void {
-  htmlPath.value = item.path
-  void window.api.badge.readHtml(item.path).then(({ html }) => {
+async function useRecent(item: RecentHtml): Promise<void> {
+  try {
+    const { html } = await window.api.badge.readHtml(item.path)
+    htmlPath.value = item.path
     pastedHtml.value = html
-  })
+  } catch {
+    ElMessage.warning('该文件已不存在或被移动，已从最近使用中移除')
+    await removeRecent(item)
+  }
 }
 
 async function removeRecent(item: RecentHtml): Promise<void> {
   recentHtmls.value = recentHtmls.value.filter((r) => r.path !== item.path)
   await window.api.config.set('tools.badge-studio.recentHtmls', recentHtmls.value)
+}
+
+async function clearRecent(): Promise<void> {
+  recentHtmls.value = []
+  await window.api.config.set('tools.badge-studio.recentHtmls', [])
+  ElMessage.success('最近使用已清空（只清历史记录，不影响已粘贴的内容）')
+}
+
+function syncCsvFromRows(): void {
+  pastedStats.value = rowsToCsv(statRows.value)
+}
+
+function applyRows(rows: StatRow[], warnings: string[], source = ''): void {
+  statRows.value = rows
+  statsWarnings.value = warnings
+  statsFile.value = source
+  definedMetrics.value = Array.from(new Set(rows.flatMap((row) => Object.keys(row.metrics ?? {}))))
+  syncCsvFromRows()
 }
 
 async function pickStats(): Promise<void> {
@@ -116,10 +202,8 @@ async function pickStats(): Promise<void> {
   if (!file) return
   try {
     const parsed = (await window.api.badge.parseDatasource(file)) as { rows: StatRow[]; warnings: string[] }
-    statRows.value = parsed.rows
-    statsWarnings.value = parsed.warnings
-    statsFile.value = file
-    if (parsed.rows.length > 0) ElMessage.success(`解析出 ${parsed.rows.length} 行点击数据`)
+    applyRows(parsed.rows, parsed.warnings, file)
+    if (parsed.rows.length > 0) ElMessage.success(`解析出 ${parsed.rows.length} 行，请在表格中核对`)
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
@@ -128,48 +212,112 @@ async function pickStats(): Promise<void> {
 function parsePastedStats(): void {
   try {
     const warnings: string[] = []
-    statRows.value = parseCsvText(pastedStats.value, warnings)
-    statsWarnings.value = warnings
-    statsFile.value = ''
-    if (statRows.value.length > 0) ElMessage.success(`解析出 ${statRows.value.length} 行点击数据`)
+    const rows = parseCsvText(pastedStats.value, warnings)
+    applyRows(rows, warnings)
+    if (rows.length > 0) ElMessage.success(`解析出 ${rows.length} 行，请在表格中核对`)
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
 }
 
-async function pickImage(): Promise<void> {
-  const [file] = await window.api.os.pickFile({
-    filters: [{ name: '点击统计图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
-  })
-  if (file) imageFile.value = file
+function addRow(): void {
+  const metrics: Record<string, number> = {}
+  for (const key of customMetricKeys.value) metrics[key] = 0
+  statRows.value.push({ url: '', clicks: 0, totalClicks: 0, ...(customMetricKeys.value.length ? { metrics } : {}) })
+  syncCsvFromRows()
+}
+function removeRow(index: number): void {
+  statRows.value.splice(index, 1)
+  syncCsvFromRows()
+}
+function clearRows(): void {
+  statRows.value = []
+  statsWarnings.value = []
+  statsFile.value = ''
+  pastedStats.value = ''
+}
+function addMetric(): void {
+  const key = newMetricKey.value.trim()
+  if (!key) return
+  if (['url', 'clicks', 'totalClicks'].includes(key) || customMetricKeys.value.includes(key)) {
+    ElMessage.warning('列名重复或为保留列（url / clicks / totalClicks）')
+    return
+  }
+  definedMetrics.value = [...definedMetrics.value, key]
+  for (const row of statRows.value) row.metrics = { ...(row.metrics ?? {}), [key]: 0 }
+  newMetricKey.value = ''
+  syncCsvFromRows()
+}
+function removeMetric(key: string): void {
+  definedMetrics.value = definedMetrics.value.filter((k) => k !== key)
+  for (const row of statRows.value) {
+    if (!row.metrics) continue
+    const { [key]: _, ...rest } = row.metrics
+    row.metrics = Object.keys(rest).length ? rest : undefined
+  }
+  if (clicksField.value === key) clicksField.value = 'clicks'
+  syncCsvFromRows()
+}
+function metricOf(row: StatRow, key: string): number {
+  return row.metrics?.[key] ?? 0
+}
+function setMetric(row: StatRow, key: string, raw: unknown): void {
+  const num = Number(raw)
+  row.metrics = { ...(row.metrics ?? {}), [key]: Number.isFinite(num) ? Math.round(num) : 0 }
+  syncCsvFromRows()
 }
 
-/** 图片 → 识别文本 → 标准 StatRow[]；同时回填可人工校对的 CSV */
-async function recognizeImage(): Promise<void> {
-  if (!imageFile.value) {
-    ElMessage.warning('请先选择一张点击统计截图 / 表格图片')
+async function pickImages(): Promise<void> {
+  const files = await window.api.os.pickFile({
+    filters: [{ name: '点击统计图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+    multi: true,
+  })
+  if (files.length) imageFiles.value = files
+}
+
+/** 多张图片逐张识别，结果合并进同一张可编辑表格，人工核对后才可生成 */
+async function recognizeImages(): Promise<void> {
+  if (imageFiles.value.length === 0) {
+    ElMessage.warning('请先选择至少一张点击统计截图 / 表格图片')
     return
   }
   if (vision.provider === 'manual') {
     ElMessage.info('当前为「仅人工校对」模式，请在上方文本框粘贴 CSV')
     return
   }
+  if (vision.provider === 'cloud' && !visionProviderId.value) {
+    ElMessage.warning('请先在「模型控制台」配置 Provider，再在这里选择')
+    return
+  }
   recognizing.value = true
+  const collected: StatRow[] = []
+  const warnings: string[] = []
+  const raws: string[] = []
   try {
-    const result = await window.api.badge.parseImage({
-      file: imageFile.value,
-      provider: vision.provider,
-      baseURL: vision.baseURL,
-      model: vision.model,
-      paddleCommand: vision.paddleCommand,
-      paddleArgs: vision.paddleArgs,
-    })
-    statRows.value = result.rows
-    statsWarnings.value = result.warnings
-    pastedStats.value = result.csv
+    for (const file of imageFiles.value) {
+      const result = await window.api.badge.parseImage({
+        file,
+        provider: vision.provider,
+        providerId: vision.provider === 'cloud' ? visionProviderId.value : undefined,
+        model: vision.provider === 'cloud' ? visionModel.value : undefined,
+        paddleCommand: vision.paddleCommand,
+        paddleArgs: vision.paddleArgs,
+        ocrLayout: vision.provider === 'paddleocr' ? { ...ocrLayout } : undefined,
+      })
+      collected.push(...result.rows)
+      warnings.push(...result.warnings)
+      raws.push(`### ${file.split(/[\\/]/).pop()}\n${result.raw}`)
+    }
+    statRows.value = [...statRows.value, ...collected]
+    statsWarnings.value = warnings
     statsFile.value = ''
-    visionRaw.value = result.raw
-    ElMessage.success(`识别并解析出 ${result.rows.length} 行，请先核对上方数值`)
+    definedMetrics.value = Array.from(new Set([
+      ...definedMetrics.value,
+      ...collected.flatMap((row) => Object.keys(row.metrics ?? {})),
+    ]))
+    syncCsvFromRows()
+    visionRaw.value = raws.join('\n\n')
+    ElMessage.success(`识别 ${imageFiles.value.length} 张图片，追加 ${collected.length} 行；请在表格核对 5/S、0/O 等误识别`)
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -177,20 +325,9 @@ async function recognizeImage(): Promise<void> {
   }
 }
 
-async function saveVisionKey(): Promise<void> {
-  try {
-    await window.api.badge.setVisionKey(visionKey.value.trim())
-    visionKey.value = ''
-    hasVisionKey.value = (await window.api.badge.visionState()).hasKey
-    ElMessage.success('视觉模型密钥已写入本机凭据库')
-  } catch (err) {
-    ElMessage.error((err as Error).message)
-  }
-}
-async function clearVisionKey(): Promise<void> {
-  await window.api.badge.setVisionKey('')
-  hasVisionKey.value = false
-  ElMessage.success('视觉模型密钥已清除')
+async function copySelfCheck(): Promise<void> {
+  await window.api.os.clipboardWrite(selfCheckCommand.value)
+  ElMessage.success('自查命令已复制，请在 Anaconda 环境执行并把结果填入工具配置')
 }
 
 /** 批量补属性：给命中但未带 badgeAttr 的链接补上（只在生成的副本里生效，原文件不动） */
@@ -309,7 +446,7 @@ onMounted(() => {
 <template>
   <ToolPageLayout
     title="Badge Studio"
-    description="上传邮件 HTML + 点击统计（表格 / 图片识别 / 粘贴）→ URL 归一匹配 → 注入 badge 副本 → snapdom 海报长图（原文件永不修改）"
+    description="邮件 HTML + 点击统计（文件 / 粘贴 / 多图识别）→ 可编辑表格人工校对 → 注入 badge 副本 → 海报长图（原文件永不修改）"
   >
     <template #actions>
       <el-button size="small" @click="pickHtml">选择 HTML</el-button>
@@ -322,17 +459,20 @@ onMounted(() => {
     </template>
 
     <div v-if="view !== 'posters'" class="badge-grid">
-      <!-- 左：输入区 -->
       <div class="col">
         <div class="panel">
           <div class="panel-title">邮件 HTML（只读，不修改原文件）</div>
+          <div v-if="recentHtmls.length > 0" class="recent-head">
+            <span>最近使用 · 记录在本机配置，刷新后保留</span>
+            <el-button size="small" text @click="clearRecent">清空全部</el-button>
+          </div>
           <el-select
             v-if="recentHtmls.length > 0"
             size="small"
-            placeholder="最近使用"
+            placeholder="点选历史记录重新载入文件"
             style="width: 100%; margin-bottom: 8px"
             :model-value="htmlPath"
-            @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) useRecent(item) }"
+            @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) void useRecent(item) }"
           >
             <el-option v-for="r in recentHtmls" :key="r.path" :label="r.name" :value="r.path" />
           </el-select>
@@ -349,48 +489,140 @@ onMounted(() => {
               size="small"
               closable
               style="margin-right: 6px"
-              @click="useRecent(r)"
-              @close="removeRecent(r)"
+              @click="void useRecent(r)"
+              @close="void removeRecent(r)"
             >
               {{ r.name }}
             </el-tag>
           </div>
+          <div class="hint">标签只是历史路径，不会自动把文件内容恢复到编辑区；点标签才重新读取。文件被移动/删除时会自动移除该记录。</div>
         </div>
 
         <div class="panel">
-          <div class="panel-title">点击统计（xlsx / csv / json 上传、图片识别，或粘贴 csv 文本人工校对）</div>
+          <div class="panel-title">点击统计 · 三种来源统一进可编辑表格</div>
           <el-input
             v-model="pastedStats"
             type="textarea"
-            :rows="5"
+            :rows="4"
             placeholder="url,clicks&#10;https://example.com/p/1,12"
           />
-          <el-button size="small" style="margin-top: 8px" @click="parsePastedStats">解析文本</el-button>
+          <div class="cfg-row" style="margin-top: 8px">
+            <el-button size="small" @click="parsePastedStats">解析文本</el-button>
+            <el-button size="small" @click="addRow">新增一行</el-button>
+            <el-button size="small" text type="danger" :disabled="!hasStats" @click="clearRows">清空表格</el-button>
+            <span class="muted">共 {{ statRows.length }} 行{{ statsFile ? ` · 来自 ${statsFile.split(/[\\/]/).pop()}` : '' }}</span>
+          </div>
           <div v-if="statsWarnings.length" class="warn">{{ statsWarnings.join('；') }}</div>
-          <div v-if="hasStats" class="ok">已解析 {{ statRows.length }} 行{{ statsFile ? `（来自 ${statsFile.split(/[\\/]/).pop()}）` : '' }}</div>
+
+          <el-table v-if="hasStats" :data="statRows" size="small" max-height="260" class="stat-table">
+            <el-table-column label="URL" min-width="180">
+              <template #default="{ row }">
+                <el-input v-model="row.url" size="small" @input="syncCsvFromRows" />
+              </template>
+            </el-table-column>
+            <el-table-column label="clicks" width="92">
+              <template #default="{ row }">
+                <el-input-number v-model="row.clicks" size="small" :min="0" :controls="false" @change="syncCsvFromRows" />
+              </template>
+            </el-table-column>
+            <el-table-column label="totalClicks" width="100">
+              <template #default="{ row }">
+                <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" @change="syncCsvFromRows" />
+              </template>
+            </el-table-column>
+            <el-table-column v-for="key in customMetricKeys" :key="key" min-width="100">
+              <template #header>
+                <span>{{ key }}</span>
+                <el-button size="small" text type="danger" title="移除该列" @click="removeMetric(key)">×</el-button>
+              </template>
+              <template #default="{ row }">
+                <el-input
+                  :model-value="metricOf(row, key)"
+                  size="small"
+                  @input="(v: string) => setMetric(row, key, v)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="70" fixed="right">
+              <template #default="{ $index }">
+                <el-button size="small" text type="danger" @click="removeRow($index)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="cfg-row" style="margin-top: 8px">
+            <el-input v-model="newMetricKey" size="small" placeholder="自定义数值列名，如 uv / 下单数" style="max-width: 200px" />
+            <el-button size="small" @click="addMetric">新增数值列</el-button>
+            <span class="muted">表格改动会同步回上方 CSV 文本</span>
+          </div>
+          <div class="hint">OCR 常把 5 认成 S、0 认成 O；请在表格里逐格核对后再生成，识别结果不会自动生效。</div>
         </div>
 
         <div class="panel">
-          <div class="panel-title">图片识别（{{ providerLabel }}）</div>
+          <div class="panel-title">图片识别（{{ providerLabel }}）· 支持多选</div>
           <div class="cfg-row">
-            <el-button size="small" @click="pickImage">选择图片</el-button>
-            <el-button size="small" type="primary" :loading="recognizing" @click="recognizeImage">识别为点击数据</el-button>
-            <span class="muted">{{ imageFile ? imageFile.split(/[\\/]/).pop() : '未选择图片' }}</span>
+            <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
+            <el-button size="small" type="primary" :loading="recognizing" @click="recognizeImages">识别并追加到表格</el-button>
+            <span class="muted">{{ imageFiles.length ? `已选 ${imageFiles.length} 张` : '未选择图片' }}</span>
           </div>
-          <div v-if="vision.provider === 'cloud'" class="cfg-row">
-            <span>模型</span>
-            <span class="muted">{{ vision.model || '未配置' }} · {{ vision.baseURL || '未配置' }}</span>
+          <div v-if="imageFiles.length" class="image-list">
+            <el-tag
+              v-for="(file, index) in imageFiles"
+              :key="file"
+              size="small"
+              closable
+              @close="imageFiles.splice(index, 1)"
+            >
+              {{ file.split(/[\\/]/).pop() }}
+            </el-tag>
           </div>
-          <div v-if="vision.provider === 'cloud'" class="cfg-row">
-            <el-input v-model="visionKey" type="password" show-password size="small" placeholder="视觉模型 API Key" style="max-width: 240px" />
-            <el-button size="small" @click="saveVisionKey">保存密钥</el-button>
-            <el-button size="small" text @click="clearVisionKey">清除</el-button>
-            <el-tag size="small" :type="hasVisionKey ? 'success' : 'info'">{{ hasVisionKey ? '已配置' : '未配置' }}</el-tag>
-          </div>
-          <div v-if="vision.provider === 'paddleocr'" class="cfg-row">
-            <span class="muted">本机命令：{{ vision.paddleCommand }} {{ vision.paddleArgs }}</span>
-          </div>
-          <div class="hint">识别结果会回填到上方 CSV 文本框，请人工核对后再生成；密钥只存系统凭据库，不写入配置文件。识别方式 / 模型 / OCR 命令在左侧「工具配置 → 图片识别」修改。</div>
+
+          <template v-if="vision.provider === 'cloud'">
+            <div class="cfg-row">
+              <span>Provider</span>
+              <el-select v-model="visionProviderId" size="small" style="width: 220px" @change="onProviderChange">
+                <el-option
+                  v-for="p in providers"
+                  :key="p._id"
+                  :label="`${p.name} · ${p.hasApiKey ? '已配置密钥' : '未配置密钥'}`"
+                  :value="p._id"
+                />
+              </el-select>
+              <el-tag size="small" :type="activeProvider?.hasApiKey ? 'success' : 'info'">
+                {{ activeProvider?.hasApiKey ? '密钥已从模型控制台复用' : '请先到模型控制台填 API Key' }}
+              </el-tag>
+            </div>
+            <div class="cfg-row">
+              <span>模型</span>
+              <el-select
+                v-model="visionModel"
+                size="small"
+                filterable
+                allow-create
+                default-first-option
+                :loading="modelsLoading"
+                placeholder="下拉选择或手动输入"
+                style="width: 240px"
+              >
+                <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+              </el-select>
+              <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
+            </div>
+            <div class="hint">端点与密钥来自「模型控制台」的同一份 Provider，这里只选择、不重复配置；/models 拉取失败可直接手填模型名。</div>
+          </template>
+
+          <template v-if="vision.provider === 'paddleocr'">
+            <div class="cfg-row"><span class="muted">命令：{{ vision.paddleCommand }} {{ vision.paddleArgs }}</span></div>
+            <div class="cfg-row">
+              <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>
+              <span class="muted">Python 路径 / PaddleOCR 版本 / 截图版式三项由本机自查后填入「工具配置」</span>
+            </div>
+            <details>
+              <summary class="muted" style="cursor: pointer">查看自查命令与当前版式</summary>
+              <pre class="raw">{{ selfCheckCommand }}</pre>
+            </details>
+            <div class="hint">版式配置（同行/千分位/合计行/列顺序）会由宿主自动以 --layout 注入适配器，不需手写在命令参数里。</div>
+          </template>
+
           <details v-if="visionRaw" style="margin-top: 6px">
             <summary class="muted" style="cursor: pointer">查看识别原文</summary>
             <pre class="raw">{{ visionRaw }}</pre>
@@ -405,15 +637,22 @@ onMounted(() => {
           </div>
           <div class="cfg-row">
             <span>数值列</span>
-            <el-radio-group v-model="clicksField" size="small">
-              <el-radio value="clicks">clicks</el-radio>
-              <el-radio value="totalClicks">totalClicks</el-radio>
-            </el-radio-group>
+            <el-select
+              v-model="clicksField"
+              size="small"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入自定义列名"
+              style="width: 200px"
+            >
+              <el-option v-for="field in fieldOptions" :key="field" :label="field" :value="field" />
+            </el-select>
+            <span class="muted">内置两列或上方表格里的任意自定义数值列</span>
           </div>
         </div>
       </div>
 
-      <!-- 右：预览 -->
       <div class="col">
         <div class="panel preview-panel">
           <div class="panel-title">badge 副本预览（680px）</div>
@@ -429,7 +668,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 海报列表 -->
     <div v-if="view !== 'generate'" class="panel" style="margin-top: 8px">
       <div class="panel-title">海报列表（覆盖式产物；删除仅归档记录）</div>
       <el-table v-if="posters.length > 0" v-loading="listLoading" :data="posters" size="small">
@@ -503,8 +741,22 @@ onMounted(() => {
   background: #fff;
   border-radius: 4px;
 }
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: .7;
+  margin-bottom: 6px;
+}
 .recent-row {
   margin-top: 8px;
+}
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 .cfg-row {
   display: flex;
@@ -512,6 +764,10 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 8px;
   font-size: 12px;
+  flex-wrap: wrap;
+}
+.stat-table {
+  margin-top: 8px;
 }
 .warn {
   color: var(--el-color-warning);
@@ -534,7 +790,7 @@ onMounted(() => {
   margin-top: 6px;
 }
 .raw {
-  max-height: 160px;
+  max-height: 180px;
   overflow: auto;
   font-size: 11px;
   white-space: pre-wrap;
