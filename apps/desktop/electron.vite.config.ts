@@ -41,9 +41,14 @@ const preloadAlias: Alias[] = [
   { find: /^@sshk\/shared$/, replacement: pkg('packages/shared/src/ipc.ts') },
 ]
 
+// 运行时依赖保持 dependencies（语义正确），但主进程要内联打进产物：
+// 配合 electron-builder files 的 '!node_modules/**'，安装包零 node_modules，
+// 构建期原生二进制（@oxc-parser 等）因此永远进不了包（mac universal 曾因此失败）。
+const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'electron-updater']
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: WORKSPACE_PKGS })],
+    plugins: [externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: sshkAlias },
     build: {
       rollupOptions: {
