@@ -514,6 +514,13 @@ async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> {
   badgePositionImage.value = String(row.configSnapshot.badgePositionImage ?? '') || badgePositionImage.value
   currentPosterId.value = row._id
   htmlPath.value = ''
+  if (row.outputs.badged) {
+    try {
+      // 点击编辑即展示该海报的 badge 预览
+      const { html: badged } = await window.api.badge.readHtml(row.outputs.badged)
+      previewHtml.value = badged
+    } catch { /* 预览读取失败不阻塞编辑 */ }
+  }
 }
 async function editPoster(row: PosterRecord): Promise<void> {
   await loadPosterIntoWorkspace(row)
@@ -574,17 +581,6 @@ async function batchDeletePosters(): Promise<void> {
   ElMessage.success("已删除 " + rows.length + " 个")
   selectedPosters.value = []
   await loadPosters()
-}
-async function openPoster(row: PosterRecord): Promise<void> {
-  if (!row.outputs.badged) return
-  // 预览与编辑同源：完整载入到工作区（配置/统计/名称全回显），再展示该海报的预览
-  await loadPosterIntoWorkspace(row)
-  try {
-    const { html } = await window.api.badge.readHtml(row.outputs.badged)
-    previewHtml.value = html
-  } catch (err) {
-    ElMessage.error("读取海报失败：" + (err as Error).message)
-  }
 }
 
 async function copyCode(row: PosterRecord): Promise<void> {
@@ -976,8 +972,7 @@ onMounted(() => {
         <el-table-column label="操作" width="190" align="center" fixed="right">
           <template #default="{ row }">
             <div class="op-row">
-              <el-button size="small" type="primary" plain @click="openPoster(row)">预览</el-button>
-              <el-button size="small" plain @click="editPoster(row)">编辑</el-button>
+              <el-button size="small" type="primary" plain @click="editPoster(row)">编辑</el-button>
               <el-button size="small" type="success" plain @click="exportPosterHtml(row)">导出</el-button>
               <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
                 <el-button size="small" plain>更多</el-button>
