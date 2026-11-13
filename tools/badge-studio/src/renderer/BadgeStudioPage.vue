@@ -633,11 +633,11 @@ onMounted(() => {
             <div class="cfg-row">
               <span>命令</span>
               <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径" style="width: 250px" />
-              <el-input v-model="vision.paddleArgs" size="small" placeholder="适配器绝对路径 {image}" style="width: 250px" />
+              <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="width: 250px" />
             </div>
             <div class="cfg-row">
               <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>
-              <span class="muted">Python 路径 / PaddleOCR 版本 / 截图版式三项由本机自查后填入</span>
+              <span class="muted">适配器脚本由应用自动托管，参数保持 {image} 即可；Python 路径自查后填入</span>
             </div>
             <details>
               <summary class="muted" style="cursor: pointer">查看自查命令与当前版式</summary>

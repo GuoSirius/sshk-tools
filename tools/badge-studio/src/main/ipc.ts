@@ -18,6 +18,7 @@ import {
   toCsvText,
   type OcrLayoutConfig,
 } from '../core/vision.js'
+import { ensureAdapterScript, withAdapterArgs } from './adapter.js'
 import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
@@ -143,8 +144,13 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       })
     } else if (input.provider === 'paddleocr') {
       if (!input.paddleCommand?.trim()) throw new Error('请先在工具配置里填写本机 PaddleOCR 命令')
-      // 版式规则由应用配置注入，适配器不再硬编码「同行 / 千分位 / 合计行 / 列顺序」
-      const args = parseArgs(input.paddleArgs ?? '{image}')
+      // 适配器脚本由宿主托管（userData/adapters），用户参数只负责 {image}；
+      // 未写 .py 脚本时自动前置适配器路径，避免 python 把图片当源码执行
+      const adapterPath = await ensureAdapterScript()
+      const args = withAdapterArgs(
+        parseArgs(input.paddleArgs ?? '{image}').map((arg) => arg.replaceAll('{image}', abs)),
+        adapterPath,
+      )
       if (!args.includes('--layout')) {
         args.push('--layout', JSON.stringify(input.ocrLayout ?? DEFAULT_OCR_LAYOUT))
       }

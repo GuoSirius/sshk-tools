@@ -129,7 +129,12 @@ export function setupServices(): AppServices {
       const args = req.args.map((arg) => arg.replaceAll('{image}', req.imagePath))
       let child: ReturnType<typeof spawn>
       try {
-        child = spawn(command, args, { shell: false, windowsHide: true })
+        child = spawn(command, args, {
+          shell: false,
+          windowsHide: true,
+          // Windows 控制台默认 GBK，强制 Python 走 UTF-8，否则中文文件名 / 报错全是乱码
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        })
       } catch (err) {
         reject(new Error(`本机 OCR 启动失败：${(err as Error).message}`))
         return

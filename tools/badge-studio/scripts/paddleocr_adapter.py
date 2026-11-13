@@ -163,11 +163,16 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.self_check:
-        import paddle
-        import paddleocr
+        # 永远不抛 traceback：环境不对时给出结构化诊断与建议
         print(f"python={sys.executable}")
-        print(f"paddle={getattr(paddle, '__version__', 'unknown')}")
-        print(f"paddleocr={getattr(paddleocr, '__version__', 'unknown')}")
+        print(f"python_version={sys.version.split()[0]}")
+        for name in ("paddle", "paddleocr"):
+            try:
+                module = __import__(name)
+                print(f"{name}={getattr(module, '__version__', 'unknown')}")
+            except Exception as err:  # noqa: BLE001
+                print(f"{name}=导入失败：{err}")
+        print("hint=若上面出现「导入失败」，请把「命令」改为带 PaddleOCR 的 python.exe 绝对路径（如 Anaconda 环境下的），而不是系统 PATH 里的 python")
         return 0
     if not args.image:
         parser.error("需要图片路径，或使用 --self-check")
