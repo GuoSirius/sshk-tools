@@ -971,6 +971,7 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="操作" width="190" align="center" fixed="right">
           <template #default="{ row }">
+            <!-- 操作列约定：实体按钮 ≤3（常用优先），其余一律进「更多」下拉；新增操作先入下拉，确认高频才提升为按钮。宽度随内容同步调整 -->
             <div class="op-row">
               <el-button size="small" type="primary" plain @click="editPoster(row)">编辑</el-button>
               <el-button size="small" type="success" plain @click="exportPosterHtml(row)">导出</el-button>
