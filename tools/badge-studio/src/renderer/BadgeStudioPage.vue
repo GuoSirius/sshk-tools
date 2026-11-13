@@ -602,25 +602,32 @@ async function confirmDelete(): Promise<void> {
 const htmlInputRef = ref<{ $el: { querySelector: (sel: string) => HTMLTextAreaElement | null } } | null>(null)
 const htmlSearch = ref("")
 const htmlSearchPos = ref<{ index: number; total: number } | null>(null)
-let htmlSearchCursor = 0
+const htmlSearchLast = ref('')
+const htmlSearchCursor = ref(-1)
 function locateInHtml(term: string): void {
   const query = term || htmlSearch.value.trim()
   if (!query) { ElMessage.warning("请输入搜索内容（url 片段 / 文字 / 属性名）")
     return }
+  // 换了搜索词就从头开始；同一个词内「查找下一个」逐处推进
+  if (query !== htmlSearchLast.value) {
+    htmlSearchLast.value = query
+    htmlSearchCursor.value = -1
+  }
   const text = pastedHtml.value
   const positions: number[] = []
   for (let i = text.indexOf(query); i !== -1; i = text.indexOf(query, i + query.length)) positions.push(i)
   if (positions.length === 0) { ElMessage.warning("未在 HTML 中找到：" + query)
     return }
-  htmlSearchCursor = positions.includes(htmlSearchCursor) ? (htmlSearchCursor + 1) % positions.length : 0
-  const idx = positions[htmlSearchCursor] ?? 0
+  htmlSearchCursor.value = (htmlSearchCursor.value + 1) % positions.length
+  const idx = positions[htmlSearchCursor.value] ?? 0
   const el = htmlInputRef.value?.$el?.querySelector("textarea") as HTMLTextAreaElement | null
   if (!el) return
   el.focus()
   el.setSelectionRange(idx, idx + query.length)
-  const line = text.slice(0, idx).split("\n").length
-  el.scrollTop = Math.max(0, (line - 6) * 21)
-  htmlSearchPos.value = { index: htmlSearchCursor + 1, total: positions.length }
+  // textarea 有软换行（逻辑行 != 视觉行），按比例定位到选区附近，误差可接受
+  const ratio = el.scrollHeight > el.clientHeight ? idx / Math.max(1, text.length) : 0
+  el.scrollTop = Math.max(0, ratio * el.scrollHeight - el.clientHeight / 2)
+  htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: positions.length }
 }
 const previewFrame = ref<HTMLIFrameElement | null>(null)
 
