@@ -39,6 +39,14 @@ const sshkAlias: Alias[] = [
   { find: /^@sshk\/edm-studio\/renderer$/, replacement: pkg('tools/edm-studio/src/renderer/EdmStudioPage.vue') },
 ]
 
+// 沙箱 preload：只能 require electron，任何裸包 require 都会 module not found。
+// @sshk/shared 的 index 会带 dayjs（time.ts），preload 只需 IPC 通道常量——
+// 把 shared 映射到纯常量文件，产物零外部依赖、单一真相源不变。
+const preloadAlias: Alias[] = [
+  { find: /^@sshk\/shared$/, replacement: pkg('packages/shared/src/ipc.ts') },
+  ...sshkAlias.slice(1),
+]
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS] })],
@@ -52,7 +60,7 @@ export default defineConfig({
   },
   preload: {
     plugins: [externalizeDepsPlugin({ exclude: ['@sshk/shared'] })],
-    resolve: { alias: sshkAlias },
+    resolve: { alias: preloadAlias },
     build: {
       rollupOptions: {
         // sandbox: true 下 preload 必须是 CommonJS，产物固定 .cjs
