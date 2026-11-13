@@ -65,6 +65,8 @@ export default defineConfig({
   renderer: {
     // electron-vite 6 / Vite 8 要求显式指定 root 与 input，否则会在 src/renderer 下找 index.html
     root: fileURLToPath(new URL('.', import.meta.url)),
+    // 局域网可访问（手机 / 其他设备调试分享页）；仅 dev 生效
+    server: { host: true },
     plugins: [vue(), UnoCSS()],
     resolve: { alias: sshkAlias },
     build: {

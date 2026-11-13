@@ -2,8 +2,9 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
+import { cpSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import path from 'node:path'
+import path, { join } from 'node:path'
 import {
   ACCESS_GRANT,
   IPC_CHANNELS,
@@ -364,6 +365,28 @@ async function registerIpc(): Promise<void> {
   }, MANIFESTS)
 }
 
+/**
+ * 一次性迁移：productName 统一前的旧 userData（%APPDATA%/@sshk/desktop）→ 现目录。
+ * 目标已存在的文件一律不覆盖（以现目录为准），避免回滚用户在新区已做的配置。
+ */
+function migrateLegacyUserData(): void {
+  const current = app.getPath('userData')
+  const legacy = join(app.getPath('appData'), '@sshk', 'desktop')
+  if (current === legacy || !existsSync(legacy)) return
+  for (const name of ['settings.json', 'secrets.bin', 'db']) {
+    const from = join(legacy, name)
+    const to = join(current, name)
+    if (existsSync(from) && !existsSync(to)) {
+      try {
+        cpSync(from, to, { recursive: true })
+        console.warn(`[sshk] 已迁移旧数据：${name}`)
+      } catch (err) {
+        console.warn(`[sshk] 旧数据迁移失败（${name}）：`, err)
+      }
+    }
+  }
+}
+
 function setupAutoUpdate(): void {
   if (isDev) return
   autoUpdater.autoDownload = true
@@ -374,6 +397,7 @@ function setupAutoUpdate(): void {
 }
 
 void app.whenReady().then(async () => {
+  migrateLegacyUserData()
   services = setupServices()
   seedDefaultProviders()
   migrateLegacyVisionConfig()

@@ -217,7 +217,7 @@ onMounted(async () => {
             <ToolIcon :icon="currentTool.icon" :tool-id="currentTool.id" :name="currentTool.name" :size="28" />
             <div class="sidebar-head-text">
               <strong>{{ currentTool.name }}</strong>
-              <small>{{ currentTool.categories.join(' / ') }}</small>
+              <small :title="currentTool.categories.join(' / ')">{{ currentTool.categories.join(' / ') }}</small>
             </div>
           </div>
           <SidebarMenu
