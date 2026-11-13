@@ -5,13 +5,37 @@ import { ToolPageLayout } from '@sshk/ui-kit'
 import type { ToolConfigField } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 
-// 工具级配置：只读写 tools.<toolId>.*，字段由注册表 configGroups 声明驱动
-const props = defineProps<{ toolId: string; section?: string }>()
+// 工具级配置：只读写 tools.<toolId>.*，字段由工具包 manifest 的 configGroups 驱动
+const props = defineProps<{
+  toolId: string
+  section?: string
+  /** 由工具包 manifest.configLayout 决定：single / tabs / menu */
+  layout?: 'single' | 'tabs' | 'menu'
+}>()
 const { byId } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
 const values = reactive<Record<string, unknown>>({})
 const depValues = reactive<Record<string, unknown>>({})
 const saving = ref(false)
+const activeTab = ref('')
+const layout = computed(() => props.layout ?? 'single')
+
+/**
+ * single = 一页全部卡片（内置工具默认）；
+ * tabs  = 内容区分页；menu = 左侧子菜单逐页（由 App.vue 生成二级菜单）。
+ * 保存始终针对 allFields()，切换布局不会漏存字段。
+ */
+const shownGroups = computed(() => {
+  const groups = tool.value?.configGroups ?? []
+  if (layout.value === 'tabs') {
+    return groups.filter((group) => group.id === activeTab.value)
+  }
+  if (layout.value === 'menu' && props.section?.startsWith('config-')) {
+    const hit = groups.filter((group) => group.id === props.section)
+    if (hit.length > 0) return hit
+  }
+  return groups
+})
 
 function pathFor(field: ToolConfigField): string {
   return `tools.${props.toolId}.${field.key}`
@@ -29,7 +53,10 @@ async function load(): Promise<void> {
   }
 }
 // catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）
-watch(() => tool.value?.id, () => { void load() }, { immediate: true })
+watch(() => tool.value?.id, () => {
+  activeTab.value = tool.value?.configGroups[0]?.id ?? ''
+  void load()
+}, { immediate: true })
 
 function display(value: unknown): string {
   if (value === null || value === undefined) return '（未设置）'
@@ -71,9 +98,18 @@ watch(() => props.section, focusSection, { immediate: true })
       <el-button type="primary" size="small" :loading="saving" @click="save">保存工具配置</el-button>
     </template>
 
+    <el-tabs v-if="layout === 'tabs'" v-model="activeTab" class="config-tabs">
+      <el-tab-pane
+        v-for="group in tool?.configGroups ?? []"
+        :key="group.id"
+        :label="group.label"
+        :name="group.id"
+      />
+    </el-tabs>
+
     <div class="settings-grid">
       <section
-        v-for="group in tool?.configGroups ?? []"
+        v-for="group in shownGroups"
         :key="group.id"
         class="panel"
         :class="{ 'is-focused': section === group.id }"

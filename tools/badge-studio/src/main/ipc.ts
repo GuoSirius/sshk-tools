@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { IPC_CHANNELS, now } from '@sshk/shared'
+import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
   posterOutputRel,
@@ -11,10 +11,22 @@ import {
   type Repository,
 } from '@sshk/repository'
 import { injectBadges, markBadges, parseDatasource } from '../core/index.js'
+import { buildVisionMessages, parseVisionResult, toCsvText } from '../core/vision.js'
 import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
 import type { BadgeInjectConfig } from '../core/badge.js'
+
+const TOOL_ID = 'badge-studio'
+const VISION_KEY_NAME = 'visionApiKey'
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+}
 
 function readHtmlFile(file: string, outputRoot: string): string {
   // 用户通过文件选择器主动选择的绝对路径（.html/.htm）直接读取；
@@ -24,6 +36,25 @@ function readHtmlFile(file: string, outputRoot: string): string {
     return readFileSync(file, 'utf8')
   }
   return readFileSync(resolveSafe(outputRoot, file), 'utf8')
+}
+
+function resolveInputFile(file: string, outputRoot: string): string {
+  return isAbsolute(file) ? file : resolveSafe(outputRoot, file)
+}
+
+/** 用户主动选择的图片：转 data URI 供视觉模型使用，限制体积避免撑爆请求 */
+function readImageDataUri(file: string): string {
+  const mime = IMAGE_MIME[extname(file).toLowerCase()]
+  if (!mime) throw new Error('仅支持 png / jpg / webp / gif / bmp 图片')
+  const buf = readFileSync(file)
+  if (buf.byteLength > 8 * 1024 * 1024) throw new Error('图片超过 8MB，请压缩后重试')
+  return `data:${mime};base64,${buf.toString('base64')}`
+}
+
+/** 命令参数模板：支持双 / 单引号包裹，{image} 由宿主替换为图片绝对路径 */
+function parseArgs(template: string): string[] {
+  const parts = template.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+  return parts.map((part) => part.replace(/^["']|["']$/g, ''))
 }
 
 /** badge 生成入参（渲染层传内容与相对路径，不信任绝对路径） */
@@ -38,9 +69,20 @@ export interface GenerateInput {
   posterId?: string
 }
 
+export interface ParseImageInput {
+  file: string
+  provider: 'cloud' | 'paddleocr' | 'manual'
+  baseURL?: string
+  model?: string
+  paddleCommand?: string
+  paddleArgs?: string
+}
+
 export interface BadgeIpcDeps {
   repository: Repository
   outputRoot: string
+  /** 宿主能力（密钥 / 云端视觉 / 本机 OCR）；可选便于单测用最小依赖构造 */
+  host?: ToolHostCapabilities
 }
 
 function kindOf(file: string): 'xlsx' | 'csv' | 'json' {
@@ -57,12 +99,61 @@ function kindOf(file: string): 'xlsx' | 'csv' | 'json' {
 export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   const wrap = <T,>(fn: (payload: T) => unknown) =>
     (_event: IpcMainInvokeEvent, payload: T): unknown => fn(payload)
+  const requireHost = (): ToolHostCapabilities => {
+    if (!deps.host) throw new Error('宿主未提供图片识别能力')
+    return deps.host
+  }
 
-  // ① 数据源解析：按扩展名分派（xlsx/csv/json）；image 走渲染层 csv 文本通道。
+  // ① 数据源解析：按扩展名分派（xlsx/csv/json）
   //    支持文件选择器给出的绝对路径（用户主动选择）与产物系统相对路径
   ipc.handle(IPC_CHANNELS.badgeParseDatasource, wrap((file: string) => {
-    const abs = isAbsolute(file) ? file : resolveSafe(deps.outputRoot, file)
+    const abs = resolveInputFile(file, deps.outputRoot)
     return parseDatasource(kindOf(abs), readFileSync(abs))
+  }))
+
+  // ①-b 图片数据源：云端视觉模型 / 本机 PaddleOCR → 统一标准 StatRow[]
+  ipc.handle(IPC_CHANNELS.badgeParseImage, wrap(async (input: ParseImageInput) => {
+    const host = requireHost()
+    const abs = resolveInputFile(input.file, deps.outputRoot)
+    const warnings: string[] = []
+    let text: string
+
+    if (input.provider === 'cloud') {
+      const apiKey = host.getToolSecret(TOOL_ID, VISION_KEY_NAME)
+      if (!apiKey) throw new Error('请先在「图片识别」里填写视觉模型 API Key')
+      if (!/^https?:\/\//i.test(input.baseURL ?? '')) throw new Error('视觉模型 Base URL 必须是 http(s) 地址')
+      if (!input.model?.trim()) throw new Error('请配置视觉模型名称')
+      text = await host.chat({
+        baseURL: input.baseURL!,
+        model: input.model,
+        apiKey,
+        messages: buildVisionMessages(readImageDataUri(abs)),
+        temperature: 0,
+        maxTokens: 4096,
+      })
+    } else if (input.provider === 'paddleocr') {
+      if (!input.paddleCommand?.trim()) throw new Error('请先在工具配置里填写本机 PaddleOCR 命令')
+      text = await host.runLocalOcr({
+        command: input.paddleCommand,
+        args: parseArgs(input.paddleArgs ?? '{image}'),
+        imagePath: abs,
+      })
+    } else {
+      throw new Error('当前为「仅人工校对」模式，请直接粘贴 CSV 文本')
+    }
+
+    const rows = parseVisionResult(text, warnings)
+    // 回填可校对 CSV：识别结果永远先过人眼，再进 badge 注入链路
+    return { rows, warnings, csv: toCsvText(rows), raw: text.slice(0, 20_000) }
+  }))
+
+  // ①-c 视觉模型密钥：只写宿主 safeStorage，明文不进 settings.json、不回传渲染层
+  ipc.handle(IPC_CHANNELS.badgeSetVisionKey, wrap((key: string) => {
+    requireHost().setToolSecret(TOOL_ID, VISION_KEY_NAME, String(key ?? '').trim())
+    return true
+  }))
+  ipc.handle(IPC_CHANNELS.badgeVisionState, () => ({
+    hasKey: Boolean(deps.host?.getToolSecret(TOOL_ID, VISION_KEY_NAME)),
   }))
 
   // ② 读取外部 HTML：返回内容与指纹（sourceHash，源更新检测）

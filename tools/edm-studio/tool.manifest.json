@@ -1,0 +1,52 @@
+{
+  "id": "edm-studio",
+  "name": "EDM Studio",
+  "description": "制作邮件 EDM：品牌 / 模板 / 片段 / 版本、数据填充与三阶段 HTML 生成",
+  "category": "邮件营销",
+  "tags": ["内容生产", "HTML 生成"],
+  "icon": "auto",
+  "entryRoute": "mails",
+  "enabled": true,
+  "configLayout": "single",
+  "plugin": {
+    "source": "builtin",
+    "main": "src/main/index.ts",
+    "renderer": "src/renderer/EdmStudioPage.vue",
+    "channels": ["edm:api", "edm:listMails", "edm:generate", "edm:regenerate"]
+  },
+  "dependsOn": [],
+  "configDeps": [],
+  "requiredGrant": "",
+  "menus": [
+    { "id": "brands", "label": "品牌" },
+    { "id": "templates", "label": "模板" },
+    { "id": "fragments", "label": "片段" },
+    { "id": "mails", "label": "邮件" },
+    { "id": "config", "label": "工具配置" }
+  ],
+  "configGroups": [
+    {
+      "id": "config-render",
+      "label": "渲染",
+      "fields": [
+        { "key": "render.strict", "label": "严格模式", "type": "boolean", "hint": "未定义变量直接报错" },
+        { "key": "render.autoEscape", "label": "HTML 转义", "type": "boolean", "hint": "防数据注入" }
+      ]
+    },
+    {
+      "id": "config-export",
+      "label": "导出",
+      "fields": [
+        { "key": "export.defaultFileName", "label": "默认文件名", "type": "string", "hint": "生成 EDM 时使用的文件名" },
+        { "key": "export.openAfterGenerate", "label": "生成后打开", "type": "boolean" }
+      ]
+    }
+  ],
+  "defaults": {
+    "enabled": true,
+    "requiredGrant": "",
+    "dependsOn": [],
+    "render": { "strict": true, "autoEscape": true },
+    "export": { "defaultStages": ["final"], "defaultFileName": "edm.html", "openAfterGenerate": false }
+  }
+}

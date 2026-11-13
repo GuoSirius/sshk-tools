@@ -19,7 +19,8 @@
       "@sshk/shared": ["./packages/shared/src/index.ts"],
       "@sshk/repository": ["./packages/repository/src/index.ts"],
       "@sshk/backup": ["./packages/backup/src/index.ts"],
-      "@sshk/ui-kit": ["./packages/ui-kit/src/index.ts"]
+      "@sshk/ui-kit": ["./packages/ui-kit/src/index.ts"],
+      "@sshk/*": ["./packages/*/src/index.ts", "./tools/*/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "out", ".tmp", ".git"]

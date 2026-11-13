@@ -155,33 +155,12 @@ export const DEFAULT_SETTINGS: Settings = {
     /** 工具元数据覆盖：app.toolOverrides.<id> = { name, description, category, icon } */
     toolOverrides: {},
   },
-  tools: {
-    'edm-studio': {
-      enabled: true,
-      requiredGrant: '',
-      render: { strict: true, autoEscape: true },
-      export: { defaultStages: ['final'], defaultFileName: 'edm.html', openAfterGenerate: false },
-    },
-    'badge-studio': {
-      enabled: true,
-      requiredGrant: '',
-      badgeAttr: 'data-edm-badge',
-      badgeStyle: { background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 },
-      clicksField: 'clicks',
-      urlNorm: { stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true },
-      posterWidth: 680,
-      scale: 2,
-      recentHtmls: [],
-      commonHtmlDir: null,
-    },
-    'model-console': {
-      enabled: true,
-      requiredGrant: '',
-      defaultProviderId: '',
-      chatTimeoutMs: 30000,
-      streamEnabled: true,
-    },
-  },
+  /**
+   * 工具配置默认值不在这里硬编码：宿主启动时由
+   * mergeToolDefaults(DEFAULT_SETTINGS, MANIFESTS) 把各工具包
+   * tool.manifest.json 的 defaults 合并进来（应用不强依赖工具）。
+   */
+  tools: {},
 }
 
 export function defaultConfigPath(userDataDir: string): string {

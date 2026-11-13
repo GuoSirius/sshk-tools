@@ -7,15 +7,15 @@ import path from 'node:path'
 import {
   ACCESS_GRANT,
   IPC_CHANNELS,
-  TOOLS,
   resolveToolCatalog,
   type ToolCatalogPayload,
   type ToolOverrides,
+  type ToolPluginStatus,
 } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
-import { registerBadgeIpc } from '@sshk/badge-studio/main'
-import { registerEdmIpc } from '@sshk/edm-studio/main'
 import { setupServices, type AppServices } from './services'
+import { loadToolPlugins } from './plugins'
+import { MANIFESTS } from './discovery'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -27,6 +27,8 @@ const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let services: AppServices | null = null
+/** 插件加载结果：单个插件失败不影响宿主与其它工具 */
+let pluginStatus: Record<string, ToolPluginStatus> = {}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -45,9 +47,20 @@ function createWindow(): void {
     },
   })
 
+  // 浏览器式刷新：F5 / Ctrl(Cmd)+R 普通刷新，Shift 或 Ctrl+F5 忽略缓存
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const key = input.key.toLowerCase()
+    const mod = input.control || input.meta
+    if (key !== 'f5' && !(mod && key === 'r')) return
+    event.preventDefault()
+    const force = input.shift || (input.control && key === 'f5')
+    if (force) mainWindow?.webContents.reloadIgnoringCache()
+    else mainWindow?.webContents.reload()
+  })
+
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
-    // 开发模式默认打开开发者工具
     if (isDev) mainWindow?.webContents.openDevTools()
   })
   mainWindow.on('closed', () => { mainWindow = null })
@@ -73,7 +86,6 @@ function createTray(): void {
 }
 
 function readProvider(_event: unknown, provider: LlmProvider): LlmProvider {
-  // 最小校验：baseURL 必须 http(s)，防 file:/ftp: 等协议滥用
   if (!/^https?:\/\//i.test(provider?.baseURL ?? '')) {
     throw new Error('baseURL 必须是 http(s) 地址')
   }
@@ -81,7 +93,7 @@ function readProvider(_event: unknown, provider: LlmProvider): LlmProvider {
 }
 
 function assertKnownTool(id: string): void {
-  if (!TOOLS.some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
+  if (!MANIFESTS.some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
 }
 
 function readRecord<T>(key: string): Record<string, T> {
@@ -95,43 +107,63 @@ function readRecord<T>(key: string): Record<string, T> {
 function pickOverrides(raw: unknown): ToolOverrides {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('非法工具元数据')
   const out: ToolOverrides = {}
-  for (const key of ['name', 'description', 'category', 'icon'] as const) {
+  for (const key of ['name', 'description', 'icon'] as const) {
     const value = (raw as Record<string, unknown>)[key]
     if (typeof value === 'string') out[key] = value.slice(0, 500)
+  }
+  const category = (raw as Record<string, unknown>)['category']
+  if (typeof category === 'string') out.category = category.slice(0, 500)
+  else if (Array.isArray(category)) {
+    out.category = category
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.slice(0, 100))
+      .slice(0, 20)
   }
   return out
 }
 
 /**
- * 工具目录单一裁决：注册表 + 配置覆盖 + 分发白名单 + 密钥权限 + 依赖链。
+ * 工具目录单一裁决：构建期发现的清单 + 配置覆盖 + 分发 + 插件可用性 + 权限 + 依赖链。
  * 渲染层只能拿到裁决结果，拿不到密钥明文，也无法自行放开受限工具。
  */
 function buildCatalog(): ToolCatalogPayload {
   const cfg = services!.config
   const enabled: Record<string, boolean> = {}
   const grants: Record<string, string> = {}
-  for (const tool of TOOLS) {
+  const dependsOn: Record<string, string[]> = {}
+  for (const tool of MANIFESTS) {
     const value = cfg.get(`tools.${tool.id}.enabled`)
     enabled[tool.id] = typeof value === 'boolean' ? value : tool.enabled
     grants[tool.id] = String(cfg.get(`tools.${tool.id}.requiredGrant`) ?? '')
+    const rawDeps = cfg.get(`tools.${tool.id}.dependsOn`)
+    dependsOn[tool.id] = Array.isArray(rawDeps)
+      ? rawDeps.filter((id): id is string =>
+        typeof id === 'string' && id !== tool.id && MANIFESTS.some((t) => t.id === id))
+      : (tool.dependsOn ?? [])
   }
   const rawInclude = cfg.get('app.distribution.includeTools')
   const includeTools = Array.isArray(rawInclude)
-    ? rawInclude.filter((id): id is string => typeof id === 'string' && TOOLS.some((t) => t.id === id))
+    ? rawInclude.filter((id): id is string => typeof id === 'string' && MANIFESTS.some((t) => t.id === id))
     : null
   const { hasAccessKey, grants: heldGrants } = services!.getAccessKeyState()
-  return resolveToolCatalog({
+  return resolveToolCatalog(MANIFESTS, {
     enabled,
     grants,
+    dependsOn,
     overrides: readRecord<ToolOverrides>('app.toolOverrides'),
     includeTools,
     heldGrants,
     settingsToolIds: cfg.listToolIds(),
+    pluginStatus,
     hasAccessKey,
   })
 }
 
-function registerIpc(): void {
+function isToolActive(id: string): boolean {
+  return buildCatalog().tools.find((tool) => tool.id === id)?.visible === true
+}
+
+async function registerIpc(): Promise<void> {
   const cfg = services!.config
 
   // ── 配置 ──
@@ -147,12 +179,22 @@ function registerIpc(): void {
     }
     mainWindow?.webContents.send(IPC_CHANNELS.configChanged, { namespace, key })
   })
-  // 启动时同步一次主题
   const themeMode = cfg.get('app.themeMode')
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
 
   ipcMain.handle(IPC_CHANNELS.appVersion, () => app.getVersion())
   ipcMain.handle(IPC_CHANNELS.appOpenDataDir, () => shell.openPath(app.getPath('userData')))
+  ipcMain.handle(IPC_CHANNELS.appReload, (_event, force?: boolean) => {
+    const wc = mainWindow?.webContents
+    if (!wc) return false
+    if (force) wc.reloadIgnoringCache()
+    else wc.reload()
+    return true
+  })
+  ipcMain.handle(IPC_CHANNELS.appToggleDevTools, () => {
+    mainWindow?.webContents.toggleDevTools()
+    return true
+  })
 
   // ── 工具目录（启用 / 权限 / 依赖 / 分发 / 元数据覆盖） ──
   ipcMain.handle(IPC_CHANNELS.toolsList, () => buildCatalog())
@@ -167,6 +209,14 @@ function registerIpc(): void {
     cfg.set(`tools.${id}.requiredGrant`, grant || '')
     return buildCatalog()
   })
+  ipcMain.handle(IPC_CHANNELS.toolsSetDependencies, (_event, id: string, raw: unknown) => {
+    assertKnownTool(id)
+    if (!Array.isArray(raw)) throw new Error('依赖必须是工具 id 数组')
+    const ids = Array.from(new Set(raw.filter((dep): dep is string =>
+      typeof dep === 'string' && dep !== id && MANIFESTS.some((t) => t.id === dep))))
+    cfg.set(`tools.${id}.dependsOn`, ids)
+    return buildCatalog()
+  })
   ipcMain.handle(IPC_CHANNELS.toolsSetOverrides, (_event, id: string, raw: unknown) => {
     assertKnownTool(id)
     const all = readRecord<ToolOverrides>('app.toolOverrides')
@@ -176,7 +226,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC_CHANNELS.toolsSetDistribution, (_event, raw: unknown) => {
     const ids = Array.isArray(raw)
-      ? raw.filter((id): id is string => typeof id === 'string' && TOOLS.some((t) => t.id === id))
+      ? raw.filter((id): id is string => typeof id === 'string' && MANIFESTS.some((t) => t.id === id))
       : null
     cfg.set('app.distribution.includeTools', ids)
     return buildCatalog()
@@ -205,7 +255,7 @@ function registerIpc(): void {
     autoUpdater.quitAndInstall()
   })
 
-  // ── LLM（M7）：apiKey 由主进程从 secrets.bin 注入，渲染层永不接触明文 ──
+  // ── LLM（宿主能力：工具可依赖，应用不依赖工具） ──
   ipcMain.handle(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean }) => {
     const p = readProvider(_event, provider)
     const apiKey = services!.getApiKey(p._id)
@@ -228,19 +278,7 @@ function registerIpc(): void {
     return true
   })
 
-  // ── Badge Studio（M6）：原 HTML 只读、副本打标、覆盖式海报产物 ──
-  registerBadgeIpc(ipcMain, {
-    repository: services!.repository,
-    outputRoot: services!.outputRoot,
-  })
-
-  // ── EDM Studio（M4/M5）：品牌树、模板片段、三阶段渲染、邮件与分享 ──
-  registerEdmIpc(ipcMain, {
-    repository: services!.repository,
-    outputRoot: services!.outputRoot,
-  })
-
-  // ── OS 能力（M7）：文件选择 / 剪贴板 / shell 白名单 ──
+  // ── OS 能力（宿主提供） ──
   ipcMain.handle(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(win!, {
@@ -258,13 +296,21 @@ function registerIpc(): void {
     clipboard.writeText(String(text ?? ''))
     return true
   })
-  // shell 白名单：只允许 https/http 链接与已存在文件
   ipcMain.handle(IPC_CHANNELS.osShellOpen, async (_event, target: string) => {
     const t = String(target ?? '')
     if (/^https?:\/\//i.test(t)) return void shell.openExternal(t)
     if (await shell.openPath(t)) throw new Error(`拒绝打开: ${t}`)
     return true
   })
+
+  // ── 插件：按构建期发现的清单逐个加载，任一失败只影响它自己 ──
+  pluginStatus = await loadToolPlugins({
+    ipcMain,
+    repository: services!.repository,
+    outputRoot: services!.outputRoot,
+    host: services!.host,
+    isActive: isToolActive,
+  }, MANIFESTS)
 }
 
 function setupAutoUpdate(): void {
@@ -276,9 +322,9 @@ function setupAutoUpdate(): void {
   })
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   services = setupServices()
-  registerIpc()
+  await registerIpc()
   // 应用内自绘标题栏与工具栏，去掉系统默认菜单（File/Edit/View/Window）
   Menu.setApplicationMenu(null)
   createTray()

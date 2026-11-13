@@ -49,6 +49,8 @@ interface Window {
     app: {
       version(): Promise<string>
       openDataDir(): Promise<void>
+      reload(force?: boolean): Promise<boolean>
+      toggleDevTools(): Promise<boolean>
     }
     update: {
       check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }>
@@ -57,7 +59,12 @@ interface Window {
     llm: {
       chat(
         provider: LlmProvider,
-        messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+        messages: {
+          role: 'system' | 'user' | 'assistant'
+          content: string | Array<
+            { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+          >
+        }[],
         options?: { onDelta?: boolean },
       ): Promise<{ content: string; model: string }>
       onDelta(callback: (delta: string) => void): void
@@ -79,11 +86,27 @@ interface Window {
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
       deletePoster(posterId: string): Promise<boolean>
+      parseImage(payload: {
+        file: string
+        provider: 'cloud' | 'paddleocr' | 'manual'
+        baseURL?: string
+        model?: string
+        paddleCommand?: string
+        paddleArgs?: string
+      }): Promise<{
+        rows: { url: string; clicks: number; totalClicks: number }[]
+        warnings: string[]
+        csv: string
+        raw: string
+      }>
+      setVisionKey(key: string): Promise<boolean>
+      visionState(): Promise<{ hasKey: boolean }>
     }
     tools: {
       list(): Promise<import('@sshk/shared').ToolCatalogPayload>
       setEnabled(id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload>
       setGrant(id: string, grant: string): Promise<import('@sshk/shared').ToolCatalogPayload>
+      setDependencies(id: string, ids: string[]): Promise<import('@sshk/shared').ToolCatalogPayload>
       setOverrides(id: string, overrides: Record<string, string>): Promise<import('@sshk/shared').ToolCatalogPayload>
       setDistribution(ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload>
       cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>

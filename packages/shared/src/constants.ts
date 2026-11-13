@@ -54,5 +54,7 @@ export const POSTER_OUTPUT_FILES = {
 export const ACCESS_GRANT = 'tools.restricted'
 /** safeStorage 中应用访问密钥的条目名（密钥永不进入 settings.json） */
 export const ACCESS_KEY_SECRET_ID = 'app:accessKey'
+/** 清单里的 icon=auto 表示「使用工具包自带 assets/icon.svg」 */
+export const AUTO_TOOL_ICON = 'auto'
 /** 图标未配置 / 配置无效时回退的系统默认图标 key */
 export const DEFAULT_TOOL_ICON = 'default'

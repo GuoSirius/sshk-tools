@@ -1,0 +1,19 @@
+{
+  "//": "IDE 用根项目：把 apps / packages / tools 全部挂到同一个 TS 项目，配合 paths 解析 @sshk/*，消除 .vue 里的 Cannot find module 红波浪线。CI 门禁仍走 tsconfig.base.json（-p 显式指定）。",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [
+    "apps/**/*",
+    "packages/**/*",
+    "tools/**/*",
+    "scripts/**/*",
+    "vitest.config.ts",
+    "eslint.config.js",
+    "commitlint.config.js"
+  ],
+  "exclude": ["node_modules", "**/node_modules", "dist", "out", ".tmp", ".git"]
+}

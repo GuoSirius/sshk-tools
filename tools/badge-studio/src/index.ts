@@ -1,5 +1,6 @@
 export type { StatRow, ParsedDatasource } from './core/datasource.js'
-export { parseDatasource, parseCsvText } from './core/datasource.js'
+export { parseDatasource, parseCsvText, toStatRows } from './core/datasource.js'
+export { parseVisionResult, toCsvText, buildVisionMessages } from './core/vision.js'
 export { normalizeUrl, DEFAULT_URL_NORM } from './core/url-norm.js'
 export type { UrlNormConfig } from './core/url-norm.js'
 export { injectBadges, markBadges } from './core/badge.js'

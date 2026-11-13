@@ -22,6 +22,10 @@ const api = {
   app: {
     version: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.appVersion),
     openDataDir: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appOpenDataDir),
+    /** force=true 走 reloadIgnoringCache（等价 Ctrl+F5） */
+    reload: (force?: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.appReload, Boolean(force)),
+    toggleDevTools: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.appToggleDevTools),
   },
   update: {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
@@ -69,6 +73,19 @@ const api = {
     listPosters: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.badgeListPosters),
     deletePoster: (posterId: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
+    parseImage: (payload: {
+      file: string
+      provider: 'cloud' | 'paddleocr' | 'manual'
+      baseURL?: string
+      model?: string
+      paddleCommand?: string
+      paddleArgs?: string
+    }): Promise<{ rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[]; csv: string; raw: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeParseImage, payload),
+    setVisionKey: (key: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeSetVisionKey, key),
+    visionState: (): Promise<{ hasKey: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.badgeVisionState),
   },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
@@ -77,6 +94,8 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.toolsSetEnabled, id, enabled),
     setGrant: (id: string, grant: string): Promise<unknown> =>
       ipcRenderer.invoke(IPC_CHANNELS.toolsSetGrant, id, grant),
+    setDependencies: (id: string, ids: string[]): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsSetDependencies, id, ids),
     setOverrides: (id: string, overrides: Record<string, string>): Promise<unknown> =>
       ipcRenderer.invoke(IPC_CHANNELS.toolsSetOverrides, id, overrides),
     setDistribution: (ids: string[] | null): Promise<unknown> =>

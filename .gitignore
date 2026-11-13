@@ -8,6 +8,12 @@ out/
 .vite/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
+
+# .vscode：团队共享的 settings.json / extensions.json 必须提交（跨电脑一致的 IDE 解析）；
+# 个人本机覆盖另放 *.local.json，不进仓库
+.vscode/*.local.json
 
 # 临时产物：统一 <repo>/.tmp/<用途>/，用完即删
 .tmp/

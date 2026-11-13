@@ -8,7 +8,9 @@ export interface ParsedDatasource {
   kind: 'xlsx' | 'csv' | 'json' | 'image'
   rows: StatRow[]
   warnings: string[]
-}/** URL / 链接列的候选名（宽松匹配） */
+}
+
+/** URL / 链接列的候选名（宽松匹配） */
 const URL_KEYS = ['url', '链接', '链接地址', 'link', 'href', '地址']
 const CLICKS_KEYS = ['clicks', '点击次数', '点击', 'click_count']
 const TOTAL_KEYS = ['totalclicks', '总点击', '总点击次数', 'total_clicks']
@@ -21,7 +23,8 @@ function pick(row: Record<string, unknown>, keys: string[]): unknown {
   return undefined
 }
 
-function toRows(list: Record<string, unknown>[], warnings: string[]): StatRow[] {
+/** 记录数组 → 标准 StatRow；图片识别 / JSON / xlsx 共用同一套清洗规则 */
+export function toStatRows(list: Record<string, unknown>[], warnings: string[]): StatRow[] {
   const rows: StatRow[] = []
   for (const raw of list) {
     const url = String(pick(raw, URL_KEYS) ?? '').trim()
@@ -64,8 +67,8 @@ export function parseCsvText(text: string, warnings: string[] = []): StatRow[] {
   return rows
 }
 
-/** 四种数据源统一入口（D10）；image 走人工校对文本（OCR 集成留接口）。
- *  xlsx 解析用动态导入：本模块同时被渲染层引用（parseCsvText），不能在顶层引入 Node 侧依赖 */
+/** 表格数据源统一入口（D10）；image 走 vision.ts 的云端模型 / 本机 OCR，
+ *  仍可人工粘贴校对文本。xlsx 动态导入：本模块同时被渲染层引用，不能顶层引入 Node 侧依赖 */
 export async function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', content: Buffer | string): Promise<ParsedDatasource> {
   const warnings: string[] = []
   let rows: StatRow[] = []
@@ -79,7 +82,7 @@ export async function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', c
     case 'json': {
       const data = JSON.parse(String(content)) as unknown
       if (!Array.isArray(data)) throw new Error('JSON 数据源应为对象数组')
-      rows = toRows(data as Record<string, unknown>[], warnings)
+      rows = toStatRows(data as Record<string, unknown>[], warnings)
       break
     }
     case 'xlsx': {
@@ -87,7 +90,7 @@ export async function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', c
       const wb = XLSX.read(content, { type: 'buffer' })
       const sheet = wb.Sheets[wb.SheetNames[0]!]
       if (!sheet) throw new Error('xlsx 无工作表')
-      rows = toRows(XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }), warnings)
+      rows = toStatRows(XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }), warnings)
       break
     }
   }

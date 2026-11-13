@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { app, safeStorage } from 'electron'
 import {
   ConfigService,
@@ -10,7 +11,14 @@ import {
   ensureOutputDirs,
   resolveOutputRoot,
 } from '@sshk/repository'
-import { ACCESS_GRANT, ACCESS_KEY_SECRET_ID } from '@sshk/shared'
+import { chat as llmChat, type LlmProvider } from '@sshk/llm-gateway'
+import {
+  ACCESS_GRANT,
+  ACCESS_KEY_SECRET_ID,
+  mergeToolDefaults,
+  type ToolHostCapabilities,
+} from '@sshk/shared'
+import { MANIFESTS } from './discovery'
 
 export interface AppServices {
   config: ConfigService
@@ -26,22 +34,36 @@ export interface AppServices {
   getAccessKeyState: () => { hasAccessKey: boolean; grants: string[] }
   /** 全量密钥 JSON（zip 导出加密迁移用；默认导出路径拿不到它） */
   exportSecretsJson: () => string
+  /** 暴露给工具插件的宿主能力；应用不依赖工具，工具可依赖这些能力 */
+  host: ToolHostCapabilities
 }
 
 const PROVIDER_ID_RE = /^prv_[0-9a-z]+$/
+const SECRET_PART_RE = /^[a-z][a-z0-9-]{1,32}$/
 
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
+/** 工具专属密钥统一起 app:tool: 前缀，导出备份时自动排除，不混进 Provider 密钥 */
+function toolSecretId(toolId: string, name: string): string {
+  if (!SECRET_PART_RE.test(toolId) || !SECRET_PART_RE.test(name)) {
+    throw new Error(`非法工具密钥标识: ${toolId}/${name}`)
+  }
+  return `app:tool:${toolId}:${name}`
+}
+
 /**
- * 应用级服务装配（M3 → 主进程）：
+ * 应用级服务装配：
  * settings.json / NeDB / 产物目录 / secrets.bin（safeStorage）。
- * 密钥只落 safeStorage 加密文件，不进 settings、不进 zip 明文（D18）。
+ * 工具默认配置来自各工具包 manifest.defaults，宿主不硬编码任何工具的默认值。
  */
 export function setupServices(): AppServices {
   const userData = app.getPath('userData')
-  const config = new ConfigService(defaultConfigPath(userData), DEFAULT_SETTINGS)
+  const config = new ConfigService(
+    defaultConfigPath(userData),
+    mergeToolDefaults(DEFAULT_SETTINGS, MANIFESTS),
+  )
   const dbDir = join(userData, 'db')
   const repository = new Repository(dbDir)
   const outputRoot = resolveOutputRoot(config.get('app.outputDir') as string | null, join(userData, 'sshk-data'))
@@ -67,11 +89,94 @@ export function setupServices(): AppServices {
     writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
   }
 
+  /** 本机 OCR：无 shell、固定超时、限制输出，避免外部命令失控 */
+  function runLocalOcr(req: {
+    command: string
+    args: string[]
+    imagePath: string
+    timeoutMs?: number
+  }): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const command = req.command.trim()
+      if (!command) { reject(new Error('未配置本机 OCR 命令')); return }
+      const args = req.args.map((arg) => arg.replaceAll('{image}', req.imagePath))
+      let child: ReturnType<typeof spawn>
+      try {
+        child = spawn(command, args, { shell: false, windowsHide: true })
+      } catch (err) {
+        reject(new Error(`本机 OCR 启动失败：${(err as Error).message}`))
+        return
+      }
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+      const limit = Math.min(Math.max(req.timeoutMs ?? 60_000, 1_000), 180_000)
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        child.kill()
+        reject(new Error(`本机 OCR 超时（${Math.round(limit / 1000)}s）`))
+      }, limit)
+      child.stdout?.setEncoding('utf8')
+      child.stderr?.setEncoding('utf8')
+      child.stdout?.on('data', (chunk: string) => {
+        if (stdout.length < 2_000_000) stdout += chunk
+      })
+      child.stderr?.on('data', (chunk: string) => {
+        if (stderr.length < 20_000) stderr += chunk
+      })
+      child.on('error', (err) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(new Error(`本机 OCR 启动失败：${err.message}`))
+      })
+      child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (code !== 0) reject(new Error(`本机 OCR 退出码 ${code}：${stderr.slice(0, 500)}`))
+        else resolve(stdout.trim())
+      })
+    })
+  }
+
+  const host: ToolHostCapabilities = {
+    getToolSecret: (toolId, name) => loadSecrets()[toolSecretId(toolId, name)] ?? '',
+    setToolSecret: (toolId, name, value) => {
+      const id = toolSecretId(toolId, name)
+      const secrets = loadSecrets()
+      if (!value) delete secrets[id]
+      else secrets[id] = value
+      saveSecrets(secrets)
+    },
+    chat: async (req) => {
+      const provider: LlmProvider = {
+        _id: 'host-tool-vision',
+        name: 'Tool Vision',
+        kind: 'remote',
+        baseURL: req.baseURL,
+        model: req.model,
+        enabled: true,
+      }
+      const result = await llmChat({
+        provider,
+        apiKey: req.apiKey,
+        messages: req.messages,
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+      })
+      return result.content
+    },
+    runLocalOcr,
+  }
+
   return {
     config,
     repository,
     outputRoot,
     dbDir,
+    host,
     getApiKey: (providerId) => loadSecrets()[providerId] ?? '',
     setApiKey: (providerId, apiKey) => {
       if (!PROVIDER_ID_RE.test(providerId)) throw new Error(`非法 providerId: ${providerId}`)
@@ -94,7 +199,7 @@ export function setupServices(): AppServices {
       const valid = Boolean(key && hash && sha256(key) === hash)
       return { hasAccessKey: valid, grants: valid ? [ACCESS_GRANT] : [] }
     },
-    // 应用访问密钥不参与 provider 迁移，避免导入后被误当成模型密钥
+    // app:* 前缀的工具密钥与访问密钥都不参与 provider 迁移
     exportSecretsJson: () => JSON.stringify({
       providers: Object.entries(loadSecrets())
         .filter(([id]) => !id.startsWith('app:'))

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
@@ -23,11 +23,30 @@ const htmlPath = ref('')
 const pastedHtml = ref('')
 const recentHtmls = ref<RecentHtml[]>([])
 
-// 数据源：文件（xlsx/csv/json）或粘贴 csv 文本（图片 OCR 校对后也走这里）
+// 数据源：文件（xlsx/csv/json）、图片识别（云端视觉 / 本机 PaddleOCR）或粘贴 csv 文本
 const statsFile = ref('')
 const pastedStats = ref('')
 const statRows = ref<StatRow[]>([])
 const statsWarnings = ref<string[]>([])
+
+// 图片识别：模型 / OCR 参数由「工具配置 → 图片识别」统一管理，这里只读取
+const vision = reactive({
+  provider: 'cloud' as 'cloud' | 'paddleocr' | 'manual',
+  baseURL: '',
+  model: '',
+  paddleCommand: '',
+  paddleArgs: '{image}',
+})
+const imageFile = ref('')
+const recognizing = ref(false)
+const visionRaw = ref('')
+const visionKey = ref('')
+const hasVisionKey = ref(false)
+const providerLabel = computed(() => ({
+  cloud: '云端视觉模型',
+  paddleocr: '本机 PaddleOCR',
+  manual: '仅人工校对',
+})[vision.provider])
 
 // 生成结果
 const generating = ref(false)
@@ -42,10 +61,22 @@ const listLoading = ref(false)
 const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
 const hasStats = computed(() => statRows.value.length > 0)
 
+async function textConfig(key: string, fallback: string): Promise<string> {
+  const value = await window.api.config.get(`tools.badge-studio.${key}`)
+  return typeof value === 'string' && value.trim() ? value : fallback
+}
+
 async function loadConfigAndRecent(): Promise<void> {
-  badgeAttr.value = ((await window.api.config.get('tools.badge-studio.badgeAttr')) as string) ?? 'data-edm-badge'
+  badgeAttr.value = await textConfig('badgeAttr', 'data-edm-badge')
   const recent = (await window.api.config.get('tools.badge-studio.recentHtmls')) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
+  const provider = await textConfig('vision.provider', 'cloud')
+  vision.provider = provider === 'paddleocr' || provider === 'manual' ? provider : 'cloud'
+  vision.baseURL = await textConfig('vision.baseURL', '')
+  vision.model = await textConfig('vision.model', '')
+  vision.paddleCommand = await textConfig('vision.paddleCommand', 'python')
+  vision.paddleArgs = await textConfig('vision.paddleArgs', '{image}')
+  hasVisionKey.value = (await window.api.badge.visionState()).hasKey
 }
 
 async function rememberRecent(path: string): Promise<void> {
@@ -104,6 +135,62 @@ function parsePastedStats(): void {
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
+}
+
+async function pickImage(): Promise<void> {
+  const [file] = await window.api.os.pickFile({
+    filters: [{ name: '点击统计图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+  })
+  if (file) imageFile.value = file
+}
+
+/** 图片 → 识别文本 → 标准 StatRow[]；同时回填可人工校对的 CSV */
+async function recognizeImage(): Promise<void> {
+  if (!imageFile.value) {
+    ElMessage.warning('请先选择一张点击统计截图 / 表格图片')
+    return
+  }
+  if (vision.provider === 'manual') {
+    ElMessage.info('当前为「仅人工校对」模式，请在上方文本框粘贴 CSV')
+    return
+  }
+  recognizing.value = true
+  try {
+    const result = await window.api.badge.parseImage({
+      file: imageFile.value,
+      provider: vision.provider,
+      baseURL: vision.baseURL,
+      model: vision.model,
+      paddleCommand: vision.paddleCommand,
+      paddleArgs: vision.paddleArgs,
+    })
+    statRows.value = result.rows
+    statsWarnings.value = result.warnings
+    pastedStats.value = result.csv
+    statsFile.value = ''
+    visionRaw.value = result.raw
+    ElMessage.success(`识别并解析出 ${result.rows.length} 行，请先核对上方数值`)
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    recognizing.value = false
+  }
+}
+
+async function saveVisionKey(): Promise<void> {
+  try {
+    await window.api.badge.setVisionKey(visionKey.value.trim())
+    visionKey.value = ''
+    hasVisionKey.value = (await window.api.badge.visionState()).hasKey
+    ElMessage.success('视觉模型密钥已写入本机凭据库')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  }
+}
+async function clearVisionKey(): Promise<void> {
+  await window.api.badge.setVisionKey('')
+  hasVisionKey.value = false
+  ElMessage.success('视觉模型密钥已清除')
 }
 
 /** 批量补属性：给命中但未带 badgeAttr 的链接补上（只在生成的副本里生效，原文件不动） */
@@ -222,7 +309,7 @@ onMounted(() => {
 <template>
   <ToolPageLayout
     title="Badge Studio"
-    description="上传邮件 HTML + 点击统计 → URL 归一匹配 → 注入 badge 副本 → snapdom 海报长图（原文件永不修改）"
+    description="上传邮件 HTML + 点击统计（表格 / 图片识别 / 粘贴）→ URL 归一匹配 → 注入 badge 副本 → snapdom 海报长图（原文件永不修改）"
   >
     <template #actions>
       <el-button size="small" @click="pickHtml">选择 HTML</el-button>
@@ -271,7 +358,7 @@ onMounted(() => {
         </div>
 
         <div class="panel">
-          <div class="panel-title">点击统计（xlsx / csv / json 上传，或粘贴 csv 文本；图片数据走 OCR 校对后粘贴）</div>
+          <div class="panel-title">点击统计（xlsx / csv / json 上传、图片识别，或粘贴 csv 文本人工校对）</div>
           <el-input
             v-model="pastedStats"
             type="textarea"
@@ -281,6 +368,33 @@ onMounted(() => {
           <el-button size="small" style="margin-top: 8px" @click="parsePastedStats">解析文本</el-button>
           <div v-if="statsWarnings.length" class="warn">{{ statsWarnings.join('；') }}</div>
           <div v-if="hasStats" class="ok">已解析 {{ statRows.length }} 行{{ statsFile ? `（来自 ${statsFile.split(/[\\/]/).pop()}）` : '' }}</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">图片识别（{{ providerLabel }}）</div>
+          <div class="cfg-row">
+            <el-button size="small" @click="pickImage">选择图片</el-button>
+            <el-button size="small" type="primary" :loading="recognizing" @click="recognizeImage">识别为点击数据</el-button>
+            <span class="muted">{{ imageFile ? imageFile.split(/[\\/]/).pop() : '未选择图片' }}</span>
+          </div>
+          <div v-if="vision.provider === 'cloud'" class="cfg-row">
+            <span>模型</span>
+            <span class="muted">{{ vision.model || '未配置' }} · {{ vision.baseURL || '未配置' }}</span>
+          </div>
+          <div v-if="vision.provider === 'cloud'" class="cfg-row">
+            <el-input v-model="visionKey" type="password" show-password size="small" placeholder="视觉模型 API Key" style="max-width: 240px" />
+            <el-button size="small" @click="saveVisionKey">保存密钥</el-button>
+            <el-button size="small" text @click="clearVisionKey">清除</el-button>
+            <el-tag size="small" :type="hasVisionKey ? 'success' : 'info'">{{ hasVisionKey ? '已配置' : '未配置' }}</el-tag>
+          </div>
+          <div v-if="vision.provider === 'paddleocr'" class="cfg-row">
+            <span class="muted">本机命令：{{ vision.paddleCommand }} {{ vision.paddleArgs }}</span>
+          </div>
+          <div class="hint">识别结果会回填到上方 CSV 文本框，请人工核对后再生成；密钥只存系统凭据库，不写入配置文件。识别方式 / 模型 / OCR 命令在左侧「工具配置 → 图片识别」修改。</div>
+          <details v-if="visionRaw" style="margin-top: 6px">
+            <summary class="muted" style="cursor: pointer">查看识别原文</summary>
+            <pre class="raw">{{ visionRaw }}</pre>
+          </details>
         </div>
 
         <div class="panel">
@@ -412,5 +526,19 @@ onMounted(() => {
 .muted {
   opacity: 0.6;
   font-size: 12px;
+}
+.hint {
+  font-size: 12px;
+  opacity: 0.6;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.raw {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  opacity: 0.75;
 }
 </style>

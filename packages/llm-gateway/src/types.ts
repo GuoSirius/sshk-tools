@@ -11,9 +11,15 @@ export interface LlmProvider {
   enabled: boolean
 }
 
+/** OpenAI 兼容多模态分片：文本 + 图片 data URI / URL */
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  /** 纯文本，或 vision 模型的 text / image_url 组合 */
+  content: string | ChatContentPart[]
 }
 
 export interface ChatRequest {

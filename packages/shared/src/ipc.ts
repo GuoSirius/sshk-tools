@@ -8,6 +8,8 @@ export const IPC_CHANNELS = {
   configChanged: 'config:changed',
   appVersion: 'app:version',
   appOpenDataDir: 'app:openDataDir',
+  appReload: 'app:reload',
+  appToggleDevTools: 'app:toggleDevTools',
   backupExport: 'backup:export',
   backupImport: 'backup:import',
   backupRollback: 'backup:rollback',
@@ -39,6 +41,7 @@ export const IPC_CHANNELS = {
   toolsList: 'tools:list',
   toolsSetEnabled: 'tools:setEnabled',
   toolsSetGrant: 'tools:setGrant',
+  toolsSetDependencies: 'tools:setDependencies',
   toolsSetOverrides: 'tools:setOverrides',
   toolsSetDistribution: 'tools:setDistribution',
   toolsCleanupOrphans: 'tools:cleanupOrphans',
@@ -52,6 +55,10 @@ export const IPC_CHANNELS = {
   badgeSavePosterPng: 'badge:savePosterPng',
   badgeListPosters: 'badge:listPosters',
   badgeDeletePoster: 'badge:deletePoster',
+  /** 图片数据源：读取图片 / 视觉识别 / 工具专属密钥（PaddleOCR 与云端模型共用） */
+  badgeParseImage: 'badge:parseImage',
+  badgeSetVisionKey: 'badge:setVisionKey',
+  badgeVisionState: 'badge:visionState',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

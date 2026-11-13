@@ -20,7 +20,8 @@ describe('ConfigService', () => {
   it('无文件时返回默认值', () => {
     const cfg = new ConfigService(tempFile(), DEFAULT_SETTINGS)
     expect(cfg.get('app.themeMode')).toBe('dark')
-    expect(cfg.get('tools.badge-studio.badgeAttr')).toBe('data-edm-badge')
+    // 工具默认值来自各工具包 manifest，宿主 DEFAULT_SETTINGS 不再硬编码任何工具
+    expect(cfg.listToolIds()).toEqual([])
   })
 
   it('set 后原子落盘并重读一致', () => {

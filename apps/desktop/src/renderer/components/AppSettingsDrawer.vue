@@ -105,18 +105,27 @@ async function saveDistribution(): Promise<void> {
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
 const form = reactive({ name: '', description: '', category: '', icon: '' })
+/** 图标归工具包自己（auto），宿主不再内置任何工具专属图标 */
 const iconOptions = [
-  { label: 'EDM 信封（内置）', value: 'edm' },
-  { label: 'Badge 徽章（内置）', value: 'badge' },
-  { label: 'Model 芯片（内置）', value: 'model' },
+  { label: '工具包自带图标（auto）', value: 'auto' },
   { label: '系统默认（回退）', value: 'default' },
+  { label: '不配置（回退）', value: '' },
 ]
 function startEdit(tool: ToolRuntimeState): void {
   editing.value = tool.id
   form.name = tool.name
   form.description = tool.description
-  form.category = tool.category
+  form.category = tool.categories.join('、')
   form.icon = tool.icon
+}
+function otherTools(tool: ToolRuntimeState): ToolRuntimeState[] {
+  return payload.value.tools.filter((item) => item.id !== tool.id)
+}
+function pluginState(tool: ToolRuntimeState): string {
+  const state = payload.value.pluginStatus[tool.id]
+  if (!state) return '无主进程插件'
+  if (state.loaded) return '插件已加载'
+  return `插件失败：${state.error ?? '未知原因'}`
 }
 async function saveOverrides(id: string): Promise<void> {
   accept(await window.api.tools.setOverrides(id, { ...form }))
@@ -126,7 +135,7 @@ async function saveOverrides(id: string): Promise<void> {
 async function resetOverrides(id: string): Promise<void> {
   accept(await window.api.tools.setOverrides(id, { name: '', description: '', category: '', icon: '' }))
   editing.value = null
-  ElMessage.success('已恢复注册表默认值')
+  ElMessage.success('已恢复工具包清单默认值')
 }
 async function toggleEnabled(tool: ToolRuntimeState, value: boolean): Promise<void> {
   if (!value) {
@@ -146,6 +155,10 @@ async function toggleEnabled(tool: ToolRuntimeState, value: boolean): Promise<vo
 }
 async function setGrant(tool: ToolRuntimeState, grant: string): Promise<void> {
   accept(await window.api.tools.setGrant(tool.id, grant))
+}
+async function setDependencies(tool: ToolRuntimeState, ids: string[]): Promise<void> {
+  accept(await window.api.tools.setDependencies(tool.id, ids))
+  ElMessage.success('工具依赖已保存（默认零依赖）')
 }
 async function cleanupOrphans(): Promise<void> {
   accept(await window.api.tools.cleanupOrphans())
@@ -244,7 +257,7 @@ async function cleanupOrphans(): Promise<void> {
 
             <section class="settings-card">
               <div class="card-title">分发白名单</div>
-              <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见。删除工具时请从注册表移除条目，残留配置会在下方提示清理。</div>
+              <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见。删除工具包后残留的配置会在下方提示清理。</div>
               <div class="inline-form">
                 <el-select v-model="distribution" multiple collapse-tags clearable placeholder="全部工具" style="min-width: 340px">
                   <el-option v-for="tool in payload.tools" :key="tool.id" :label="tool.name" :value="tool.id" />
@@ -263,10 +276,10 @@ async function cleanupOrphans(): Promise<void> {
               <div class="card-title">工具管理（{{ payload.tools.length }}）</div>
               <div v-for="tool in payload.tools" :key="tool.id" class="tool-manage-row">
                 <div class="tool-manage-head">
-                  <ToolIcon :icon="tool.icon" :name="tool.name" :size="36" />
+                  <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="36" />
                   <div class="tool-manage-title">
                     <strong>{{ tool.name }}</strong>
-                    <small>{{ tool.category }} · {{ tool.id }}</small>
+                    <small>{{ tool.categories.join(' / ') }} · {{ tool.id }}</small>
                   </div>
                   <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
                   <el-switch :model-value="tool.enabled" size="small" @change="(v: unknown) => toggleEnabled(tool, Boolean(v))" />
@@ -280,6 +293,7 @@ async function cleanupOrphans(): Promise<void> {
                     <el-option label="公开" value="" />
                     <el-option label="需访问密钥" :value="ACCESS_GRANT" />
                   </el-select>
+                  <span :class="['meta-chip', { 'meta-chip-warn': tool.pluginError }]">{{ pluginState(tool) }}</span>
                   <span v-if="tool.dependsOn.length" class="meta-chip">硬依赖：{{ tool.dependsOn.join('、') }}</span>
                   <span v-if="tool.configDeps.length" class="meta-chip">软依赖：{{ tool.configDeps.map((d) => d.toolId).join('、') }}</span>
                 </div>
@@ -288,12 +302,28 @@ async function cleanupOrphans(): Promise<void> {
                   <el-form label-width="90px" size="small">
                     <el-form-item label="显示名称"><el-input v-model="form.name" /></el-form-item>
                     <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-                    <el-form-item label="分类 / 标签"><el-input v-model="form.category" /></el-form-item>
+                    <el-form-item label="分类 / 标签">
+                      <el-input v-model="form.category" />
+                      <div class="hint">多个分类用逗号 / 顿号 / 分号分隔，例如：邮件营销、数据分析</div>
+                    </el-form-item>
                     <el-form-item label="图标">
                       <el-select v-model="form.icon" filterable allow-create default-first-option style="width: 100%">
                         <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                       </el-select>
-                      <div class="hint">可选内置图标，或直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标</div>
+                      <div class="hint">auto = 工具包自带 assets/icon.svg；也可直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标</div>
+                    </el-form-item>
+                    <el-form-item label="硬依赖">
+                      <el-select
+                        :model-value="tool.dependsOn"
+                        multiple
+                        clearable
+                        placeholder="默认零依赖（禁用其它工具不影响本工具）"
+                        style="width: 100%"
+                        @change="(v: unknown) => setDependencies(tool, Array.isArray(v) ? v.map(String) : [])"
+                      >
+                        <el-option v-for="other in otherTools(tool)" :key="other.id" :label="other.name" :value="other.id" />
+                      </el-select>
+                      <div class="hint">依赖工具不可见时，本工具一并隐藏；清空即恢复零依赖隔离</div>
                     </el-form-item>
                   </el-form>
                   <div class="card-actions">
@@ -324,11 +354,12 @@ async function cleanupOrphans(): Promise<void> {
                 <thead><tr><th>层级</th><th>落盘</th><th>入口</th></tr></thead>
                 <tbody>
                   <tr><td>应用 / 系统</td><td><code>app.*</code></td><td>顶部「设置」→ 常规 / 工具与权限 / 系统与数据</td></tr>
-                  <tr><td>工具自有</td><td><code>tools.&lt;id&gt;.*</code></td><td>工具左侧「工具配置」二级菜单</td></tr>
+                  <tr><td>工具自有</td><td><code>tools.&lt;id&gt;.*</code></td><td>工具左侧「工具配置」页（single / tabs / menu 由工具包清单声明）</td></tr>
+                  <tr><td>工具清单</td><td><code>tools/&lt;id&gt;/tool.manifest.json</code></td><td>名称、描述、多分类标签、图标、菜单、配置项、默认配置、依赖、权限、插件入口</td></tr>
                   <tr><td>密钥</td><td><code>secrets.bin</code>（safeStorage）</td><td>主进程注入，永不下发渲染层</td></tr>
                 </tbody>
               </table>
-              <div class="hint" style="margin-top: 12px">后期新增应用级菜单只需在本抽屉加一个分组；新增工具只需在 packages/shared/src/tool-catalog.ts 注册一条（菜单、图标、配置项、依赖、权限一并声明）。</div>
+              <div class="hint" style="margin-top: 12px">后期新增应用级菜单只需在本抽屉加一个分组；新增工具只需把工具包放进 <code>tools/&lt;id&gt;/</code> 并写好自己的 tool.manifest.json —— 宿主构建期自动发现，零改动接入。运行时导入 / 安装 / 卸载外部工具包已列入后续路线图。</div>
             </section>
           </template>
         </div>

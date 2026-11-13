@@ -1,25 +1,19 @@
 <script setup lang="ts">
 import {
-  computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch,
-  type Component, type Ref,
+  computed, onBeforeUnmount, onMounted, ref, watch,
+  type Ref,
 } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolMenu } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
+import { toolComponent } from './plugins'
 import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
 import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import logoUrl from '../../build/icon.svg'
-
-// 工具页按需加载；新增工具在此登记一条映射即可
-const TOOL_COMPONENTS: Record<string, Component> = {
-  'model-console': defineAsyncComponent(() => import('@sshk/model-console/renderer')),
-  'badge-studio': defineAsyncComponent(() => import('@sshk/badge-studio/renderer')),
-  'edm-studio': defineAsyncComponent(() => import('@sshk/edm-studio/renderer')),
-}
 
 const { mode, setMode } = useTheme()
 const { visibleTools: catalogTools, byId } = useToolCatalog()
@@ -39,11 +33,26 @@ let closeTimer: number | undefined
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
 const currentTool = computed(() => byId.value.get(activeToolId.value ?? '') ?? null)
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
+// 渲染插件按清单动态加载，单个工具组件失败只影响它自己
+const toolView = computed(() => currentTool.value ? toolComponent(currentTool.value.id) : null)
 const visibleTools = computed(() => {
   const keyword = query.value.trim().toLowerCase()
   if (!keyword) return catalogTools.value
   return catalogTools.value.filter((tool) =>
-    `${tool.name} ${tool.description} ${tool.category}`.toLowerCase().includes(keyword))
+    `${tool.name} ${tool.description} ${tool.categories.join(' ')}`.toLowerCase().includes(keyword))
+})
+
+/**
+ * configLayout=menu 时把配置分组挂成「工具配置」的二级菜单；
+ * single（默认）/tabs 都不生成左侧二级菜单，消除双重导航的割裂感。
+ */
+const sidebarMenus = computed(() => {
+  const tool = currentTool.value
+  if (!tool) return []
+  if (tool.configLayout !== 'menu') return tool.menus
+  return tool.menus.map((menu) => menu.id === 'config'
+    ? { ...menu, children: tool.configGroups.map((group) => ({ id: group.id, label: group.label })) }
+    : menu)
 })
 
 const themeOptions: { label: string; value: ThemeMode }[] = [
@@ -81,9 +90,9 @@ function openTool(id: string): void {
   const tool = byId.value.get(id)
   if (!tool?.visible) return
   activeToolId.value = id
-  activeMenu.value = tool.menus[0]?.id ?? ''
-  sideOpenIds.value = new Set(pathTo(tool.menus, activeMenu.value) ?? [])
-  flyoutOpenIds.value = new Set(collectGroupIds(tool.menus))
+  activeMenu.value = sidebarMenus.value[0]?.id ?? ''
+  sideOpenIds.value = new Set(pathTo(sidebarMenus.value, activeMenu.value) ?? [])
+  flyoutOpenIds.value = new Set(collectGroupIds(sidebarMenus.value))
   flyoutOpen.value = false
 }
 function goHome(): void { activeToolId.value = null; flyoutOpen.value = false }
@@ -95,13 +104,16 @@ function openSettings(group = 'general'): void {
 }
 function onMoreCommand(command: string): void {
   if (command === 'dataDir') openDataDir()
+  else if (command === 'reload') void window.api.app.reload()
+  else if (command === 'reloadForce') void window.api.app.reload(true)
+  else if (command === 'devtools') void window.api.app.toggleDevTools()
   else if (command === 'tools') openSettings('tools')
   else if (command === 'system') openSettings('system')
   else if (command === 'about') openSettings('about')
   else openSettings('general')
 }
 
-// 工具被禁用 / 权限撤销 / 分发剔除后，自动退回桌面，避免停留在不可见工具页
+// 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
 watch(catalogTools, (list) => {
   if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
 })
@@ -119,7 +131,7 @@ function scheduleClose(): void {
 function onSidebarEnter(): void { if (sidebarCollapsed.value) openFlyout() }
 function toggleSideGroup(id: string): void {
   if (sidebarCollapsed.value) {
-    flyoutOpenIds.value = new Set(collectGroupIds(currentTool.value?.menus ?? []))
+    flyoutOpenIds.value = new Set(collectGroupIds(sidebarMenus.value))
     openFlyout()
     return
   }
@@ -128,7 +140,7 @@ function toggleSideGroup(id: string): void {
 function toggleFlyoutGroup(id: string): void { toggleIn(flyoutOpenIds, id) }
 function selectMenu(id: string): void {
   activeMenu.value = id
-  const path = pathTo(currentTool.value?.menus ?? [], id) ?? []
+  const path = pathTo(sidebarMenus.value, id) ?? []
   sideOpenIds.value = new Set([...sideOpenIds.value, ...path])
   flyoutOpen.value = false
 }
@@ -181,7 +193,10 @@ onMounted(async () => {
         <el-button size="small" text>更多 ▾</el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
+            <el-dropdown-item command="reload">刷新页面（F5 / Ctrl+R）</el-dropdown-item>
+            <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
+            <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
+            <el-dropdown-item command="dataDir" divided>数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
             <el-dropdown-item command="about">关于</el-dropdown-item>
@@ -208,14 +223,14 @@ onMounted(async () => {
       >
         <div class="sidebar-menu">
           <div class="sidebar-head">
-            <ToolIcon :icon="currentTool.icon" :name="currentTool.name" :size="28" />
+            <ToolIcon :icon="currentTool.icon" :tool-id="currentTool.id" :name="currentTool.name" :size="28" />
             <div class="sidebar-head-text">
               <strong>{{ currentTool.name }}</strong>
-              <small>{{ currentTool.category }}</small>
+              <small>{{ currentTool.categories.join(' / ') }}</small>
             </div>
           </div>
           <SidebarMenu
-            :items="currentTool.menus"
+            :items="sidebarMenus"
             :active="activeMenu"
             :open-ids="sideOpenIds"
             :show-children="!sidebarCollapsed"
@@ -248,7 +263,7 @@ onMounted(async () => {
           @mouseleave="scheduleClose"
         >
           <div class="flyout-head">
-            <ToolIcon :icon="currentTool.icon" :name="currentTool.name" :size="28" />
+            <ToolIcon :icon="currentTool.icon" :tool-id="currentTool.id" :name="currentTool.name" :size="28" />
             <div class="flyout-title">
               <strong>{{ currentTool.name }}</strong>
               <small>全部功能菜单</small>
@@ -256,7 +271,7 @@ onMounted(async () => {
           </div>
           <div class="flyout-body">
             <SidebarMenu
-              :items="currentTool.menus"
+              :items="sidebarMenus"
               :active="activeMenu"
               :open-ids="flyoutOpenIds"
               :toggle-group="toggleFlyoutGroup"
@@ -281,11 +296,11 @@ onMounted(async () => {
           <div class="desktop">
             <div class="desktop-grid">
               <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)">
-                <ToolIcon :icon="tool.icon" :name="tool.name" :size="44" />
+                <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="44" />
                 <h3 style="margin: 14px 0 6px">{{ tool.name }}</h3>
                 <p class="muted" style="margin: 0; line-height: 1.6">{{ tool.description }}</p>
                 <div class="card-tags">
-                  <el-tag size="small">{{ tool.category }}</el-tag>
+                  <el-tag v-for="tag in tool.categories" :key="tag" size="small">{{ tag }}</el-tag>
                   <el-tag v-if="tool.requiredGrant" size="small" type="warning">需密钥</el-tag>
                   <span v-if="tool.warnings.length" class="card-warn" :title="tool.warnings.join('；')">依赖提示</span>
                 </div>
@@ -295,23 +310,23 @@ onMounted(async () => {
           </div>
         </template>
 
-        <!-- 工具内页：工具配置 / 工具页（menu 驱动视图） -->
+        <!-- 工具内页：工具配置 / 插件页面（menu 驱动视图） -->
         <template v-else-if="isConfigMenu">
-          <ToolSettingsPage :tool-id="currentTool.id" :section="activeMenu" />
+          <ToolSettingsPage
+            :tool-id="currentTool.id"
+            :section="activeMenu"
+            :layout="currentTool.configLayout"
+          />
         </template>
         <template v-else>
-          <component
-            :is="TOOL_COMPONENTS[currentTool.id]"
-            v-if="TOOL_COMPONENTS[currentTool.id]"
-            :menu="activeMenu"
-          />
+          <component :is="toolView" v-if="toolView" :menu="activeMenu" />
           <template v-else>
             <div class="tool-page-head">
               <strong>{{ currentTool.name }}</strong>
               <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
             </div>
             <div class="tool-page-body">
-              <div class="empty-state">该工具的功能页尚未登记组件映射</div>
+              <div class="empty-state">该工具没有可用的渲染插件</div>
             </div>
             <div class="tool-page-foot muted">共 0 项 · 已选 0 项</div>
           </template>

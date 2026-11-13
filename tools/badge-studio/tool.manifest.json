@@ -1,0 +1,107 @@
+{
+  "id": "badge-studio",
+  "name": "Badge Studio",
+  "description": "上传点击统计与邮件 HTML，注入 badge 并生成海报长图；支持图片/截图识别为点击数据",
+  "category": ["邮件营销", "数据分析"],
+  "tags": ["OCR 识别", "海报生成"],
+  "icon": "auto",
+  "entryRoute": "generate",
+  "enabled": true,
+  "configLayout": "single",
+  "plugin": {
+    "source": "builtin",
+    "main": "src/main/index.ts",
+    "renderer": "src/renderer/BadgeStudioPage.vue",
+    "channels": [
+      "badge:generate", "badge:regenerate", "badge:parseDatasource", "badge:readHtml",
+      "badge:markBadges", "badge:savePosterPng", "badge:listPosters", "badge:deletePoster",
+      "badge:parseImage", "badge:setVisionKey", "badge:visionState"
+    ]
+  },
+  "dependsOn": [],
+  "configDeps": [],
+  "requiredGrant": "",
+  "menus": [
+    { "id": "generate", "label": "生成海报" },
+    { "id": "posters", "label": "海报列表" },
+    { "id": "config", "label": "工具配置" }
+  ],
+  "configGroups": [
+    {
+      "id": "config-badge",
+      "label": "角标",
+      "fields": [
+        { "key": "badgeAttr", "label": "badge 属性", "type": "string", "hint": "注入到 HTML 的自定义属性名" },
+        {
+          "key": "clicksField", "label": "角标数值列", "type": "select",
+          "options": [
+            { "label": "clicks", "value": "clicks" },
+            { "label": "totalClicks", "value": "totalClicks" }
+          ]
+        },
+        { "key": "posterWidth", "label": "海报宽度", "type": "number", "min": 320, "max": 1600 },
+        { "key": "scale", "label": "截图像素比", "type": "number", "min": 1, "max": 4 }
+      ]
+    },
+    {
+      "id": "config-url",
+      "label": "URL 归一",
+      "fields": [
+        { "key": "urlNorm.stripUtm", "label": "去 UTM 参数", "type": "boolean" },
+        { "key": "urlNorm.stripHash", "label": "去 hash", "type": "boolean" },
+        { "key": "urlNorm.stripTrailingSlash", "label": "去末尾斜杠", "type": "boolean" },
+        { "key": "urlNorm.sortQuery", "label": "查询参数排序", "type": "boolean" },
+        { "key": "urlNorm.lowercaseHost", "label": "域名小写", "type": "boolean" }
+      ]
+    },
+    {
+      "id": "config-vision",
+      "label": "图片识别",
+      "fields": [
+        {
+          "key": "vision.provider", "label": "识别方式", "type": "select",
+          "options": [
+            { "label": "云端视觉模型", "value": "cloud" },
+            { "label": "本机 PaddleOCR", "value": "paddleocr" },
+            { "label": "仅人工校对", "value": "manual" }
+          ],
+          "hint": "API Key 在生成页填写，只存系统凭据库，不写入配置文件"
+        },
+        { "key": "vision.baseURL", "label": "模型 Base URL", "type": "string", "hint": "OpenAI 兼容 /v1 地址" },
+        { "key": "vision.model", "label": "模型名", "type": "string" },
+        { "key": "vision.paddleCommand", "label": "本机 OCR 命令", "type": "string", "hint": "可执行文件，如 python / conda 环境下的 python.exe 绝对路径" },
+        { "key": "vision.paddleArgs", "label": "命令参数", "type": "string", "hint": "支持双引号包裹；{image} 会替换为图片绝对路径" }
+      ]
+    },
+    {
+      "id": "config-poster",
+      "label": "海报",
+      "fields": [
+        { "key": "commonHtmlDir", "label": "常用 HTML 目录", "type": "string", "hint": "留空则不启用" }
+      ]
+    }
+  ],
+  "defaults": {
+    "enabled": true,
+    "requiredGrant": "",
+    "dependsOn": [],
+    "badgeAttr": "data-edm-badge",
+    "badgeStyle": { "background": "#e60012", "color": "#fff", "size": 18, "offsetY": -9, "offsetX": -11 },
+    "clicksField": "clicks",
+    "urlNorm": {
+      "stripUtm": true, "stripHash": true, "stripTrailingSlash": true,
+      "sortQuery": true, "lowercaseHost": true
+    },
+    "posterWidth": 680,
+    "scale": 2,
+    "recentHtmls": [],
+    "commonHtmlDir": null,
+    "vision": {
+      "provider": "cloud",
+      "baseURL": "https://apihub.agnes-ai.com/v1",
+      "model": "agnes-3.0-flash",
+      "paddleCommand": "python",
+      "paddleArgs": "{image}"
+    }
+  }
+}
