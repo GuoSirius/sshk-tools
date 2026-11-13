@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
@@ -14,10 +14,9 @@ interface RecentHtml {
 }
 
 const props = defineProps<{ menu?: string }>()
-// 菜单由侧栏控制；海报列表点「预览」时内部切回生成视图展示（预览区只在生成视图渲染）
-const localView = ref<string | null>(null)
-const view = computed(() => localView.value ?? props.menu ?? 'generate')
-watch(() => props.menu, () => { localView.value = null })
+const emit = defineEmits<{ navigate: [menu: string] }>()
+// 视图由侧栏菜单驱动；页面内需要切视图时 emit navigate 让宿主同步菜单与路由
+const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
 // 角标样式 / URL 归一 / 海报尺寸全部来自工具配置，生成页不再写死
 const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 })
@@ -484,7 +483,7 @@ async function editPoster(row: PosterRecord): Promise<void> {
   badgeAttr.value = row.configSnapshot.badgeAttr || badgeAttr.value
   clicksField.value = row.configSnapshot.clicksField || clicksField.value
   currentPosterId.value = row._id
-  localView.value = "generate"
+  emit('navigate', 'generate')
   ElMessage.success("已载入「" + row.name + "」到工作区，改完点「生成海报」覆盖该海报")
 }
 async function exportPosterHtml(row: PosterRecord): Promise<void> {
@@ -524,8 +523,8 @@ async function batchDeletePosters(): Promise<void> {
 }
 async function openPoster(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  // 预览区在生成视图中：先切回去再加载，否则「点了没反应」
-  localView.value = 'generate'
+  // 预览区在生成视图中：emit navigate 同步侧栏菜单，否则「点了没反应」
+  emit('navigate', 'generate')
   const { html } = await window.api.badge.readHtml(row.outputs.badged)
   previewHtml.value = html
   currentPosterId.value = row._id
@@ -597,6 +596,7 @@ onMounted(() => {
 
 <template>
   <ToolPageLayout
+    :hide-head="view === 'posters'"
     title="Badge Studio"
     description="邮件 HTML + 点击统计（文件 / 粘贴 / 多图识别）→ 可编辑表格人工校对 → 注入 badge 副本 → 海报长图（原文件永不修改）"
   >
@@ -893,7 +893,8 @@ onMounted(() => {
         <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
       </div>
-      <el-table v-if="posters.length > 0" v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" @selection-change="onSelectionChange">
+      <div v-if="posters.length > 0" class="table-flex-wrap">
+      <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column label="生成时间" width="160">
@@ -924,6 +925,7 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <EmptyState v-else description="还没有海报记录" />
       <div v-if="posters.length > 0" class="page-bar">
         <el-pagination
@@ -1106,14 +1108,10 @@ onMounted(() => {
   margin-top: 6px;
 }
 .poster-list-card {
-  flex: 1;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 320px;
-}
-.poster-list-card :deep(.el-table) {
-  flex: 1;
-  min-height: 0;
+  overflow: hidden;
 }
 .page-bar {
   display: flex;

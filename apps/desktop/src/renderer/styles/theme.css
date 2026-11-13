@@ -447,3 +447,28 @@ body {
 .about-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .about-table th, .about-table td { border: 1px solid var(--sshk-border); padding: 8px; text-align: left; }
 .about-table th { background: var(--sshk-hover); }
+
+/* ── el-table 全局暗色/主题适配（所有工具的表格统一，配色跟随 --sshk-* 主题） ── */
+.el-table {
+  --el-table-bg-color: var(--sshk-panel);
+  --el-table-tr-bg-color: var(--sshk-panel);
+  --el-table-header-bg-color: var(--sshk-bg);
+  --el-table-header-text-color: var(--sshk-text);
+  --el-table-text-color: var(--sshk-text);
+  --el-table-row-hover-bg-color: var(--sshk-hover, rgba(79, 140, 255, 0.08));
+  --el-table-border-color: var(--sshk-border);
+  --el-table-expanded-cell-bg-color: var(--sshk-panel);
+  border-radius: 6px;
+  flex: 1;
+  min-height: 0;
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+/* 三段式表格容器：顶操作 / 中表格撑满滚动 / 底分页 */
+.table-flex-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
