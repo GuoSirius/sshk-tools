@@ -87,14 +87,26 @@ function toggleIn(target: Ref<Set<string>>, id: string): void {
   target.value = next
 }
 
+const ROUTE_KEY = 'sshk.route'
+function rememberRoute(): void {
+  try {
+    if (activeToolId.value) sessionStorage.setItem(ROUTE_KEY, JSON.stringify({ tool: activeToolId.value, menu: activeMenu.value }))
+    else sessionStorage.removeItem(ROUTE_KEY)
+  } catch { /* 隐私模式等场景忽略 */ }
+}
 function openTool(id: string): void {
   const tool = byId.value.get(id)
   if (!tool?.visible) return
   activeToolId.value = id
   activeMenu.value = sidebarMenus.value[0]?.id ?? ''
   sideOpenIds.value = new Set(pathTo(sidebarMenus.value, activeMenu.value) ?? [])
+  rememberRoute()
 }
-function goHome(): void { activeToolId.value = null; sidebarHover.value = false }
+function goHome(): void {
+  activeToolId.value = null
+  sidebarHover.value = false
+  try { sessionStorage.removeItem(ROUTE_KEY) } catch { /* 忽略 */ }
+}
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
 function openSettings(group = 'general'): void {
@@ -130,10 +142,26 @@ function onMoreCommand(command: string): void {
   else openSettings('general')
 }
 
-// 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
+// 工具被禁用 / 权限撤销 / 分发分发剔除 / 插件加载失败后自动退回桌面
 watch(catalogTools, (list) => {
   if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
 })
+
+// 刷新（F5 / reload）后恢复上次页面：catalog 就绪即打开，sessionStorage 生命周期与应用一致
+let pendingRoute: { tool?: string; menu?: string } | null = null
+try {
+  pendingRoute = JSON.parse(sessionStorage.getItem(ROUTE_KEY) ?? 'null')
+} catch { pendingRoute = null }
+watch(catalogTools, (list) => {
+  if (!pendingRoute?.tool) return
+  const hit = list.find((tool) => tool.id === pendingRoute!.tool)
+  if (hit?.visible) {
+    activeToolId.value = hit.id
+    activeMenu.value = pendingRoute.menu || hit.menus[0]?.id || ''
+    sideOpenIds.value = new Set(pathTo(sidebarMenus.value, activeMenu.value) ?? [])
+  }
+  pendingRoute = null
+}, { once: true })
 
 // ── 侧栏：同一棵菜单树，收起后 hover 让侧栏本体平滑变宽，不弹独立浮层 ──
 function onSidebarEnter(): void {
@@ -152,6 +180,7 @@ function selectMenu(id: string): void {
   activeMenu.value = id
   const path = pathTo(sidebarMenus.value, id) ?? []
   sideOpenIds.value = new Set([...sideOpenIds.value, ...path])
+  rememberRoute()
 }
 
 watch(sidebarCollapsed, (collapsed) => { if (!collapsed) sidebarHover.value = false })

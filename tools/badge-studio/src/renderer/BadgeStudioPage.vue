@@ -49,6 +49,16 @@ const visionModel = ref('')
 const modelOptions = ref<string[]>([])
 const modelsLoading = ref(false)
 const imageFiles = ref<string[]>([])
+const imageThumbs = reactive<Record<string, string>>({})
+const previewList = computed(() => imageFiles.value.map((file) => imageThumbs[file] ?? ''))
+async function loadThumb(file: string): Promise<void> {
+  if (imageThumbs[file]) return
+  try {
+    imageThumbs[file] = await window.api.os.readDataUri(file)
+  } catch (err) {
+    ElMessage.warning('图片预览加载失败：' + (err as Error).message)
+  }
+}
 const recognizing = ref(false)
 const visionRaw = ref('')
 const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT })
@@ -278,7 +288,10 @@ async function pickImages(): Promise<void> {
     filters: [{ name: '点击统计图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
     multi: true,
   })
-  if (files.length) imageFiles.value = files
+  if (files.length) {
+    imageFiles.value = files
+    for (const file of files) void loadThumb(file)
+  }
 }
 
 /** 多张图片逐张识别，结果合并进同一张可编辑表格，人工核对后才可生成 */
@@ -589,7 +602,36 @@ onMounted(() => {
         </div>
 
         <div class="panel">
-          <div class="panel-title">图片识别 · 支持多选（配置就地修改，保存为默认后重启沿用）</div>
+          <div class="panel-title">图片识别（配置就地修改，保存为默认后重启沿用）</div>
+          <div v-if="imageFiles.length" class="image-list-panel">
+            <div class="panel-title">已选图片（{{ imageFiles.length }} 张）· 点图放大核对内容</div>
+            <div class="image-strip">
+              <div v-for="(file, index) in imageFiles" :key="file" class="image-item">
+                <el-image
+                  :src="imageThumbs[file] ?? ''"
+                  fit="cover"
+                  class="image-thumb"
+                  :preview-src-list="previewList"
+                  :initial-index="index"
+                  hide-on-click-modal
+                  preview-teleported
+                  @error="() => loadThumb(file)"
+                >
+                  <template #error>
+                    <div class="image-thumb-fallback" @click="() => loadThumb(file)">加载</div>
+                  </template>
+                </el-image>
+                <el-button class="image-remove" size="small" text type="danger" @click="imageFiles.splice(index, 1)">×</el-button>
+                <span class="image-name" :title="file">{{ file.split(/[\\/]/).pop() }}</span>
+              </div>
+            </div>
+            <div class="cfg-row" style="margin-top: 6px">
+              <el-button size="small" type="primary" :loading="recognizing" :disabled="vision.provider === 'manual'" @click="recognizeImages">
+                识别并追加到表格（{{ imageFiles.length }} 张）
+              </el-button>
+            </div>
+          </div>
+
           <div class="cfg-row">
             <span>识别方式</span>
             <el-radio-group v-model="vision.provider" size="small">
@@ -597,17 +639,6 @@ onMounted(() => {
               <el-radio-button value="paddleocr">本机 PaddleOCR</el-radio-button>
               <el-radio-button value="manual">仅人工校对</el-radio-button>
             </el-radio-group>
-          </div>
-          <div v-if="imageFiles.length" class="image-list">
-            <el-tag
-              v-for="(file, index) in imageFiles"
-              :key="file"
-              size="small"
-              closable
-              @close="imageFiles.splice(index, 1)"
-            >
-              {{ file.split(/[\\/]/).pop() }}
-            </el-tag>
           </div>
 
           <template v-if="vision.provider === 'cloud'">
@@ -648,10 +679,13 @@ onMounted(() => {
             <div class="cfg-row">
               <span>命令</span>
               <div class="path-row" style="flex: 1">
-                <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径" />
+                <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径（选择或手动填写）" />
                 <el-button size="small" @click="pickPython">选择文件</el-button>
-                <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="flex: 1" />
               </div>
+            </div>
+            <div class="cfg-row">
+              <span>参数</span>
+              <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="max-width: 420px" />
             </div>
             <div class="cfg-row">
               <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>
@@ -668,12 +702,9 @@ onMounted(() => {
             仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
           </div>
 
-          <div class="cfg-row">
-            <el-button size="small" type="primary" :loading="recognizing" :disabled="imageFiles.length === 0 || vision.provider === 'manual'" @click="recognizeImages">
-              识别并追加到表格（{{ imageFiles.length || 0 }} 张）
-            </el-button>
-            <el-button v-if="vision.provider !== 'manual'" size="small" @click="saveVisionConfig">保存为默认配置</el-button>
-            <span class="muted" v-if="vision.provider !== 'manual'">不保存则本次会话内有效</span>
+          <div v-if="vision.provider !== 'manual'" class="cfg-row">
+            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
+            <span class="muted">不保存则本次会话内有效</span>
           </div>
 
           <details v-if="visionRaw" style="margin-top: 6px">
@@ -768,13 +799,58 @@ onMounted(() => {
   gap: 10px;
   align-items: start;
 }
-/* 右列（配置+预览）sticky：吃掉剩余视口高度，预览铺满剩余空间 */
+/* 右列（配置+预览）sticky：直接占满剩余视口高度，预览 panel 吃掉全部剩余空间 */
 .side-preview {
   position: sticky;
   top: 0;
-  max-height: calc(100vh - 150px);
+  height: calc(100vh - 150px);
   display: flex;
   flex-direction: column;
+}
+.image-list-panel {
+  margin-top: 8px;
+  border: 1px dashed rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  padding: 8px;
+}
+.image-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.image-item {
+  position: relative;
+  width: 88px;
+}
+.image-thumb {
+  width: 88px;
+  height: 64px;
+  border-radius: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  cursor: zoom-in;
+  background: rgba(128, 128, 128, 0.08);
+}
+.image-thumb-fallback {
+  width: 88px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  opacity: 0.6;
+}
+.image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 2px 6px;
+}
+.image-name {
+  display: block;
+  font-size: 10px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .col {
   display: flex;
@@ -797,6 +873,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .preview-frame {
   max-width: 100%;

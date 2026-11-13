@@ -75,6 +75,8 @@ const api = {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
       invoke(IPC_CHANNELS.osPickFile, opts),
     pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
+    /** 图片预览：本地图片转 data URI（限 10MB） */
+    readDataUri: (file: string): Promise<string> => invoke(IPC_CHANNELS.osReadDataUri, file),
     /** 保存对话框（导出备份等） */
     pickSave: (opts?: { fileName?: string; extensions?: string[] }): Promise<string> =>
       invoke(IPC_CHANNELS.osPickSave, opts),

@@ -3,6 +3,9 @@ import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState } from '@sshk/shared'
+
+/** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
+const isDev = import.meta.env.DEV
 import ToolIcon from './ToolIcon.vue'
 import { useToolCatalog } from '../composables/useToolCatalog'
 import type { InstalledPackageRecord } from '@sshk/shared'
@@ -316,8 +319,8 @@ async function cleanupOrphans(): Promise<void> {
               <div class="hint">密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。</div>
             </section>
 
-            <section class="settings-card">
-              <div class="card-title">分发白名单</div>
+            <section v-if="isDev" class="settings-card">
+              <div class="card-title">分发白名单（仅开发）</div>
               <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见。删除工具包后残留的配置会在下方提示清理。</div>
               <div class="inline-form">
                 <el-select v-model="distribution" multiple collapse-tags clearable placeholder="全部工具" style="min-width: 340px">
@@ -367,13 +370,13 @@ async function cleanupOrphans(): Promise<void> {
                       <el-input v-model="form.category" />
                       <div class="hint">多个分类用逗号 / 顿号 / 分号分隔，例如：邮件营销、数据分析</div>
                     </el-form-item>
-                    <el-form-item label="图标">
+                    <el-form-item v-if="isDev" label="图标">
                       <el-select v-model="form.icon" filterable allow-create default-first-option style="width: 100%">
                         <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                       </el-select>
                       <div class="hint">auto = 工具包自带 assets/icon.svg；也可直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标</div>
                     </el-form-item>
-                    <el-form-item label="硬依赖">
+                    <el-form-item v-if="isDev" label="硬依赖">
                       <el-select
                         :model-value="tool.dependsOn"
                         multiple

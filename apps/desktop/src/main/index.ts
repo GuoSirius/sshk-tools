@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
-import { cpSync, existsSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
@@ -414,6 +414,19 @@ async function registerIpc(): Promise<void> {
       filters: opts?.extensions ? [{ name: '文件', extensions: opts.extensions }] : undefined,
     })
     return result.canceled ? '' : (result.filePath ?? '')
+  })
+  // 图片应用内预览：仅图片扩展名 + 10MB 上限，返回 data URI
+  ipcMain.handle(IPC_CHANNELS.osReadDataUri, (_event, file: string) => {
+    const target = String(file ?? '')
+    if (!/\.(png|jpe?g|webp|gif|bmp)$/i.test(target)) throw new Error('仅支持图片文件预览')
+    const buf = readFileSync(target)
+    if (buf.byteLength > 10 * 1024 * 1024) throw new Error('图片超过 10MB，无法预览')
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
+    }
+    const mime = mimeMap[/\.[a-z]+$/i.exec(target.toLowerCase())?.[0] ?? ''] ?? 'application/octet-stream'
+    return 'data:' + mime + ';base64,' + buf.toString('base64')
   })
   ipcMain.handle(IPC_CHANNELS.osPickDir, async (_event) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow

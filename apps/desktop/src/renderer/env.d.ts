@@ -86,6 +86,7 @@ interface Window {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>
       pickDir(): Promise<string>
       pickSave(opts?: { fileName?: string; extensions?: string[] }): Promise<string>
+      readDataUri(file: string): Promise<string>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
     }
