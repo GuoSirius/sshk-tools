@@ -207,7 +207,7 @@ if (!DRY_RUN) {
   sh('pnpm', ['build'])
   step('electron-builder 打包（--publish never，先验证可出包）')
   sh('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'])
-  const distDir = join(ROOT, 'apps/desktop/dist')
+  const distDir = join(ROOT, 'dist')
   const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
   if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
     die(`产物缺失（${artifacts.join(', ') || '空'}），已中止，未提交未推送`)
@@ -237,7 +237,7 @@ if (!DRY_RUN) {
       ? `  检测到 GH_TOKEN：cd apps/desktop && pnpm exec electron-builder --publish always（自动建 Release 并上传产物）`
       : `  1) 打开 https://github.com/GuoSirius/sshk-tools/releases/new?tag=${next}`,
     `  2) 标题 ${next}；正文粘贴 ${bodyPath}（已只含本次版本段）`,
-    `  3) 上传 apps/desktop/dist 下的 *.exe 与 latest.yml`,
+    `  3) 上传 dist/ 下的 *.exe 与 latest.yml`,
   ].join('\n'))
 } else {
   outro(`dry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)

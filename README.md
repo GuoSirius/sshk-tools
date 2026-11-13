@@ -23,7 +23,7 @@
 pnpm install    # 安装依赖（含 Electron 二进制，已配国内镜像）
 pnpm dev        # 开发态：主进程 / preload / 渲染三端热更新（自动开 DevTools）
 pnpm build      # 产出 out/ 供 electron-builder 打包
-pnpm dist       # ★ 本地构建安装包（NSIS x64，带国内镜像兜底）→ apps/desktop/dist/*.exe
+pnpm dist       # ★ 本地构建安装包（NSIS x64，带国内镜像兜底）→ dist/*.exe（仓库根）
 pnpm pack       # 快速模式：只出免安装目录 win-unpacked（不发安装包）
 pnpm verify     # 结构/分层/preload/弹框/契约/latest + typecheck(.ts/.vue) + lint + test
 pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认 → 构建成功后 tag/推送

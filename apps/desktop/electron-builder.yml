@@ -6,7 +6,8 @@ productName: sshk-tools
 copyright: Copyright © 2026 SSHK
 
 directories:
-  output: dist
+  # 安装包产物落到仓库根 dist/（.gitignore 已忽略 dist/）；相对 apps/desktop 上溯两级
+  output: ../../dist
   buildResources: build
 
 # electron-vite 的产物目录是 out/，不是 dist/（dist 只放安装包）

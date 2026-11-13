@@ -3,7 +3,7 @@
  * 本地构建测试专用脚本（Windows）。
  *
  * 用法（根目录执行）：
- *   pnpm local            # 构建 NSIS 安装包（x64）→ apps/desktop/dist/*.exe
+ *   pnpm local            # 构建 NSIS 安装包（x64）→ dist/*.exe（仓库根）
  *   pnpm local -- --dir   # 快速模式：只出免安装目录 win-unpacked（不发安装包）
  *   pnpm local -- --run   # 构建完成后直接启动安装包 / 免安装 exe
  *
@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const desktop = join(root, 'apps/desktop')
-const outDir = join(desktop, 'dist')
+// 安装包产物落到仓库根 dist/（electron-builder.yml directories.output: ../../dist）
+const outDir = join(root, 'dist')
 const args = process.argv.slice(2)
 const fast = args.includes('--dir')
 const runAfter = args.includes('--run')
@@ -88,7 +89,7 @@ const unpackedExe = join(outDir, 'win-unpacked', 'sshk-tools.exe')
 if (fast && existsSync(unpackedExe)) {
   artifacts.unshift({ full: unpackedExe, sizeMB: (statSync(unpackedExe).size / 1024 / 1024).toFixed(1) })
 }
-console.log('\n📦 产物清单（apps/desktop/dist）：')
+console.log('\n📦 产物清单（dist/）：')
 for (const a of artifacts) console.log(`  ${(a.sizeMB + ' MB').padStart(9)}  ${a.full}`)
 if (artifacts.length === 0) console.log('  （无）')
 
