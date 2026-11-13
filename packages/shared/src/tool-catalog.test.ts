@@ -143,6 +143,23 @@ describe('工具插件清单（自包含 manifest）', () => {
     }
   })
 
+  it('模型预设由工具包自带：含常用端点与可选模型，且不含任何密钥字段', () => {
+    type Preset = { id: string; name: string; baseURL: string; models: string[]; defaultModel: string }
+    const presets = ((modelManifest as unknown as { defaults?: { modelPresets?: Preset[] } })
+      .defaults?.modelPresets ?? [])
+    expect(presets.length).toBeGreaterThanOrEqual(4)
+    const agnes = presets.find((preset) => preset.id === 'agnes')
+    expect(agnes?.baseURL).toBe('https://apihub.agnes-ai.com/v1')
+    expect(agnes?.models).toContain('agnes-3.0-flash')
+    expect(agnes?.models).toContain('agnes-3.0-pro')
+    for (const preset of presets) {
+      expect(preset.baseURL).toMatch(/^https?:\/\//)
+      for (const field of Object.keys(preset)) {
+        expect(['apiKey', 'token', 'secret', 'password']).not.toContain(field)
+      }
+    }
+  })
+
   it('新工具包零改动接入：加进清单即出现在目录并自动合并默认配置', () => {
     const extra = {
       id: 'third-party-tool',

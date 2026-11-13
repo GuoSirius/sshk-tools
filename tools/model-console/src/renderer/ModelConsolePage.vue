@@ -17,7 +17,22 @@ interface Provider {
   enabled: boolean
 }
 
+/** 预设来自工具包自己 tool.manifest.json 的 defaults.modelPresets（不含任何密钥） */
+interface ModelPreset {
+  id: string
+  name: string
+  baseURL: string
+  kind: 'local' | 'remote'
+  defaultModel: string
+  models: string[]
+  hint?: string
+}
+
 const providers = ref<Provider[]>([])
+const presets = ref<ModelPreset[]>([])
+const modelOptions = ref<string[]>([])
+const presetId = ref('')
+const fetchingModels = ref(false)
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
 const form = reactive<Provider & { apiKey: string }>({
@@ -39,6 +54,10 @@ const activeProvider = computed(
 async function load(): Promise<void> {
   const saved = (await window.api.config.get('app.llm.providers')) as Provider[] | null
   providers.value = Array.isArray(saved) ? saved : []
+  const rawPresets = (await window.api.config.get('tools.model-console.modelPresets')) as ModelPreset[] | null
+  presets.value = Array.isArray(rawPresets)
+    ? rawPresets.filter((p) => p && typeof p.baseURL === 'string' && Array.isArray(p.models))
+    : []
 }
 
 async function persist(): Promise<void> {
@@ -47,14 +66,68 @@ async function persist(): Promise<void> {
 
 function openCreate(): void {
   editingId.value = null
+  presetId.value = ''
+  modelOptions.value = []
   Object.assign(form, { _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '' })
   dialogOpen.value = true
 }
 
 function openEdit(row: Provider): void {
   editingId.value = row._id
+  const matched = presets.value.find((p) => p.baseURL === row.baseURL)
+  presetId.value = matched?.id ?? ''
+  modelOptions.value = matched ? [...matched.models] : row.model ? [row.model] : []
   Object.assign(form, { ...row, apiKey: '' })
   dialogOpen.value = true
+}
+
+/** 选预设即自动填好端点与默认模型，用户只需填一个 API Key */
+function applyPreset(id: string): void {
+  const preset = presets.value.find((p) => p.id === id)
+  if (!preset) return
+  Object.assign(form, {
+    _id: '',
+    name: preset.name,
+    kind: preset.kind,
+    baseURL: preset.baseURL,
+    model: preset.defaultModel || preset.models[0] || '',
+    enabled: true,
+    apiKey: '',
+  })
+  modelOptions.value = [...preset.models]
+}
+
+function quickAdd(preset: ModelPreset): void {
+  openCreate()
+  presetId.value = preset.id
+  applyPreset(preset.id)
+}
+
+/** 真实查询 /models：保存前也能用刚填的 key 探测，失败仍可手填模型名 */
+async function fetchModels(): Promise<void> {
+  if (!/^https?:\/\//i.test(form.baseURL.trim())) {
+    ElMessage.warning('请先填写 http(s) 格式的 baseURL')
+    return
+  }
+  fetchingModels.value = true
+  try {
+    const probe: Provider = {
+      _id: form._id || 'prv_preview',
+      name: form.name || '预览',
+      kind: form.kind,
+      baseURL: form.baseURL.trim(),
+      model: form.model,
+      enabled: true,
+    }
+    const list = await window.api.llm.listModels(probe, form.apiKey.trim() || undefined)
+    modelOptions.value = Array.from(new Set([...modelOptions.value, ...list.filter(Boolean)]))
+    if (!form.model && modelOptions.value[0]) form.model = modelOptions.value[0]
+    ElMessage.success(`拉取到 ${list.length} 个可用模型`)
+  } catch (err) {
+    ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；可手动输入模型名`)
+  } finally {
+    fetchingModels.value = false
+  }
 }
 
 async function saveProvider(): Promise<void> {
@@ -139,7 +212,7 @@ onMounted(() => {
 <template>
   <ToolPageLayout
     title="模型控制台"
-    description="配置模型 provider（本地 Ollama / 云 API），测试连通性并试聊；apiKey 单独加密存储"
+    description="内置常用模型预设，填一个 Key 即可使用；模型名可下拉选择（真实查询 /models）；apiKey 单独加密存储"
   >
     <template #actions>
       <el-button v-if="view === 'providers'" type="primary" size="small" @click="openCreate">新增 Provider</el-button>
@@ -168,6 +241,21 @@ onMounted(() => {
     </template>
 
     <template v-else>
+    <div v-if="presets.length" class="preset-bar">
+      <div class="preset-label">常用模型 · 一键预填（只需填 API Key）</div>
+      <div class="preset-list">
+        <el-button
+          v-for="p in presets"
+          :key="p.id"
+          size="small"
+          :title="p.hint ?? p.baseURL"
+          @click="quickAdd(p)"
+        >
+          {{ p.name }}
+        </el-button>
+      </div>
+    </div>
+
     <EmptyState
       v-if="providers.length === 0"
       description="还没有配置任何模型 Provider"
@@ -215,6 +303,18 @@ onMounted(() => {
 
     <el-dialog v-model="dialogOpen" :title="editingId ? '编辑 Provider' : '新增 Provider'" width="480px">
       <el-form label-width="90px" size="small">
+        <el-form-item v-if="presets.length" label="快速预设">
+          <el-select
+            v-model="presetId"
+            clearable
+            placeholder="选一个常用服务商，自动填好端点与模型"
+            style="width: 100%"
+            @change="(v: unknown) => applyPreset(String(v ?? ''))"
+          >
+            <el-option v-for="p in presets" :key="p.id" :label="`${p.name} · ${p.baseURL}`" :value="p.id" />
+          </el-select>
+          <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
+        </el-form-item>
         <el-form-item label="名称">
           <el-input v-model="form.name" placeholder="如：本地 Ollama" />
         </el-form-item>
@@ -228,7 +328,21 @@ onMounted(() => {
           <el-input v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
         </el-form-item>
         <el-form-item label="模型名">
-          <el-input v-model="form.model" placeholder="qwen2.5:7b" />
+          <div class="model-row">
+            <el-select
+              v-model="form.model"
+              filterable
+              allow-create
+              default-first-option
+              :loading="fetchingModels"
+              placeholder="下拉选择或手动输入模型名"
+              style="flex: 1"
+            >
+              <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+            </el-select>
+            <el-button size="small" :loading="fetchingModels" @click="fetchModels">拉取模型列表</el-button>
+          </div>
+          <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
         </el-form-item>
         <el-form-item label="apiKey">
           <el-input
@@ -259,6 +373,16 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.preset-bar {
+  border: 1px solid rgba(128,128,128,.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.preset-label { font-size: 12px; opacity: .7; margin-bottom: 8px; }
+.preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.model-row { display: flex; gap: 6px; width: 100%; }
+.form-hint { font-size: 11px; opacity: .6; line-height: 1.5; margin-top: 4px; }
 .panel { border: 1px solid rgba(128,128,128,.25); border-radius: 6px; padding: 12px; }
 .panel-title { font-size: 12px; opacity: .7; margin-bottom: 8px; }
 .chat-output { flex: 1; min-height: 160px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; border: 1px dashed rgba(128,128,128,.3); border-radius: 4px; padding: 10px; }

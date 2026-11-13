@@ -46,10 +46,11 @@ const api = {
         if (typeof payload?.delta === 'string') callback(payload.delta)
       })
     },
-    listModels: (provider: unknown): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmListModels, provider),
-    healthCheck: (provider: unknown): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmHealthCheck, provider),
+    /** 保存 Provider 前也能用刚填的 key 探测；不传则读主进程 safeStorage */
+    listModels: (provider: unknown, apiKey?: string): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmListModels, provider, apiKey),
+    healthCheck: (provider: unknown, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
     setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
   },

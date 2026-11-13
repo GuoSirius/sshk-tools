@@ -25,6 +25,10 @@ for (const layer of ['packages', 'tools']) {
 export default defineConfig({
   resolve: { alias },
   test: {
-    include: ['packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'tools/*/src/**/*.test.ts',
+      'apps/*/src/**/*.test.ts',
+    ],
   },
 })

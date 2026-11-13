@@ -68,8 +68,9 @@ interface Window {
         options?: { onDelta?: boolean },
       ): Promise<{ content: string; model: string }>
       onDelta(callback: (delta: string) => void): void
-      listModels(provider: LlmProvider): Promise<string[]>
-      healthCheck(provider: LlmProvider): Promise<{ ok: boolean; message: string; latencyMs?: number }>
+      /** apiKey 可选：保存 Provider 前用刚填的 key 探测；不传则读主进程 safeStorage */
+      listModels(provider: LlmProvider, apiKey?: string): Promise<string[]>
+      healthCheck(provider: LlmProvider, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }>
       setApiKey(providerId: string, apiKey: string): Promise<boolean>
     }
     os: {

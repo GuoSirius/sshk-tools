@@ -269,10 +269,18 @@ async function registerIpc(): Promise<void> {
     }
     return chat({ provider: p, apiKey, messages: messages as never })
   })
-  ipcMain.handle(IPC_CHANNELS.llmListModels, (_event, provider: LlmProvider) =>
-    listModels(readProvider(_event, provider), services!.getApiKey(provider?._id ?? '')))
-  ipcMain.handle(IPC_CHANNELS.llmHealthCheck, (_event, provider: LlmProvider) =>
-    healthCheck(readProvider(_event, provider), services!.getApiKey(provider?._id ?? '')))
+  // 渲染层可临时带 apiKey 做「保存前探测」；不传则读 safeStorage 中已存的密钥。
+  // 临时 key 只在这一次 IPC 里使用，不落盘、不进配置。
+  ipcMain.handle(IPC_CHANNELS.llmListModels, (_event, provider: LlmProvider, apiKey?: string) =>
+    listModels(
+      readProvider(_event, provider),
+      typeof apiKey === 'string' && apiKey ? apiKey : services!.getApiKey(provider?._id ?? ''),
+    ))
+  ipcMain.handle(IPC_CHANNELS.llmHealthCheck, (_event, provider: LlmProvider, apiKey?: string) =>
+    healthCheck(
+      readProvider(_event, provider),
+      typeof apiKey === 'string' && apiKey ? apiKey : services!.getApiKey(provider?._id ?? ''),
+    ))
   ipcMain.handle(IPC_CHANNELS.llmSetApiKey, (_event, providerId: string, apiKey: string) => {
     services!.setApiKey(providerId, String(apiKey ?? ''))
     return true

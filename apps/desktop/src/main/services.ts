@@ -19,6 +19,7 @@ import {
   type ToolHostCapabilities,
 } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
+import { isProviderId, toolSecretId } from './secret-ids'
 
 export interface AppServices {
   config: ConfigService
@@ -38,19 +39,8 @@ export interface AppServices {
   host: ToolHostCapabilities
 }
 
-const PROVIDER_ID_RE = /^prv_[0-9a-z]+$/
-const SECRET_PART_RE = /^[a-z][a-z0-9-]{1,32}$/
-
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex')
-}
-
-/** 工具专属密钥统一起 app:tool: 前缀，导出备份时自动排除，不混进 Provider 密钥 */
-function toolSecretId(toolId: string, name: string): string {
-  if (!SECRET_PART_RE.test(toolId) || !SECRET_PART_RE.test(name)) {
-    throw new Error(`非法工具密钥标识: ${toolId}/${name}`)
-  }
-  return `app:tool:${toolId}:${name}`
 }
 
 /**
@@ -179,7 +169,7 @@ export function setupServices(): AppServices {
     host,
     getApiKey: (providerId) => loadSecrets()[providerId] ?? '',
     setApiKey: (providerId, apiKey) => {
-      if (!PROVIDER_ID_RE.test(providerId)) throw new Error(`非法 providerId: ${providerId}`)
+      if (!isProviderId(providerId)) throw new Error(`非法 providerId: ${providerId}`)
       const secrets = loadSecrets()
       if (apiKey === '') delete secrets[providerId]
       else secrets[providerId] = apiKey

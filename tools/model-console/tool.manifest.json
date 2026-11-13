@@ -38,6 +38,71 @@
     "dependsOn": [],
     "defaultProviderId": "",
     "chatTimeoutMs": 30000,
-    "streamEnabled": true
+    "streamEnabled": true,
+    "modelPresets": [
+      {
+        "id": "agnes",
+        "name": "Agnes AI",
+        "baseURL": "https://apihub.agnes-ai.com/v1",
+        "kind": "remote",
+        "defaultModel": "agnes-3.0-flash",
+        "models": ["agnes-3.0-flash", "agnes-3.0-pro"],
+        "hint": "填 API Key 即可；模型名可点「拉取模型列表」实时查询"
+      },
+      {
+        "id": "openai",
+        "name": "OpenAI",
+        "baseURL": "https://api.openai.com/v1",
+        "kind": "remote",
+        "defaultModel": "gpt-4o-mini",
+        "models": ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+        "hint": "官方 /v1 端点"
+      },
+      {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "baseURL": "https://api.deepseek.com/v1",
+        "kind": "remote",
+        "defaultModel": "deepseek-chat",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "hint": "OpenAI 兼容端点"
+      },
+      {
+        "id": "dashscope",
+        "name": "通义千问（兼容模式）",
+        "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "kind": "remote",
+        "defaultModel": "qwen-plus",
+        "models": ["qwen-plus", "qwen-turbo", "qwen-max"],
+        "hint": "阿里云百炼 OpenAI 兼容模式"
+      },
+      {
+        "id": "zhipu",
+        "name": "智谱 GLM",
+        "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+        "kind": "remote",
+        "defaultModel": "glm-4-flash",
+        "models": ["glm-4-flash", "glm-4-air", "glm-4"],
+        "hint": "OpenAI 兼容端点"
+      },
+      {
+        "id": "ollama",
+        "name": "本地 Ollama",
+        "baseURL": "http://127.0.0.1:11434/v1",
+        "kind": "local",
+        "defaultModel": "qwen2.5:7b",
+        "models": ["qwen2.5:7b", "llama3.1:8b"],
+        "hint": "本机推理无需 API Key；模型列表由本机 /models 真实返回"
+      },
+      {
+        "id": "vllm",
+        "name": "自部署 vLLM / LM Studio",
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "kind": "local",
+        "defaultModel": "",
+        "models": [],
+        "hint": "留空模型名，保存前点「拉取模型列表」自动获取"
+      }
+    ]
   }
 }
