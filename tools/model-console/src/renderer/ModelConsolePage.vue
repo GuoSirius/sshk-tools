@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ToolPageLayout, EmptyState, ConfirmDialog } from '@sshk/ui-kit'
 import { entityId } from '@sshk/shared'
@@ -93,6 +93,16 @@ function scrollToBottomNow(): void {
   if (!el) return
   el.scrollTop = el.scrollHeight
   chatAutoScroll.value = true
+}
+
+// ── WorkBuddy 式统一输入区：无边框 textarea 自适应增高（上限 160px），发送后清空回焦 ──
+const composerEl = ref<HTMLTextAreaElement | null>(null)
+const COMPOSER_MAX_HEIGHT = 160
+function onComposerInput(): void {
+  const el = composerEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
 }
 
 /** Markdown 解析 + 净化（防 XSS）；流式过程中随增量内容实时重渲染即"打字式"效果 */
@@ -296,6 +306,13 @@ async function sendChat(): Promise<void> {
   const text = chatInput.value.trim()
   if (!provider || !text || chatting.value) return
   chatInput.value = ''
+  // 清空后复位输入框高度并回焦，连续对话不用再点输入框
+  void nextTick(() => {
+    if (composerEl.value) {
+      composerEl.value.style.height = 'auto'
+      composerEl.value.focus()
+    }
+  })
   // 多轮：把用户消息入栈，再压一个空 assistant 占位，流式追加
   messages.value.push({ role: 'user', content: text })
   messages.value.push({ role: 'assistant', content: '' })
@@ -344,42 +361,53 @@ onMounted(() => {
 
     <template v-if="view === 'chat'">
       <div class="chat-panel">
-        <div class="panel-title">对话调试（多轮 · 流式打字 · Markdown 回显；apiKey 在主进程注入，不落渲染层）</div>
-        <div ref="chatScroller" class="chat-scroller" @scroll="onChatScroll">
-          <div v-if="!messages.length" class="chat-empty">（在下方输入内容开始对话；上方选择 Provider 决定使用的模型）</div>
-          <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
-            <div class="chat-role">{{ m.role === 'user' ? '你' : '模型' }}</div>
-            <div class="chat-body" :class="{ error: m.error }" v-html="renderMd(m.content)"></div>
+        <!-- 输出区：吃掉除输入区外的全部剩余空间；「回到底部」悬浮其右下 -->
+        <div class="chat-main">
+          <div ref="chatScroller" class="chat-scroller" @scroll="onChatScroll">
+            <div v-if="!messages.length" class="chat-empty">
+              <div class="chat-empty-title">对话调试</div>
+              <div class="chat-empty-desc">多轮 · 流式打字 · Markdown 回显；apiKey 在主进程注入，不落渲染层</div>
+            </div>
+            <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
+              <div class="chat-role">{{ m.role === 'user' ? '你' : '模型' }}</div>
+              <div class="chat-body" :class="{ error: m.error }" v-html="renderMd(m.content)"></div>
+            </div>
           </div>
+          <transition name="el-fade-in">
+            <button v-if="!chatAutoScroll" type="button" class="chat-to-bottom" @click="scrollToBottomNow">
+              ↓ 回到底部
+            </button>
+          </transition>
         </div>
-        <transition name="el-fade-in">
-          <button v-if="!chatAutoScroll" type="button" class="chat-to-bottom" @click="scrollToBottomNow">
-            ↓ 回到底部
-          </button>
-        </transition>
-        <div class="chat-input-row">
-          <el-select v-model="chatProviderId" size="small" placeholder="选择模型（Provider）" style="width: 240px">
-            <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
-          </el-select>
-          <el-input
+        <!-- WorkBuddy 式统一输入区：无边框自适应 textarea + 底部工具条（模型胶囊 / 发送圆钮） -->
+        <div class="composer">
+          <textarea
+            ref="composerEl"
             v-model="chatInput"
-            type="textarea"
-            :rows="3"
-            size="small"
-            resize="none"
-            placeholder="输入测试内容；Enter 发送，Shift+Enter 换行"
-            :disabled="!activeProvider || chatting"
+            class="composer-input"
+            rows="1"
+            :placeholder="activeProvider ? '输入测试内容，Enter 发送，Shift+Enter 换行' : '请先在下方选择模型（Provider）'"
+            :disabled="!activeProvider"
+            @input="onComposerInput"
             @keydown.enter.exact.prevent="sendChat"
-          />
-          <el-button
-            size="small"
-            type="primary"
-            :loading="chatting"
-            :disabled="!activeProvider || !chatInput.trim()"
-            @click="sendChat"
-          >
-            发送
-          </el-button>
+          ></textarea>
+          <div class="composer-toolbar">
+            <el-select v-model="chatProviderId" class="composer-model" placeholder="选择模型（Provider）">
+              <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
+            </el-select>
+            <button
+              type="button"
+              class="composer-send"
+              :disabled="!activeProvider || !chatInput.trim() || chatting"
+              :title="chatting ? '生成中…' : '发送（Enter）'"
+              @click="sendChat"
+            >
+              <span v-if="chatting" class="composer-spinner" aria-hidden="true"></span>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -543,20 +571,21 @@ onMounted(() => {
 .form-hint { font-size: 11px; opacity: .6; line-height: 1.5; margin-top: 4px; }
 .panel { border: 1px solid rgba(128,128,128,.25); border-radius: 6px; padding: 12px; }
 .panel-title { font-size: 12px; opacity: .7; margin-bottom: 8px; }
-.chat-panel { display: flex; flex-direction: column; position: relative; }
+/* 全高布局：页面除输入区外全部让给输出区（ToolPageLayout body flex:1 已约束） */
+.chat-panel { height: 100%; display: flex; flex-direction: column; }
+.chat-main { position: relative; flex: 1; min-height: 0; display: flex; }
 .chat-scroller {
-  max-height: 460px;
-  min-height: 200px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  border: 1px solid rgba(128,128,128,.3);
-  border-radius: 6px;
-  padding: 12px;
-  background: rgba(128,128,128,.04);
+  padding: 4px 4px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.chat-empty { opacity: .55; font-size: 13px; text-align: center; margin: 24px 0; }
+.chat-empty { margin: auto; text-align: center; }
+.chat-empty-title { font-size: 15px; font-weight: 600; opacity: .75; }
+.chat-empty-desc { font-size: 12px; opacity: .55; margin-top: 6px; line-height: 1.6; }
 .chat-msg { display: flex; flex-direction: column; max-width: 88%; }
 .chat-msg.user { align-self: flex-end; align-items: flex-end; }
 .chat-msg.assistant { align-self: flex-start; align-items: flex-start; }
@@ -608,12 +637,88 @@ onMounted(() => {
 .chat-body :deep(table) { border-collapse: collapse; font-size: 12px; }
 .chat-body :deep(th), .chat-body :deep(td) { border: 1px solid rgba(128,128,128,.3); padding: 2px 6px; }
 .chat-body :deep(blockquote) { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid rgba(128,128,128,.4); opacity: .8; }
-.chat-input-row { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
-.chat-input-row .el-input { flex: 1; }
+/* ── WorkBuddy 式统一输入区：圆角容器 + 无边框自适应 textarea + 底部工具条 ── */
+.composer {
+  flex: none;
+  margin-top: 10px;
+  border: 1px solid rgba(128,128,128,.3);
+  border-radius: 14px;
+  background: var(--el-bg-color);
+  padding: 10px 12px 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  transition: border-color .15s;
+}
+.composer:focus-within { border-color: var(--el-color-primary); }
+.composer-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--el-text-color-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 24px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.composer-input::placeholder { color: var(--el-text-color-placeholder); }
+.composer-input:disabled { cursor: not-allowed; opacity: .6; }
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+/* 模型胶囊：透明底 + 圆角描边，聚焦变主题色 */
+.composer-model { max-width: 300px; }
+.composer-model :deep(.el-select__wrapper) {
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(128,128,128,.28) inset;
+  min-height: 30px;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+.composer-model :deep(.el-select__wrapper.is-hovering),
+.composer-model :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+}
+/* 发送圆钮：主题色实心，生成中转圈 */
+.composer-send {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter .15s, transform .1s;
+}
+.composer-send svg { width: 16px; height: 16px; }
+.composer-send:not(:disabled):hover { filter: brightness(1.12); }
+.composer-send:not(:disabled):active { transform: scale(.94); }
+.composer-send:disabled { background: var(--el-border-color); cursor: not-allowed; }
+.composer-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  animation: composer-spin .8s linear infinite;
+}
+@keyframes composer-spin { to { transform: rotate(360deg); } }
 .chat-to-bottom {
   position: absolute;
-  right: 18px;
-  bottom: 80px;
+  right: 16px;
+  bottom: 14px;
   z-index: 5;
   border: 1px solid var(--el-color-primary);
   background: var(--el-color-primary);
