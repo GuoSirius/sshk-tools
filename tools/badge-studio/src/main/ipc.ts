@@ -23,7 +23,6 @@ import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
 import type { BadgeInjectConfig } from '../core/badge.js'
 
-const TOOL_ID = 'badge-studio'
 const VISION_KEY_NAME = 'visionApiKey'
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -89,6 +88,8 @@ export interface ParseImageInput {
 }
 
 export interface BadgeIpcDeps {
+  /** 与 tool.manifest.json 的 id 一致，宿主加载插件时注入；工具内不再硬编码 */
+  toolId: string
   repository: Repository
   outputRoot: string
   /** 宿主能力（密钥 / 云端视觉 / 本机 OCR）；可选便于单测用最小依赖构造 */
@@ -163,11 +164,11 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
 
   // ①-c 视觉模型密钥：只写宿主 safeStorage，明文不进 settings.json、不回传渲染层
   ipc.handle(IPC_CHANNELS.badgeSetVisionKey, wrap((key: string) => {
-    requireHost().setToolSecret(TOOL_ID, VISION_KEY_NAME, String(key ?? '').trim())
+    requireHost().setToolSecret(deps.toolId, VISION_KEY_NAME, String(key ?? '').trim())
     return true
   }))
   ipc.handle(IPC_CHANNELS.badgeVisionState, () => ({
-    hasKey: Boolean(deps.host?.getToolSecret(TOOL_ID, VISION_KEY_NAME)),
+    hasKey: Boolean(deps.host?.getToolSecret(deps.toolId, VISION_KEY_NAME)),
   }))
 
   // ② 读取外部 HTML：返回内容与指纹（sourceHash，源更新检测）
