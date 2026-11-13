@@ -235,12 +235,6 @@ onMounted(async () => {
 <template>
   <ToolPageLayout title="EDM Studio" description="品牌 → 模板/片段（版本不可变）→ 邮件三阶段产物 → 导出与分享">
     <template #actions>
-      <el-tabs v-model="tab" style="flex: 1">
-        <el-tab-pane label="品牌" name="brands" />
-        <el-tab-pane label="模板" name="templates" />
-        <el-tab-pane label="片段" name="fragments" />
-        <el-tab-pane label="邮件" name="mails" />
-      </el-tabs>
       <el-button v-if="tab === 'brands'" type="primary" size="small" @click="openBrand()">新增品牌</el-button>
       <template v-if="tab === 'templates'">
         <el-button size="small" @click="openTpl()">新增模板</el-button>

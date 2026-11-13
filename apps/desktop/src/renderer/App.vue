@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, type Component } from 'vue'
+import {
+  computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch,
+  type Component, type Ref,
+} from 'vue'
 import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
-import type { ThemeMode } from '@sshk/shared'
+import type { ThemeMode, ToolMenu } from '@sshk/shared'
 import { TOOLS } from './registry/tools'
 import { useTheme } from './composables/useTheme'
+import SettingsPage from './SettingsPage.vue'
+import SidebarMenu from './components/SidebarMenu.vue'
 import logoUrl from '../../build/icon.svg'
 
 // 工具页按需加载；新增工具在此登记一条映射即可
@@ -18,11 +23,16 @@ const { mode, setMode } = useTheme()
 const activeToolId = ref<string | null>(null)
 const activeMenu = ref('')
 const sidebarCollapsed = ref(false)
+const flyoutOpen = ref(false)
+const sideOpenIds = ref<Set<string>>(new Set())
+const flyoutOpenIds = ref<Set<string>>(new Set())
 const query = ref('')
 const version = ref('0.1.0')
 const updateChecking = ref(false)
+let closeTimer: number | undefined
 
 const currentTool = computed(() => TOOLS.find((tool) => tool.id === activeToolId.value) ?? null)
+const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
 const visibleTools = computed(() => {
   const keyword = query.value.trim().toLowerCase()
   if (!keyword) return TOOLS
@@ -36,13 +46,73 @@ const themeOptions: { label: string; value: ThemeMode }[] = [
   { label: '跟随系统', value: 'system' },
 ]
 
-function openTool(id: string): void {
-  activeToolId.value = id
-  activeMenu.value = TOOLS.find((tool) => tool.id === id)?.menus[0]?.id ?? ''
+/** 找出 active 所在的分组链，保证激活项在任何层级都可见 */
+function pathTo(items: ToolMenu[], active: string, parents: string[] = []): string[] | null {
+  for (const item of items) {
+    if (item.id === active) return parents
+    if (item.children?.length) {
+      const found = pathTo(item.children, active, [...parents, item.id])
+      if (found) return found
+    }
+  }
+  return null
 }
-function goHome(): void { activeToolId.value = null }
+function collectGroupIds(items: ToolMenu[]): string[] {
+  const ids: string[] = []
+  for (const item of items) {
+    if (item.children?.length) ids.push(item.id, ...collectGroupIds(item.children))
+  }
+  return ids
+}
+function toggleIn(target: Ref<Set<string>>, id: string): void {
+  const next = new Set(target.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  target.value = next
+}
+
+function openTool(id: string): void {
+  const tool = TOOLS.find((item) => item.id === id)
+  activeToolId.value = id
+  activeMenu.value = tool?.menus[0]?.id ?? ''
+  sideOpenIds.value = new Set(pathTo(tool?.menus ?? [], activeMenu.value) ?? [])
+  flyoutOpenIds.value = new Set(collectGroupIds(tool?.menus ?? []))
+  flyoutOpen.value = false
+}
+function goHome(): void { activeToolId.value = null; flyoutOpen.value = false }
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
+
+// ── 侧栏：展开态内联多级菜单 / 收起态图标轨 + hover 浮层 ──
+function openFlyout(): void {
+  if (!sidebarCollapsed.value) return
+  if (closeTimer !== undefined) { window.clearTimeout(closeTimer); closeTimer = undefined }
+  flyoutOpen.value = true
+}
+function scheduleClose(): void {
+  if (closeTimer !== undefined) window.clearTimeout(closeTimer)
+  // 留出鼠标从图标轨移到浮层的空隙，避免闪烁
+  closeTimer = window.setTimeout(() => { flyoutOpen.value = false }, 180)
+}
+function onSidebarEnter(): void { if (sidebarCollapsed.value) openFlyout() }
+function toggleSideGroup(id: string): void {
+  if (sidebarCollapsed.value) {
+    flyoutOpenIds.value = new Set(collectGroupIds(currentTool.value?.menus ?? []))
+    openFlyout()
+    return
+  }
+  toggleIn(sideOpenIds, id)
+}
+function toggleFlyoutGroup(id: string): void { toggleIn(flyoutOpenIds, id) }
+function selectMenu(id: string): void {
+  activeMenu.value = id
+  const path = pathTo(currentTool.value?.menus ?? [], id) ?? []
+  sideOpenIds.value = new Set([...sideOpenIds.value, ...path])
+  flyoutOpen.value = false
+}
+
+watch(sidebarCollapsed, (collapsed) => { if (!collapsed) flyoutOpen.value = false })
+onBeforeUnmount(() => { if (closeTimer !== undefined) window.clearTimeout(closeTimer) })
 
 async function checkUpdate(): Promise<void> {
   if (updateChecking.value) return
@@ -90,17 +160,30 @@ onMounted(async () => {
     </header>
 
     <div class="app-body">
-      <!-- 工具级：工具内页才有；左侧 = 当前工具的全部功能菜单（需求 8） -->
-      <aside v-if="currentTool" class="tool-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <!-- 工具级：左侧 = 当前工具的全部功能菜单（含多级）；收起后 hover 浮层展开 -->
+      <aside
+        v-if="currentTool"
+        class="tool-sidebar"
+        :class="{ collapsed: sidebarCollapsed }"
+        @mouseenter="onSidebarEnter"
+        @mouseleave="scheduleClose"
+      >
         <div class="sidebar-menu">
-          <template v-if="!sidebarCollapsed">
-            <div class="sidebar-tool-name">{{ currentTool.name }}</div>
-            <el-menu :default-active="activeMenu" @select="(id: string) => (activeMenu = id)">
-              <el-menu-item v-for="m in currentTool.menus" :key="m.id" :index="m.id">
-                {{ m.label }}
-              </el-menu-item>
-            </el-menu>
-          </template>
+          <div class="sidebar-head">
+            <span class="sidebar-badge">{{ currentTool.name.slice(0, 1) }}</span>
+            <div class="sidebar-head-text">
+              <strong>{{ currentTool.name }}</strong>
+              <small>{{ currentTool.category }}</small>
+            </div>
+          </div>
+          <SidebarMenu
+            :items="currentTool.menus"
+            :active="activeMenu"
+            :open-ids="sideOpenIds"
+            :show-children="!sidebarCollapsed"
+            :toggle-group="toggleSideGroup"
+            :select-item="selectMenu"
+          />
         </div>
         <div class="sidebar-footer">
           <button
@@ -113,10 +196,43 @@ onMounted(async () => {
               <polyline points="13 6 7 12 13 18" />
               <polyline points="19 6 13 12 19 18" />
             </svg>
-            <span v-if="!sidebarCollapsed" class="toggle-text">收起菜单</span>
+            <span class="toggle-text">收起菜单</span>
           </button>
         </div>
       </aside>
+
+      <!-- 收起态 hover 浮层：完整菜单树（支持任意层级），不挤压内容区 -->
+      <Transition name="flyout">
+        <div
+          v-if="currentTool && sidebarCollapsed && flyoutOpen"
+          class="sidebar-flyout"
+          @mouseenter="openFlyout"
+          @mouseleave="scheduleClose"
+        >
+          <div class="flyout-head">
+            <span class="sidebar-badge">{{ currentTool.name.slice(0, 1) }}</span>
+            <div class="flyout-title">
+              <strong>{{ currentTool.name }}</strong>
+              <small>全部功能菜单</small>
+            </div>
+          </div>
+          <div class="flyout-body">
+            <SidebarMenu
+              :items="currentTool.menus"
+              :active="activeMenu"
+              :open-ids="flyoutOpenIds"
+              :toggle-group="toggleFlyoutGroup"
+              :select-item="selectMenu"
+            />
+          </div>
+          <div class="flyout-foot">
+            <button class="flyout-pin" type="button" @click="sidebarCollapsed = false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18" /></svg>
+              固定展开侧栏
+            </button>
+          </div>
+        </div>
+      </Transition>
 
       <main class="tool-content">
         <!-- 桌面首页：工具卡片 -->
@@ -140,7 +256,10 @@ onMounted(async () => {
           </div>
         </template>
 
-        <!-- 工具内页：顶部操作 / 中间唯一滚动 / 底部分页（与需求 8 同构） -->
+        <!-- 工具内页：配置管理 / 工具页（menu 驱动视图） -->
+        <template v-else-if="isConfigMenu">
+          <SettingsPage :section="activeMenu" />
+        </template>
         <template v-else>
           <component
             :is="TOOL_COMPONENTS[currentTool.id]"

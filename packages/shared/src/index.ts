@@ -8,6 +8,7 @@ export type {
   EntityStatus,
   DatasourceKind,
   ToolDescriptor,
+  ToolMenu,
   LinkStat,
   FragmentPolicy,
   TemplateSlot,

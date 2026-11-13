@@ -5,5 +5,5 @@
     "types": ["node"],
     "jsx": "preserve"
   },
-  "include": ["src/**/*", "electron.vite.config.ts", "uno.config.ts"]
+  "include": ["src/**/*", "electron.vite.config.ts", "uno.config.ts", "../../tools/*/src/types/*.d.ts"]
 }

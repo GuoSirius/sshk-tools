@@ -20,6 +20,8 @@ export interface ToolMenu {
   /** 菜单 ID，传给工具页做视图切换 */
   id: string
   label: string
+  /** 可选子菜单，支持任意层级（后台管理系统风格） */
+  children?: ToolMenu[]
 }
 
 /** 四种上传来源统一归一后的点击统计行 */

@@ -16,6 +16,13 @@ export const TOOLS: ToolDescriptor[] = [
       { id: 'templates', label: '模板' },
       { id: 'fragments', label: '片段' },
       { id: 'mails', label: '邮件' },
+      {
+        id: 'config', label: '配置管理', children: [
+          { id: 'config-app', label: '应用配置' },
+          { id: 'config-tools', label: '工具配置' },
+          { id: 'config-system', label: '系统与数据' },
+        ],
+      },
     ],
   },
   {
@@ -29,6 +36,13 @@ export const TOOLS: ToolDescriptor[] = [
     menus: [
       { id: 'generate', label: '生成海报' },
       { id: 'posters', label: '海报列表' },
+      {
+        id: 'config', label: '配置管理', children: [
+          { id: 'config-app', label: '应用配置' },
+          { id: 'config-tools', label: '工具配置' },
+          { id: 'config-system', label: '系统与数据' },
+        ],
+      },
     ],
   },
   {
@@ -42,6 +56,13 @@ export const TOOLS: ToolDescriptor[] = [
     menus: [
       { id: 'providers', label: '模型 Provider' },
       { id: 'chat', label: '对话调试' },
+      {
+        id: 'config', label: '配置管理', children: [
+          { id: 'config-app', label: '应用配置' },
+          { id: 'config-tools', label: '工具配置' },
+          { id: 'config-system', label: '系统与数据' },
+        ],
+      },
     ],
   },
 ]
