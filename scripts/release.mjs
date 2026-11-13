@@ -136,14 +136,16 @@ if (!DRY_RUN) {
 }
 
 /* ── 1. 版本选择（实时预览） ── */
+// 预览必须放 clack 原生 hint 字段：不能把 ANSI 转义码塞进 label——
+// Windows 终端下 clack 重绘会残留错行，表现为选项重复/预览错位（已踩坑）。
 const kind = DRY_RUN ? 'patch' : await select({
   message: `选择版本类型（当前 ${fmt(current)}）`,
   options: [
-    { value: 'patch', label: `patch  ${DIM(fmt(current) + ' → ' + bump(current, 'patch'))}` },
-    { value: 'minor', label: `minor  ${DIM(fmt(current) + ' → ' + bump(current, 'minor'))}` },
-    { value: 'major', label: `major  ${DIM(fmt(current) + ' → ' + bump(current, 'major'))}` },
-    { value: 'beta', label: `beta   ${DIM(fmt(current) + ' → ' + bump(current, 'beta'))}` },
-    { value: 'custom', label: 'custom 自定义版本号' },
+    { value: 'patch', label: 'patch', hint: `${fmt(current)} → ${bump(current, 'patch')}` },
+    { value: 'minor', label: 'minor', hint: `${fmt(current)} → ${bump(current, 'minor')}` },
+    { value: 'major', label: 'major', hint: `${fmt(current)} → ${bump(current, 'major')}` },
+    { value: 'beta', label: 'beta', hint: `${fmt(current)} → ${bump(current, 'beta')}` },
+    { value: 'custom', label: 'custom', hint: '手动输入版本号' },
   ],
 })
 aborted(kind)
