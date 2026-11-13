@@ -3,6 +3,7 @@ export * from './id'
 export * from './constants'
 export * from './ipc'
 export * from './trust'
+export * from './pkg-validate'
 export * from './tool-catalog'
 export type {
   ThemeMode,

@@ -26,7 +26,8 @@ const restCount = computed(() => Math.max(0, (props.targets?.length ?? 0) - prev
 
 function close(action: 'confirm' | 'cancel'): void {
   emit('update:open', false)
-  emit(action)
+  if (action === 'confirm') emit('confirm')
+  else emit('cancel')
 }
 </script>
 

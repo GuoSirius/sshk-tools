@@ -8,8 +8,10 @@ import {
 import type { Repository } from '@sshk/repository'
 import { MAIN_LOADERS, MANIFESTS } from './discovery'
 
-/** 宿主注入给插件的能力集合（工具可依赖应用） */
+/** 宿主注入给插件的能力集合（工具可依赖应用）；toolId 来自 manifest，工具内不再硬编码 */
 export interface PluginDeps {
+  /** 与 tool.manifest.json 的 id 一致，由宿主传入（密钥标识等场景使用） */
+  toolId: string
   repository: Repository
   outputRoot: string
   host: ToolHostCapabilities
@@ -87,6 +89,7 @@ export async function loadToolPlugins(
         throw new Error(`插件 main 入口 ${tool.plugin?.main ?? ''} 未默认导出注册函数`)
       }
       ;(candidate as RegisterFn)(guardedIpcMain(host.ipcMain, tool.id, host.isActive), {
+        toolId: tool.id,
         repository: host.repository,
         outputRoot: host.outputRoot,
         host: host.host,

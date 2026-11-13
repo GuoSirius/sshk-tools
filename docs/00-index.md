@@ -197,3 +197,17 @@ docs/
 | `model-console` | 已落 | shared / repository / ui-kit / llm-gateway | `tool.manifest.json` | 无 |
 
 > 判定：同一逻辑出现 ≥2 处即必须提取；`check-boundaries.mjs` + ESLint `no-restricted-imports` 卡住 `tools/*` 之间直接 import。
+
+## 九、2026-11-13 进度快照（与本文件 §七里程碑衔接）
+
+| 批次 | 提交 | 状态 |
+|---|---|---|
+| 应用级 Provider 共享 + 默认播种 + IDE 无关类型 | `4eed54c` | ✅ 已推送 |
+| 侧栏就地平滑展开 + 弹框统一 + 401 回退 | `df3ef2e` | ✅ 已推送 |
+| #8 契约定稿（trust.ts / ToolPackageContract / 门禁） | `1faf90b` | ✅ 已推送 |
+| Badge Provider 复用 + 可编辑表格 + OCR 配置化 | `109d9b4` | ✅ 已推送 |
+| arm64 恢复 + TOOL_ID 收敛 + vue-tsc + release.mjs + #35 阶段一 | `540726d`…本次 | ✅ 见台账 §十二 |
+| #39 release 流程 | `scripts/release.mjs` | ✅ 已落，待首次真实发布演练 |
+| #35 阶段二（utilityProcess / 安装入口 / 验签） | — | ⏳ 排期 |
+
+门禁：`pnpm verify` = 7 个结构检查 + typecheck(.ts/.vue) + lint + **98 tests / 18 files** 全绿。

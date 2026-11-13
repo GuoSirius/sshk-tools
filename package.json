@@ -22,7 +22,9 @@
     "check:latest": "node scripts/check-latest.mjs",
     "check:structure": "node scripts/verify-structure.mjs",
     "postinstall": "node scripts/ensure-electron.mjs",
-    "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:preload && pnpm check:dialogs && pnpm check:contract && pnpm check:latest && pnpm typecheck && pnpm lint && pnpm test"
+    "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:preload && pnpm check:dialogs && pnpm check:contract && pnpm check:latest && pnpm typecheck && pnpm typecheck:vue && pnpm lint && pnpm test",
+    "typecheck:vue": "node scripts/run-vue-tsc.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "latest",
@@ -32,7 +34,9 @@
     "eslint": "latest",
     "husky": "latest",
     "typescript": "6",
-    "vitest": "latest"
+    "vitest": "latest",
+    "vue-tsc": "latest",
+    "@clack/prompts": "latest"
   },
   "engines": {
     "node": ">=24"
