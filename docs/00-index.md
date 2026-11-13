@@ -68,7 +68,7 @@ docs/
 |---|---|
 | Git | ✅ 两次提交推送 `ab4a739` / `b40186a` 到 `main` |
 | 根配置 | ✅ `package.json` / `pnpm-workspace.yaml` / tsconfig / eslint / commitlint / `.npmrc` / .gitignore 等 |
-| 共享包 | ✅ `packages/shared`（北京时间 `time.ts` + 常量/类型/IPC 契约 + 6 个单测） |
+| 共享包 | ✅ `packages/shared`（北京时间 `time.ts` + 常量/类型/IPC 契约 + 工具注册表/裁决 + 单测） |
 | 校验脚本 | ✅ `check-latest` / `check-boundaries` / `verify-structure` / **generate-icons.py** |
 | CI | ✅ `.github/workflows/ci.yml`（`--frozen-lockfile` + `pnpm verify`） |
 | 本机钩子 | ✅ `.git/cph/{pre-commit,commit-msg}` 实跑通过 |
@@ -77,8 +77,9 @@ docs/
 | TS 6 切换 | ✅ `typescript: "6"` → 6.0.3，lockfile 已同步 |
 | **M2 发布与更新** | ✅ `release.yml`（tag 触发三平台）、`05-release/首次安装指引.md`、autoUpdater IPC + 检查更新按钮 |
 | **构建脚本白名单** | ✅ `allowBuilds: electron / esbuild / electron-winstaller`（pnpm 12 规范写法，修复 `ERR_PNPM_IGNORED_BUILDS`） |
-| **待验证** | ⏳ 前端/Electron 依赖尚未安装；`pnpm install` 后跑 `pnpm verify` 与 `pnpm --filter @sshk/desktop dev`（**由用户执行**） |
-| 功能页 | ❌ 三个工具的具体功能页按 M7→M6→M4→M5 顺序落地 |
+| **本机验证** | ✅ 依赖已安装；`pnpm verify`（13 文件 / 67 测试）、`pnpm dev`、`pnpm local` Windows 打包均实测通过 |
+| 功能页 | ✅ M7 / M6 / M4 / M5 三个工具功能页全部落地 |
+| **工具目录与设置中心** | ✅ 主进程单一裁决（启用 / 密钥权限 / 依赖 / 分发白名单 / 元数据覆盖）；顶部设置抽屉管理应用级配置，工具左侧只管工具自有配置；三张独立工具图标 + 无效回退 |
 
 ## 四、决策看板（**全部已定**）
 
@@ -107,6 +108,11 @@ docs/
 | **D29** | **品牌管理独立页面** | 品牌列表 + 增删改独立页面，纳入 M4（品牌树本就含 Brand 实体）与 M4 一起执行 |
 | **D31** | **图标库** | 需要图标的界面优先用 FontAwesome（`@fortawesome/fontawesome-free` CSS 版或 `@fortawesome/vue-fontawesome` 组件版），与 Element Plus 图标并存不冲突 |
 | **D30** | **造轮子禁令** | 能用成熟 npm 包就不再手写：`ulid`（替代手写 ULID）、`nanoid`、`es-toolkit` 等按需引入；自研仅限零依赖校验脚本与 icon 生成（无合适包） |
+| **D32** | **配置分层** | `app.*`（应用/系统级）→ 顶部「设置」；`tools.<id>.*`（工具自有）→ 工具左侧「工具配置」；密钥 → `secrets.bin`（safeStorage）。工具菜单绝不夹带应用级配置 |
+| **D33** | **工具目录单一裁决** | 注册表真相源上移 `packages/shared/src/tool-catalog.ts`；主进程 `resolveToolCatalog` 统一裁决启用 / 权限 / 硬依赖链 / 软依赖预警 / 分发白名单 / 元数据覆盖，渲染层只消费结果，无法自行放开受限工具 |
+| **D34** | **访问密钥与权限管控** | 明文只进 safeStorage，settings 仅存 sha256 摘要；工具可设「需访问密钥」（grant `tools.restricted`），未配置时不出现在桌面；grants 结构预留后续登录 / 远端校验 |
+| **D35** | **工具图标与元数据** | 卡片名称 / 描述 / 分类 / 图标 = 注册表默认 + `app.toolOverrides.<id>` 覆盖；内置 edm / badge / model 三张独立 SVG；未配置、非法协议、无效 key 或加载失败一律回退系统默认四色图标 |
+| **D36** | **应用级菜单扩展性** | 顶部栏只留高频项 + 「更多」下拉 + 「设置」；设置抽屉采用左侧分组导航（常规 / 工具与权限 / 系统与数据 / 关于），后期新增菜单只加分组，不挤占顶部栏 |
 
 ### M7 依赖修正（用户 22:19 质疑）
 

@@ -82,14 +82,11 @@ export function setupServices(): AppServices {
     },
     setAccessKey: (key) => {
       const secrets = loadSecrets()
-      if (!key) {
-        delete secrets[ACCESS_KEY_SECRET_ID]
-        config.set('app.accessKeyHash', null)
-      } else {
-        secrets[ACCESS_KEY_SECRET_ID] = key
-        config.set('app.accessKeyHash', sha256(key))
-      }
+      if (!key) delete secrets[ACCESS_KEY_SECRET_ID]
+      else secrets[ACCESS_KEY_SECRET_ID] = key
+      // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态
       saveSecrets(secrets)
+      config.set('app.accessKeyHash', key ? sha256(key) : null)
     },
     getAccessKeyState: () => {
       const key = loadSecrets()[ACCESS_KEY_SECRET_ID] ?? ''

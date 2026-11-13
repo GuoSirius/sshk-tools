@@ -6,10 +6,12 @@ import {
 import { ElMessage } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolMenu } from '@sshk/shared'
-import { TOOLS } from './registry/tools'
+import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
-import SettingsPage from './SettingsPage.vue'
 import SidebarMenu from './components/SidebarMenu.vue'
+import ToolIcon from './components/ToolIcon.vue'
+import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
+import ToolSettingsPage from './SettingsPage.vue'
 import logoUrl from '../../build/icon.svg'
 
 // 工具页按需加载；新增工具在此登记一条映射即可
@@ -20,23 +22,27 @@ const TOOL_COMPONENTS: Record<string, Component> = {
 }
 
 const { mode, setMode } = useTheme()
+const { visibleTools: catalogTools, byId } = useToolCatalog()
 const activeToolId = ref<string | null>(null)
 const activeMenu = ref('')
 const sidebarCollapsed = ref(false)
 const flyoutOpen = ref(false)
 const sideOpenIds = ref<Set<string>>(new Set())
 const flyoutOpenIds = ref<Set<string>>(new Set())
+const settingsOpen = ref(false)
+const settingsGroup = ref('general')
 const query = ref('')
 const version = ref('0.1.0')
 const updateChecking = ref(false)
 let closeTimer: number | undefined
 
-const currentTool = computed(() => TOOLS.find((tool) => tool.id === activeToolId.value) ?? null)
+// 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
+const currentTool = computed(() => byId.value.get(activeToolId.value ?? '') ?? null)
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
 const visibleTools = computed(() => {
   const keyword = query.value.trim().toLowerCase()
-  if (!keyword) return TOOLS
-  return TOOLS.filter((tool) =>
+  if (!keyword) return catalogTools.value
+  return catalogTools.value.filter((tool) =>
     `${tool.name} ${tool.description} ${tool.category}`.toLowerCase().includes(keyword))
 })
 
@@ -72,16 +78,33 @@ function toggleIn(target: Ref<Set<string>>, id: string): void {
 }
 
 function openTool(id: string): void {
-  const tool = TOOLS.find((item) => item.id === id)
+  const tool = byId.value.get(id)
+  if (!tool?.visible) return
   activeToolId.value = id
-  activeMenu.value = tool?.menus[0]?.id ?? ''
-  sideOpenIds.value = new Set(pathTo(tool?.menus ?? [], activeMenu.value) ?? [])
-  flyoutOpenIds.value = new Set(collectGroupIds(tool?.menus ?? []))
+  activeMenu.value = tool.menus[0]?.id ?? ''
+  sideOpenIds.value = new Set(pathTo(tool.menus, activeMenu.value) ?? [])
+  flyoutOpenIds.value = new Set(collectGroupIds(tool.menus))
   flyoutOpen.value = false
 }
 function goHome(): void { activeToolId.value = null; flyoutOpen.value = false }
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
+function openSettings(group = 'general'): void {
+  settingsGroup.value = group
+  settingsOpen.value = true
+}
+function onMoreCommand(command: string): void {
+  if (command === 'dataDir') openDataDir()
+  else if (command === 'tools') openSettings('tools')
+  else if (command === 'system') openSettings('system')
+  else if (command === 'about') openSettings('about')
+  else openSettings('general')
+}
+
+// 工具被禁用 / 权限撤销 / 分发剔除后，自动退回桌面，避免停留在不可见工具页
+watch(catalogTools, (list) => {
+  if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
+})
 
 // ── 侧栏：展开态内联多级菜单 / 收起态图标轨 + hover 浮层 ──
 function openFlyout(): void {
@@ -91,7 +114,6 @@ function openFlyout(): void {
 }
 function scheduleClose(): void {
   if (closeTimer !== undefined) window.clearTimeout(closeTimer)
-  // 留出鼠标从图标轨移到浮层的空隙，避免闪烁
   closeTimer = window.setTimeout(() => { flyoutOpen.value = false }, 180)
 }
 function onSidebarEnter(): void { if (sidebarCollapsed.value) openFlyout() }
@@ -140,7 +162,7 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell">
-    <!-- 应用级：任意页面可见可用 -->
+    <!-- 应用级：高频操作平铺，低频收纳到「更多」，全部应用配置进设置抽屉 -->
     <header class="app-bar">
       <img class="app-logo" :src="logoUrl" alt="sshk-tools" />
       <span class="app-title">sshk-tools</span>
@@ -154,9 +176,25 @@ onMounted(async () => {
       >
         <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
-      <el-button size="small" text @click="openDataDir">数据目录</el-button>
-      <el-tag size="small" type="info">模型：未配置</el-tag>
       <el-button size="small" text :loading="updateChecking" @click="checkUpdate">检查更新</el-button>
+      <el-dropdown trigger="click" @command="onMoreCommand">
+        <el-button size="small" text>更多 ▾</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
+            <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
+            <el-dropdown-item command="system">系统与数据</el-dropdown-item>
+            <el-dropdown-item command="about">关于</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <button class="app-settings-btn" type="button" title="应用设置" @click="openSettings('general')">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 9a3 3 0 100 6 3 3 0 000-6z" />
+          <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+        </svg>
+        <span>设置</span>
+      </button>
     </header>
 
     <div class="app-body">
@@ -170,7 +208,7 @@ onMounted(async () => {
       >
         <div class="sidebar-menu">
           <div class="sidebar-head">
-            <span class="sidebar-badge">{{ currentTool.name.slice(0, 1) }}</span>
+            <ToolIcon :icon="currentTool.icon" :name="currentTool.name" :size="28" />
             <div class="sidebar-head-text">
               <strong>{{ currentTool.name }}</strong>
               <small>{{ currentTool.category }}</small>
@@ -201,7 +239,7 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <!-- 收起态 hover 浮层：完整菜单树（支持任意层级），不挤压内容区 -->
+      <!-- 收起态 hover 浮层：完整菜单树，不挤压内容区 -->
       <Transition name="flyout">
         <div
           v-if="currentTool && sidebarCollapsed && flyoutOpen"
@@ -210,7 +248,7 @@ onMounted(async () => {
           @mouseleave="scheduleClose"
         >
           <div class="flyout-head">
-            <span class="sidebar-badge">{{ currentTool.name.slice(0, 1) }}</span>
+            <ToolIcon :icon="currentTool.icon" :name="currentTool.name" :size="28" />
             <div class="flyout-title">
               <strong>{{ currentTool.name }}</strong>
               <small>全部功能菜单</small>
@@ -235,30 +273,31 @@ onMounted(async () => {
       </Transition>
 
       <main class="tool-content">
-        <!-- 桌面首页：工具卡片 -->
         <template v-if="!currentTool">
           <div class="tool-page-head">
             <el-input v-model="query" placeholder="搜索工具" clearable style="max-width: 280px" />
+            <span class="muted" style="margin-left: 12px">共 {{ visibleTools.length }} 个工具 · 可见性由应用设置统一管理</span>
           </div>
           <div class="desktop">
             <div class="desktop-grid">
               <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)">
-                <div class="card-mark">
-                  <i style="background:#22d3ee" /><i style="background:#4f8cff" />
-                  <i style="background:#8b7cf6" /><i style="background:#ff9f43" />
-                </div>
+                <ToolIcon :icon="tool.icon" :name="tool.name" :size="44" />
                 <h3 style="margin: 14px 0 6px">{{ tool.name }}</h3>
                 <p class="muted" style="margin: 0; line-height: 1.6">{{ tool.description }}</p>
-                <el-tag size="small" style="margin-top: 12px">{{ tool.category }}</el-tag>
+                <div class="card-tags">
+                  <el-tag size="small">{{ tool.category }}</el-tag>
+                  <el-tag v-if="tool.requiredGrant" size="small" type="warning">需密钥</el-tag>
+                  <span v-if="tool.warnings.length" class="card-warn" :title="tool.warnings.join('；')">依赖提示</span>
+                </div>
               </article>
             </div>
-            <div v-if="visibleTools.length === 0" class="empty-state">没有匹配的工具</div>
+            <div v-if="visibleTools.length === 0" class="empty-state">没有匹配的工具（可在「设置 → 工具与权限」启用）</div>
           </div>
         </template>
 
-        <!-- 工具内页：配置管理 / 工具页（menu 驱动视图） -->
+        <!-- 工具内页：工具配置 / 工具页（menu 驱动视图） -->
         <template v-else-if="isConfigMenu">
-          <SettingsPage :section="activeMenu" />
+          <ToolSettingsPage :tool-id="currentTool.id" :section="activeMenu" />
         </template>
         <template v-else>
           <component
@@ -272,11 +311,9 @@ onMounted(async () => {
               <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
             </div>
             <div class="tool-page-body">
-              <div class="empty-state">
-                该工具的功能页将在对应里程碑落地（当前顺序：M0 → 1 → 2 → 3 → 7 → 6 → 4 → 5）
-              </div>
+              <div class="empty-state">该工具的功能页尚未登记组件映射</div>
             </div>
-            <div class="tool-page-foot muted">共 0 项 · 已选 0 项（跨页保留）</div>
+            <div class="tool-page-foot muted">共 0 项 · 已选 0 项</div>
           </template>
         </template>
       </main>
@@ -284,10 +321,12 @@ onMounted(async () => {
 
     <footer class="status-bar">
       <span>v{{ version }}</span>
-      <span>产物目录：默认（可在应用配置中修改）</span>
+      <span>产物目录：默认（可在应用设置中修改）</span>
       <span class="app-spacer" />
       <span>北京时间</span>
       <span>就绪</span>
     </footer>
+
+    <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" />
   </div>
 </template>

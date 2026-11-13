@@ -1,83 +1,51 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ToolPageLayout } from '@sshk/ui-kit'
-import { useTheme } from './composables/useTheme'
-import type { ThemeMode } from '@sshk/shared'
+import type { ToolConfigField } from '@sshk/shared'
+import { useToolCatalog } from './composables/useToolCatalog'
 
-// 左侧多级菜单（配置管理 → 应用配置 / 工具配置 / 系统与数据）定位到对应分区
-const props = defineProps<{ section?: string }>()
-const SECTION_MAP: Record<string, string> = {
-  'config-app': 'app',
-  'config-tools': 'tools',
-  'config-system': 'system',
-}
-const sectionKey = computed(() => SECTION_MAP[props.section ?? ''] ?? '')
-
-const { mode, setMode } = useTheme()
-const cfg = reactive({
-  outputDir: '',
-  launchOnBoot: false,
-  tray: true,
-  ttlHours: 72,
-  renderStrict: true,
-  autoEscape: true,
-  badgeAttr: 'data-edm-badge',
-  clicksField: 'clicks' as 'clicks' | 'totalClicks',
-  stripUtm: true,
-})
-const version = ref('0.1.0')
+// 工具级配置：只读写 tools.<toolId>.*，字段由注册表 configGroups 声明驱动
+const props = defineProps<{ toolId: string; section?: string }>()
+const { byId } = useToolCatalog()
+const tool = computed(() => byId.value.get(props.toolId) ?? null)
+const values = reactive<Record<string, unknown>>({})
+const depValues = reactive<Record<string, unknown>>({})
 const saving = ref(false)
 
-async function str(key: string, fallback: string): Promise<string> {
-  return String((await window.api.config.get(key)) ?? fallback)
+function pathFor(field: ToolConfigField): string {
+  return `tools.${props.toolId}.${field.key}`
 }
-async function bool(key: string, fallback: boolean): Promise<boolean> {
-  const v = await window.api.config.get(key)
-  return typeof v === 'boolean' ? v : fallback
-}
-async function num(key: string, fallback: number): Promise<number> {
-  const v = Number(await window.api.config.get(key))
-  return Number.isFinite(v) ? v : fallback
+function allFields(): ToolConfigField[] {
+  return (tool.value?.configGroups ?? []).flatMap((group) => group.fields)
 }
 
-function focusSection(key: string): void {
-  if (!key) return
-  void nextTick(() => {
-    document.querySelector(`[data-section="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  })
+async function load(): Promise<void> {
+  for (const field of allFields()) {
+    values[field.key] = await window.api.config.get(pathFor(field))
+  }
+  for (const dep of tool.value?.configDeps ?? []) {
+    depValues[`${dep.toolId}.${dep.key}`] = await window.api.config.get(`tools.${dep.toolId}.${dep.key}`)
+  }
 }
-watch(sectionKey, focusSection, { immediate: true })
+// catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）
+watch(() => tool.value?.id, () => { void load() }, { immediate: true })
 
-onMounted(async () => {
-  cfg.outputDir = (await str('app.outputDir', '')) === 'null' ? '' : await str('app.outputDir', '')
-  cfg.launchOnBoot = await bool('app.launchOnBoot', false)
-  cfg.tray = await bool('app.tray', true)
-  cfg.ttlHours = await num('app.share.ttlHours', 72)
-  cfg.renderStrict = await bool('tools.edm-studio.render.strict', true)
-  cfg.autoEscape = await bool('tools.edm-studio.render.autoEscape', true)
-  cfg.badgeAttr = await str('tools.badge-studio.badgeAttr', 'data-edm-badge')
-  cfg.clicksField = (await str('tools.badge-studio.clicksField', 'clicks')) === 'totalClicks' ? 'totalClicks' : 'clicks'
-  cfg.stripUtm = await bool('tools.badge-studio.urlNorm.stripUtm', true)
-  version.value = await window.api.app.version().catch(() => '0.1.0')
-})
+function display(value: unknown): string {
+  if (value === null || value === undefined) return '（未设置）'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
 
 async function save(): Promise<void> {
   saving.value = true
   try {
-    const pairs: [string, unknown][] = [
-      ['app.outputDir', cfg.outputDir.trim() || null],
-      ['app.launchOnBoot', cfg.launchOnBoot],
-      ['app.tray', cfg.tray],
-      ['app.share.ttlHours', Number(cfg.ttlHours)],
-      ['tools.edm-studio.render.strict', cfg.renderStrict],
-      ['tools.edm-studio.render.autoEscape', cfg.autoEscape],
-      ['tools.badge-studio.badgeAttr', cfg.badgeAttr.trim() || 'data-edm-badge'],
-      ['tools.badge-studio.clicksField', cfg.clicksField],
-      ['tools.badge-studio.urlNorm.stripUtm', cfg.stripUtm],
-    ]
-    for (const [key, value] of pairs) await window.api.config.set(key, value)
-    ElMessage.success('配置已保存（产物目录变更需重启应用生效）')
+    for (const field of allFields()) {
+      const raw = values[field.key]
+      const value = field.type === 'number' ? Number(raw) : field.type === 'boolean' ? Boolean(raw) : String(raw ?? '')
+      await window.api.config.set(pathFor(field), value)
+    }
+    ElMessage.success('工具配置已保存')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -85,83 +53,64 @@ async function save(): Promise<void> {
   }
 }
 
-async function pickDir(): Promise<void> {
-  const dir = await window.api.os.pickDir()
-  if (dir) cfg.outputDir = dir
+function focusSection(section?: string): void {
+  if (!section) return
+  void nextTick(() => {
+    document.querySelector(`[data-group="${section}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
 }
-
-function openDataDir(): void { void window.api.app.openDataDir() }
-async function onTheme(next: ThemeMode): Promise<void> { await setMode(next) }
+watch(() => props.section, focusSection, { immediate: true })
 </script>
 
 <template>
-  <ToolPageLayout title="配置管理" description="应用与工具配置（写入 settings.json；密钥在模型控制台单独加密管理）">
+  <ToolPageLayout
+    :title="`${tool?.name ?? '工具'} · 工具配置`"
+    description="仅管理本工具自己的配置；应用 / 系统级配置请从右上角「设置」进入"
+  >
     <template #actions>
-      <el-button type="primary" size="small" :loading="saving" @click="save">保存配置</el-button>
+      <el-button type="primary" size="small" :loading="saving" @click="save">保存工具配置</el-button>
     </template>
 
     <div class="settings-grid">
-      <section class="panel" :class="{ 'is-focused': sectionKey === 'app' }" data-section="app">
-        <div class="panel-head"><span class="dot" />应用配置</div>
-        <el-form label-width="110px" size="small">
-          <el-form-item label="主题模式">
-            <el-select :model-value="mode" style="width: 180px" @change="onTheme">
-              <el-option label="暗黑" value="dark" />
-              <el-option label="亮色" value="light" />
-              <el-option label="跟随系统" value="system" />
+      <section
+        v-for="group in tool?.configGroups ?? []"
+        :key="group.id"
+        class="panel"
+        :class="{ 'is-focused': section === group.id }"
+        :data-group="group.id"
+      >
+        <div class="panel-head"><span class="dot" />{{ group.label }}</div>
+        <el-form label-width="140px" size="small">
+          <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label">
+            <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
+            <el-input-number
+              v-else-if="field.type === 'number'"
+              v-model="values[field.key]"
+              :min="field.min"
+              :max="field.max"
+            />
+            <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px">
+              <el-option v-for="opt in field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
-          </el-form-item>
-          <el-form-item label="产物目录">
-            <div style="display:flex; gap:8px; width:100%">
-              <el-input v-model="cfg.outputDir" placeholder="留空 = 默认 userData/sshk-data" />
-              <el-button @click="pickDir">选择</el-button>
-            </div>
-            <div class="hint">变更需重启应用生效；本机路径不会进入备份包</div>
-          </el-form-item>
-          <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
-          <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
-          <el-form-item label="分享有效期">
-            <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" size="small" />
-            <span class="hint" style="margin-left:8px">小时（token 到期即失效）</span>
+            <el-input v-else v-model="values[field.key]" style="width: 260px" />
+            <span v-if="field.hint" class="hint">{{ field.hint }}</span>
           </el-form-item>
         </el-form>
       </section>
 
-      <section class="panel" :class="{ 'is-focused': sectionKey === 'tools' }" data-section="tools">
-        <div class="panel-head"><span class="dot" />工具配置</div>
-        <el-form label-width="110px" size="small">
-          <el-form-item label="EDM 严格模式">
-            <el-switch v-model="cfg.renderStrict" />
-            <span class="hint" style="margin-left:8px">未定义变量直接报错</span>
-          </el-form-item>
-          <el-form-item label="HTML 转义">
-            <el-switch v-model="cfg.autoEscape" />
-            <span class="hint" style="margin-left:8px">防数据注入</span>
-          </el-form-item>
-          <el-form-item label="badge 属性">
-            <el-input v-model="cfg.badgeAttr" style="width: 200px" />
-          </el-form-item>
-          <el-form-item label="角标数值列">
-            <el-radio-group v-model="cfg.clicksField">
-              <el-radio value="clicks">clicks</el-radio>
-              <el-radio value="totalClicks">totalClicks</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="去 UTM 参数"><el-switch v-model="cfg.stripUtm" /></el-form-item>
-        </el-form>
-      </section>
-
-      <section class="panel" :class="{ 'is-focused': sectionKey === 'system' }" data-section="system">
-        <div class="panel-head"><span class="dot" />系统与数据</div>
-        <div class="kv"><span>应用版本</span><strong>v{{ version }}</strong></div>
-        <div class="kv"><span>数据目录</span><el-button size="small" text @click="openDataDir">打开</el-button></div>
-        <div class="kv"><span>一键备份</span><span class="hint">导出/导入 zip 能力见 packages/backup（菜单后续接入）</span></div>
-        <div class="kv"><span>密钥管理</span><span class="hint">Model Console → 模型 Provider（safeStorage 加密）</span></div>
+      <section v-if="tool?.configDeps?.length || tool?.warnings?.length" class="panel">
+        <div class="panel-head"><span class="dot" />配置依赖</div>
+        <div v-for="dep in tool?.configDeps ?? []" :key="`${dep.toolId}.${dep.key}`" class="kv">
+          <span>{{ byId.get(dep.toolId)?.name ?? dep.toolId }} · {{ dep.label }}</span>
+          <code>{{ display(depValues[`${dep.toolId}.${dep.key}`]) }}</code>
+        </div>
+        <div v-for="(warning, i) in tool?.warnings ?? []" :key="i" class="warning-line">{{ warning }}</div>
+        <div class="hint" style="margin-top: 8px">依赖配置只读，由所属工具管理；禁用 / 删除工具请在「设置 → 工具与权限」中操作</div>
       </section>
     </div>
 
     <template #footer>
-      <span class="muted">所有配置走主进程 ConfigService 原子写入 · 密钥永不进入 settings.json</span>
+      <span class="muted">配置落盘路径：tools.{{ toolId }}.* · 工具元数据与可见性由主进程统一裁决</span>
     </template>
   </ToolPageLayout>
 </template>
@@ -197,13 +146,16 @@ async function onTheme(next: ThemeMode): Promise<void> { await setMode(next) }
   background: var(--sshk-accent);
 }
 .hint, .muted { font-size: 12px; opacity: .6; }
+.hint { display: block; line-height: 1.5; }
 .kv {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 6px 0;
   border-bottom: 1px dashed var(--sshk-border);
   font-size: 13px;
 }
-.kv:last-child { border-bottom: none; }
+.kv code { font-size: 12px; opacity: .75; word-break: break-all; }
+.warning-line { font-size: 12px; color: #ffb35c; padding: 6px 0; }
 </style>
