@@ -39,7 +39,8 @@ const editingId = ref<string | null>(null)
 const form = reactive<Provider & { apiKey: string }>({
   _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '',
 })
-const health = reactive<Record<string, { ok: boolean; message: string }>>({})
+interface HealthState { ok: boolean; message: string; at: string }
+const health = reactive<Record<string, HealthState>>({})
 const testingId = ref<string | null>(null)
 
 // 对话调试
@@ -55,6 +56,9 @@ const activeProvider = computed(
 async function load(): Promise<void> {
   const saved = (await window.api.config.get('app.llm.providers')) as Provider[] | null
   providers.value = Array.isArray(saved) ? saved : []
+  // 连通状态持久化：测过的 Provider 下次进来直接显示上次结果
+  const savedHealth = (await window.api.config.get('app.llm.health')) as Record<string, HealthState> | null
+  if (savedHealth && typeof savedHealth === 'object') Object.assign(health, savedHealth)
   const rawPresets = (await window.api.config.get('tools.model-console.modelPresets')) as ModelPreset[] | null
   presets.value = Array.isArray(rawPresets)
     ? rawPresets.filter((p) => p && typeof p.baseURL === 'string' && Array.isArray(p.models))
@@ -198,11 +202,13 @@ async function doRemove(): Promise<void> {
 async function testProvider(row: Provider): Promise<void> {
   testingId.value = row._id
   try {
-    health[row._id] = await window.api.llm.healthCheck(row)
+    const result = await window.api.llm.healthCheck(row)
+    health[row._id] = { ...result, at: new Date().toLocaleString('sv-SE') }
   } catch (err) {
-    health[row._id] = { ok: false, message: (err as Error).message }
+    health[row._id] = { ok: false, message: (err as Error).message, at: new Date().toLocaleString('sv-SE') }
   } finally {
     testingId.value = null
+    await window.api.config.set('app.llm.health', JSON.parse(JSON.stringify(health)))
   }
 }
 
@@ -318,6 +324,7 @@ onMounted(() => {
         <template #default="{ row }">
           <span v-if="health[row._id]" :class="health[row._id]!.ok ? 'ok' : 'bad'">
             {{ health[row._id]!.message }}
+            <small class="muted">（{{ health[row._id]!.at }}）</small>
           </span>
           <span v-else class="muted">未测试</span>
         </template>

@@ -746,10 +746,13 @@ onMounted(() => {
   gap: 10px;
   align-items: start;
 }
-/* 右列（配置+预览）sticky 跟随滚动，左列长内容独立滚动 */
+/* 右列（配置+预览）sticky：吃掉剩余视口高度，预览铺满剩余空间 */
 .side-preview {
   position: sticky;
   top: 0;
+  max-height: calc(100vh - 150px);
+  display: flex;
+  flex-direction: column;
 }
 .col {
   display: flex;
@@ -768,12 +771,16 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 .preview-panel {
-  min-height: 320px;
+  min-height: 240px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .preview-frame {
   width: 680px;
   max-width: 100%;
-  height: 560px;
+  flex: 1;
+  min-height: 240px;
   border: 1px dashed rgba(128, 128, 128, 0.35);
   background: #fff;
   border-radius: 4px;

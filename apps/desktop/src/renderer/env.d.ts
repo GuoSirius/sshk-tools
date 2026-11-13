@@ -85,6 +85,7 @@ interface Window {
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>
       pickDir(): Promise<string>
+      pickSave(opts?: { fileName?: string; extensions?: string[] }): Promise<string>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
     }
@@ -121,6 +122,10 @@ interface Window {
       setOverrides(id: string, overrides: Record<string, string>): Promise<import('@sshk/shared').ToolCatalogPayload>
       setDistribution(ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload>
       cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>
+    }
+    backup: {
+      export(zipPath: string, passphrase?: string): Promise<{ counts: Record<string, number>; file: string }>
+      import(zipPath: string, passphrase?: string): Promise<{ counts: Record<string, number>; secretsRestored: number; secretsMessage: string }>
     }
     runtime: {
       install(zipPath: string, explicitlyTrusted?: boolean): Promise<{ record: import('@sshk/shared').InstalledPackageRecord; warnings: string[] }>

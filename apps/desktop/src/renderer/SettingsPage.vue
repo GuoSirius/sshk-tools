@@ -52,6 +52,10 @@ function allFields(): ToolConfigField[] {
 async function load(): Promise<void> {
   for (const field of allFields()) {
     values[field.key] = await window.api.config.get(pathFor(field))
+    // fallbackKey：值为空时展示生效值（如「默认 Provider」← 应用激活 Provider）
+    if ((values[field.key] ?? '') === '' && field.fallbackKey) {
+      values[field.key] = await window.api.config.get(field.fallbackKey)
+    }
   }
   for (const dep of tool.value?.configDeps ?? []) {
     depValues[`${dep.toolId}.${dep.key}`] = await window.api.config.get(`tools.${dep.toolId}.${dep.key}`)

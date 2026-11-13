@@ -40,6 +40,8 @@ export interface AppServices {
   getAccessKeyState: () => { hasAccessKey: boolean; grants: string[] }
   /** 全量密钥 JSON（zip 导出加密迁移用；默认导出路径拿不到它） */
   exportSecretsJson: () => string
+  /** 导入备份后把解密出的 Provider 密钥合并回 safeStorage */
+  importSecretsJson: (json: string) => void
   /** 暴露给工具插件的宿主能力；应用不依赖工具，工具可依赖这些能力 */
   host: ToolHostCapabilities
 }
@@ -255,6 +257,15 @@ export function setupServices(): AppServices {
       const hash = config.get('app.accessKeyHash') as string | null
       const valid = Boolean(key && hash && sha256(key) === hash)
       return { hasAccessKey: valid, grants: valid ? [ACCESS_GRANT] : [] }
+    },
+    importSecretsJson: (json) => {
+      const parsed = JSON.parse(json) as { providers?: { _id?: string; apiKey?: string }[] }
+      const secrets = loadSecrets()
+      for (const item of parsed.providers ?? []) {
+        if (!item || typeof item._id !== 'string' || !isProviderId(item._id)) continue
+        if (typeof item.apiKey === 'string' && item.apiKey) secrets[item._id] = item.apiKey
+      }
+      saveSecrets(secrets)
     },
     // app:* 前缀的工具密钥与访问密钥都不参与 provider 迁移
     exportSecretsJson: () => JSON.stringify({

@@ -103,6 +103,32 @@ async function saveDistribution(): Promise<void> {
   ElMessage.success(ids ? '分发白名单已保存' : '已恢复为包含全部工具')
 }
 
+// ── 备份：settings + NeDB + 产物 → zip（导入含快照回滚与密钥迁移） ──
+async function exportBackup(): Promise<void> {
+  const save = await window.api.os.pickSave({
+    fileName: `sshk-tools-backup-${new Date().toLocaleDateString('sv-SE')}.zip`,
+    extensions: ['zip'],
+  })
+  if (!save) return
+  try {
+    const { counts } = (await window.api.backup.export(save)) as { counts: Record<string, number> }
+    const summary = Object.entries(counts).map(([k, v]) => `${k} ${v} 项`).join(' / ')
+    ElMessage.success(`备份已导出：${save}（${summary}）`)
+  } catch (err) {
+    ElMessage.error(`导出失败：${(err as Error).message}`)
+  }
+}
+async function importBackup(): Promise<void> {
+  const [zip] = await window.api.os.pickFile({ filters: [{ name: '备份包', extensions: ['zip'] }] })
+  if (!zip) return
+  try {
+    const result = (await window.api.backup.import(zip)) as { secretsRestored: number }
+    ElMessage.success(`导入完成${result.secretsRestored ? `，已还原 ${result.secretsRestored} 个密钥` : ''}；重启应用后数据完全生效`)
+  } catch (err) {
+    ElMessage.error(`导入失败：${(err as Error).message}`)
+  }
+}
+
 // ── 运行时工具包（#35 阶段二）：.sshktool 导入 / 列表 / 卸载 ──
 const runtimePackages = ref<InstalledPackageRecord[]>([])
 async function refreshRuntime(): Promise<void> {
@@ -377,7 +403,11 @@ async function cleanupOrphans(): Promise<void> {
               <div class="kv-line"><span>应用版本</span><strong>v{{ version }}</strong></div>
               <div class="kv-line"><span>数据目录</span><el-button size="small" text @click="openDataDir">打开</el-button></div>
               <div class="kv-line"><span>密钥管理</span><span class="hint">模型 Provider 密钥：Model Console；应用访问密钥：本页「工具与权限」</span></div>
-              <div class="kv-line"><span>备份</span><span class="hint">导出 / 导入 zip 能力见 packages/backup（后续接入菜单）</span></div>
+              <div class="kv-line">
+                <span>备份</span>
+                <el-button size="small" @click="exportBackup">导出</el-button>
+                <el-button size="small" @click="importBackup">导入</el-button>
+              </div>
             </section>
 
             <section class="settings-card">

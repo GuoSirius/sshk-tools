@@ -13,12 +13,16 @@ import {
   resolveToolCatalog,
   shouldSeedDefaultProviders,
   type ToolCatalogPayload,
+  type ToolDescriptor,
   type ToolOverrides,
   type ToolPluginStatus,
 } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
-import { installPackage, listInstalled, uninstallPackage } from './runtime-installer'
+import { exportBackup } from '@sshk/backup'
+import { importBackup } from '@sshk/backup'
+import { installPackage, listInstalled, loadRuntimeManifests, uninstallPackage } from './runtime-installer'
+import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins } from './plugins'
 import { MANIFESTS } from './discovery'
 
@@ -97,8 +101,15 @@ function readProvider(_event: unknown, provider: LlmProvider): LlmProvider {
   return provider
 }
 
+/** 构建期内置清单 + 运行时已安装包清单，统一参与目录裁决 */
+function allManifests(): ToolDescriptor[] {
+  const runtime = loadRuntimeManifests({ userDataDir: app.getPath('userData'), importedKeys: [] })
+  for (const problem of runtime.problems) console.warn('[sshk] 运行时工具包：', problem)
+  return [...MANIFESTS, ...runtime.manifests]
+}
+
 function assertKnownTool(id: string): void {
-  if (!MANIFESTS.some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
+  if (!allManifests().some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
 }
 
 function readRecord<T>(key: string): Record<string, T> {
@@ -133,25 +144,26 @@ function pickOverrides(raw: unknown): ToolOverrides {
  */
 function buildCatalog(): ToolCatalogPayload {
   const cfg = services!.config
+  const manifests = allManifests()
   const enabled: Record<string, boolean> = {}
   const grants: Record<string, string> = {}
   const dependsOn: Record<string, string[]> = {}
-  for (const tool of MANIFESTS) {
+  for (const tool of manifests) {
     const value = cfg.get(`tools.${tool.id}.enabled`)
     enabled[tool.id] = typeof value === 'boolean' ? value : tool.enabled
     grants[tool.id] = String(cfg.get(`tools.${tool.id}.requiredGrant`) ?? '')
     const rawDeps = cfg.get(`tools.${tool.id}.dependsOn`)
     dependsOn[tool.id] = Array.isArray(rawDeps)
       ? rawDeps.filter((id): id is string =>
-        typeof id === 'string' && id !== tool.id && MANIFESTS.some((t) => t.id === id))
+        typeof id === 'string' && id !== tool.id && manifests.some((t) => t.id === id))
       : (tool.dependsOn ?? [])
   }
   const rawInclude = cfg.get('app.distribution.includeTools')
   const includeTools = Array.isArray(rawInclude)
-    ? rawInclude.filter((id): id is string => typeof id === 'string' && MANIFESTS.some((t) => t.id === id))
+    ? rawInclude.filter((id): id is string => typeof id === 'string' && manifests.some((t) => t.id === id))
     : null
   const { hasAccessKey, grants: heldGrants } = services!.getAccessKeyState()
-  return resolveToolCatalog(MANIFESTS, {
+  return resolveToolCatalog(manifests, {
     enabled,
     grants,
     dependsOn,
@@ -274,7 +286,7 @@ async function registerIpc(): Promise<void> {
   })
   ipcMain.handle(IPC_CHANNELS.toolsSetDistribution, (_event, raw: unknown) => {
     const ids = Array.isArray(raw)
-      ? raw.filter((id): id is string => typeof id === 'string' && MANIFESTS.some((t) => t.id === id))
+      ? raw.filter((id): id is string => typeof id === 'string' && allManifests().some((t) => t.id === id))
       : null
     cfg.set('app.distribution.includeTools', ids)
     return buildCatalog()
@@ -286,6 +298,38 @@ async function registerIpc(): Promise<void> {
   ipcMain.handle(IPC_CHANNELS.accessKeySet, (_event, key: string) => {
     services!.setAccessKey(String(key ?? ''))
     return buildCatalog()
+  })
+
+  // ── 备份：settings + NeDB + 产物 → zip；导入含快照回滚 ──
+  ipcMain.handle(IPC_CHANNELS.backupExport, async (_event, zipPath: string, passphrase?: string) => {
+    const out = String(zipPath ?? '')
+    if (!out) throw new Error('缺少导出路径')
+    const manifest = await exportBackup({
+      repository: services!.repository,
+      settings: services!.config.snapshot() as unknown as Record<string, unknown>,
+      outputRoot: services!.outputRoot,
+      outZipPath: out,
+      appVersion: app.getVersion(),
+      secretsJson: services!.exportSecretsJson(),
+      migrationPassphrase: passphrase || undefined,
+    })
+    return { counts: manifest.counts, file: out }
+  })
+  ipcMain.handle(IPC_CHANNELS.backupImport, async (_event, zipPath: string, passphrase?: string) => {
+    const file = String(zipPath ?? '')
+    if (!file) throw new Error('缺少导入文件')
+    const dbDir = services!.dbDir
+    const result = await importBackup({
+      repository: services!.repository,
+      zipPath: file,
+      outputRoot: services!.outputRoot,
+      snapshotDir: join(services!.outputRoot, '.tmp', 'import', 'pre-import-backup'),
+      dbDir,
+      settingsPath: defaultConfigPath(app.getPath('userData')),
+      migrationPassphrase: passphrase || undefined,
+    })
+    if (result.secretsJson) services!.importSecretsJson(result.secretsJson)
+    return { counts: result.manifest.counts, secretsRestored: result.secretsRestored, secretsMessage: result.secretsMessage }
   })
 
   // ── 运行时工具包：.sshktool 导入 / 列表 / 卸载（用户经由文件选择器提供路径） ──
@@ -363,6 +407,14 @@ async function registerIpc(): Promise<void> {
     })
     return result.canceled ? [] : result.filePaths
   })
+  ipcMain.handle(IPC_CHANNELS.osPickSave, async (_event, opts?: { fileName?: string; extensions?: string[] }) => {
+    const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
+    const result = await dialog.showSaveDialog(win!, {
+      defaultPath: opts?.fileName,
+      filters: opts?.extensions ? [{ name: '文件', extensions: opts.extensions }] : undefined,
+    })
+    return result.canceled ? '' : (result.filePath ?? '')
+  })
   ipcMain.handle(IPC_CHANNELS.osPickDir, async (_event) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
@@ -386,7 +438,7 @@ async function registerIpc(): Promise<void> {
     outputRoot: services!.outputRoot,
     host: services!.host,
     isActive: isToolActive,
-  }, MANIFESTS)
+  }, allManifests())
 }
 
 /**

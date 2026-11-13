@@ -75,6 +75,9 @@ const api = {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
       invoke(IPC_CHANNELS.osPickFile, opts),
     pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
+    /** 保存对话框（导出备份等） */
+    pickSave: (opts?: { fileName?: string; extensions?: string[] }): Promise<string> =>
+      invoke(IPC_CHANNELS.osPickSave, opts),
     clipboardWrite: (text: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.osClipboardWrite, text),
     shellOpen: (target: string): Promise<boolean> => invoke(IPC_CHANNELS.osShellOpen, target),
@@ -121,6 +124,12 @@ const api = {
       invoke(IPC_CHANNELS.toolsSetDistribution, ids),
     cleanupOrphans: (): Promise<unknown> =>
       invoke(IPC_CHANNELS.toolsCleanupOrphans),
+  },
+  backup: {
+    export: (zipPath: string, passphrase?: string): Promise<unknown> =>
+      invoke(IPC_CHANNELS.backupExport, zipPath, passphrase),
+    import: (zipPath: string, passphrase?: string): Promise<unknown> =>
+      invoke(IPC_CHANNELS.backupImport, zipPath, passphrase),
   },
   runtime: {
     install: (zipPath: string, explicitlyTrusted?: boolean): Promise<unknown> =>

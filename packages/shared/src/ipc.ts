@@ -35,6 +35,7 @@ export const IPC_CHANNELS = {
   llmProviderModels: 'llm:providerModels',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
+  osPickSave: 'os:pickSave',
   osClipboardWrite: 'os:clipboardWrite',
   osShellOpen: 'os:shellOpen',
   edmListMails: 'edm:listMails',
