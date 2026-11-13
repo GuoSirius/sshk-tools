@@ -72,7 +72,7 @@ importers:
         specifier: latest
         version: 1.11.23
       electron-updater:
-        specifier: latest
+        specifier: ^6
         version: 6.8.11(supports-color@7.2.0)
       element-plus:
         specifier: latest
