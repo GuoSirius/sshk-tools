@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
-import { cpSync, existsSync, readFileSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
@@ -427,6 +427,13 @@ async function registerIpc(): Promise<void> {
     }
     const mime = mimeMap[/\.[a-z]+$/i.exec(target.toLowerCase())?.[0] ?? ''] ?? 'application/octet-stream'
     return 'data:' + mime + ';base64,' + buf.toString('base64')
+  })
+  // 文本写盘：路径必须来自用户经保存对话框选择（导出 HTML 等）
+  ipcMain.handle(IPC_CHANNELS.osWriteText, (_event, path: string, content: string) => {
+    const target = String(path || '')
+    if (!target) throw new Error('缺少写入路径')
+    writeFileSync(target, String(content ?? ''), 'utf8')
+    return true
   })
   ipcMain.handle(IPC_CHANNELS.osPickDir, async (_event) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow

@@ -77,6 +77,8 @@ const api = {
     pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
     /** 图片预览：本地图片转 data URI（限 10MB） */
     readDataUri: (file: string): Promise<string> => invoke(IPC_CHANNELS.osReadDataUri, file),
+    /** 文本写盘：路径来自 pickSave */
+    writeText: (path: string, content: string): Promise<boolean> => invoke(IPC_CHANNELS.osWriteText, path, content),
     /** 保存对话框（导出备份等） */
     pickSave: (opts?: { fileName?: string; extensions?: string[] }): Promise<string> =>
       invoke(IPC_CHANNELS.osPickSave, opts),
@@ -89,7 +91,7 @@ const api = {
     readHtml: (file: string): Promise<{ html: string; hash: string }> =>
       invoke(IPC_CHANNELS.badgeReadHtml, file),
     markBadges: (payload: unknown): Promise<string> => invoke(IPC_CHANNELS.badgeMarkBadges, payload),
-    generate: (payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string }> =>
+    generate: (payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string; matchCounts: Record<string, number> }> =>
       invoke(IPC_CHANNELS.badgeGenerate, payload),
     savePosterPng: (payload: { posterId: string; base64: string }): Promise<string> =>
       invoke(IPC_CHANNELS.badgeSavePosterPng, payload),

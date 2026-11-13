@@ -4,6 +4,8 @@ export interface StatRow {
   totalClicks: number
   /** 用户自定义数值列（uv / pv / 下单数…）：列名 -> 数值，供角标取值与表格编辑 */
   metrics?: Record<string, number>
+  /** 生成后回填：该 URL 在页面中被标记的次数（运行时展示态，不进 CSV） */
+  matched?: number
 }
 
 export interface ParsedDatasource {

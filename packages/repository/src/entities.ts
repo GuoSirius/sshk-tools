@@ -124,6 +124,9 @@ export interface PosterOutputs {
   poster?: string
 }
 
+/** 生成时的统计快照（重新生成/编辑用；宽松结构，避免跨层依赖工具类型） */
+export type StatsSnapshot = object[]
+
 export interface Poster extends BaseEntity {
   name: string
   source: PosterSource
@@ -131,6 +134,8 @@ export interface Poster extends BaseEntity {
   configSnapshot: PosterConfigSnapshot
   outputs: PosterOutputs
   status: EntityStatus
+  /** 生成时的点击统计（可编辑重生成） */
+  statsSnapshot?: StatsSnapshot
   lastGeneratedAt?: string
 }
 

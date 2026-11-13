@@ -37,6 +37,7 @@ export const IPC_CHANNELS = {
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',
   osReadDataUri: 'os:readDataUri',
+  osWriteText: 'os:writeText',
   osClipboardWrite: 'os:clipboardWrite',
   osShellOpen: 'os:shellOpen',
   edmListMails: 'edm:listMails',

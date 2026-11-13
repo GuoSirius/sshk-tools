@@ -31,6 +31,7 @@ interface PosterRecord {
   datasources: { file: string; kind: string; ocrReviewed?: boolean }[]
   configSnapshot: { badgeAttr: string; clicksField: string; posterWidth: number; scale: number }
   outputs: { badged?: string; poster?: string }
+  statsSnapshot?: Record<string, unknown>[]
   status: string
   lastGeneratedAt?: string
   createdAt: string
@@ -87,6 +88,7 @@ interface Window {
       pickDir(): Promise<string>
       pickSave(opts?: { fileName?: string; extensions?: string[] }): Promise<string>
       readDataUri(file: string): Promise<string>
+      writeText(path: string, content: string): Promise<boolean>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
     }
@@ -94,7 +96,7 @@ interface Window {
       parseDatasource(file: string): Promise<{ kind: string; rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[] }>
       readHtml(file: string): Promise<{ html: string; hash: string }>
       markBadges(payload: unknown): Promise<string>
-      generate(payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string }>
+      generate(payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string; matchCounts: Record<string, number> }>
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
       deletePoster(posterId: string): Promise<boolean>

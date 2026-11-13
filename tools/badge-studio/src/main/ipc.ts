@@ -190,7 +190,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   // ④ 生成：badge 副本 + 海报记录（覆盖式产物；重新生成按 posterId 覆写）
   ipc.handle(IPC_CHANNELS.badgeGenerate, wrap(async (input: GenerateInput) => {
     const posterId = input.posterId ?? entityId('pst')
-    const badged = injectBadges(input.sourceHtml, input.stats, input.config)
+    const { html: badged, matchCounts } = injectBadges(input.sourceHtml, input.stats, input.config)
     const badgedRel = writeOutput(deps.outputRoot, posterOutputRel(posterId, 'badged'), badged)
 
     // 源 HTML 落 assets（可复现；原上传文件也不动）
@@ -214,6 +214,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         source: { type: 'upload', htmlPath: srcRel },
         datasources,
         configSnapshot: snapshot,
+        statsSnapshot: input.stats,
         outputs: { ...existing.outputs, badged: badgedRel },
         status: 'generated',
         lastGeneratedAt: now(),
@@ -222,6 +223,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       await deps.repository.insert<Poster>('posters', {
         name: input.name,
         source: { type: 'upload', htmlPath: srcRel },
+        statsSnapshot: input.stats,
         datasources,
         configSnapshot: snapshot,
         outputs,
@@ -229,7 +231,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         lastGeneratedAt: now(),
       })
     }
-    return { posterId, badgedRel, html: badged }
+    return { posterId, badgedRel, html: badged, matchCounts }
   }))
 
   // ⑤ 海报 PNG 落盘（渲染层 snapdom 截图后回传 base64）

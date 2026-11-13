@@ -324,7 +324,7 @@ onMounted(() => {
         <template #default="{ row }">
           <span v-if="health[row._id]" :class="health[row._id]!.ok ? 'ok' : 'bad'">
             {{ health[row._id]!.message }}
-            <small class="muted">（{{ health[row._id]!.at }}）</small>
+            <small class="muted" style="display: block">（{{ health[row._id]!.at }}）</small>
           </span>
           <span v-else class="muted">未测试</span>
         </template>

@@ -14,7 +14,10 @@ interface RecentHtml {
 }
 
 const props = defineProps<{ menu?: string }>()
-const view = computed(() => props.menu ?? 'generate')
+// 菜单由侧栏控制；海报列表点「预览」时内部切回生成视图展示（预览区只在生成视图渲染）
+const localView = ref<string | null>(null)
+const view = computed(() => localView.value ?? props.menu ?? 'generate')
+watch(() => props.menu, () => { localView.value = null })
 const badgeAttr = ref('data-edm-badge')
 // 角标样式 / URL 归一 / 海报尺寸全部来自工具配置，生成页不再写死
 const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 })
@@ -407,7 +410,18 @@ async function generate(): Promise<void> {
     })
     currentPosterId.value = res.posterId
     previewHtml.value = res.html
-    ElMessage.success(`已生成 badge 副本（${res.badgedRel}）`)
+    // 回填每个 URL 的实际标记次数，未匹配行在表格中标红并可一键定位
+    let unmatched = 0
+    for (const row of statRows.value) {
+      const count = res.matchCounts[row.url]
+      row.matched = typeof count === 'number' ? count : 0
+      if (!row.matched) unmatched += 1
+    }
+    ElMessage.success(
+      unmatched > 0
+        ? `已生成 badge 副本（${res.badgedRel}）；${unmatched} 个 URL 未被标记，见表格红色行`
+        : `已生成 badge 副本（${res.badgedRel}），全部 URL 均已标记`,
+    )
     await loadPosters()
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -452,8 +466,57 @@ async function loadPosters(): Promise<void> {
   }
 }
 
+// ── 海报列表管理：多选 / 编辑载入 / 导出 / 批量删除导出（交互范本，EDM 复用） ──
+const selectedPosters = ref<PosterRecord[]>([])
+function onSelectionChange(rows: PosterRecord[]): void { selectedPosters.value = rows }
+async function editPoster(row: PosterRecord): Promise<void> {
+  if (!row.source.htmlPath) return
+  const { html } = await window.api.badge.readHtml(row.source.htmlPath)
+  htmlPath.value = ""
+  pastedHtml.value = html
+  statRows.value = toStatRows(row.statsSnapshot ?? [], [])
+  syncCsvFromRows()
+  badgeAttr.value = row.configSnapshot.badgeAttr || badgeAttr.value
+  clicksField.value = row.configSnapshot.clicksField || clicksField.value
+  currentPosterId.value = row._id
+  localView.value = "generate"
+  ElMessage.success("已载入「" + row.name + "」到工作区，改完点「生成海报」覆盖该海报")
+}
+async function exportPosterHtml(row: PosterRecord): Promise<void> {
+  if (!row.outputs.badged) return
+  const save = await window.api.os.pickSave({ fileName: (row.name || "poster") + ".html", extensions: ["html"] })
+  if (!save) return
+  const { html } = await window.api.badge.readHtml(row.outputs.badged)
+  await window.api.os.writeText(save, html)
+  ElMessage.success("已导出：" + save)
+}
+async function batchExportHtml(): Promise<void> {
+  const rows = selectedPosters.value.filter((row) => row.outputs.badged)
+  if (rows.length === 0) { ElMessage.warning("请先勾选要导出的海报")
+    return }
+  const dir = await window.api.os.pickDir()
+  if (!dir) return
+  let done = 0
+  for (const row of rows) {
+    const { html } = await window.api.badge.readHtml(row.outputs.badged!)
+    await window.api.os.writeText(dir + "/" + (row.name || row._id).replace(/[\\/:*?"<>|]/g, "_") + ".html", html)
+    done += 1
+  }
+  ElMessage.success("已批量导出 " + done + " 个到 " + dir)
+}
+async function batchDeletePosters(): Promise<void> {
+  const rows = selectedPosters.value
+  if (rows.length === 0) { ElMessage.warning("请先勾选要删除的海报")
+    return }
+  for (const row of rows) await window.api.badge.deletePoster(row._id)
+  ElMessage.success("已删除 " + rows.length + " 个")
+  selectedPosters.value = []
+  await loadPosters()
+}
 async function openPoster(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
+  // 预览区在生成视图中：先切回去再加载，否则「点了没反应」
+  localView.value = 'generate'
   const { html } = await window.api.badge.readHtml(row.outputs.badged)
   previewHtml.value = html
   currentPosterId.value = row._id
@@ -478,6 +541,30 @@ async function confirmDelete(): Promise<void> {
   deleteOpen.value = false
 }
 
+// ── HTML 搜索定位：textarea 无法高亮，用 setSelectionRange 选中 + 行号滚动 ──
+const htmlInputRef = ref<{ textarea?: HTMLTextAreaElement } | null>(null)
+const htmlSearch = ref("")
+const htmlSearchPos = ref<{ index: number; total: number } | null>(null)
+let htmlSearchCursor = 0
+function locateInHtml(term: string): void {
+  const query = term || htmlSearch.value.trim()
+  if (!query) { ElMessage.warning("请输入搜索内容（url 片段 / 文字 / 属性名）")
+    return }
+  const text = pastedHtml.value
+  const positions: number[] = []
+  for (let i = text.indexOf(query); i !== -1; i = text.indexOf(query, i + query.length)) positions.push(i)
+  if (positions.length === 0) { ElMessage.warning("未在 HTML 中找到：" + query)
+    return }
+  htmlSearchCursor = positions.includes(htmlSearchCursor) ? (htmlSearchCursor + 1) % positions.length : 0
+  const idx = positions[htmlSearchCursor] ?? 0
+  const el = htmlInputRef.value?.$el?.querySelector("textarea") as HTMLTextAreaElement | null
+  if (!el) return
+  el.focus()
+  el.setSelectionRange(idx, idx + query.length)
+  const line = text.slice(0, idx).split("\n").length
+  el.scrollTop = Math.max(0, (line - 6) * 21)
+  htmlSearchPos.value = { index: htmlSearchCursor + 1, total: positions.length }
+}
 const previewFrame = ref<HTMLIFrameElement | null>(null)
 // 右列高度 = 滚动容器实测高度（ResizeObserver），不再用 100vh 减估算值
 const sidePreviewRef = ref<HTMLElement | null>(null)
@@ -505,6 +592,7 @@ onMounted(() => {
     description="邮件 HTML + 点击统计（文件 / 粘贴 / 多图识别）→ 可编辑表格人工校对 → 注入 badge 副本 → 海报长图（原文件永不修改）"
   >
     <template #actions>
+      <template v-if="view !== 'posters'">
       <el-button size="small" @click="pickHtml">选择 HTML</el-button>
       <el-button size="small" @click="pickStats">选择数据源</el-button>
       <el-button size="small" :disabled="!hasHtml || !hasStats" @click="markBeforeGenerate">批量补属性</el-button>
@@ -512,6 +600,7 @@ onMounted(() => {
         生成海报
       </el-button>
       <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
+      </template>
     </template>
 
     <div v-if="view !== 'posters'" class="badge-grid">
@@ -532,7 +621,20 @@ onMounted(() => {
           >
             <el-option v-for="r in recentHtmls" :key="r.path" :label="r.name" :value="r.path" />
           </el-select>
+          <div class="cfg-row">
+            <el-input
+              v-model="htmlSearch"
+              size="small"
+              clearable
+              placeholder="在 HTML 中搜索（url 片段 / 文字 / 属性名）"
+              style="flex: 1"
+              @keydown.enter="locateInHtml('')"
+            />
+            <el-button size="small" @click="locateInHtml(htmlSearch)">查找下一个</el-button>
+            <span v-if="htmlSearchPos" class="muted">第 {{ htmlSearchPos.index }} / {{ htmlSearchPos.total }} 处</span>
+          </div>
           <el-input
+            ref="htmlInputRef"
             v-model="pastedHtml"
             type="textarea"
             :rows="8"
@@ -615,6 +717,16 @@ onMounted(() => {
             <el-table-column label="totalClicks" width="120">
               <template #default="{ row }">
                 <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
+              </template>
+            </el-table-column>
+            <el-table-column label="标记" width="78">
+              <template #default="{ row }">
+                <span v-if="row.matched === undefined" class="muted">—</span>
+                <span v-else-if="row.matched > 0" class="ok">{{ row.matched }}</span>
+                <span v-else>
+                  <span class="bad">0</span>
+                  <el-button size="small" text type="primary" title="在 HTML 中定位该 URL" @click="locateInHtml(row.url)">定位</el-button>
+                </span>
               </template>
             </el-table-column>
             <el-table-column v-for="key in customMetricKeys" :key="key" min-width="100">
@@ -768,7 +880,8 @@ onMounted(() => {
 
     <div v-if="view !== 'generate'" class="panel" style="margin-top: 8px">
       <div class="panel-title">海报列表（覆盖式产物；删除仅归档记录）</div>
-      <el-table v-if="posters.length > 0" v-loading="listLoading" :data="posters" size="small">
+      <el-table v-if="posters.length > 0" v-loading="listLoading" :data="posters" size="small" @selection-change="onSelectionChange">
+        <el-table-column type="selection" width="40" />
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column label="生成时间" width="160">
           <template #default="{ row }">
@@ -781,10 +894,12 @@ onMounted(() => {
             <span v-if="row.outputs.poster" class="ok"> / {{ row.outputs.poster }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button size="small" text @click="openPoster(row)">预览</el-button>
+            <el-button size="small" text @click="editPoster(row)">编辑</el-button>
             <el-button size="small" text @click="copyCode(row)">复制代码</el-button>
+            <el-button size="small" text @click="exportPosterHtml(row)">导出</el-button>
             <el-button size="small" text type="danger" @click="deleteTarget = row; deleteOpen = true">删除</el-button>
           </template>
         </el-table-column>
@@ -934,6 +1049,10 @@ onMounted(() => {
   color: var(--el-color-warning);
   font-size: 12px;
   margin-top: 6px;
+}
+.bad {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 .ok {
   color: var(--el-color-success);
