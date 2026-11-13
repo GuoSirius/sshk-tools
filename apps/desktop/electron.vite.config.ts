@@ -47,8 +47,19 @@ export default defineConfig({
     resolve: { alias: sshkAlias },
     build: {
       rollupOptions: {
-        // ESM 优先：主进程产物 .mjs
-        output: { format: 'es', entryFileNames: 'index.mjs' },
+        // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是
+        // utilityProcess 沙箱子进程的加载器（加载外部包 main）。两者都需独立产物。
+        input: {
+          index: fileURLToPath(new URL('./src/main/index.ts', import.meta.url)),
+          'utility-host-entry': fileURLToPath(new URL('./src/main/utility-host-entry.ts', import.meta.url)),
+        },
+        // ESM 优先：主进程产物 .mjs。
+        // 旧配置固定 'index.mjs'，第二入口 utility-host-entry 会覆盖它造成碰撞；
+        // 改为函数：index 仍输出 index.mjs，其余入口按 [name].mjs 输出。
+        output: {
+          format: 'es',
+          entryFileNames: (chunk) => (chunk.name === 'index' ? 'index.mjs' : `${chunk.name}.mjs`),
+        },
       },
     },
   },

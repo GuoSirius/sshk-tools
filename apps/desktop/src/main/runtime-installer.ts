@@ -45,7 +45,7 @@ function installedPath(deps: RuntimeDeps): string {
 function sha256(data: Uint8Array): string {
   return createHash('sha256').update(data).digest('hex')
 }
-function readInstalled(deps: RuntimeDeps): Record<string, InstalledPackageRecord> {
+export function readInstalled(deps: RuntimeDeps): Record<string, InstalledPackageRecord> {
   if (!existsSync(installedPath(deps))) return {}
   try {
     return JSON.parse(readFileSync(installedPath(deps), 'utf8')) as Record<string, InstalledPackageRecord>
