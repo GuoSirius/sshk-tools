@@ -4,10 +4,11 @@
  *
  * 流程（先构建后发布，杜绝发布后构建失败）：
  *   前置检验（git 干净 / main 且与远程同步 / pnpm verify 全绿）
- *   → 版本选择（方向键，实时预览 current → next）
+ *   → 版本选择（上下箭头，实时预览 current → next）
  *   → changelog 预览 + 二次确认
- *   → bump 全部 package.json + 生成 CHANGELOG.md
+ *   → bump 全部 package.json + 生成 CHANGELOG.md（快照写入前内容）
  *   → pnpm build + electron-builder --publish never（出 latest.yml + exe 并验证）
+ *     ✗ 构建失败 → 按快照自动回滚版本号与 CHANGELOG，同版本号可直接重发
  *   → chore(release) 提交 + 打 tag + 推送
  *   → 给出 GitHub Release 发布指引（body 只含本次版本段）
  *
@@ -18,7 +19,7 @@
  * 同终端下 inquirer 一直正常 —— 问题在库不在终端，换库即根治。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = process.cwd()
@@ -37,6 +38,11 @@ function git(args, opts = {}) {
 function sh(cmd, args, opts = {}) {
   const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
   if (r.status !== 0) die(`命令失败：${cmd} ${args.join(' ')}`)
+}
+/** 同 sh，但失败抛异常（供需要回滚的构建阶段捕获），不直接退出 */
+function shThrow(cmd, args, opts = {}) {
+  const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
+  if (r.status !== 0) throw new Error(`命令失败：${cmd} ${args.join(' ')}`)
 }
 function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
 
@@ -192,10 +198,24 @@ if (!DRY_RUN) {
   if (!go) die('已取消')
 }
 
-/* ── 3. bump + CHANGELOG.md ── */
+/* ── 3. bump + CHANGELOG.md（快照原状：构建失败时自动回滚，版本号可复用） ── */
 const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date())
 const entry = `## ${next} (${today})\n\n${md}`
 step(`写入版本号 ${next} 与 CHANGELOG.md`)
+const clPath = join(ROOT, 'CHANGELOG.md')
+// 快照将要改动的文件的写入前内容（null=原本不存在），失败时按字节还原
+const beforeState = new Map()
+for (const rel of ['package.json', 'apps/desktop/package.json', 'CHANGELOG.md']) {
+  const f = join(ROOT, rel)
+  beforeState.set(f, existsSync(f) ? readFileSync(f, 'utf8') : null)
+}
+function rollbackBump() {
+  for (const [f, content] of beforeState) {
+    if (content === null) rmSync(f, { force: true })
+    else writeFileSync(f, content)
+  }
+  console.error(RED('已回滚版本号与 CHANGELOG（未提交未推送），同版本号可直接重新发布'))
+}
 if (!DRY_RUN) {
   const pkgPaths = ['package.json', 'apps/desktop/package.json']
   for (const rel of pkgPaths) {
@@ -204,31 +224,36 @@ if (!DRY_RUN) {
     pkg.version = nextSemver
     writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`)
   }
-  const clPath = join(ROOT, 'CHANGELOG.md')
-  const old = existsSync(clPath) ? readFileSync(clPath, 'utf8') : '# Changelog\n\n'
-  writeFileSync(clPath, `${old.replace(/^# Changelog\n\n?/, '# Changelog\n\n')}${entry}`)
+  const old = beforeState.get(clPath) ?? '# Changelog\n\n'
+  writeFileSync(clPath, `${String(old).replace(/^# Changelog\n\n?/, '# Changelog\n\n')}${entry}`)
   ok('版本号与 changelog 已写入')
 } else {
   console.log(DIM(`  [dry-run] 将写入 ${changedFiles.join(' / ')}；CHANGELOG 顶部新增 ${next} 段`))
 }
 
-/* ── 4. 先构建：vite 产物 + electron-builder 打包 ── */
+/* ── 4. 先构建：vite 产物 + electron-builder 打包（失败自动回滚 bump） ── */
 if (!DRY_RUN) {
-  step('pnpm build（main / preload / renderer）')
-  sh('pnpm', ['build'])
-  step('electron-builder 打包（--publish never，先验证可出包）')
-  // 公司网络 TLS 中间人：electron-builder 下载打包工具（NSIS/winCodeSign）时证书校验失败。
-  // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA（装了 MITM 根证书即可通过），
-  // 并对打包子进程放宽 TLS 校验——仅作用于此子进程，不影响仓库其他命令。
-  sh('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
-    env: { ...process.env, NODE_USE_SYSTEM_CA: '1', NODE_TLS_REJECT_UNAUTHORIZED: '0' },
-  })
-  const distDir = join(ROOT, 'dist')
-  const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
-  if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
-    die(`产物缺失（${artifacts.join(', ') || '空'}），已中止，未提交未推送`)
+  try {
+    step('pnpm build（main / preload / renderer）')
+    shThrow('pnpm', ['build'])
+    step('electron-builder 打包（--publish never，先验证可出包）')
+    // 公司网络 TLS 中间人：electron-builder 下载打包工具（NSIS/winCodeSign）时证书校验失败。
+    // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA（装了 MITM 根证书即可通过），
+    // 并对打包子进程放宽 TLS 校验——仅作用于此子进程，不影响仓库其他命令。
+    shThrow('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
+      env: { ...process.env, NODE_USE_SYSTEM_CA: '1', NODE_TLS_REJECT_UNAUTHORIZED: '0' },
+    })
+    const distDir = join(ROOT, 'dist')
+    const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
+    if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
+      throw new Error(`产物缺失（${artifacts.join(', ') || '空'}）`)
+    }
+    ok(`产物就绪：${artifacts.join(', ')}`)
+  } catch (err) {
+    step('构建失败，回滚本次写入')
+    rollbackBump()
+    die(String(err.message || err))
   }
-  ok(`产物就绪：${artifacts.join(', ')}`)
 }
 
 /* ── 5. 提交 + tag + 推送 ── */
