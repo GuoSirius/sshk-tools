@@ -596,7 +596,6 @@ onMounted(() => {
 
 <template>
   <ToolPageLayout
-    :hide-head="view === 'posters'"
     title="Badge Studio"
     description="邮件 HTML + 点击统计（文件 / 粘贴 / 多图识别）→ 可编辑表格人工校对 → 注入 badge 副本 → 海报长图（原文件永不修改）"
   >
@@ -609,6 +608,10 @@ onMounted(() => {
         生成海报
       </el-button>
       <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
+      </template>
+      <template v-else>
+        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
+        <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
       </template>
     </template>
 
@@ -888,11 +891,7 @@ onMounted(() => {
     </div>
 
     <div v-if="view !== 'generate'" class="panel" style="margin-top: 8px">
-      <div class="panel-title">海报列表（覆盖式产物；删除仅归档记录）</div>
-      <div class="cfg-row">
-        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
-        <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
-      </div>
+
       <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="40" reserve-selection />
@@ -927,7 +926,10 @@ onMounted(() => {
       </el-table>
       </div>
       <EmptyState v-else description="还没有海报记录" />
-      <div v-if="posters.length > 0" class="page-bar">
+    </div>
+
+    <template #footer>
+      <template v-if="view === 'posters'">
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -938,11 +940,8 @@ onMounted(() => {
           background
           @current-change="onPageChange"
         />
-      </div>
-    </div>
-
-    <template #footer>
-      <span class="muted">共 {{ posters.length }} 个海报 · 原 HTML 全程只读 · 产物覆盖式生成</span>
+      </template>
+      <span v-else class="muted">共 {{ posters.length }} 个海报 · 原 HTML 全程只读 · 产物覆盖式生成</span>
     </template>
 
     <ConfirmDialog
