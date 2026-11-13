@@ -83,39 +83,42 @@ function bump(v, kind, custom) {
   return fmt(base, `beta.${n}`)
 }
 
-/* ── changelog：conventional commits → 本次版本段（emoji 中文标题 + scope 加粗 + 短 sha） ── */
+/* ── changelog：standard-version 风格（对齐竞品爬虫仓库样式） ──
+ * 章节顺序 = fix → perf → chore(其他) → refactor → docs → ci → feat；
+ * 未归类 type（style/build/test/revert…）并入「其他」。
+ * 条目：* 列表符，**scope:** 冒号在加粗内，sha 短码链接到完整 commit URL。 */
+const REPO_URL = 'https://github.com/GuoSirius/sshk-tools'
 const SECTIONS = [
-  ['feat', '### ✨ 新特性 (Features)'],
   ['fix', '### 🐛 缺陷修复 (Bug Fixes)'],
   ['perf', '### ⚡ 性能优化 (Performance)'],
-  ['refactor', '### ♻ 重构 (Refactors)'],
-  ['docs', '### 📝 文档 (Docs)'],
+  ['chore', '### 🏠 其他 (Miscellaneous)'],
+  ['refactor', '### ♻️ 代码重构 (Refactors)'],
+  ['docs', '### 📚 文档 (Documentation)'],
+  ['ci', '### 🔄 持续集成 (CI)'],
+  ['feat', '### 🚀 新功能 (Features)'],
 ]
 function collectCommits(from) {
   const range = from ? `${from}..HEAD` : 'HEAD'
-  // \x1f 作 hash 与 subject 的分隔符，避免 subject 含 | 时错切
-  const raw = git(['log', range, '--pretty=%h\x1f%s']).split('\n').filter(Boolean)
+  // \x1f 分隔短码/完整 sha/subject，避免 subject 含特殊字符时错切
+  const raw = git(['log', range, '--pretty=%h\x1f%H\x1f%s']).split('\n').filter(Boolean)
   const groups = Object.fromEntries(SECTIONS.map(([t]) => [t, []]))
-  const others = []
   for (const line of raw) {
-    const idx = line.indexOf('\x1f')
-    const hash = line.slice(0, idx)
-    const subject = line.slice(idx + 1)
+    const [hash, full, subject] = line.split('\x1f')
     const m = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(subject)
     const type = m?.[1] ?? ''
     const scope = m?.[2] ?? ''
     const body = m?.[3] ?? subject
-    const item = scope ? `- **${scope}**: ${body} (\`${hash}\`)` : `- ${body} (\`${hash}\`)`
-    if (groups[type]) groups[type].push(item)
-    else others.push(`- ${subject} (\`${hash}\`)`)
+    const link = `([${hash}](${REPO_URL}/commit/${full}))`
+    const item = scope ? `* **${scope}:** ${body} ${link}` : `* ${body} ${link}`
+    const key = SECTIONS.some(([t]) => t === type) ? type : 'chore'
+    groups[key].push(item)
   }
   let md = ''
   for (const [type, title] of SECTIONS) {
     if (groups[type].length === 0) continue
-    md += `${title}\n${groups[type].join('\n')}\n\n`
+    md += `${title}\n\n${groups[type].join('\n')}\n\n`
   }
-  if (others.length) md += `### 🔧 其他 (Miscellaneous)\n${others.join('\n')}\n\n`
-  return { md, counts: groups, others }
+  return { md, counts: groups, others: groups.chore }
 }
 function lastTag() {
   try { return git(['describe', '--tags', '--abbrev=0']) } catch { return '' }
@@ -204,7 +207,11 @@ if (!DRY_RUN) {
 
 /* ── 3. bump + CHANGELOG.md（快照原状：构建失败时自动回滚，版本号可复用） ── */
 const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date())
-const entry = `## ${next} (${today})\n\n${md}`
+// 版本头带 compare 链接（首个版本无上Tag 则省略），显示不带 v 前缀
+const versionHeader = tag
+  ? `## [${nextSemver}](${REPO_URL}/compare/${tag}...${next}) (${today})`
+  : `## ${nextSemver} (${today})`
+const entry = `${versionHeader}\n\n${md}`
 step(`写入版本号 ${next} 与 CHANGELOG.md`)
 const clPath = join(ROOT, 'CHANGELOG.md')
 // 快照将要改动的文件的写入前内容（null=原本不存在），失败时按字节还原
