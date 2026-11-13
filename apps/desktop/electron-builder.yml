@@ -19,8 +19,9 @@ files:
 win:
   icon: build/icon.ico
   target:
+    # 发布出 x64 + arm64 双架构；本地测试脚本 pnpm local 仍只构建 x64 保证速度
     - target: nsis
-      arch: [x64]
+      arch: [x64, arm64]
     - target: portable
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
