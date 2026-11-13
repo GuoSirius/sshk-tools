@@ -99,6 +99,7 @@ interface Window {
       generate(payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string; matchCounts: Record<string, number> }>
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
+      savePosterMeta(payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean>
       deletePoster(posterId: string): Promise<boolean>
       exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {

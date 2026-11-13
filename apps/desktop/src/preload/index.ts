@@ -98,6 +98,8 @@ const api = {
     listPosters: (): Promise<unknown[]> => invoke(IPC_CHANNELS.badgeListPosters),
     exportFiles: (payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }> =>
       invoke(IPC_CHANNELS.badgeExportFiles, payload),
+    savePosterMeta: (payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean> =>
+      invoke(IPC_CHANNELS.badgeSavePosterMeta, payload),
     deletePoster: (posterId: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
     parseImage: (payload: {

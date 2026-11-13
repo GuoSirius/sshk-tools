@@ -273,6 +273,17 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   ipc.handle(IPC_CHANNELS.badgeListPosters, wrap(() => deps.repository.list('posters')))
 
   // ⑦ 删除（软删除归档；产物文件保留，硬删清理目录走二次确认流程）
+  // ④c 保存修改：只更新名称与配置快照，不触发重新生成（改个名字不必重跑）
+  ipc.handle(IPC_CHANNELS.badgeSavePosterMeta, wrap(async (payload: { posterId: string; name?: string; configSnapshot?: Poster['configSnapshot'] }) => {
+    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
+    if (!poster) throw new Error('海报不存在（新海报请先生成一次）')
+    await deps.repository.update<Poster>('posters', payload.posterId, {
+      ...(payload.name ? { name: payload.name } : {}),
+      ...(payload.configSnapshot ? { configSnapshot: payload.configSnapshot } : {}),
+      updatedAt: now(),
+    })
+    return true
+  }))
   ipc.handle(IPC_CHANNELS.badgeDeletePoster, wrap(async (posterId: string) => {
     await deps.repository.archive('posters', posterId)
     return true

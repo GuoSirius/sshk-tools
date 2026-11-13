@@ -130,8 +130,8 @@ async function loadConfigAndRecent(): Promise<void> {
   clicksField.value = await textConfig('clicksField', 'clicks')
   const savedStyle = (await window.api.config.get('tools.badge-studio.badgeStyle')) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
-  badgePositionText.value = String(await window.api.config.get('tools.badge-studio.badgePositionText')) || 'top-right'
-  badgePositionImage.value = String(await window.api.config.get('tools.badge-studio.badgePositionImage')) || 'center'
+  badgePositionText.value = await textConfig('badgePositionText', 'top-right')
+  badgePositionImage.value = await textConfig('badgePositionImage', 'center')
   const savedNorm = (await window.api.config.get('tools.badge-studio.urlNorm')) as Partial<typeof urlNorm> | null
   if (savedNorm && typeof savedNorm === 'object') Object.assign(urlNorm, savedNorm)
   posterWidth.value = Number(await window.api.config.get('tools.badge-studio.posterWidth')) || 680
@@ -532,6 +532,26 @@ async function batchExportHtml(): Promise<void> {
   const { outPath, posters } = (await window.api.badge.exportFiles({ posterIds: rows.map((row) => row._id), outPath: save })) as { outPath: string; posters: number }
   ElMessage.success("已批量导出 " + posters + " 个海报（HTML + 长图，按名称分目录）：" + outPath)
 }
+/** 只保存名称与角标配置（含位置），不触发重新生成 */
+async function savePosterMeta(): Promise<void> {
+  if (!currentPosterId.value) { ElMessage.warning("新海报请先生成一次，再使用保存修改"); return }
+  try {
+    await window.api.badge.savePosterMeta({
+      posterId: currentPosterId.value,
+      name: posterName.value.trim() || undefined,
+      configSnapshot: {
+        badgeAttr: badgeAttr.value,
+        clicksField: clicksField.value,
+        badgePositionText: badgePositionText.value,
+        badgePositionImage: badgePositionImage.value,
+      },
+    })
+    ElMessage.success("已保存修改（名称与角标配置），无需重新生成")
+    await loadPosters()
+  } catch (err) {
+    ElMessage.error("保存失败：" + (err as Error).message)
+  }
+}
 function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === "copy") void copyCode(row)
   else if (cmd === "delete") { deleteTarget.value = row; deleteOpen.value = true }
@@ -636,6 +656,7 @@ onMounted(() => {
       <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml || !hasStats" @click="generate">
         生成海报
       </el-button>
+      <el-button size="small" :disabled="!currentPosterId" @click="savePosterMeta">保存修改</el-button>
       <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
       </template>
       <template v-else>
