@@ -4,7 +4,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <!-- script-src 必须放行 blob:：运行时工具包（.sshktool）的渲染层经 Blob URL 动态 import，
+         内容来自安装时已通过契约校验的本机包，非远程脚本 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:" />
     <title>sshk-tools</title>
   </head>
   <body>

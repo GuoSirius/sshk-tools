@@ -58,10 +58,12 @@ const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.
 // 渲染插件按清单动态加载，单个工具组件失败只影响它自己
 // 内置工具走构建期组件；运行时包走 Blob URL 动态 import（编译后 ESM 组件）
 const runtimeComponents = reactive(new Map<string, Component>())
-const runtimeLoading = ref(false)
+// 按 id 记录加载中 / 失败：失败不再自动重试，避免反复弹错刷屏（F5 可整体重试）
+const runtimeLoading = reactive(new Set<string>())
+const runtimeFailed = reactive(new Set<string>())
 async function loadRuntimeComponent(id: string): Promise<void> {
-  if (runtimeLoading.value || runtimeComponents.has(id)) return
-  runtimeLoading.value = true
+  if (runtimeComponents.has(id) || runtimeLoading.has(id) || runtimeFailed.has(id)) return
+  runtimeLoading.add(id)
   try {
     const code = await window.api.runtime.readRenderer(id)
     const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))
@@ -70,21 +72,26 @@ async function loadRuntimeComponent(id: string): Promise<void> {
     if (!mod.default) throw new Error('渲染层未默认导出组件')
     runtimeComponents.set(id, markRaw(mod.default))
   } catch (err) {
+    runtimeFailed.add(id)
     ElMessage.error('运行时组件加载失败：' + (err as Error).message)
   } finally {
-    runtimeLoading.value = false
+    runtimeLoading.delete(id)
   }
 }
+// 加载触发独立于 toolView：computed 只做纯渲染推导，副作用放 watch（进工具时拉起一次）
+watch(() => {
+  const tool = currentTool.value
+  return tool?.runtime ? tool.id : null
+}, (id) => {
+  if (id) void loadRuntimeComponent(id)
+}, { immediate: true })
 const toolView = computed(() => {
   const tool = currentTool.value
   if (!tool) return null
   const builtin = toolComponent(tool.id)
   if (builtin) return builtin
   // 运行时包：声明了渲染层且带 package 契约
-  if (tool.runtime) {
-    void loadRuntimeComponent(tool.id)
-    return runtimeComponents.get(tool.id) ?? null
-  }
+  if (tool.runtime) return runtimeComponents.get(tool.id) ?? null
   return null
 })
 const visibleTools = computed(() => {
@@ -367,7 +374,8 @@ onMounted(async () => {
               <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
             </div>
             <div class="tool-page-body">
-              <div v-if="currentTool.runtime && runtimeLoading" class="empty-state">运行时组件加载中…</div>
+              <div v-if="currentTool.runtime && runtimeLoading.has(currentTool.id)" class="empty-state">运行时组件加载中…</div>
+              <div v-else-if="currentTool.runtime && runtimeFailed.has(currentTool.id)" class="empty-state">运行时组件加载失败（强制刷新可重试）</div>
               <div v-else class="empty-state">该工具没有可用的渲染插件</div>
             </div>
             <div class="tool-page-foot muted">共 0 项 · 已选 0 项</div>
