@@ -37,6 +37,7 @@ describe('.sshktool 导入包校验（阶段一）', () => {
   it('契约校验：外部包必须带 package，main 必须带签名，通道必须已声明', () => {
     const basePkg: ToolPackageContract = {
       schemaVersion: 1,
+      version: '1.0.0',
       requiresHost: { api: '^1.0', capabilities: [] },
       sandbox: 'utility',
       ipcAllowlist: ['llm:providers'],
