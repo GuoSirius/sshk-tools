@@ -11,11 +11,16 @@ import {
   ensureOutputDirs,
   resolveOutputRoot,
 } from '@sshk/repository'
-import { chat as llmChat, type LlmProvider } from '@sshk/llm-gateway'
+import {
+  chat as llmChat,
+  listModels as llmListModels,
+  type LlmProvider,
+} from '@sshk/llm-gateway'
 import {
   ACCESS_GRANT,
   ACCESS_KEY_SECRET_ID,
   mergeToolDefaults,
+  type LlmProviderInfo,
   type ToolHostCapabilities,
 } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
@@ -77,6 +82,33 @@ export function setupServices(): AppServices {
       throw new Error('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
     }
     writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
+  }
+
+  /**
+   * 应用级 Provider 是宿主能力，不属于任何工具：
+   * 所有工具通过 host.listProviders()/chatByProvider() 复用同一份配置与密钥，
+   * 不需要也不允许各自再配一遍 baseURL / apiKey。
+   */
+  function readProviders(): LlmProvider[] {
+    const raw = config.get('app.llm.providers')
+    if (!Array.isArray(raw)) return []
+    return raw.filter((item): item is LlmProvider => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+      const p = item as Record<string, unknown>
+      return typeof p['_id'] === 'string'
+        && typeof p['baseURL'] === 'string'
+        && /^https?:\/\//i.test(p['baseURL'])
+        && typeof p['model'] === 'string'
+    })
+  }
+
+  function findProvider(providerId: string): LlmProvider {
+    if (!isProviderId(providerId)) throw new Error(`非法 Provider ID：${providerId}`)
+    const provider = readProviders().find((p) => p._id === providerId)
+    if (!provider) {
+      throw new Error(`未找到 Provider「${providerId}」，请先在「模型控制台」新增或启用`)
+    }
+    return provider
   }
 
   /** 本机 OCR：无 shell、固定超时、限制输出，避免外部命令失控 */
@@ -158,6 +190,31 @@ export function setupServices(): AppServices {
       })
       return result.content
     },
+    listProviders: (): LlmProviderInfo[] => readProviders().map((p) => ({
+      _id: p._id,
+      name: p.name,
+      kind: p.kind,
+      baseURL: p.baseURL,
+      model: p.model,
+      enabled: p.enabled,
+      // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型控制台填 Key」
+      hasApiKey: Boolean(loadSecrets()[p._id]),
+    })),
+    chatByProvider: async (req) => {
+      const provider = findProvider(req.providerId)
+      const result = await llmChat({
+        provider: req.model ? { ...provider, model: req.model } : provider,
+        apiKey: loadSecrets()[provider._id] ?? '',
+        messages: req.messages,
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+      })
+      return result.content
+    },
+    listModelsByProvider: (providerId, apiKey) => llmListModels(
+      findProvider(providerId),
+      typeof apiKey === 'string' && apiKey ? apiKey : (loadSecrets()[providerId] ?? ''),
+    ),
     runLocalOcr,
   }
 

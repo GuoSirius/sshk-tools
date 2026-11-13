@@ -82,8 +82,23 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
 
 /** /v1/models 列表 */
 export async function listModels(provider: LlmProvider, apiKey?: string): Promise<string[]> {
-  const res = await fetch(`${trimBase(provider.baseURL)}/models`, { headers: headers(provider, apiKey) })
-  if (!res.ok) throw new Error(`获取模型列表失败 HTTP ${res.status}`)
+  let res: Response
+  try {
+    res = await fetch(`${trimBase(provider.baseURL)}/models`, {
+      headers: headers(provider, apiKey),
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch (err) {
+    throw new Error(`无法连接 ${provider.baseURL}/models：${(err as Error).message}；可手动输入模型名`)
+  }
+  if (!res.ok) {
+    const hint = res.status === 401 || res.status === 403
+      ? '（API Key 无效 / 未配置 / 无权限）'
+      : res.status === 404
+        ? '（该端点不支持 /models）'
+        : ''
+    throw new Error(`获取模型列表失败 HTTP ${res.status}${hint}；可手动输入模型名，不影响保存`)
+  }
   const json = (await res.json()) as { data?: { id?: string }[] }
   return (json.data ?? []).map((m) => m.id ?? '').filter(Boolean)
 }

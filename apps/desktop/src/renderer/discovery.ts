@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+/// <reference path="../types/vite-glob.d.ts" />
 import type { Component } from 'vue'
 
 /**

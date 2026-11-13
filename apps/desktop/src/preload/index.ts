@@ -63,6 +63,11 @@ const api = {
       invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
     setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
+    /** 应用级 Provider 只读清单；所有工具共用，返回值绝不含密钥明文 */
+    providers: (): Promise<unknown[]> => invoke(IPC_CHANNELS.llmProviders),
+    /** 按 Provider id 真实查询 /models，密钥由主进程注入 */
+    providerModels: (providerId: string, apiKey?: string): Promise<string[]> =>
+      invoke(IPC_CHANNELS.llmProviderModels, providerId, apiKey),
   },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>

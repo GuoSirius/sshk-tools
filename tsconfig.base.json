@@ -21,7 +21,8 @@
       "@sshk/backup": ["./packages/backup/src/index.ts"],
       "@sshk/ui-kit": ["./packages/ui-kit/src/index.ts"],
       "@sshk/*": ["./packages/*/src/index.ts", "./tools/*/src/index.ts"],
-      "electron": ["./apps/desktop/node_modules/electron/electron.d.ts"]
+      "electron": ["./apps/desktop/node_modules/electron/electron.d.ts"],
+      "electron-updater": ["./apps/desktop/node_modules/electron-updater/out/main.d.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "out", ".tmp", ".git"]

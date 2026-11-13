@@ -7,6 +7,16 @@ import type {
   ToolRuntimeState,
 } from './types'
 
+/** 工具包可声明的默认 Provider（只含公开端点与模型名，绝不含密钥） */
+export interface DefaultProviderSeed {
+  _id: string
+  name: string
+  kind: 'local' | 'remote'
+  baseURL: string
+  model: string
+  enabled: boolean
+}
+
 /**
  * 工具插件契约（纯函数层）。
  *
@@ -48,6 +58,42 @@ export function mergeToolDefaults(base: SettingsShape, tools: ToolDescriptor[]):
     } as Record<string, unknown>
   }
   return out
+}
+
+/**
+ * 默认 Provider 播种：从各工具包 manifest 的 `defaults.defaultProviders` 收集。
+ * 端点 / 模型名仍归工具包所有，宿主不硬编码任何厂商信息；只收元信息，绝不收密钥。
+ */
+export function collectDefaultProviders(tools: ToolDescriptor[]): DefaultProviderSeed[] {
+  const seeds: DefaultProviderSeed[] = []
+  const seen = new Set<string>()
+  for (const tool of tools) {
+    const raw = (tool.defaults as Record<string, unknown> | undefined)?.['defaultProviders']
+    if (!Array.isArray(raw)) continue
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const p = item as Record<string, unknown>
+      const id = String(p['_id'] ?? '').trim()
+      const url = String(p['baseURL'] ?? '').trim()
+      // 与主进程 isProviderId() 同规则：prv_ + 小写字母数字，保证能直接作为密钥标识
+      if (!/^prv_[0-9a-z]+$/.test(id) || !/^https?:\/\//i.test(url) || seen.has(id)) continue
+      seen.add(id)
+      seeds.push({
+        _id: id,
+        name: String(p['name'] ?? '未命名 Provider').slice(0, 80),
+        kind: p['kind'] === 'local' ? 'local' : 'remote',
+        baseURL: url,
+        model: String(p['model'] ?? '').slice(0, 120),
+        enabled: p['enabled'] !== false,
+      })
+    }
+  }
+  return seeds
+}
+
+/** 只在「从未播种过且当前没有任何 Provider」时播种；用户删空后重启不复活 */
+export function shouldSeedDefaultProviders(seeded: unknown, providers: unknown): boolean {
+  return seeded !== true && (!Array.isArray(providers) || providers.length === 0)
 }
 
 /** 逗号 / 顿号 / 分号都算分类分隔符，去重去空白 */

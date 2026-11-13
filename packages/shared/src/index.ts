@@ -19,6 +19,8 @@ export type {
   ToolVisionMessage,
   ToolHostChatRequest,
   ToolHostCapabilities,
+  LlmProviderInfo,
+  ToolHostProviderChatRequest,
   ToolOverrides,
   ToolPluginStatus,
   ToolRuntimeState,

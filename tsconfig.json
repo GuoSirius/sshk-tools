@@ -1,5 +1,5 @@
 {
-  "//": "IDE 用根项目：packages / tools / scripts 挂到同一 TS 项目。apps/desktop 有自己更具体的 tsconfig.json（含 vite/client），这里刻意不 include apps，避免 Volar / TS Server 在两个项目间选错，导致 .vue 里 vue / element-plus / @sshk/* 报找不到模块。CI 门禁仍走 tsconfig.base.json（-p 显式指定）。",
+  "//": "IDE 通用配置：单一根项目覆盖 apps / packages / tools / scripts。任何遵守 tsconfig 标准的 IDE（VS Code、CodeBuddy、JetBrains 等）打开仓库根即生效，不依赖 IDE 挑项目、不依赖 .vscode 插件设置。apps/desktop/tsconfig.json 保留为同配置的更具体项目（供 -p 显式指定与 Volar 就近选用），两者都 extends 同一份 base，结论一致。",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
@@ -7,12 +7,12 @@
     "noEmit": true
   },
   "include": [
+    "apps/**/*",
     "packages/**/*",
     "tools/**/*",
     "scripts/**/*",
-    "vitest.config.ts",
-    "eslint.config.js",
-    "commitlint.config.js"
+    "*.config.ts",
+    "*.config.js"
   ],
-  "exclude": ["node_modules", "**/node_modules", "dist", "out", ".tmp", ".git", "apps"]
+  "exclude": ["node_modules", "**/node_modules", "dist", "out", ".tmp", ".git", "apps/desktop/out"]
 }

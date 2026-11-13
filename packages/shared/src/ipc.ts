@@ -28,6 +28,9 @@ export const IPC_CHANNELS = {
   llmListModels: 'llm:listModels',
   llmHealthCheck: 'llm:healthCheck',
   llmSetApiKey: 'llm:setApiKey',
+  /** 应用级 Provider 共享：所有工具只读元信息（绝不含密钥），按 id 调用 */
+  llmProviders: 'llm:providers',
+  llmProviderModels: 'llm:providerModels',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osClipboardWrite: 'os:clipboardWrite',

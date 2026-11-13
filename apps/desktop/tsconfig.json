@@ -1,8 +1,9 @@
 {
+  "//": "与根 tsconfig.json 等价（同 base、同 types），供 -p 显式构建与 Volar 就近选用。import.meta.glob 由 src/types/vite-glob.d.ts 本地声明，不再依赖 vite/client 类型包，因此任何 IDE 选中哪一个项目都得到相同结果。",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
-    "types": ["node", "vite/client"],
+    "types": ["node"],
     "jsx": "preserve"
   },
   "include": [

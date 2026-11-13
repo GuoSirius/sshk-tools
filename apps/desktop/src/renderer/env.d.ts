@@ -1,6 +1,9 @@
-/// <reference types="vite/client" />
+/// <reference path="../types/vite-glob.d.ts" />
 
 declare module 'virtual:uno.css'
+/** CSS 副作用导入：TS 6 起会校验 side-effect import，本地声明即可，不依赖 vite/client 类型包 */
+declare module '*.css'
+declare module '*.scss'
 declare module '*.svg' {
   const url: string
   export default url
@@ -72,6 +75,10 @@ interface Window {
       listModels(provider: LlmProvider, apiKey?: string): Promise<string[]>
       healthCheck(provider: LlmProvider, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }>
       setApiKey(providerId: string, apiKey: string): Promise<boolean>
+      /** 应用级 Provider 只读清单（不含密钥）；所有工具共用一份配置 */
+      providers(): Promise<import('@sshk/shared').LlmProviderInfo[]>
+      /** 按 Provider id 查 /models；不落盘密钥 */
+      providerModels(providerId: string, apiKey?: string): Promise<string[]>
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>

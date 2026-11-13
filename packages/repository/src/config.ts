@@ -147,7 +147,8 @@ export const DEFAULT_SETTINGS: Settings = {
     launchOnBoot: false,
     tray: true,
     window: { width: 1440, height: 900, maximized: false },
-    llm: { activeProviderId: null, providers: [] },
+    /** providersSeeded：默认 Provider 只播种一次，用户删空后重启不复活 */
+    llm: { activeProviderId: null, providers: [], providersSeeded: false },
     /** 访问密钥的 sha256（仅存摘要，明文只进 safeStorage） */
     accessKeyHash: null,
     /** 分发白名单；null = 全部工具 */

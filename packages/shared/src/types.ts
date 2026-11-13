@@ -62,9 +62,31 @@ export interface ToolHostChatRequest {
   maxTokens?: number
 }
 
+/** 应用级 Provider 的只读视图：工具可以列出与选择，但拿不到任何密钥明文 */
+export interface LlmProviderInfo {
+  _id: string
+  name: string
+  kind: 'local' | 'remote'
+  baseURL: string
+  model: string
+  enabled: boolean
+  /** 是否已配置密钥（布尔标记，不含明文） */
+  hasApiKey: boolean
+}
+
+/** 工具按 Provider id 发起模型调用；baseURL / 密钥由主进程裁决注入 */
+export interface ToolHostProviderChatRequest {
+  providerId: string
+  /** 覆盖 Provider 上的模型名；留空则用 Provider 自带模型 */
+  model?: string
+  messages: ToolVisionMessage[]
+  temperature?: number
+  maxTokens?: number
+}
+
 /**
  * 宿主提供给工具插件的能力（工具可依赖应用，应用不强依赖工具）：
- * 密钥存 safeStorage、云端视觉 chat、本机 OCR 命令。
+ * 密钥存 safeStorage、应用级 Provider 共享、云端视觉 chat、本机 OCR 命令。
  */
 export interface ToolHostCapabilities {
   /** 工具专属密钥；永不进入 settings.json / 渲染层 */
@@ -72,6 +94,12 @@ export interface ToolHostCapabilities {
   setToolSecret(toolId: string, name: string, value: string): void
   /** OpenAI 兼容 /chat/completions，支持 image_url 多模态；返回文本 */
   chat(req: ToolHostChatRequest): Promise<string>
+  /** 列出应用级 Provider（不含密钥）；所有工具共用一份配置 */
+  listProviders(): LlmProviderInfo[]
+  /** 按 Provider id 调用模型；密钥在主进程注入，工具不再自行配置 baseURL / key */
+  chatByProvider(req: ToolHostProviderChatRequest): Promise<string>
+  /** 按 Provider id 真实查询 /models；密钥同样在主进程注入 */
+  listModelsByProvider(providerId: string, apiKey?: string): Promise<string[]>
   /** 本机 OCR（PaddleOCR 等）：无 shell、带超时，stdout 作为识别文本返回 */
   runLocalOcr(req: { command: string; args: string[]; imagePath: string; timeoutMs?: number }): Promise<string>
 }

@@ -7,7 +7,9 @@ import path from 'node:path'
 import {
   ACCESS_GRANT,
   IPC_CHANNELS,
+  collectDefaultProviders,
   resolveToolCatalog,
+  shouldSeedDefaultProviders,
   type ToolCatalogPayload,
   type ToolOverrides,
   type ToolPluginStatus,
@@ -163,6 +165,20 @@ function isToolActive(id: string): boolean {
   return buildCatalog().tools.find((tool) => tool.id === id)?.visible === true
 }
 
+/**
+ * 默认 Provider 只播种一次：公开端点与模型名来自工具包 manifest，宿主不硬编码厂商。
+ * 密钥不播种，由用户在「模型控制台」填一次；用户删空后重启也不会复活。
+ */
+function seedDefaultProviders(): void {
+  const cfg = services!.config
+  const seeds = collectDefaultProviders(MANIFESTS)
+  if (!seeds.length) return
+  if (!shouldSeedDefaultProviders(cfg.get('app.llm.providersSeeded'), cfg.get('app.llm.providers'))) return
+  cfg.set('app.llm.providers', seeds)
+  cfg.set('app.llm.activeProviderId', seeds.find((p) => p.enabled)?._id ?? null)
+  cfg.set('app.llm.providersSeeded', true)
+}
+
 async function registerIpc(): Promise<void> {
   const cfg = services!.config
 
@@ -285,6 +301,13 @@ async function registerIpc(): Promise<void> {
     services!.setApiKey(providerId, String(apiKey ?? ''))
     return true
   })
+  // 应用级 Provider 共享：所有工具列同一份清单、按 id 复用密钥，禁止各自重复配置
+  ipcMain.handle(IPC_CHANNELS.llmProviders, () => services!.host.listProviders())
+  ipcMain.handle(IPC_CHANNELS.llmProviderModels, (_event, providerId: string, apiKey?: string) =>
+    services!.host.listModelsByProvider(
+      String(providerId ?? ''),
+      typeof apiKey === 'string' && apiKey ? apiKey : undefined,
+    ))
 
   // ── OS 能力（宿主提供） ──
   ipcMain.handle(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {
@@ -332,6 +355,7 @@ function setupAutoUpdate(): void {
 
 void app.whenReady().then(async () => {
   services = setupServices()
+  seedDefaultProviders()
   await registerIpc()
   // 应用内自绘标题栏与工具栏，去掉系统默认菜单（File/Edit/View/Window）
   Menu.setApplicationMenu(null)

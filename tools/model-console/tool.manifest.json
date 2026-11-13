@@ -39,6 +39,16 @@
     "defaultProviderId": "",
     "chatTimeoutMs": 30000,
     "streamEnabled": true,
+    "defaultProviders": [
+      {
+        "_id": "prv_agnesai",
+        "name": "Agnes AI",
+        "kind": "remote",
+        "baseURL": "https://apihub.agnes-ai.com/v1",
+        "model": "agnes-3.0-flash",
+        "enabled": true
+      }
+    ],
     "modelPresets": [
       {
         "id": "agnes",

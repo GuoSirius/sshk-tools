@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ACCESS_GRANT } from './constants'
-import { mergeToolDefaults, resolveToolCatalog, toolGroups, type ResolveCatalogInput } from './tool-catalog'
+import {
+  collectDefaultProviders,
+  mergeToolDefaults,
+  resolveToolCatalog,
+  shouldSeedDefaultProviders,
+  toolGroups,
+  type ResolveCatalogInput,
+} from './tool-catalog'
 import type { ToolDescriptor } from './types'
 
 // 直接拿三个真实工具包的清单做夹具：清单格式不合法这里就会失败。
@@ -179,5 +186,49 @@ describe('工具插件清单（自包含 manifest）', () => {
     const settings = mergeToolDefaults({ app: { themeMode: 'dark' }, tools: {} }, all)
     expect(settings.tools?.[extra.id]).toMatchObject({ apiUrl: 'https://example.com', enabled: true })
     expect(settings.app?.themeMode).toBe('dark')
+  })
+})
+
+describe('默认 Provider 播种（应用级共享）', () => {
+  it('从工具包 manifest 收集公开端点，默认就是 Agnes AI 且不含任何密钥', () => {
+    const seeds = collectDefaultProviders(MANIFESTS)
+    expect(seeds[0]).toMatchObject({
+      _id: 'prv_agnesai',
+      baseURL: 'https://apihub.agnes-ai.com/v1',
+      model: 'agnes-3.0-flash',
+      enabled: true,
+    })
+    expect(seeds[0]!._id).toMatch(/^prv_[0-9a-z]+$/)
+    for (const seed of seeds) {
+      for (const field of Object.keys(seed)) {
+        expect(['apiKey', 'token', 'secret', 'password']).not.toContain(field)
+      }
+    }
+  })
+
+  it('只在「从未播种过且当前无 Provider」时播种；用户删空后重启不复活', () => {
+    expect(shouldSeedDefaultProviders(false, [])).toBe(true)
+    expect(shouldSeedDefaultProviders(undefined, undefined)).toBe(true)
+    expect(shouldSeedDefaultProviders(true, [])).toBe(false)
+    expect(shouldSeedDefaultProviders(false, [{ _id: 'prv_custom' }])).toBe(false)
+  })
+
+  it('拒绝非法 id、非 http(s) 端点与重复 id，宿主不硬编码厂商信息', () => {
+    const tool = (id: string, baseURL: string) => ({
+      id: 'fake',
+      defaults: { defaultProviders: [{ _id: id, name: 'X', baseURL, model: 'm' }] },
+    }) as unknown as ToolDescriptor
+    expect(collectDefaultProviders([tool('prv_bad_ID', 'https://a.com/v1')])).toHaveLength(0)
+    expect(collectDefaultProviders([tool('prv_ok', 'file:///etc/passwd')])).toHaveLength(0)
+    const dup = {
+      id: 'fake',
+      defaults: {
+        defaultProviders: [
+          { _id: 'prv_same', baseURL: 'https://a.com/v1', model: 'm' },
+          { _id: 'prv_same', baseURL: 'https://b.com/v1', model: 'n' },
+        ],
+      },
+    } as unknown as ToolDescriptor
+    expect(collectDefaultProviders([dup])).toHaveLength(1)
   })
 })
