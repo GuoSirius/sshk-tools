@@ -240,7 +240,10 @@ onMounted(async () => {
               <polyline points="13 6 7 12 13 18" />
               <polyline points="19 6 13 12 19 18" />
             </svg>
-            <span class="toggle-text">收起菜单</span>
+            <!-- 文案随状态切换：展开态提示收起；收起态提示展开；hover 临时展开时提示固定 -->
+            <span class="toggle-text">
+              {{ sidebarCollapsed ? (sidebarHover ? '固定展开' : '展开菜单') : '收起菜单' }}
+            </span>
           </button>
         </div>
       </aside>
