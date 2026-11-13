@@ -2,35 +2,45 @@
 // sandbox: true 下 preload 只能由 require 加载，因此产物固定 CJS 且只做白名单桥接。
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '@sshk/shared'
+import { toPlain } from './plain'
+
+/**
+ * 所有 IPC 入参统一在边界脱壳：Vue 的 ref/reactive Proxy 无法被结构化克隆。
+ * 放在唯一出口，渲染层与各工具包（含后期外部工具）都无需自己 toRaw。
+ * 注册类监听（ipcRenderer.on）不经过这里，回调函数保持原样。
+ */
+// 返回值类型由各方法自身的标注与 renderer/env.d.ts 约束，这里只统一处理入参。
+const invoke = (channel: string, ...args: unknown[]): Promise<any> =>
+  ipcRenderer.invoke(channel, ...args.map(toPlain))
 
 const api = {
   config: {
-    get: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.configGet, key),
+    get: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.configGet, key),
     set: (key: string, value: unknown): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.configSet, key, value),
+      invoke(IPC_CHANNELS.configSet, key, value),
     onChanged: (callback: (payload: { namespace: string; key: string }) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.configChanged, (_event, payload) => callback(payload))
     },
   },
   theme: {
     set: (mode: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.configSet, 'app.themeMode', mode),
+      invoke(IPC_CHANNELS.configSet, 'app.themeMode', mode),
     onSystemChanged: (callback: () => void): void => {
       ipcRenderer.on(IPC_CHANNELS.themeSystemChanged, () => callback())
     },
   },
   app: {
-    version: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.appVersion),
-    openDataDir: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appOpenDataDir),
+    version: (): Promise<string> => invoke(IPC_CHANNELS.appVersion),
+    openDataDir: (): Promise<void> => invoke(IPC_CHANNELS.appOpenDataDir),
     /** force=true 走 reloadIgnoringCache（等价 Ctrl+F5） */
     reload: (force?: boolean): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.appReload, Boolean(force)),
-    toggleDevTools: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.appToggleDevTools),
+      invoke(IPC_CHANNELS.appReload, Boolean(force)),
+    toggleDevTools: (): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools),
   },
   update: {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.updateCheck),
-    quitAndInstall: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.updateQuitAndInstall),
+      invoke(IPC_CHANNELS.updateCheck),
+    quitAndInstall: (): Promise<void> => invoke(IPC_CHANNELS.updateQuitAndInstall),
   },
   llm: {
     /** 密钥在主进程注入，渲染层只传 provider 元信息 */
@@ -39,7 +49,7 @@ const api = {
       messages: unknown,
       options?: { onDelta?: boolean },
     ): Promise<{ content: string; model: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmChat, provider, messages, options),
+      invoke(IPC_CHANNELS.llmChat, provider, messages, options),
     /** 流式回调经事件通道分片推送 */
     onDelta: (callback: (delta: string) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.llmChat, (_event, payload: { delta?: string }) => {
@@ -48,32 +58,32 @@ const api = {
     },
     /** 保存 Provider 前也能用刚填的 key 探测；不传则读主进程 safeStorage */
     listModels: (provider: unknown, apiKey?: string): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmListModels, provider, apiKey),
+      invoke(IPC_CHANNELS.llmListModels, provider, apiKey),
     healthCheck: (provider: unknown, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
+      invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
     setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
+      invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
   },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.osPickFile, opts),
-    pickDir: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.osPickDir),
+      invoke(IPC_CHANNELS.osPickFile, opts),
+    pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
     clipboardWrite: (text: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.osClipboardWrite, text),
-    shellOpen: (target: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.osShellOpen, target),
+      invoke(IPC_CHANNELS.osClipboardWrite, text),
+    shellOpen: (target: string): Promise<boolean> => invoke(IPC_CHANNELS.osShellOpen, target),
   },
   badge: {
-    parseDatasource: (file: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.badgeParseDatasource, file),
+    parseDatasource: (file: string): Promise<unknown> => invoke(IPC_CHANNELS.badgeParseDatasource, file),
     readHtml: (file: string): Promise<{ html: string; hash: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeReadHtml, file),
-    markBadges: (payload: unknown): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.badgeMarkBadges, payload),
+      invoke(IPC_CHANNELS.badgeReadHtml, file),
+    markBadges: (payload: unknown): Promise<string> => invoke(IPC_CHANNELS.badgeMarkBadges, payload),
     generate: (payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeGenerate, payload),
+      invoke(IPC_CHANNELS.badgeGenerate, payload),
     savePosterPng: (payload: { posterId: string; base64: string }): Promise<string> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeSavePosterPng, payload),
-    listPosters: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.badgeListPosters),
+      invoke(IPC_CHANNELS.badgeSavePosterPng, payload),
+    listPosters: (): Promise<unknown[]> => invoke(IPC_CHANNELS.badgeListPosters),
     deletePoster: (posterId: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
+      invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
     parseImage: (payload: {
       file: string
       provider: 'cloud' | 'paddleocr' | 'manual'
@@ -82,36 +92,36 @@ const api = {
       paddleCommand?: string
       paddleArgs?: string
     }): Promise<{ rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[]; csv: string; raw: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeParseImage, payload),
+      invoke(IPC_CHANNELS.badgeParseImage, payload),
     setVisionKey: (key: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeSetVisionKey, key),
+      invoke(IPC_CHANNELS.badgeSetVisionKey, key),
     visionState: (): Promise<{ hasKey: boolean }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.badgeVisionState),
+      invoke(IPC_CHANNELS.badgeVisionState),
   },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
-    list: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.toolsList),
+    list: (): Promise<unknown> => invoke(IPC_CHANNELS.toolsList),
     setEnabled: (id: string, enabled: boolean): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsSetEnabled, id, enabled),
+      invoke(IPC_CHANNELS.toolsSetEnabled, id, enabled),
     setGrant: (id: string, grant: string): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsSetGrant, id, grant),
+      invoke(IPC_CHANNELS.toolsSetGrant, id, grant),
     setDependencies: (id: string, ids: string[]): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsSetDependencies, id, ids),
+      invoke(IPC_CHANNELS.toolsSetDependencies, id, ids),
     setOverrides: (id: string, overrides: Record<string, string>): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsSetOverrides, id, overrides),
+      invoke(IPC_CHANNELS.toolsSetOverrides, id, overrides),
     setDistribution: (ids: string[] | null): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsSetDistribution, ids),
+      invoke(IPC_CHANNELS.toolsSetDistribution, ids),
     cleanupOrphans: (): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.toolsCleanupOrphans),
+      invoke(IPC_CHANNELS.toolsCleanupOrphans),
   },
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
-    set: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.accessKeySet, key),
+    set: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.accessKeySet, key),
   },
   edm: {
     /** action 白名单单通道：brands / tpl / frg / mail / share */
     api: (action: string, data?: Record<string, unknown>): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.edmApi, { action, data }),
+      invoke(IPC_CHANNELS.edmApi, { action, data }),
   },
 }
 
