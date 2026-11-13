@@ -10,11 +10,50 @@ import ToolIcon from './ToolIcon.vue'
 import { useToolCatalog } from '../composables/useToolCatalog'
 import type { InstalledPackageRecord } from '@sshk/shared'
 import { useTheme } from '../composables/useTheme'
+import { useUpdater } from '../composables/useUpdater'
 
 const props = defineProps<{ modelValue: boolean; group?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 const { payload, accept, refresh: refreshCatalog } = useToolCatalog()
 const { mode, setMode } = useTheme()
+const { state: updaterState } = useUpdater()
+
+// ── 自动更新状态（与主进程事件同步，单一真相源） ──
+const updateTagType = computed(() => {
+  switch (updaterState.value.phase) {
+    case 'downloaded': return 'success'
+    case 'available':
+    case 'downloading': return 'warning'
+    case 'error': return 'danger'
+    default: return 'info'
+  }
+})
+const updateStatusText = computed(() => {
+  switch (updaterState.value.phase) {
+    case 'idle':
+    case 'not-available': return '已是最新'
+    case 'checking': return '检查中…'
+    case 'available': return '有新版本'
+    case 'downloading': return '下载中'
+    case 'downloaded': return '待安装'
+    case 'error': return '检查失败'
+    case 'dev': return '开发版本'
+    default: return '未知'
+  }
+})
+async function checkUpdate(): Promise<void> {
+  if (updaterState.value.phase === 'checking' || updaterState.value.phase === 'downloading') return
+  const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
+  if (result.dev) ElMessage.info('开发环境不检查更新')
+  else if (result.error) ElMessage.error('检查更新失败：' + String(result.error))
+  else if (result.updateAvailable) ElMessage.success(`发现新版本 ${String(result.version ?? '')}，已开始下载`)
+  else ElMessage.success('当前已是最新版本')
+}
+async function installUpdate(): Promise<void> {
+  await window.api.update.quitAndInstall().catch((err: unknown) => {
+    ElMessage.error('安装失败：' + (err as Error).message)
+  })
+}
 
 /** 后期新增应用级菜单：只加一个分组 + 一个 section，不挤占顶部栏 */
 const groups = [
@@ -429,6 +468,40 @@ async function cleanupOrphans(): Promise<void> {
 
           <!-- 系统与数据 -->
           <template v-else-if="activeGroup === 'system'">
+            <section class="settings-card">
+              <div class="card-title">更新</div>
+              <div class="kv-line"><span>当前版本</span><strong>v{{ version }}</strong></div>
+              <div class="kv-line">
+                <span>更新状态</span>
+                <el-tag size="small" :type="updateTagType">{{ updateStatusText }}</el-tag>
+                <span v-if="updaterState.phase === 'downloading'" class="hint">下载中 {{ updaterState.percent }}%</span>
+              </div>
+              <el-progress
+                v-if="updaterState.phase === 'downloading'"
+                :percentage="updaterState.percent ?? 0"
+                :stroke-width="8"
+                style="margin: 6px 0 10px"
+              />
+              <div
+                v-if="updaterState.version && (updaterState.phase === 'available' || updaterState.phase === 'downloading' || updaterState.phase === 'downloaded')"
+                class="kv-line"
+              >
+                <span>最新版本</span><strong>v{{ updaterState.version }}</strong>
+              </div>
+              <div class="card-actions">
+                <el-button
+                  size="small"
+                  :loading="updaterState.phase === 'checking' || updaterState.phase === 'downloading'"
+                  @click="checkUpdate"
+                >
+                  {{ updaterState.phase === 'checking' ? '检查中…' : '检查更新' }}
+                </el-button>
+                <el-button v-if="updaterState.phase === 'downloaded'" size="small" type="primary" @click="installUpdate">立即安装</el-button>
+              </div>
+              <div v-if="updaterState.phase === 'error'" class="warning-line">{{ updaterState.error }}</div>
+              <div class="hint">自动更新默认开启（见「常规」）；新版本后台下载，完成后点「立即安装」重启生效。</div>
+            </section>
+
             <section class="settings-card">
               <div class="card-title">系统与数据</div>
               <div class="kv-line"><span>应用版本</span><strong>v{{ version }}</strong></div>

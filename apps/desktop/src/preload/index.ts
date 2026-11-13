@@ -38,9 +38,14 @@ const api = {
     toggleDevTools: (key?: string): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools, key),
   },
   update: {
-    check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
+    check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }> =>
       invoke(IPC_CHANNELS.updateCheck),
+    download: (): Promise<boolean> => invoke(IPC_CHANNELS.updateDownload),
     quitAndInstall: (): Promise<void> => invoke(IPC_CHANNELS.updateQuitAndInstall),
+    /** 主进程主动推送 autoUpdater 状态（检查/发现/下载进度/完成/失败），渲染层据此驱动 UI */
+    onState: (callback: (payload: unknown) => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.updateState, (_event, payload) => callback(payload))
+    },
   },
   llm: {
     /** 密钥在主进程注入，渲染层只传 provider 元信息 */

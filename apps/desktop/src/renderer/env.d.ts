@@ -24,6 +24,14 @@ interface LlmProvider {
   enabled: boolean
 }
 
+/** 主进程推送的 autoUpdater 全生命周期状态 */
+interface UpdateState {
+  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev'
+  version?: string
+  percent?: number
+  error?: string
+}
+
 interface PosterRecord {
   _id: string
   name: string
@@ -57,8 +65,10 @@ interface Window {
       toggleDevTools(key?: string): Promise<boolean>
     }
     update: {
-      check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }>
+      check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }>
+      download(): Promise<boolean>
       quitAndInstall(): Promise<void>
+      onState(callback: (payload: UpdateState) => void): void
     }
     llm: {
       chat(

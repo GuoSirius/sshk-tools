@@ -58,6 +58,26 @@ body {
 
 .app-body { flex: 1; min-height: 0; display: flex; position: relative; }
 
+/* 更新横幅：下载完成 / 检查失败 时出现在顶栏下方，主动提示用户 */
+.update-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--sshk-border);
+}
+.update-banner--ok {
+  background: color-mix(in srgb, #2ecc71 14%, var(--sshk-appbar));
+  color: var(--sshk-text);
+}
+.update-banner--err {
+  background: color-mix(in srgb, #e74c3c 12%, var(--sshk-appbar));
+  color: var(--sshk-text);
+}
+
 /* 侧栏：品牌色渐变 + 图标轨 + 激活态；菜单区独立滚动，收起按钮固定底部 */
 .tool-sidebar {
   flex: none;

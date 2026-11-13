@@ -21,6 +21,8 @@ export const IPC_CHANNELS = {
   updateCheck: 'update:check',
   updateDownload: 'update:download',
   updateQuitAndInstall: 'update:quitAndInstall',
+  /** 主进程 → 渲染层：autoUpdater 全生命周期状态推送（检查/发现/下载进度/完成/失败） */
+  updateState: 'update:state',
   shareStart: 'share:start',
   shareStop: 'share:stop',
   shareCopyLink: 'share:copyLink',

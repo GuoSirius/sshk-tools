@@ -10,6 +10,7 @@ import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolMenu } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
+import { useUpdater } from './composables/useUpdater'
 import { toolComponent } from './plugins'
 import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
@@ -37,7 +38,7 @@ const settingsOpen = ref(false)
 const settingsGroup = ref('general')
 const query = ref('')
 const version = ref('0.1.0')
-const updateChecking = ref(false)
+const { state: updater } = useUpdater()
 let hoverTimer: number | undefined
 
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
@@ -220,22 +221,24 @@ watch(sidebarCollapsed, (collapsed) => { if (!collapsed) sidebarHover.value = fa
 onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
 async function checkUpdate(): Promise<void> {
-  if (updateChecking.value) return
-  updateChecking.value = true
-  try {
-    const result = await window.api.update.check()
-    if (result.dev) {
-      ElMessage.info('开发环境不检查更新')
-    } else if (result.updateAvailable) {
-      ElMessage.success(`发现新版本 ${result.version ?? ''}，可在发布页下载或稍后自动安装`)
-    } else {
-      ElMessage.success('当前已是最新版本')
-    }
-  } catch {
-    ElMessage.error('检查更新失败，请稍后重试')
-  } finally {
-    updateChecking.value = false
+  if (updater.value.phase === 'checking' || updater.value.phase === 'downloading') return
+  const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
+  if (result.dev) {
+    ElMessage.info('开发环境不检查更新')
+  } else if (result.error) {
+    ElMessage.error('检查更新失败：' + String(result.error))
+  } else if (result.updateAvailable) {
+    ElMessage.success(`发现新版本 ${String(result.version ?? '')}，已开始下载`)
+  } else {
+    ElMessage.success('当前已是最新版本')
   }
+}
+
+/** 下载完成后点击触发退出并安装（electron-updater 在下次启动时落地） */
+async function installUpdate(): Promise<void> {
+  await window.api.update.quitAndInstall().catch((err: unknown) => {
+    ElMessage.error('安装失败：' + (err as Error).message)
+  })
 }
 
 onMounted(async () => {
@@ -259,7 +262,27 @@ onMounted(async () => {
       >
         <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
-      <el-button size="small" text :loading="updateChecking" @click="checkUpdate">检查更新</el-button>
+      <el-button
+        v-if="updater.phase === 'downloaded'"
+        size="small"
+        type="success"
+        @click="installUpdate"
+      >立即更新 v{{ updater.version }}</el-button>
+      <el-button
+        v-else
+        size="small"
+        text
+        :loading="updater.phase === 'checking' || updater.phase === 'downloading'"
+        :title="updater.error ?? ''"
+        @click="checkUpdate"
+      >
+        <template v-if="updater.phase === 'idle' || updater.phase === 'not-available'">检查更新</template>
+        <template v-else-if="updater.phase === 'available'">发现新版本</template>
+        <template v-else-if="updater.phase === 'downloading'">下载 {{ updater.percent }}%</template>
+        <template v-else-if="updater.phase === 'checking'">检查中…</template>
+        <template v-else-if="updater.phase === 'error'">更新出错</template>
+        <template v-else-if="updater.phase === 'dev'">开发版</template>
+      </el-button>
       <el-dropdown trigger="click" @command="onMoreCommand">
         <el-button size="small" text>更多 ▾</el-button>
         <template #dropdown>
@@ -282,6 +305,22 @@ onMounted(async () => {
         <span>设置</span>
       </button>
     </header>
+
+    <!-- 更新横幅：下载完成主动提示安装；检查失败给重试入口 -->
+    <div
+      v-if="updater.phase === 'downloaded'"
+      class="update-banner update-banner--ok"
+    >
+      <span>新版本 v{{ updater.version }} 已下载完成，重启即可生效</span>
+      <el-button size="small" type="primary" @click="installUpdate">立即重启安装</el-button>
+    </div>
+    <div
+      v-else-if="updater.phase === 'error'"
+      class="update-banner update-banner--err"
+    >
+      <span>更新检查失败：{{ updater.error }}</span>
+      <el-button size="small" text @click="checkUpdate">重试</el-button>
+    </div>
 
     <div class="app-body">
       <!-- 工具级：左侧 = 当前工具的全部功能菜单（含多级）；收起后 hover 就地平滑展开 -->

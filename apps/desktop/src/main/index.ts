@@ -395,11 +395,23 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── 更新 ──
+  // autoUpdater 全生命周期状态：检查 → 发现 → 下载进度 → 完成 → 失败，统一推给渲染层。
+  // 渲染层据此展示状态指示、进度条与「立即安装」提示，告别一次性 toast。
   ipcMain.handle(IPC_CHANNELS.updateCheck, async () => {
-    if (isDev) return { dev: true }
-    const result = await autoUpdater.checkForUpdates()
-    const version = result?.updateInfo?.version ?? null
-    return { updateAvailable: Boolean(version && version !== app.getVersion()), version }
+    if (isDev) { pushUpdate({ phase: 'dev' }); return { dev: true } }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      const version = result?.updateInfo?.version ?? null
+      const updateAvailable = Boolean(version && version !== app.getVersion())
+      return { dev: false, updateAvailable, version }
+    } catch (err) {
+      return { error: (err as Error).message }
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.updateDownload, async () => {
+    if (isDev) return false
+    await autoUpdater.downloadUpdate()
+    return true
   })
   ipcMain.handle(IPC_CHANNELS.updateQuitAndInstall, () => {
     autoUpdater.quitAndInstall()
@@ -537,13 +549,62 @@ function migrateLegacyUserData(): void {
   }
 }
 
-function setupAutoUpdate(): void {
-  if (isDev) return
+type UpdatePhase =
+  | 'idle' | 'checking' | 'available' | 'not-available'
+  | 'downloading' | 'downloaded' | 'error' | 'dev'
+interface UpdateState {
+  phase: UpdatePhase
+  version?: string
+  percent?: number
+  error?: string
+}
+
+/** 主进程持有唯一更新状态，事件触发时推给渲染层（单一真相源，避免重复 toast） */
+let updateState: UpdateState = { phase: 'idle' }
+let latestVersion: string | undefined
+function pushUpdate(patch: Partial<UpdateState>): void {
+  updateState = { ...updateState, ...patch }
+  mainWindow?.webContents.send(IPC_CHANNELS.updateState, updateState)
+}
+
+/** 给 autoUpdater 挂全生命周期监听，把状态与进度实时推到渲染层 */
+function wireAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
-  void autoUpdater.checkForUpdatesAndNotify().catch((err: unknown) => {
-    console.warn('[sshk] 自动更新检查失败：', err)
+  autoUpdater.on('checking-for-update', () => {
+    pushUpdate({ phase: 'checking', error: undefined })
   })
+  autoUpdater.on('update-available', (info: { version: string }) => {
+    latestVersion = info.version
+    pushUpdate({ phase: 'available', version: info.version, error: undefined })
+  })
+  autoUpdater.on('update-not-available', (info: { version: string }) => {
+    latestVersion = info.version
+    pushUpdate({ phase: 'not-available', version: info.version, percent: undefined, error: undefined })
+  })
+  autoUpdater.on('download-progress', (p: { percent: number }) => {
+    pushUpdate({ phase: 'downloading', version: latestVersion, percent: Math.round(p.percent), error: undefined })
+  })
+  autoUpdater.on('update-downloaded', (info: { version: string }) => {
+    pushUpdate({ phase: 'downloaded', version: info.version, percent: 100, error: undefined })
+  })
+  autoUpdater.on('error', (err: Error) => {
+    console.warn('[sshk] 更新出错：', err)
+    pushUpdate({ phase: 'error', error: err.message })
+  })
+}
+
+function setupAutoUpdate(): void {
+  if (isDev) return
+  wireAutoUpdater()
+  // 尊重「自动更新」开关：关闭则仅在用户手动「检查更新」时检测
+  const auto = services?.config.get('app.autoUpdate')
+  if (auto !== false) {
+    void autoUpdater.checkForUpdates().catch((err: unknown) => {
+      console.warn('[sshk] 自动更新检查失败：', err)
+      pushUpdate({ phase: 'error', error: (err as Error).message })
+    })
+  }
 }
 
 void app.whenReady().then(async () => {
