@@ -14,6 +14,7 @@ const { zipSync } = req('fflate')
 const zip = zipSync({
   'tool.manifest.json': readFileSync(root + 'examples/runtime-sample/tool.manifest.json'),
   'dist/page.js': readFileSync(root + 'examples/runtime-sample/dist/page.js'),
+  'dist/main.js': readFileSync(root + 'examples/runtime-sample/dist/main.js'),
 })
 writeFileSync(root + 'examples/runtime-sample.sshktool', Buffer.from(zip))
 console.log('已打包 examples/runtime-sample.sshktool（设置中心 → 运行时工具包 → 导入安装）')
