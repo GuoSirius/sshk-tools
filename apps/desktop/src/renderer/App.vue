@@ -92,17 +92,30 @@ onMounted(async () => {
     <div class="app-body">
       <!-- 工具级：工具内页才有；左侧 = 当前工具的全部功能菜单（需求 8） -->
       <aside v-if="currentTool" class="tool-sidebar" :class="{ collapsed: sidebarCollapsed }">
-        <el-button size="small" text @click="sidebarCollapsed = !sidebarCollapsed">
-          {{ sidebarCollapsed ? '»' : '« 收起' }}
-        </el-button>
-        <template v-if="!sidebarCollapsed">
-          <div class="sidebar-tool-name">{{ currentTool.name }}</div>
-          <el-menu :default-active="activeMenu" @select="(id: string) => (activeMenu = id)">
-            <el-menu-item v-for="m in currentTool.menus" :key="m.id" :index="m.id">
-              {{ m.label }}
-            </el-menu-item>
-          </el-menu>
-        </template>
+        <div class="sidebar-menu">
+          <template v-if="!sidebarCollapsed">
+            <div class="sidebar-tool-name">{{ currentTool.name }}</div>
+            <el-menu :default-active="activeMenu" @select="(id: string) => (activeMenu = id)">
+              <el-menu-item v-for="m in currentTool.menus" :key="m.id" :index="m.id">
+                {{ m.label }}
+              </el-menu-item>
+            </el-menu>
+          </template>
+        </div>
+        <div class="sidebar-footer">
+          <button
+            class="sidebar-toggle"
+            :title="sidebarCollapsed ? '展开菜单' : '收起菜单'"
+            :aria-label="sidebarCollapsed ? '展开菜单' : '收起菜单'"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="13 6 7 12 13 18" />
+              <polyline points="19 6 13 12 19 18" />
+            </svg>
+            <span v-if="!sidebarCollapsed" class="toggle-text">收起菜单</span>
+          </button>
+        </div>
       </aside>
 
       <main class="tool-content">
