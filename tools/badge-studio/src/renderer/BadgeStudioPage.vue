@@ -528,9 +528,11 @@ async function editPoster(row: PosterRecord): Promise<void> {
 }
 async function exportPosterHtml(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
+  const posterDir = (await window.api.config.get('tools.badge-studio.posterDir')) as string | null
   const save = await window.api.os.pickSave({
     fileName: (row.name || "poster") + ".zip",
     extensions: ["zip"],
+    defaultPath: posterDir || undefined,
   })
   if (!save) return
   const { outPath, posters } = (await window.api.badge.exportFiles({ posterIds: [row._id], outPath: save })) as { outPath: string; posters: number }
@@ -541,9 +543,11 @@ async function batchExportHtml(): Promise<void> {
   if (rows.length === 0) { ElMessage.warning("请先勾选要导出的海报")
     return }
   const date = new Date().toLocaleDateString("sv-SE")
+  const posterDir = (await window.api.config.get('tools.badge-studio.posterDir')) as string | null
   const save = await window.api.os.pickSave({
     fileName: "sshk-posters-" + date + ".zip",
     extensions: ["zip"],
+    defaultPath: posterDir || undefined,
   })
   if (!save) return
   const { outPath, posters } = (await window.api.badge.exportFiles({ posterIds: rows.map((row) => row._id), outPath: save })) as { outPath: string; posters: number }

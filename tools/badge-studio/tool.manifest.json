@@ -68,7 +68,8 @@
       "id": "config-poster",
       "label": "海报",
       "fields": [
-        { "key": "commonHtmlDir", "label": "常用 HTML 目录", "type": "dir", "hint": "留空则不启用" }
+        { "key": "commonHtmlDir", "label": "常用 HTML 目录", "type": "dir", "hint": "留空则不启用" },
+        { "key": "posterDir", "label": "海报产物目录", "type": "dir", "hint": "导出默认落盘目录；留空则每次手动选择" }
       ]
     }
   ],
@@ -89,6 +90,7 @@
     "scale": 2,
     "recentHtmls": [],
     "commonHtmlDir": null,
+    "posterDir": null,
     "vision": {
       "provider": "cloud",
       "providerId": "",

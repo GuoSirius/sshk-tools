@@ -79,8 +79,8 @@ const api = {
     readDataUri: (file: string): Promise<string> => invoke(IPC_CHANNELS.osReadDataUri, file),
     /** 文本写盘：路径来自 pickSave */
     writeText: (path: string, content: string): Promise<boolean> => invoke(IPC_CHANNELS.osWriteText, path, content),
-    /** 保存对话框（导出备份等） */
-    pickSave: (opts?: { fileName?: string; extensions?: string[] }): Promise<string> =>
+    /** 保存对话框（导出备份等）；defaultPath 作为默认目录/起始路径，fileName 为默认文件名 */
+    pickSave: (opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string> =>
       invoke(IPC_CHANNELS.osPickSave, opts),
     clipboardWrite: (text: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.osClipboardWrite, text),

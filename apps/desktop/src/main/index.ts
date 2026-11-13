@@ -456,10 +456,14 @@ async function registerIpc(): Promise<void> {
     })
     return result.canceled ? [] : result.filePaths
   })
-  ipcMain.handle(IPC_CHANNELS.osPickSave, async (_event, opts?: { fileName?: string; extensions?: string[] }) => {
+  ipcMain.handle(IPC_CHANNELS.osPickSave, async (_event, opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
+    // defaultPath 优先作为"目录/起始路径"，与 fileName 组合成默认完整路径；仅给 fileName 时退回原行为
+    const base = opts?.defaultPath
+      ? (opts.fileName ? join(opts.defaultPath, opts.fileName) : opts.defaultPath)
+      : opts?.fileName
     const result = await dialog.showSaveDialog(win!, {
-      defaultPath: opts?.fileName,
+      defaultPath: base,
       filters: opts?.extensions ? [{ name: '文件', extensions: opts.extensions }] : undefined,
     })
     return result.canceled ? '' : (result.filePath ?? '')
