@@ -635,6 +635,12 @@ function locateInHtml(term: string): void {
   const line = text.slice(0, idx).split("\n").length
   // 目标行置于视口上部（上留 4 行缓冲）
   el.scrollTop = Math.max(0, (line - 4) * lineHeight)
+  // 水平跟随：列号 × 等宽字符宽度（scrollWidth / 最长行长），选中内容水平居中可见
+  const lineStart = text.lastIndexOf('\n', idx) + 1
+  const col = idx - lineStart
+  const maxLineLen = Math.max(...text.split('\n').map((l) => l.length), 1)
+  const charWidth = el.scrollWidth / maxLineLen
+  el.scrollLeft = Math.max(0, col * charWidth - el.clientWidth / 2)
   htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: positions.length }
 }
 const previewFrame = ref<HTMLIFrameElement | null>(null)
