@@ -18,7 +18,7 @@ if (!existsSync(bin)) {
   process.exit(0)
 }
 
-const result = spawnSync(`"${bin}"`, ['--noEmit', '-p', 'apps/desktop/tsconfig.json'], {
+const result = spawnSync(`"${bin}"`, ['--noEmit', '-p', 'tsconfig.vue.json'], {
   stdio: 'inherit',
   shell: win,
   cwd: ROOT,

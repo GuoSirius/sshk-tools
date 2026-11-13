@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "jsx": "preserve",
+    "skipLibCheck": true
+  },
+  "include": [
+    "apps/desktop/src/**/*",
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.vue",
+    "tools/*/src/**/*.ts",
+    "tools/*/src/**/*.vue",
+    "scripts/**/*.d.ts"
+  ]
+}

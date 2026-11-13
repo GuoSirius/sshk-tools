@@ -36,7 +36,7 @@ const fetchingModels = ref(false)
 const dialogOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const form = reactive<Provider & { apiKey: string }>({
+const form = ref<Provider & { apiKey: string }>({
   _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '',
 })
 interface HealthState { ok: boolean; message: string; at: string }
@@ -110,30 +110,30 @@ function quickAdd(preset: ModelPreset): void {
 
 /** 真实查询 /models：保存前也能用刚填的 key 探测，失败仍可手填模型名 */
 async function fetchModels(): Promise<void> {
-  if (!/^https?:\/\//i.test(form.baseURL.trim())) {
+  if (!/^https?:\/\//i.test(form.value.baseURL.trim())) {
     ElMessage.warning('请先填写 http(s) 格式的 baseURL')
     return
   }
   fetchingModels.value = true
   try {
     const probe: Provider = {
-      _id: form._id || 'prv_preview',
-      name: form.name || '预览',
-      kind: form.kind,
-      baseURL: form.baseURL.trim(),
-      model: form.model,
+      _id: form.value._id || 'prv_preview',
+      name: form.value.name || '预览',
+      kind: form.value.kind,
+      baseURL: form.value.baseURL.trim(),
+      model: form.value.model,
       enabled: true,
     }
-    const list = await window.api.llm.listModels(probe, form.apiKey.trim() || undefined)
+    const list = await window.api.llm.listModels(probe, form.value.apiKey.trim() || undefined)
     modelOptions.value = Array.from(new Set([...modelOptions.value, ...list.filter(Boolean)]))
-    if (!form.model && modelOptions.value[0]) form.model = modelOptions.value[0]
+    if (!form.value.model && modelOptions.value[0]) form.value.model = modelOptions.value[0]
     ElMessage.success(`拉取到 ${list.length} 个可用模型`)
   } catch (err) {
     // /models 401 / 404 / 端点不开放时回退到该服务商的预设模型，绝不阻断保存
-    const preset = presets.value.find((p) => p.baseURL === form.baseURL.trim())
+    const preset = presets.value.find((p) => p.baseURL === form.value.baseURL.trim())
     if (preset) {
       modelOptions.value = Array.from(new Set([...modelOptions.value, ...preset.models]))
-      if (!form.model) form.model = preset.defaultModel || preset.models[0] || form.model
+      if (!form.value.model) form.value.model = preset.defaultModel || preset.models[0] || form.value.model
     }
     ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；已回退预设/手填，不影响保存`)
   } finally {
@@ -142,11 +142,11 @@ async function fetchModels(): Promise<void> {
 }
 
 async function saveProvider(): Promise<void> {
-  if (!form.name.trim() || !form.baseURL.trim() || !form.model.trim()) {
+  if (!form.value.name.trim() || !form.value.baseURL.trim() || !form.value.model.trim()) {
     ElMessage.warning('名称、baseURL、模型名必填')
     return
   }
-  if (!/^https?:\/\//i.test(form.baseURL.trim())) {
+  if (!/^https?:\/\//i.test(form.value.baseURL.trim())) {
     ElMessage.warning('baseURL 必须是 http(s) 地址')
     return
   }
@@ -156,13 +156,13 @@ async function saveProvider(): Promise<void> {
     if (editingId.value) {
       const idx = providers.value.findIndex((p) => p._id === editingId.value)
       if (idx >= 0) {
-        const { apiKey, ...meta } = form
+        const { apiKey, ...meta } = form.value
         if (apiKey) await window.api.llm.setApiKey(meta._id, apiKey)
         providers.value[idx] = { ...providers.value[idx]!, ...meta }
       }
     } else {
       const id = entityId('prv')
-      const { apiKey, ...meta } = form
+      const { apiKey, ...meta } = form.value
       if (apiKey) await window.api.llm.setApiKey(id, apiKey)
       providers.value.push({ ...meta, _id: id })
     }
@@ -216,7 +216,7 @@ async function testProvider(row: Provider): Promise<void> {
 async function revealKey(): Promise<void> {
   if (!editingId.value) return
   try {
-    form.apiKey = await window.api.llm.getApiKey(editingId.value)
+    form.value.apiKey = await window.api.llm.getApiKey(editingId.value)
     ElMessage.success('已填充已存密钥（仅本次编辑会话可见）')
   } catch (err) {
     ElMessage.error(`读取失败：${(err as Error).message}`)

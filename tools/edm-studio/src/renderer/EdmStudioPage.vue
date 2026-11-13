@@ -332,6 +332,7 @@ onMounted(async () => {
             <el-button size="small" text @click="openMail(row)">编辑</el-button>
             <el-button size="small" text type="primary" :loading="mailGenerating === row._id" @click="generateMail(row)">生成</el-button>
             <el-button size="small" text @click="copyFinal(row)">复制代码</el-button>
+            <el-button size="small" text @click="openOutput(row)">打开产物</el-button>
             <el-button size="small" text type="danger" @click="confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })">删除</el-button>
           </template>
         </el-table-column>

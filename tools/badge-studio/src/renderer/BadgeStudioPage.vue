@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, watch, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
-import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv } from '@sshk/badge-studio'
+import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo } from '@sshk/shared'
 
@@ -74,6 +74,11 @@ const previewHtml = ref('')
 const capturing = ref(false)
 const posters = ref<PosterRecord[]>([])
 const listLoading = ref(false)
+// 表格布局三段式：顶部操作 / 中间表格撑满滚动 / 底部分页；跨页勾选由 reserve-selection 保留
+const currentPage = ref(1)
+const pageSize = ref(10)
+const pagedPosters = computed(() => posters.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+function onPageChange(): void { selectedPosters.value = selectedPosters.value.filter((s) => posters.value.some((p) => p._id === s._id)) }
 
 const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
 const hasStats = computed(() => statRows.value.length > 0)
@@ -504,6 +509,10 @@ async function batchExportHtml(): Promise<void> {
   }
   ElMessage.success("已批量导出 " + done + " 个到 " + dir)
 }
+function onPosterCommand(cmd: string, row: PosterRecord): void {
+  if (cmd === "copy") void copyCode(row)
+  else if (cmd === "delete") { deleteTarget.value = row; deleteOpen.value = true }
+}
 async function batchDeletePosters(): Promise<void> {
   const rows = selectedPosters.value
   if (rows.length === 0) { ElMessage.warning("请先勾选要删除的海报")
@@ -542,7 +551,7 @@ async function confirmDelete(): Promise<void> {
 }
 
 // ── HTML 搜索定位：textarea 无法高亮，用 setSelectionRange 选中 + 行号滚动 ──
-const htmlInputRef = ref<{ textarea?: HTMLTextAreaElement } | null>(null)
+const htmlInputRef = ref<{ $el: { querySelector: (sel: string) => HTMLTextAreaElement | null } } | null>(null)
 const htmlSearch = ref("")
 const htmlSearchPos = ref<{ index: number; total: number } | null>(null)
 let htmlSearchCursor = 0
@@ -880,8 +889,12 @@ onMounted(() => {
 
     <div v-if="view !== 'generate'" class="panel" style="margin-top: 8px">
       <div class="panel-title">海报列表（覆盖式产物；删除仅归档记录）</div>
-      <el-table v-if="posters.length > 0" v-loading="listLoading" :data="posters" size="small" @selection-change="onSelectionChange">
-        <el-table-column type="selection" width="40" />
+      <div class="cfg-row">
+        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
+        <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
+      </div>
+      <el-table v-if="posters.length > 0" v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" @selection-change="onSelectionChange">
+        <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column label="生成时间" width="160">
           <template #default="{ row }">
@@ -894,17 +907,36 @@ onMounted(() => {
             <span v-if="row.outputs.poster" class="ok"> / {{ row.outputs.poster }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="230" align="center" fixed="right">
           <template #default="{ row }">
             <el-button size="small" text @click="openPoster(row)">预览</el-button>
             <el-button size="small" text @click="editPoster(row)">编辑</el-button>
-            <el-button size="small" text @click="copyCode(row)">复制代码</el-button>
             <el-button size="small" text @click="exportPosterHtml(row)">导出</el-button>
-            <el-button size="small" text type="danger" @click="deleteTarget = row; deleteOpen = true">删除</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
+              <el-button size="small" text>更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="copy">复制代码</el-dropdown-item>
+                  <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
       <EmptyState v-else description="还没有海报记录" />
+      <div v-if="posters.length > 0" class="page-bar">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="posters.length"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          small
+          background
+          @current-change="onPageChange"
+        />
+      </div>
     </div>
 
     <template #footer>
@@ -922,6 +954,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.poster-list-card {
+  display: flex;
+  flex-direction: column;
+}
 .badge-grid {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.15fr);
@@ -1068,6 +1104,21 @@ onMounted(() => {
   opacity: 0.6;
   line-height: 1.5;
   margin-top: 6px;
+}
+.poster-list-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+.poster-list-card :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+}
+.page-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
 }
 .raw {
   max-height: 180px;
