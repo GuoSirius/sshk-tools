@@ -179,6 +179,26 @@ function seedDefaultProviders(): void {
   cfg.set('app.llm.providersSeeded', true)
 }
 
+/** 一次性迁移：旧 vision.baseURL/model 已不再被读取，匹配到 Provider 则转为 providerId/modelOverride */
+function migrateLegacyVisionConfig(): void {
+  const cfg = services!.config
+  const raw = cfg.get('tools.badge-studio.vision')
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
+  const vision = { ...(raw as Record<string, unknown>) }
+  const legacyURL = typeof vision['baseURL'] === 'string' ? (vision['baseURL'] as string) : ''
+  const legacyModel = typeof vision['model'] === 'string' ? (vision['model'] as string) : ''
+  if (!legacyURL && !legacyModel) return
+  const providers = Array.isArray(cfg.get('app.llm.providers'))
+    ? (cfg.get('app.llm.providers') as { _id: string; baseURL: string }[])
+    : []
+  const matched = providers.find((p) => p.baseURL === legacyURL)
+  delete vision['baseURL']
+  delete vision['model']
+  if (matched && !vision['providerId']) vision['providerId'] = matched._id
+  if (legacyModel && !vision['modelOverride']) vision['modelOverride'] = legacyModel
+  cfg.set('tools.badge-studio.vision', vision)
+}
+
 async function registerIpc(): Promise<void> {
   const cfg = services!.config
 
@@ -356,6 +376,7 @@ function setupAutoUpdate(): void {
 void app.whenReady().then(async () => {
   services = setupServices()
   seedDefaultProviders()
+  migrateLegacyVisionConfig()
   await registerIpc()
   // 应用内自绘标题栏与工具栏，去掉系统默认菜单（File/Edit/View/Window）
   Menu.setApplicationMenu(null)

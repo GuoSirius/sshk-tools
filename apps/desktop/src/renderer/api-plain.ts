@@ -1,12 +1,15 @@
 import { toPlainArg } from './plain'
 
 /**
- * 在渲染层入口给 window.api 套一层脱壳包装：
- * 所有方法入参先 toPlainArg（脱掉 Vue Proxy），再透传给 contextBridge 暴露的真 api。
- * 不替换监听注册的方法签名；window.api 的类型保持不变。
+ * 渲染层入口组装 window.api：
+ * preload 暴露到 window.sshkApiBridge（exposeInMainWorld 的属性只读、不可覆盖，
+ * 直接改写 window.api 会抛 "Cannot assign to read only property"），
+ * 这里逐方法套 toPlainArg 后组装成 window.api —— Vue Proxy 在跨 contextBridge
+ * 之前就被脱掉，彻底根治 "An object could not be cloned"。
+ * 必须在 main.ts 挂载前调用（之后所有组件拿到的都是脱壳后的 api）。
  */
 export function installPlainApi(): void {
-  const source = (globalThis as unknown as { api?: unknown }).api
+  const source: unknown = (globalThis as unknown as { sshkApiBridge?: unknown }).sshkApiBridge
   if (!source || typeof source !== 'object') return
   const wrapped: Record<string, unknown> = {}
   for (const [namespace, group] of Object.entries(source as Record<string, unknown>)) {

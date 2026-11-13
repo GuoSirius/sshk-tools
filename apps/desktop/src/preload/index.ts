@@ -131,4 +131,6 @@ const api = {
   },
 }
 
-contextBridge.exposeInMainWorld('api', api)
+// 暴露到 sshkApiBridge 而非 api：exposeInMainWorld 的属性是只读的，
+// 渲染层无法覆盖 window.api；由渲染层 installPlainApi() 把它包装成 window.api。
+contextBridge.exposeInMainWorld('sshkApiBridge', api)

@@ -3,38 +3,45 @@ import { reactive } from 'vue'
 import { installPlainApi } from './api-plain'
 import { toPlainArg } from './plain'
 
+declare global {
+  var sshkApiBridge: unknown
+  var api: unknown
+}
+
 describe('渲染层 contextBridge 边界脱壳', () => {
-  it('Vue reactive Proxy 在调用 window.api 前被脱壳，不再触发结构化克隆错误', () => {
-    const received: unknown[] = []
-    const fakeApi = {
+  it('从 sshkApiBridge 组装 window.api：Vue Proxy 入参在边界前脱壳', () => {
+    const received: unknown[][] = []
+    globalThis.sshkApiBridge = {
       llm: { chat: (...args: unknown[]) => { received.push(args); return Promise.resolve({ content: 'ok' }) } },
       config: { set: (key: string, value: unknown) => { received.push([key, value]); return Promise.resolve(true) } },
     }
-    ;(globalThis as unknown as { api?: unknown }).api = fakeApi
+    globalThis.api = undefined
     installPlainApi()
 
     const provider = reactive({ _id: 'prv_1', name: 'Agnes', tags: reactive(['a', 'b']) })
-    void (globalThis as unknown as { api: typeof fakeApi }).api.llm.chat(provider, [{ role: 'user', content: 'hi' }])
+    const api = globalThis.api as {
+      llm: { chat: (...a: unknown[]) => Promise<unknown> }
+      config: { set: (k: string, v: unknown) => Promise<boolean> }
+    }
+    void api.llm.chat(provider, [{ role: 'user', content: 'hi' }])
     const chatArgs = received[0] as unknown[]
     expect(JSON.stringify(chatArgs)).toContain('"_id":"prv_1"')
-    // 收到的必须是普通对象（可结构化克隆），而不是 Proxy
+    // 组装后的 api 方法收到的必须是普通对象（可结构化克隆），而不是 Proxy
     expect(Object.getPrototypeOf(chatArgs[0] as object)).toBe(Object.prototype)
 
-    void (globalThis as unknown as { api: typeof fakeApi }).api.config.set('app.llm.providers', reactive([provider]))
+    void api.config.set('app.llm.providers', reactive([provider]))
     const setArgs = received[1] as unknown[]
     expect(Object.getPrototypeOf((setArgs[1] as unknown[])[0] as object)).toBe(Object.prototype)
   })
 
   it('监听注册的回调函数原样传递，不被脱壳丢弃', () => {
     const calls: unknown[] = []
-    ;(globalThis as unknown as { api?: unknown }).api = {
-      llm: { onDelta: (cb: unknown) => { calls.push(cb) } },
-    }
+    globalThis.sshkApiBridge = { llm: { onDelta: (cb: unknown) => { calls.push(cb) } } }
+    globalThis.api = undefined
     installPlainApi()
     const callback = vi.fn()
-    ;(globalThis as unknown as { api: { llm: { onDelta: (cb: unknown) => void } } }).api.llm.onDelta(callback)
+    ;(globalThis.api as { llm: { onDelta: (cb: unknown) => void } }).llm.onDelta(callback)
     expect(calls[0]).toBe(callback)
-    ;(globalThis as unknown as { api?: unknown }).api = undefined
   })
 
   it('toPlainArg：普通值与回调原样、Proxy 深层脱壳、循环引用安全', () => {

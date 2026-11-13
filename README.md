@@ -25,8 +25,6 @@ pnpm dev        # 开发态：主进程 / preload / 渲染三端热更新（自�
 pnpm build      # 产出 out/ 供 electron-builder 打包
 pnpm local      # ★ 本地构建测试：NSIS 安装包（x64）→ apps/desktop/dist/*.exe
 pnpm local:dir  # 快速模式：只出免安装目录 win-unpacked（不发安装包）
-pnpm pack       # 构建并出免安装目录（win-unpacked）
-pnpm dist       # 构建并出完整安装包（NSIS x64+arm64 / portable）
 pnpm verify     # 结构/分层/preload/弹框/契约/latest + typecheck(.ts/.vue) + lint + test
 pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认 → 构建成功后 tag/推送
 ```
