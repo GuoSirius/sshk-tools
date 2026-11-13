@@ -2,6 +2,7 @@ export * from './time'
 export * from './id'
 export * from './constants'
 export * from './ipc'
+export * from './trust'
 export * from './tool-catalog'
 export type {
   ThemeMode,
@@ -15,6 +16,7 @@ export type {
   ToolConfigGroup,
   ToolConfigDependency,
   ToolPluginDescriptor,
+  ToolPackageContract,
   ToolVisionContentPart,
   ToolVisionMessage,
   ToolHostChatRequest,

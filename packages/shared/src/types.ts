@@ -104,6 +104,28 @@ export interface ToolHostCapabilities {
   runLocalOcr(req: { command: string; args: string[]; imagePath: string; timeoutMs?: number }): Promise<string>
 }
 
+/**
+ * 运行时导入包（.sshktool）契约。
+ * builtin 工具不填，默认按 main 加载；外部包必须填，由宿主在安装时校验。
+ * 本轮只定字段，不实现安装 / utilityProcess（见 docs 路线图）。
+ */
+export interface ToolPackageContract {
+  /** manifest 结构版本；高于宿主 TOOL_PACKAGE_SCHEMA_VERSION 直接拒绝安装 */
+  schemaVersion: number
+  requiresHost: {
+    /** 宿主能力 API 版本范围，如 ^1.0 */
+    api: string
+    /** 需要的宿主能力名，与 ToolHostCapabilities 一一对应 */
+    capabilities: string[]
+  }
+  /** main = 主进程插件同等权限；utility = 独立进程 + IPC 白名单（外部包默认） */
+  sandbox: 'main' | 'utility'
+  /** 允许注册的 IPC 通道；utility 下由主进程强制执行，外部包不得注册任意通道 */
+  ipcAllowlist: string[]
+  /** 包级签名（安装时校验，不由渲染层裁决） */
+  signature?: { algorithm: 'ed25519'; keyId: string; value: string }
+}
+
 export interface ToolDescriptor {
   id: string
   name: string
@@ -125,6 +147,8 @@ export interface ToolDescriptor {
   configLayout?: 'single' | 'tabs' | 'menu'
   /** 插件入口声明（宿主按此清单加载） */
   plugin?: ToolPluginDescriptor
+  /** 运行时包契约；构建期内置工具缺省，外部导入包必填 */
+  package?: ToolPackageContract
   /** 硬依赖：依赖工具不可用时本工具一并隐藏；运行时可由配置覆盖 */
   dependsOn?: string[]
   /** 权限 grant；运行时可由 `tools.<id>.requiredGrant` 覆盖 */
