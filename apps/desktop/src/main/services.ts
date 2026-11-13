@@ -83,8 +83,18 @@ export function setupServices(): AppServices {
         secretsCache = {}
         return secretsCache
       }
-      const plain = await safeStorage.decryptStringAsync(raw)
-      secretsCache = JSON.parse(plain.toString()) as Record<string, string>
+      // Electron 的 decryptStringAsync 解析为 { result, shouldReEncrypt } 对象（非 string/Buffer），
+      // 误用 plain.toString() 会得到 "[object Object]" 导致 JSON 解析失败。
+      const decrypted = await safeStorage.decryptStringAsync(raw)
+      const plain = typeof decrypted === 'string'
+        ? decrypted
+        : (decrypted as { result: string }).result
+      const parsed = JSON.parse(plain) as Record<string, string>
+      secretsCache = parsed
+      // 密钥已轮换：用当前密钥重新加密落盘，避免下次启动仍需重填
+      if ((decrypted as { shouldReEncrypt?: boolean })?.shouldReEncrypt) {
+        await saveSecrets(parsed)
+      }
       return secretsCache
     } catch (err) {
       console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
@@ -285,7 +295,7 @@ export function setupServices(): AppServices {
     },
     // app:* 前缀的工具密钥与访问密钥都不参与 provider 迁移
     exportSecretsJson: () => JSON.stringify({
-      providers: Object.entries(loadSecrets())
+      providers: Object.entries(currentSecrets())
         .filter(([id]) => !id.startsWith('app:'))
         .map(([id, apiKey]) => ({ _id: id, apiKey })),
     }),
