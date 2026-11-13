@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
@@ -623,19 +623,6 @@ function locateInHtml(term: string): void {
   htmlSearchPos.value = { index: htmlSearchCursor + 1, total: positions.length }
 }
 const previewFrame = ref<HTMLIFrameElement | null>(null)
-// 右列高度 = 滚动容器实测高度（ResizeObserver），不再用 100vh 减估算值
-const sidePreviewRef = ref<HTMLElement | null>(null)
-const previewColumnHeight = ref(620)
-let bodyObserver: ResizeObserver | null = null
-onMounted(() => {
-  const scroller = sidePreviewRef.value?.closest('.tool-page-body') as HTMLElement | null
-  if (!scroller) return
-  const measure = () => { previewColumnHeight.value = scroller.clientHeight }
-  bodyObserver = new ResizeObserver(measure)
-  bodyObserver.observe(scroller)
-  measure()
-})
-onBeforeUnmount(() => bodyObserver?.disconnect())
 
 onMounted(() => {
   void loadConfigAndRecent()
@@ -902,7 +889,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div ref="sidePreviewRef" class="col side-preview" :style="{ height: previewColumnHeight + 'px' }">
+      <div class="col side-preview">
         <div class="panel">
           <div class="panel-title">badge 配置（作用于预览与生成）</div>
           <div class="cfg-row">
@@ -1029,14 +1016,32 @@ onMounted(() => {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.15fr);
   gap: 10px;
-  align-items: start;
+  height: 100%;
+  min-height: 0;
 }
-/* 右列（配置+预览）sticky：直接占满剩余视口高度，预览 panel 吃掉全部剩余空间 */
-.side-preview {
-  position: sticky;
-  top: 0;
+/* 左列（长内容）自身滚动；右列固定撑满 —— 页面整体不滚动 */
+.badge-grid > .col {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+/* 该页面接管布局：body 不滚动（海报列表视图自身三段式也不需要整页滚动） */
+.tool-page-layout :deep(.tool-page-body) {
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+.tool-page-layout :deep(.badge-grid),
+.tool-page-layout :deep(.poster-list-card) {
+  flex: 1;
+  min-height: 0;
+}
+/* 右列（配置+预览）固定撑满，不随左列滚动 */
+.side-preview {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .image-list-panel {
   margin-top: 8px;
