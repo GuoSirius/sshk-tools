@@ -644,7 +644,7 @@ onMounted(() => {
   border: 1px solid rgba(128,128,128,.3);
   border-radius: 14px;
   background: var(--el-bg-color);
-  padding: 10px 12px 8px;
+  padding: 12px 12px 10px;
   box-shadow: 0 2px 10px rgba(0,0,0,.06);
   transition: border-color .15s;
 }
@@ -660,7 +660,7 @@ onMounted(() => {
   font-family: inherit;
   font-size: 13px;
   line-height: 1.6;
-  min-height: 24px;
+  min-height: 52px;
   max-height: 160px;
   overflow-y: auto;
 }
