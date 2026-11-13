@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { extname, isAbsolute } from 'node:path'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { extname, isAbsolute, join } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
@@ -232,6 +232,25 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       })
     }
     return { posterId, badgedRel, html: badged, matchCounts }
+  }))
+
+  // ④b 导出产物文件（badge 副本 + 海报长图）：目录来自用户选择，文件名取海报名
+  ipc.handle(IPC_CHANNELS.badgeExportFiles, wrap(async (payload: { posterId: string; dir: string }) => {
+    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
+    if (!poster) throw new Error('海报不存在')
+    if (!poster.outputs.badged) throw new Error('该海报没有可导出的 badge 副本')
+    const safeName = (poster.name || poster._id).replace(/[\\/:*?"<>|]/g, '_')
+    const badged = readFileSync(resolveSafe(deps.outputRoot, poster.outputs.badged))
+    writeFileSync(join(payload.dir, safeName + '.html'), badged)
+    const files = [safeName + '.html']
+    if (poster.outputs.poster) {
+      const posterPng = resolveSafe(deps.outputRoot, poster.outputs.poster)
+      if (existsSync(posterPng)) {
+        writeFileSync(join(payload.dir, safeName + '.png'), readFileSync(posterPng))
+        files.push(safeName + '.png')
+      }
+    }
+    return { dir: payload.dir, files }
   }))
 
   // ⑤ 海报 PNG 落盘（渲染层 snapdom 截图后回传 base64）

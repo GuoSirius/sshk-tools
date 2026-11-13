@@ -488,11 +488,10 @@ async function editPoster(row: PosterRecord): Promise<void> {
 }
 async function exportPosterHtml(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  const save = await window.api.os.pickSave({ fileName: (row.name || "poster") + ".html", extensions: ["html"] })
-  if (!save) return
-  const { html } = await window.api.badge.readHtml(row.outputs.badged)
-  await window.api.os.writeText(save, html)
-  ElMessage.success("已导出：" + save)
+  const dir = await window.api.os.pickDir()
+  if (!dir) return
+  const { files } = (await window.api.badge.exportFiles({ posterId: row._id, dir })) as { files: string[] }
+  ElMessage.success("已导出：" + files.join("、"))
 }
 async function batchExportHtml(): Promise<void> {
   const rows = selectedPosters.value.filter((row) => row.outputs.badged)
@@ -502,11 +501,10 @@ async function batchExportHtml(): Promise<void> {
   if (!dir) return
   let done = 0
   for (const row of rows) {
-    const { html } = await window.api.badge.readHtml(row.outputs.badged!)
-    await window.api.os.writeText(dir + "/" + (row.name || row._id).replace(/[\\/:*?"<>|]/g, "_") + ".html", html)
+    await window.api.badge.exportFiles({ posterId: row._id, dir })
     done += 1
   }
-  ElMessage.success("已批量导出 " + done + " 个到 " + dir)
+  ElMessage.success("已批量导出 " + done + " 个海报（HTML + 长图）到 " + dir)
 }
 function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === "copy") void copyCode(row)

@@ -67,6 +67,7 @@ export const IPC_CHANNELS = {
   badgeSavePosterPng: 'badge:savePosterPng',
   badgeListPosters: 'badge:listPosters',
   badgeDeletePoster: 'badge:deletePoster',
+  badgeExportFiles: 'badge:exportFiles',
   /** 图片数据源：读取图片 / 视觉识别 / 工具专属密钥（PaddleOCR 与云端模型共用） */
   badgeParseImage: 'badge:parseImage',
   badgeSetVisionKey: 'badge:setVisionKey',
