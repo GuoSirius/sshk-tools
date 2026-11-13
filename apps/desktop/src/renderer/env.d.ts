@@ -29,7 +29,7 @@ interface PosterRecord {
   name: string
   source: { type: 'mail' | 'upload'; mailId?: string; htmlPath: string }
   datasources: { file: string; kind: string; ocrReviewed?: boolean }[]
-  configSnapshot: { badgeAttr: string; clicksField: string; posterWidth: number; scale: number }
+  configSnapshot: { badgeAttr: string; clicksField: string; posterWidth: number; scale: number; badgePositionText?: string; badgePositionImage?: string }
   outputs: { badged?: string; poster?: string }
   statsSnapshot?: Record<string, unknown>[]
   status: string

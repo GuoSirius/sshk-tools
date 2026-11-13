@@ -117,6 +117,9 @@ export interface PosterConfigSnapshot {
   clicksField: string
   posterWidth: number
   scale: number
+  /** 角标默认位置（data-badge-position 配置化） */
+  badgePositionText?: string
+  badgePositionImage?: string
 }
 
 export interface PosterOutputs {

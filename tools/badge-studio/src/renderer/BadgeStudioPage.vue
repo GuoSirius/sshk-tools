@@ -491,7 +491,8 @@ async function loadPosters(): Promise<void> {
 // ── 海报列表管理：多选 / 编辑载入 / 导出 / 批量删除导出（交互范本，EDM 复用） ──
 const selectedPosters = ref<PosterRecord[]>([])
 function onSelectionChange(rows: PosterRecord[]): void { selectedPosters.value = rows }
-async function editPoster(row: PosterRecord): Promise<void> {
+/** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */
+async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> {
   if (!row.source.htmlPath) return
   navigateToGenerate()
   try {
@@ -503,10 +504,19 @@ async function editPoster(row: PosterRecord): Promise<void> {
     return
   }
   syncCsvFromRows()
+  // 已知信息全量回显：名称 / 属性 / 数值列 / 海报尺寸 / 截图像素比 / 角标位置
+  posterName.value = row.name
   badgeAttr.value = row.configSnapshot.badgeAttr || badgeAttr.value
   clicksField.value = row.configSnapshot.clicksField || clicksField.value
+  posterWidth.value = row.configSnapshot.posterWidth || posterWidth.value
+  captureScale.value = row.configSnapshot.scale || captureScale.value
+  badgePositionText.value = String(row.configSnapshot.badgePositionText ?? '') || badgePositionText.value
+  badgePositionImage.value = String(row.configSnapshot.badgePositionImage ?? '') || badgePositionImage.value
   currentPosterId.value = row._id
-  navigateToGenerate()
+  htmlPath.value = ''
+}
+async function editPoster(row: PosterRecord): Promise<void> {
+  await loadPosterIntoWorkspace(row)
   ElMessage.success("已载入「" + row.name + "」到工作区，改完点「生成海报」覆盖该海报")
 }
 async function exportPosterHtml(row: PosterRecord): Promise<void> {
@@ -567,16 +577,14 @@ async function batchDeletePosters(): Promise<void> {
 }
 async function openPoster(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  // 预览区在生成视图中：emit navigate 同步侧栏菜单，否则「点了没反应」
-  navigateToGenerate()
+  // 预览与编辑同源：完整载入到工作区（配置/统计/名称全回显），再展示该海报的预览
+  await loadPosterIntoWorkspace(row)
   try {
     const { html } = await window.api.badge.readHtml(row.outputs.badged)
     previewHtml.value = html
   } catch (err) {
     ElMessage.error("读取海报失败：" + (err as Error).message)
-    return
   }
-  currentPosterId.value = row._id
 }
 
 async function copyCode(row: PosterRecord): Promise<void> {

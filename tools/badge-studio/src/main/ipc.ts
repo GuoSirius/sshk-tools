@@ -202,6 +202,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       clicksField: input.config.clicksField,
       posterWidth: 680,
       scale: 2,
+      badgePositionText: input.config.defaultPositions?.text,
+      badgePositionImage: input.config.defaultPositions?.image,
     }
     const outputs: Poster['outputs'] = { badged: badgedRel }
     const datasources: Poster['datasources'] = input.statsFileRel
