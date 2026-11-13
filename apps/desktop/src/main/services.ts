@@ -77,13 +77,14 @@ export function setupServices(): AppServices {
     if (!existsSync(secretsPath)) { secretsCache = {}; return secretsCache }
     try {
       const raw = readFileSync(secretsPath)
-      if (!(await safeStorage.isEncryptionAvailable())) {
+      if (!(await safeStorage.isAsyncEncryptionAvailable())) {
         // 静默丢密钥会表现为「重启后配置失效」，必须把原因留在日志里
         console.warn('[sshk] safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
         secretsCache = {}
         return secretsCache
       }
-      secretsCache = JSON.parse(String(await safeStorage.decryptStringAsync(raw))) as Record<string, string>
+      const plain = await safeStorage.decryptStringAsync(raw)
+      secretsCache = JSON.parse(plain.toString()) as Record<string, string>
       return secretsCache
     } catch (err) {
       console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
@@ -96,7 +97,7 @@ export function setupServices(): AppServices {
   function currentSecrets(): Record<string, string> { return secretsCache ?? {} }
 
   async function saveSecrets(secrets: Record<string, string>): Promise<void> {
-    if (!(await safeStorage.isEncryptionAvailable())) {
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) {
       throw new Error('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
     }
     writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
