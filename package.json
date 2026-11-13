@@ -1,6 +1,6 @@
 {
   "name": "sshk-tools",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "公司内部本地工具集合桌面客户端（Electron 应用 + 工具包）",
