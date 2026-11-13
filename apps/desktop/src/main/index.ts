@@ -74,6 +74,28 @@ function createWindow(): void {
   })
   mainWindow.on('closed', () => { mainWindow = null })
 
+  // 关闭二次确认（防误触退出）：dev 不拦截；确认后置 quitting 放行 before-quit 链路
+  let quitting = false
+  app.on('before-quit', () => { quitting = true })
+  mainWindow.on('close', (event) => {
+    if (quitting || isDev) return
+    event.preventDefault()
+    void dialog.showMessageBox(mainWindow!, {
+      type: 'question',
+      message: '确定退出应用吗？',
+      detail: '退出后将关闭所有工具页面与后台任务。',
+      buttons: ['退出', '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    }).then(({ response }) => {
+      if (response === 0) {
+        quitting = true
+        app.quit()
+      }
+    })
+  })
+
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (isDev && devUrl) void mainWindow.loadURL(devUrl)
   else void mainWindow.loadFile(rendererHtml)
