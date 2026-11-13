@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
-- 状态：**M0~M7 全部落地并推送（M0/M1/M2/M3/M7/M6/M4/M5）；60 单测全绿；待用户 dev 实测与 tag 发布**
-- 版本：v0.9
-- 最后更新：2026-11-13 00:12（北京时间）
+- 状态：**M0~M7 全部落地；应用设置中心 / 工具插件化 / 工具包自包含 / Badge 图片识别已落地；76 单测全绿、`pnpm verify` 与三端构建通过；待用户 dev 实测、PaddleOCR 绑定确认与 tag 发布**
+- 版本：v1.0
+- 最后更新：2026-11-13 09:45（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -22,6 +22,7 @@
 | **模块规范（ESM 优先 / 兼容 CJS）** | `02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md` | 已定（D23） | 分层格式、条件导出模板、preload 产物必须 CJS、常见坑 |
 | **实现顺序与 M6 先行方案** | `02-architecture/2026-11-12-实现顺序与M6先行方案.md` | 已定（D26） | 新顺序、依赖校验、M6 补齐空白功能、juice-email-cli 衔接 |
 | **开发环境与热更新** | `02-architecture/2026-11-12-开发环境与热更新.md` | 已定（D27） | 方案对比、三端行为对照、命令、M7 依赖修正说明 |
+| **工具插件化与需求台账** | `02-architecture/2026-11-13-工具插件化与需求台账.md` | **已落地（D37~D45）** | 穿插需求台账、工具包契约、宿主能力、Badge 图片识别 / PaddleOCR、IDE 红波浪线、运行时插件路线图 |
 | **数据契约 v0.2** | `04-api/2026-11-12-数据契约.md` | 讨论中 | 品牌树、黑白名单、北京时间、配置、zip + 加密密钥、IPC、组件、目录迁移 |
 | **发布流程与本机提交钩子** | `05-release/2026-11-12-发布流程与本机提交钩子.md` | 讨论中 | 按 juice-email-cli、`.git/cph` 钩子、Git 铁律、lockfile、无签名发布、**Electron 配置与缺失项清单** |
 | **首次安装指引** | `05-release/2026-11-12-首次安装指引.md` | 已落 | Windows SmartScreen / macOS Gatekeeper / deb·rpm·AppImage 无签名安装说明 |
@@ -30,7 +31,7 @@
 | **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
 | UI / 交互稿 | `03-design/` | 待建 | M1 产出 |
-| ADR 决策记录 | `01-requirements/decisions/` | 待建 | 按主题一文件，明细记本文件看板 |
+| ADR 决策记录 | 本文件 §四 + `02-architecture/2026-11-13-工具插件化与需求台账.md` | 已收口 | 早期预留的空目录 `01-requirements/decisions/` 从未落地任何 ADR（Git 也不跟踪空目录），已删除；D1~D45 统一记在本看板，插件化相关细节记在架构文档。后续确需按主题单开 ADR 时再建目录，格式见 §六 |
 | 归档 | `99-archive/` | 待建 | 过期文档只移不删 |
 
 ## 二、目录规范（需求 0）
@@ -38,7 +39,7 @@
 ```
 docs/
 ├── 00-index.md          ← 本文件，唯一入口
-├── 01-requirements/     ← 四轮需求、快照、图片证据、decisions/(按主题 ADR)
+├── 01-requirements/     ← 四轮需求、快照、图片证据（decisions/ 空占位已移除，ADR 统一记 00-index §四）
 ├── 02-architecture/     ← 架构、选型、任务拆分、模块规范、实现顺序、热更新
 ├── 03-design/           ← UI 稿、交互说明、公共组件说明
 ├── 04-api/              ← 数据契约（品牌树/配置/zip/IPC/组件/目录迁移）
@@ -113,6 +114,18 @@ docs/
 | **D34** | **访问密钥与权限管控** | 明文只进 safeStorage，settings 仅存 sha256 摘要；工具可设「需访问密钥」（grant `tools.restricted`），未配置时不出现在桌面；grants 结构预留后续登录 / 远端校验 |
 | **D35** | **工具图标与元数据** | 卡片名称 / 描述 / 分类 / 图标 = 注册表默认 + `app.toolOverrides.<id>` 覆盖；内置 edm / badge / model 三张独立 SVG；未配置、非法协议、无效 key 或加载失败一律回退系统默认四色图标 |
 | **D36** | **应用级菜单扩展性** | 顶部栏只留高频项 + 「更多」下拉 + 「设置」；设置抽屉采用左侧分组导航（常规 / 工具与权限 / 系统与数据 / 关于），后期新增菜单只加分组，不挤占顶部栏 |
+| **D37** | **依赖方向反转** | **应用不强依赖工具，工具可强依赖应用**：宿主只认 `tool.manifest.json` 契约；宿主能力经 `ToolHostCapabilities` 注入插件（config / repository / IPC / LLM / safeStorage / 本机 OCR） |
+| **D38** | **工具零依赖与禁用隔离** | 清单默认 `dependsOn: []`；单个插件加载失败 / 禁用只影响自己，guarded IPC 每次调用实时裁决；硬依赖链可配置传播，软 `configDeps` 只预警 |
+| **D39** | **工具包自包含（推翻 D35 的宿主图标）** | 名称 / 描述 / 多分类 / 图标 / 菜单 / 配置项 / 默认配置 / 依赖 / 权限 / 插件入口**全部归工具包自己的 `tool.manifest.json` 与 `assets/icon.svg`**；宿主 `apps/desktop/src/renderer/assets/tools/` 已删除 |
+| **D40** | **构建期自动发现，零改动接入** | `import.meta.glob` 扫 `tools/*` 的清单 / 图标 / main / renderer；`electron.vite.config.ts` 与 `vitest.config.ts` 动态扫包生成 alias；新工具包放进 `tools/` 即构建可用 |
+| **D41** | **插件入口强契约** | `src/main/index.ts` 必须 `export default` 注册函数（或具名 `register`）；禁止「随便挑一个函数」，避免误挑 `parseDatasource` 导致 IPC 静默未注册 |
+| **D42** | **配置布局三选一 + 浏览器式刷新** | `configLayout: single / tabs / menu`，内置工具统一 `single`（一页卡片，去掉割裂的左侧二级菜单）；F5 / Ctrl(Cmd)+R 刷新，Ctrl+F5 / Ctrl(Cmd)+Shift+R 忽略缓存，「更多」下拉提供入口 |
+| **D43** | **多分类 / 标签** | `category: string \| string[]` + `tags[]` → 裁决层 `categories[]`；卡片 / 侧栏 / 搜索 / 设置覆盖全链路支持多个分类 |
+| **D44** | **Badge 图片数据源** | 图片 → 云端视觉模型或本机 OCR → `parseVisionResult()` → 标准 `StatRow[]` → 回填可校对 CSV；`llm-gateway` 支持 `image_url` 多模态；**视觉模型 API Key 只进 safeStorage，绝不写仓库** |
+| **D45** | **PaddleOCR 作为可插拔识别源** | 与云端模型共用「图片识别 provider → 标准结构」抽象；宿主 `runLocalOcr`（无 shell、超时、输出上限）+ 工具包 `scripts/paddleocr_adapter.py` 参考适配器；实际绑定待用户确认本机命令与截图版式 |
+
+> **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
+> shared 现为**纯契约 / 裁决层**（零具体工具数据），真相源下沉到各工具包 manifest；`DEFAULT_SETTINGS.tools` 也已清空。
 
 ### M7 依赖修正（用户 22:19 质疑）
 
@@ -127,6 +140,10 @@ docs/
 | **可选提供** | 代码签名证书、Apple ID、国产 OS 实机（不阻塞开发） |
 | 旧工具存量数据 | 是否要 M4 附一次性迁移脚本 |
 | M1 补校验 | preload `.cjs` 产物检查、条件导出双格式冒烟 |
+| **用户确认（PaddleOCR）** | 本机 Python 解释器绝对路径、PaddleOCR 版本 / 调用方式、点击统计截图版式（链接与数字是否同行、有无千分位 / 合计列），用于校准 `rows_from_lines()` |
+| **用户填写（视觉模型）** | Badge Studio「图片识别」面板填入 API Key（只落本机 safeStorage，不进仓库）→ 上传截图实测 |
+| **用户执行（安装包）** | 本轮大量改动后重新 `pnpm local` 生成 Windows 安装包做安装测试 |
+| **后期排期（#8）** | 已发布应用中导入 / 安装 / 卸载外部工具包：需先定插件包格式、签名校验、版本兼容、运行时沙箱边界 |
 
 ## 五、变更记录
 
@@ -140,6 +157,8 @@ docs/
 | v0.6 | 22:02 | **D25 Electron 打包 + 允许选安装目录**、**D26 顺序改为 M0→1→2→3→7→6→4→5**；`b40186a` | 覆盖原里程碑顺序 |
 | **v0.7** | 22:19 | **D27 electron-vite 三端热更新**、**M7 依赖修正为仅 M1**、**图标资源生成并接入**、M1 应用壳骨架落地 | 修正 M7 依赖笔误 |
 | **v0.8** | 15:12 | **D28 不设根 public/**；修复 `.gitignore` 误屏蔽 `apps/desktop/build/`；M2 落地（release.yml、首次安装指引、electron-updater IPC + 检查更新按钮）；pnpm 构建脚本白名单收敛为 `allowBuilds` | 删除 docs/assets |
+| **v0.9** | 11-13 00:12 | D29~D36：品牌管理、配置分层、目录裁决、访问密钥、图标覆盖、设置中心、侧栏 hover 浮层与递归菜单 | 配置真相源上移（后被 v1.0 推翻） |
+| **v1.0** | 11-13 09:45 | **D37~D45**：工具包自包含 + 构建期自动发现、插件化零依赖隔离、插件入口强契约、配置布局三选一、F5 刷新、多分类标签、Badge 图片识别 / PaddleOCR、IDE 红波浪线修复；76 测试全绿、三端构建通过 | **推翻 D33/D35**：真相源下沉工具包 manifest、宿主内置图标删除、`DEFAULT_SETTINGS.tools` 清空；删除空 ADR 占位目录；`.vscode/` 纳入提交 |
 
 ## 六、ADR 记录格式（按主题）
 
@@ -168,8 +187,8 @@ docs/
 
 | 工具 | 状态 | 复用到的 packages | 新增公共组件 | 是否出现重复实现 |
 |---|---|---|---|---|
-| `edm-studio` | 未开始 | — | — | — |
-| `badge-studio` | 未开始 | — | — | — |
-| `model-console` | 未开始 | — | — | — |
+| `edm-studio` | 已落 | shared / repository / ui-kit / llm-gateway（经宿主能力） | `tool.manifest.json`、`src/main/index.ts` 默认注册入口 | 无 |
+| `badge-studio` | 已落 + 图片识别 | shared / repository / ui-kit + 宿主 `chat` / `runLocalOcr` / safeStorage | `core/vision.ts`、`scripts/paddleocr_adapter.py` | 无：云端与本机 OCR 共用 `parseVisionResult()` |
+| `model-console` | 已落 | shared / repository / ui-kit / llm-gateway | `tool.manifest.json` | 无 |
 
 > 判定：同一逻辑出现 ≥2 处即必须提取；`check-boundaries.mjs` + ESLint `no-restricted-imports` 卡住 `tools/*` 之间直接 import。
