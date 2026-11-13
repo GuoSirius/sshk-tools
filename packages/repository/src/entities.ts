@@ -31,6 +31,8 @@ export interface VersionSource {
   /** 相对 app.outputDir 的模板文件路径（.njk / .html） */
   html: string
   css?: string
+  /** local 模式：相对产物系统的 css 文件（assets/templates/<brandCode>/x.css） */
+  cssFile?: string
   cssMode: CssMode
 }
 

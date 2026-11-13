@@ -13,6 +13,7 @@ import {
   type TemplateVersion,
 } from '@sshk/repository'
 import { renderFragment, renderMail } from '../core/render.js'
+import { collectCss, type CssSource } from '../core/css-bundle.js'
 import { ShareServer } from './share.js'
 
 export interface EdmIpcDeps {
@@ -234,17 +235,31 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (!mail) throw new Error('邮件不存在')
         const tv = await repo.get<TemplateVersion>('templateVersions', mail.templateVersionId)
         if (!tv) throw new Error('模板版本不存在')
-        // 槽位绑定：片段版本渲染 + 槽位声明式注入
+        // 槽位绑定：片段版本渲染 + 槽位声明式注入；同时收集 css 来源与原子类扫描源
         const bindings: Record<string, string> = {}
+        const cssSources: CssSource[] = []
+        const scanCodes = [tv.source.html]
         for (const b of mail.bindings) {
           const fv = await repo.get<FragmentVersion>('fragmentVersions', b.fragmentVersionId)
-          if (fv) bindings[b.slot] = renderFragment(fv.source.html, (mail.data ?? {}) as Payload)
+          if (!fv) continue
+          bindings[b.slot] = renderFragment(fv.source.html, (mail.data ?? {}) as Payload)
+          scanCodes.push(fv.source.html)
+          cssSources.push({ mode: fv.source.cssMode, content: fv.source.css, file: fv.source.cssFile })
         }
+        cssSources.push({ mode: tv.source.cssMode, content: tv.source.css, file: tv.source.cssFile })
+        const bundle = await collectCss({
+          outputRoot: deps.outputRoot,
+          sources: cssSources,
+          scanCodes,
+          unoEnabled: true,
+        })
+        for (const warning of bundle.warnings) console.warn(`[edm] css 汇集警告：${warning}`)
         const stages = await renderMail({
           templateHtml: tv.source.html,
           bindings,
           data: (mail.data ?? {}) as Payload,
           render: { strict: true, autoEscape: true },
+          cssBundle: bundle.css,
         })
         const outputs = {
           assembled: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled),

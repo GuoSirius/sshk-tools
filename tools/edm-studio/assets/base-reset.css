@@ -1,0 +1,95 @@
+/* EDM 邮件基础重置：normalize.css 底稿 + 邮件客户端适配。
+ * 由宿主首次使用时复制到 <outputRoot>/assets/edm/css/base-reset.css，幂等。
+ * unocss 的 preflight 关闭，重置统一走本文件，避免双 reset 叠加（数据契约补记 C）。 */
+
+/* normalize.css 底稿（v8 精简，仅保留邮件可用的属性） */
+html,
+body,
+div,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+blockquote,
+a,
+em,
+img,
+small,
+strike,
+strong,
+sub,
+sup,
+b,
+u,
+i,
+ol,
+ul,
+li,
+table,
+tbody,
+tfoot,
+thead,
+tr,
+th,
+td {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 100%;
+  font: inherit;
+  vertical-align: baseline;
+}
+body {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+ol,
+ul {
+  list-style: none;
+}
+blockquote,
+q {
+  quotes: none;
+}
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* 邮件客户端适配 */
+img {
+  display: block;
+  border: 0;
+  outline: none;
+  text-decoration: none;
+  -ms-interpolation-mode: bicubic;
+}
+table {
+  mso-table-lspace: 0pt;
+  mso-table-rspace: 0pt;
+}
+a {
+  text-decoration: none;
+}
+.ExternalClass {
+  width: 100%;
+}
+.ExternalClass,
+.ExternalClass p,
+.ExternalClass span,
+.ExternalClass font,
+.ExternalClass td,
+.ExternalClass div {
+  line-height: inherit;
+}
+body,
+table,
+td,
+a {
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}

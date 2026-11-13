@@ -16,6 +16,8 @@
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
+    "@unocss/core": "latest",
+    "@unocss/preset-wind3": "latest",
     "element-plus": "latest",
     "html-minifier-terser": "latest",
     "juice": "latest",

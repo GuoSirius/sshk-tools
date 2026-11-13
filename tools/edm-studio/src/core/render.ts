@@ -2,6 +2,7 @@ import nunjucks from 'nunjucks'
 import juice from 'juice'
 import { htmlMinify } from './minify.js'
 import { createHash } from 'node:crypto'
+import { injectCss } from './css-bundle.js'
 
 // 模板安全配置（数据契约 settings render: strict + autoEscape）
 nunjucks.configure({ autoescape: true, throwOnUndefined: true })
@@ -13,6 +14,8 @@ export interface RenderInput {
   bindings: Record<string, string>
   data: Record<string, unknown>
   render: { strict: boolean; autoEscape: boolean }
+  /** 已汇集的 css（base-reset → uno → 品牌/模板，css-bundle.collectCss）；空则跳过注入 */
+  cssBundle?: string
 }
 
 export interface RenderStages {
@@ -37,7 +40,8 @@ export async function renderMail(input: RenderInput): Promise<RenderStages> {
     ...Object.fromEntries(Object.entries(input.bindings).map(([k, v]) => [`slot_${k}`, v])),
   }
   nunjucks.configure({ autoescape: input.render.autoEscape, throwOnUndefined: input.render.strict })
-  const assembled = nunjucks.renderString(input.templateHtml, context)
+  // css 汇集结果放最前，juice 的 applyStyleTags 会把它内联到 style 属性
+  const assembled = injectCss(nunjucks.renderString(input.templateHtml, context), input.cssBundle ?? '')
 
   const inlined = juice(assembled, {
     removeStyleTags: true,
