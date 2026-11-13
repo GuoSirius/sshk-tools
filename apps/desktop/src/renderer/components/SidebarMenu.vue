@@ -3,7 +3,7 @@ import type { ToolMenu } from '@sshk/shared'
 
 defineOptions({ name: 'SidebarMenu' })
 
-// 递归菜单节点：展开态侧栏、收起态图标轨、hover 浮层共用同一套渲染。
+// 递归菜单节点：展开态与收起态 hover 就地展开共用同一套渲染。
 const props = withDefaults(defineProps<{
   items: ToolMenu[]
   active: string

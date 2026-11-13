@@ -168,6 +168,8 @@ async function cleanupOrphans(): Promise<void> {
 
 <template>
   <el-drawer
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
     :model-value="modelValue"
     direction="rtl"
     size="min(780px, 82vw)"

@@ -17,10 +17,11 @@
     "test": "vitest run",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:preload": "node scripts/check-preload.mjs",
+    "check:dialogs": "node scripts/check-dialogs.mjs",
     "check:latest": "node scripts/check-latest.mjs",
     "check:structure": "node scripts/verify-structure.mjs",
     "postinstall": "node scripts/ensure-electron.mjs",
-    "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:preload && pnpm check:latest && pnpm typecheck && pnpm lint && pnpm test"
+    "verify": "pnpm check:structure && pnpm check:boundaries && pnpm check:preload && pnpm check:dialogs && pnpm check:latest && pnpm typecheck && pnpm lint && pnpm test"
   },
   "devDependencies": {
     "@commitlint/cli": "latest",

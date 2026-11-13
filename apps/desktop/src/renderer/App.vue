@@ -20,15 +20,16 @@ const { visibleTools: catalogTools, byId } = useToolCatalog()
 const activeToolId = ref<string | null>(null)
 const activeMenu = ref('')
 const sidebarCollapsed = ref(false)
-const flyoutOpen = ref(false)
+/** 收起态 hover：侧栏本体平滑展开，不再弹独立浮层 */
+const sidebarHover = ref(false)
 const sideOpenIds = ref<Set<string>>(new Set())
-const flyoutOpenIds = ref<Set<string>>(new Set())
+const sidebarExpanded = computed(() => !sidebarCollapsed.value || sidebarHover.value)
 const settingsOpen = ref(false)
 const settingsGroup = ref('general')
 const query = ref('')
 const version = ref('0.1.0')
 const updateChecking = ref(false)
-let closeTimer: number | undefined
+let hoverTimer: number | undefined
 
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
 const currentTool = computed(() => byId.value.get(activeToolId.value ?? '') ?? null)
@@ -92,10 +93,8 @@ function openTool(id: string): void {
   activeToolId.value = id
   activeMenu.value = sidebarMenus.value[0]?.id ?? ''
   sideOpenIds.value = new Set(pathTo(sidebarMenus.value, activeMenu.value) ?? [])
-  flyoutOpenIds.value = new Set(collectGroupIds(sidebarMenus.value))
-  flyoutOpen.value = false
 }
-function goHome(): void { activeToolId.value = null; flyoutOpen.value = false }
+function goHome(): void { activeToolId.value = null; sidebarHover.value = false }
 function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
 function openSettings(group = 'general'): void {
@@ -118,35 +117,27 @@ watch(catalogTools, (list) => {
   if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
 })
 
-// ── 侧栏：展开态内联多级菜单 / 收起态图标轨 + hover 浮层 ──
-function openFlyout(): void {
+// ── 侧栏：同一棵菜单树，收起后 hover 让侧栏本体平滑变宽，不弹独立浮层 ──
+function onSidebarEnter(): void {
   if (!sidebarCollapsed.value) return
-  if (closeTimer !== undefined) { window.clearTimeout(closeTimer); closeTimer = undefined }
-  flyoutOpen.value = true
+  if (hoverTimer !== undefined) { window.clearTimeout(hoverTimer); hoverTimer = undefined }
+  // hover 时把分组全部展开，多级菜单一眼可见；移开后自动收成图标轨
+  sideOpenIds.value = new Set(collectGroupIds(sidebarMenus.value))
+  sidebarHover.value = true
 }
-function scheduleClose(): void {
-  if (closeTimer !== undefined) window.clearTimeout(closeTimer)
-  closeTimer = window.setTimeout(() => { flyoutOpen.value = false }, 180)
+function onSidebarLeave(): void {
+  if (hoverTimer !== undefined) window.clearTimeout(hoverTimer)
+  hoverTimer = window.setTimeout(() => { sidebarHover.value = false }, 140)
 }
-function onSidebarEnter(): void { if (sidebarCollapsed.value) openFlyout() }
-function toggleSideGroup(id: string): void {
-  if (sidebarCollapsed.value) {
-    flyoutOpenIds.value = new Set(collectGroupIds(sidebarMenus.value))
-    openFlyout()
-    return
-  }
-  toggleIn(sideOpenIds, id)
-}
-function toggleFlyoutGroup(id: string): void { toggleIn(flyoutOpenIds, id) }
+function toggleSideGroup(id: string): void { toggleIn(sideOpenIds, id) }
 function selectMenu(id: string): void {
   activeMenu.value = id
   const path = pathTo(sidebarMenus.value, id) ?? []
   sideOpenIds.value = new Set([...sideOpenIds.value, ...path])
-  flyoutOpen.value = false
 }
 
-watch(sidebarCollapsed, (collapsed) => { if (!collapsed) flyoutOpen.value = false })
-onBeforeUnmount(() => { if (closeTimer !== undefined) window.clearTimeout(closeTimer) })
+watch(sidebarCollapsed, (collapsed) => { if (!collapsed) sidebarHover.value = false })
+onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
 async function checkUpdate(): Promise<void> {
   if (updateChecking.value) return
@@ -213,13 +204,13 @@ onMounted(async () => {
     </header>
 
     <div class="app-body">
-      <!-- 工具级：左侧 = 当前工具的全部功能菜单（含多级）；收起后 hover 浮层展开 -->
+      <!-- 工具级：左侧 = 当前工具的全部功能菜单（含多级）；收起后 hover 就地平滑展开 -->
       <aside
         v-if="currentTool"
         class="tool-sidebar"
-        :class="{ collapsed: sidebarCollapsed }"
+        :class="{ collapsed: sidebarCollapsed, hover: sidebarHover, 'is-narrow': !sidebarExpanded }"
         @mouseenter="onSidebarEnter"
-        @mouseleave="scheduleClose"
+        @mouseleave="onSidebarLeave"
       >
         <div class="sidebar-menu">
           <div class="sidebar-head">
@@ -233,7 +224,7 @@ onMounted(async () => {
             :items="sidebarMenus"
             :active="activeMenu"
             :open-ids="sideOpenIds"
-            :show-children="!sidebarCollapsed"
+            :show-children="sidebarExpanded"
             :toggle-group="toggleSideGroup"
             :select-item="selectMenu"
           />
@@ -254,39 +245,6 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <!-- 收起态 hover 浮层：完整菜单树，不挤压内容区 -->
-      <Transition name="flyout">
-        <div
-          v-if="currentTool && sidebarCollapsed && flyoutOpen"
-          class="sidebar-flyout"
-          @mouseenter="openFlyout"
-          @mouseleave="scheduleClose"
-        >
-          <div class="flyout-head">
-            <ToolIcon :icon="currentTool.icon" :tool-id="currentTool.id" :name="currentTool.name" :size="28" />
-            <div class="flyout-title">
-              <strong>{{ currentTool.name }}</strong>
-              <small>全部功能菜单</small>
-            </div>
-          </div>
-          <div class="flyout-body">
-            <SidebarMenu
-              :items="sidebarMenus"
-              :active="activeMenu"
-              :open-ids="flyoutOpenIds"
-              :toggle-group="toggleFlyoutGroup"
-              :select-item="selectMenu"
-            />
-          </div>
-          <div class="flyout-foot">
-            <button class="flyout-pin" type="button" @click="sidebarCollapsed = false">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18" /></svg>
-              固定展开侧栏
-            </button>
-          </div>
-        </div>
-      </Transition>
-
       <main class="tool-content">
         <template v-if="!currentTool">
           <div class="tool-page-head">
@@ -298,7 +256,7 @@ onMounted(async () => {
               <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)">
                 <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="44" />
                 <h3 style="margin: 14px 0 6px">{{ tool.name }}</h3>
-                <p class="muted" style="margin: 0; line-height: 1.6">{{ tool.description }}</p>
+                <p class="muted card-desc" :title="tool.description">{{ tool.description }}</p>
                 <div class="card-tags">
                   <el-tag v-for="tag in tool.categories" :key="tag" size="small">{{ tag }}</el-tag>
                   <el-tag v-if="tool.requiredGrant" size="small" type="warning">需密钥</el-tag>

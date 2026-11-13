@@ -32,6 +32,8 @@ function close(action: 'confirm' | 'cancel'): void {
 
 <template>
   <el-dialog
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
     :model-value="open"
     :title="title"
     width="420px"

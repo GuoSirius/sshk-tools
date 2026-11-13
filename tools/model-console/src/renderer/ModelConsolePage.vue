@@ -34,6 +34,7 @@ const modelOptions = ref<string[]>([])
 const presetId = ref('')
 const fetchingModels = ref(false)
 const dialogOpen = ref(false)
+const saving = ref(false)
 const editingId = ref<string | null>(null)
 const form = reactive<Provider & { apiKey: string }>({
   _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '',
@@ -124,7 +125,13 @@ async function fetchModels(): Promise<void> {
     if (!form.model && modelOptions.value[0]) form.model = modelOptions.value[0]
     ElMessage.success(`拉取到 ${list.length} 个可用模型`)
   } catch (err) {
-    ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；可手动输入模型名`)
+    // /models 401 / 404 / 端点不开放时回退到该服务商的预设模型，绝不阻断保存
+    const preset = presets.value.find((p) => p.baseURL === form.baseURL.trim())
+    if (preset) {
+      modelOptions.value = Array.from(new Set([...modelOptions.value, ...preset.models]))
+      if (!form.model) form.model = preset.defaultModel || preset.models[0] || form.model
+    }
+    ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；已回退预设/手填，不影响保存`)
   } finally {
     fetchingModels.value = false
   }
@@ -135,22 +142,35 @@ async function saveProvider(): Promise<void> {
     ElMessage.warning('名称、baseURL、模型名必填')
     return
   }
-  if (editingId.value) {
-    const idx = providers.value.findIndex((p) => p._id === editingId.value)
-    if (idx >= 0) {
-      const { apiKey, ...meta } = form
-      providers.value[idx] = { ...providers.value[idx]!, ...meta }
-      if (apiKey) await window.api.llm.setApiKey(meta._id, apiKey)
-    }
-  } else {
-    const id = entityId('prv')
-    const { apiKey, ...meta } = form
-    providers.value.push({ ...meta, _id: id })
-    if (apiKey) await window.api.llm.setApiKey(id, apiKey)
+  if (!/^https?:\/\//i.test(form.baseURL.trim())) {
+    ElMessage.warning('baseURL 必须是 http(s) 地址')
+    return
   }
-  await persist()
-  dialogOpen.value = false
-  ElMessage.success('已保存（apiKey 加密存储，不进配置文件）')
+  saving.value = true
+  try {
+    // 先写密钥再改内存、最后落配置：任一步失败都不留下「界面已改但没保存」的假象
+    if (editingId.value) {
+      const idx = providers.value.findIndex((p) => p._id === editingId.value)
+      if (idx >= 0) {
+        const { apiKey, ...meta } = form
+        if (apiKey) await window.api.llm.setApiKey(meta._id, apiKey)
+        providers.value[idx] = { ...providers.value[idx]!, ...meta }
+      }
+    } else {
+      const id = entityId('prv')
+      const { apiKey, ...meta } = form
+      if (apiKey) await window.api.llm.setApiKey(id, apiKey)
+      providers.value.push({ ...meta, _id: id })
+    }
+    await persist()
+    dialogOpen.value = false
+    ElMessage.success('已保存（apiKey 加密存储，不进配置文件）')
+  } catch (err) {
+    // 失败时保留弹框与已填内容，明确报错；不再出现「点了保存没反应也不关窗」
+    ElMessage.error(`保存失败：${(err as Error).message}`)
+  } finally {
+    saving.value = false
+  }
 }
 
 const removeOpen = ref(false)
@@ -162,13 +182,17 @@ function askRemove(row: Provider): void {
 }
 
 async function doRemove(): Promise<void> {
-  if (removeTarget.value) {
-    providers.value = providers.value.filter((p) => p._id !== removeTarget.value!._id)
-    await window.api.llm.setApiKey(removeTarget.value._id, '')
+  const target = removeTarget.value
+  if (!target) return
+  try {
+    await window.api.llm.setApiKey(target._id, '')
+    providers.value = providers.value.filter((p) => p._id !== target._id)
     await persist()
+    removeOpen.value = false
     ElMessage.success('已删除')
+  } catch (err) {
+    ElMessage.error(`删除失败：${(err as Error).message}`)
   }
-  removeOpen.value = false
 }
 
 async function testProvider(row: Provider): Promise<void> {
@@ -301,7 +325,13 @@ onMounted(() => {
       <span class="panel-title">apiKey 单独加密存储（safeStorage）· 测试与试聊走 llm 网关</span>
     </template>
 
-    <el-dialog v-model="dialogOpen" :title="editingId ? '编辑 Provider' : '新增 Provider'" width="480px">
+    <el-dialog
+      v-model="dialogOpen"
+      :title="editingId ? '编辑 Provider' : '新增 Provider'"
+      width="480px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
       <el-form label-width="90px" size="small">
         <el-form-item v-if="presets.length" label="快速预设">
           <el-select
@@ -358,7 +388,7 @@ onMounted(() => {
       </el-form>
       <template #footer>
         <el-button size="small" @click="dialogOpen = false">取消</el-button>
-        <el-button size="small" type="primary" @click="saveProvider">保存</el-button>
+        <el-button size="small" type="primary" :loading="saving" @click="saveProvider">保存</el-button>
       </template>
     </el-dialog>
 

@@ -348,7 +348,7 @@ onMounted(async () => {
     </template>
 
     <!-- 弹窗组 -->
-    <el-dialog v-model="brandOpen" :title="brandForm._id ? '编辑品牌' : '新增品牌'" width="400px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="brandOpen" :title="brandForm._id ? '编辑品牌' : '新增品牌'" width="400px">
       <el-form label-width="70px" size="small">
         <el-form-item label="code"><el-input v-model="brandForm.code" placeholder="procell" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="brandForm.name" placeholder="Procell" /></el-form-item>
@@ -359,7 +359,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="tplOpen" :title="tplForm._id ? '编辑模板' : '新增模板'" width="460px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplOpen" :title="tplForm._id ? '编辑模板' : '新增模板'" width="460px">
       <el-form label-width="70px" size="small">
         <el-form-item label="品牌">
           <el-select v-model="tplForm.brandId" style="width: 100%">
@@ -375,7 +375,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="tplvOpen" title="新建模板版本（不可变）" width="640px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplvOpen" title="新建模板版本（不可变）" width="640px">
       <el-input v-model="tplvForm.html" type="textarea" :rows="10" placeholder="njk 源码；槽位用 {{ slot_header | safe }} 等引用" />
       <el-input v-model="tplvForm.sampleDataText" type="textarea" :rows="4" style="margin-top: 8px" placeholder="sampleData JSON" />
       <template #footer>
@@ -384,7 +384,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="frgOpen" :title="frgForm._id ? '编辑片段' : '新增片段'" width="460px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgOpen" :title="frgForm._id ? '编辑片段' : '新增片段'" width="460px">
       <el-form label-width="70px" size="small">
         <el-form-item label="品牌">
           <el-select v-model="frgForm.brandId" style="width: 100%">
@@ -406,7 +406,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="frgvOpen" title="新建片段版本（含黑白名单）" width="640px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgvOpen" title="新建片段版本（含黑白名单）" width="640px">
       <el-input v-model="frgvForm.html" type="textarea" :rows="8" placeholder="njk 源码" />
       <div style="margin-top: 8px; display: flex; gap: 8px">
         <el-input v-model="frgvForm.blacklistText" size="small" placeholder="黑名单（模板/版本 ID，逗号分隔）" />
@@ -418,7 +418,7 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="mailOpen" :title="mailForm._id ? '编辑邮件' : '新增邮件'" width="640px">
+    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="mailOpen" :title="mailForm._id ? '编辑邮件' : '新增邮件'" width="640px">
       <el-form label-width="80px" size="small">
         <el-form-item label="名称"><el-input v-model="mailForm.name" /></el-form-item>
         <el-form-item label="模板版本">
