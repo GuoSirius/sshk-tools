@@ -62,15 +62,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.label }}
+          # electron-builder.yml directories.output 指向仓库根 dist/（../../dist），不是 apps/desktop/dist
           path: |
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.zip
-            apps/desktop/dist/*.deb
-            apps/desktop/dist/*.rpm
-            apps/desktop/dist/*.AppImage
-            apps/desktop/dist/latest*.yml
-          if-no-files-found: warn
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+            dist/latest*.yml
+          if-no-files-found: error
 
   release:
     needs: build

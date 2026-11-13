@@ -24,13 +24,10 @@
     "@sshk/badge-studio": "workspace:*",
     "@sshk/edm-studio": "workspace:*",
     "@sshk/model-console": "workspace:*",
-    "dayjs": "latest",
-    "electron-updater": "^6",
     "vue": "latest",
     "vue-router": "latest",
     "element-plus": "latest",
-    "unocss": "latest",
-    "fflate": "latest"
+    "unocss": "latest"
   },
   "devDependencies": {
     "electron": "latest",
@@ -39,10 +36,14 @@
     "vite": "latest",
     "@vitejs/plugin-vue": "latest",
     "typescript": "6",
-    "vitest": "latest"
+    "vitest": "latest",
+    "dayjs": "latest",
+    "fflate": "latest",
+    "electron-updater": "latest"
   },
   "engines": {
     "node": ">=24"
   },
-  "homepage": "https://github.com/GuoSirius/sshk-tools"
+  "homepage": "https://github.com/GuoSirius/sshk-tools",
+  "desktopName": "sshk-tools.desktop"
 }

@@ -15,6 +15,10 @@ files:
   - out/**/*
   - build/**/*
   - package.json
+  # 主进程已把全部依赖打进 out（dayjs/fflate/electron-updater 均纯 JS 已内联）：
+  # node_modules 全量排除，杜绝 @oxc-parser 等构建期原生二进制进包，
+  # 根治 mac universal「同文件双架构」报错，并大幅缩小安装包
+  - '!node_modules/**'
 
 # ---------------- Windows ----------------
 win:
