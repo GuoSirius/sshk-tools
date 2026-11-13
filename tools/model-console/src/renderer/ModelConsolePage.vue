@@ -81,7 +81,7 @@ function openCreate(): void {
   editingId.value = null
   presetId.value = ''
   modelOptions.value = []
-  Object.assign(form, { _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '' })
+  Object.assign(form.value, { _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '' })
   dialogOpen.value = true
 }
 
@@ -90,7 +90,7 @@ function openEdit(row: Provider): void {
   const matched = presets.value.find((p) => p.baseURL === row.baseURL)
   presetId.value = matched?.id ?? ''
   modelOptions.value = matched ? [...matched.models] : row.model ? [row.model] : []
-  Object.assign(form, { ...row, apiKey: '' })
+  Object.assign(form.value, { ...row, apiKey: '' })
   dialogOpen.value = true
 }
 
@@ -98,7 +98,7 @@ function openEdit(row: Provider): void {
 function applyPreset(id: string): void {
   const preset = presets.value.find((p) => p.id === id)
   if (!preset) return
-  Object.assign(form, {
+  Object.assign(form.value, {
     _id: '',
     name: preset.name,
     kind: preset.kind,
@@ -345,11 +345,13 @@ onMounted(() => {
           <span v-else class="muted">未测试</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="210" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" text :loading="testingId === row._id" @click="testProvider(row)">测试</el-button>
-          <el-button size="small" text @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" text type="danger" @click="askRemove(row)">删除</el-button>
+          <div class="op-row">
+            <el-button size="small" type="primary" plain :loading="testingId === row._id" @click="testProvider(row)">测试</el-button>
+            <el-button size="small" plain @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" type="danger" plain @click="askRemove(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

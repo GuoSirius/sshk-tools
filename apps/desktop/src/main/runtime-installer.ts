@@ -197,6 +197,20 @@ export function listInstalled(deps: RuntimeDeps): InstalledPackageRecord[] {
   return Object.values(readInstalled(deps)).sort((a, b) => a.id.localeCompare(b.id))
 }
 
+/** 读取已安装包的渲染层产物（编译后 ESM，默认导出组件）；路径受安装目录约束 */
+export function readRenderer(packageId: string, deps: RuntimeDeps): string {
+  const record = readInstalled(deps)[packageId]
+  if (!record) throw new Error('运行时包 ' + packageId + ' 未安装')
+  const manifestPath = join(runtimeRoot(deps), PACKAGES_DIR, record.id, record.version, 'tool.manifest.json')
+  if (!existsSync(manifestPath)) throw new Error('运行时包 ' + record.id + ' 清单缺失')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ToolDescriptor
+  const rel = manifest.plugin?.renderer
+  if (!rel) throw new Error('运行时包 ' + record.id + ' 未声明渲染层')
+  const file = join(runtimeRoot(deps), PACKAGES_DIR, record.id, record.version, rel)
+  if (!existsSync(file)) throw new Error('渲染层文件缺失：' + rel)
+  return readFileSync(file, 'utf8')
+}
+
 export function uninstallPackage(id: string, deps: RuntimeDeps): boolean {
   const records = readInstalled(deps)
   const record = records[id]

@@ -484,6 +484,18 @@ body {
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
   background: var(--sshk-hover, rgba(79, 140, 255, 0.04));
 }
+/* 操作列容器（全局约定）：紧凑 + 居中 + 统一圆角，各页面 .op-row 通用 */
+.op-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+.op-row .el-button + .el-button { margin-left: 0; }
+.op-row .el-button {
+  border-radius: 5px;
+  padding: 5px 10px;
+}
 /* 表格内操作按钮紧凑：间距 6px、圆角统一 */
 .op-row .el-button {
   border-radius: 5px;

@@ -21,7 +21,7 @@ import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gatew
 import { setupServices, type AppServices } from './services'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
-import { installPackage, listInstalled, loadRuntimeManifests, uninstallPackage } from './runtime-installer'
+import { installPackage, listInstalled, loadRuntimeManifests, readRenderer, uninstallPackage } from './runtime-installer'
 import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins } from './plugins'
 import { MANIFESTS } from './discovery'
@@ -364,6 +364,7 @@ async function registerIpc(): Promise<void> {
   })
   ipcMain.handle(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))
   ipcMain.handle(IPC_CHANNELS.runtimeUninstall, (_event, id: string) => uninstallPackage(String(id ?? ''), runtimeDeps()))
+  ipcMain.handle(IPC_CHANNELS.runtimeReadRenderer, (_event, id: string) => readRenderer(String(id ?? ''), runtimeDeps()))
 
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send(IPC_CHANNELS.themeSystemChanged)
@@ -411,7 +412,10 @@ async function registerIpc(): Promise<void> {
     return true
   })
   // 编辑时按需查看已存密钥：用户主动点击才下发，绝不随列表默认下发
-  ipcMain.handle(IPC_CHANNELS.llmGetApiKey, (_event, providerId: string) => services!.getApiKey(String(providerId ?? '')))
+  ipcMain.handle(IPC_CHANNELS.llmGetApiKey, async (_event, providerId: string) => {
+    await services!.ensureSecrets()
+    return services!.getApiKey(String(providerId ?? ''))
+  })
   // 应用级 Provider 共享：所有工具列同一份清单、按 id 复用密钥，禁止各自重复配置
   ipcMain.handle(IPC_CHANNELS.llmProviders, () => services!.host.listProviders())
   ipcMain.handle(IPC_CHANNELS.llmProviderModels, (_event, providerId: string, apiKey?: string) =>

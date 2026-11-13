@@ -220,6 +220,8 @@ export interface ToolRuntimeState {
   visibility: 'implicit' | 'hidden' | 'managed' | 'desktop'
   /** 插件是否成功加载（加载失败只影响本工具） */
   available: boolean
+  /** 运行时安装包（渲染层走 Blob URL 动态组件） */
+  runtime: boolean
   pluginError?: string
   /** 不可见原因：已禁用 / 缺依赖 / 需密钥 / 未分发 / 插件加载失败 */
   reason?: string

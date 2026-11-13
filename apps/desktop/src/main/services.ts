@@ -33,6 +33,8 @@ export interface AppServices {
   dbDir: string
   /** 按 providerId 读取 apiKey（safeStorage 解密；永不下发渲染层） */
   getApiKey: (providerId: string) => string
+  /** 确保密钥缓存已从 safeStorage 解密预载（幂等） */
+  ensureSecrets: () => Promise<void>
   setApiKey: (providerId: string, apiKey: string) => void
   /** 应用访问密钥：写入 safeStorage，settings 只留 sha256 摘要 */
   setAccessKey: (key: string) => void
@@ -249,6 +251,7 @@ export function setupServices(): AppServices {
     dbDir,
     host,
     getApiKey: (providerId) => currentSecrets()[providerId] ?? '',
+    ensureSecrets: async () => { await loadSecrets() },
     setApiKey: (providerId, apiKey) => {
       if (!isProviderId(providerId)) throw new Error(`非法 providerId: ${providerId}`)
       const secrets = currentSecrets()

@@ -178,6 +178,7 @@ export function resolveToolCatalog(
       serviceable,
       visibility,
       available,
+      runtime: Boolean(tool.package),
       pluginError: plugin?.error,
       reason,
       warnings,

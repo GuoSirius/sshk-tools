@@ -59,6 +59,7 @@ export const IPC_CHANNELS = {
   runtimeInstall: 'runtime:install',
   runtimeList: 'runtime:list',
   runtimeUninstall: 'runtime:uninstall',
+  runtimeReadRenderer: 'runtime:readRenderer',
   badgeGenerate: 'badge:generate',
   badgeRegenerate: 'badge:regenerate',
   badgeParseDatasource: 'badge:parseDatasource',

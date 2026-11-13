@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
-  computed, nextTick, onBeforeUnmount, onMounted, ref, watch,
+  computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch,
+  type Component,
   type Ref,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -55,7 +56,37 @@ watch([currentTool, sidebarCollapsed], () => measureMarquee(), { immediate: true
 onMounted(() => { void nextTick(measureMarquee) })
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
 // 渲染插件按清单动态加载，单个工具组件失败只影响它自己
-const toolView = computed(() => currentTool.value ? toolComponent(currentTool.value.id) : null)
+// 内置工具走构建期组件；运行时包走 Blob URL 动态 import（编译后 ESM 组件）
+const runtimeComponents = reactive(new Map<string, Component>())
+const runtimeLoading = ref(false)
+async function loadRuntimeComponent(id: string): Promise<void> {
+  if (runtimeLoading.value || runtimeComponents.has(id)) return
+  runtimeLoading.value = true
+  try {
+    const code = await window.api.runtime.readRenderer(id)
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))
+    const mod = (await import(/* @vite-ignore */ url)) as { default?: Component }
+    URL.revokeObjectURL(url)
+    if (!mod.default) throw new Error('渲染层未默认导出组件')
+    runtimeComponents.set(id, markRaw(mod.default))
+  } catch (err) {
+    ElMessage.error('运行时组件加载失败：' + (err as Error).message)
+  } finally {
+    runtimeLoading.value = false
+  }
+}
+const toolView = computed(() => {
+  const tool = currentTool.value
+  if (!tool) return null
+  const builtin = toolComponent(tool.id)
+  if (builtin) return builtin
+  // 运行时包：声明了渲染层且带 package 契约
+  if (tool.runtime) {
+    void loadRuntimeComponent(tool.id)
+    return runtimeComponents.get(tool.id) ?? null
+  }
+  return null
+})
 const visibleTools = computed(() => {
   const keyword = query.value.trim().toLowerCase()
   if (!keyword) return catalogTools.value

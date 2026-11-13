@@ -144,6 +144,7 @@ const api = {
       invoke(IPC_CHANNELS.runtimeInstall, zipPath, explicitlyTrusted),
     list: (): Promise<unknown[]> => invoke(IPC_CHANNELS.runtimeList),
     uninstall: (id: string): Promise<boolean> => invoke(IPC_CHANNELS.runtimeUninstall, id),
+    readRenderer: (packageId: string): Promise<string> => invoke(IPC_CHANNELS.runtimeReadRenderer, packageId),
   },
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
