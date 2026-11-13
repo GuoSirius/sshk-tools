@@ -13,10 +13,10 @@
  *
  * 用法：pnpm release [--dry-run]
  *
- * 交互实现为内置零依赖组件（方向键选择 / 确认 / 文本输入）：
- * 曾用 @clack/prompts，其 frame 差量重绘在 Windows 终端下光标回退行数算错，
- * 上下切换时旧帧残留造成选项重复（2026-11-13）。自绘选择器整块清屏重绘、
- * 选项行纯 ASCII 保证单行，行数确定，彻底规避。
+ * 交互实现为内置零依赖组件，且**零光标控制**（无 cursor-up / 无整屏重绘）：
+ * 用户终端实测不处理光标上移类序列（颜色正常但重绘必残影，clack 与自绘
+ * 整块重绘均复现，2026-11-13），故版本选择/确认一律用「打印一次 + 行输入」，
+ * 任何终端都不可能出现重复行。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
@@ -42,85 +42,40 @@ function sh(cmd, args) {
 }
 function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
 
-/* ── 零依赖交互：方向键选择 / Y-N 确认 / 文本输入 ──
- * 渲染纪律（踩坑沉淀）：
- *  1) 重绘 = 光标回块首 + \x1b[J 清到屏尾 + 整块重打，不用任何差量重绘；
- *  2) 重绘块内只放 ASCII 行（'->' 不用 '→'），杜绝 CJK/宽字符导致的行数歧义；
- *  3) 标题等含中文的行只打一次、永不在重绘块内。
- */
-const hideCursor = () => process.stdout.write('\x1b[?25l')
-const showCursor = () => process.stdout.write('\x1b[?25h')
+/* ── 零依赖交互：序号选择 / y-n 确认 / 文本输入（全部打印一次 + 行输入，无重绘） ── */
 
-/** 方向键选择器，resolve 选项下标；Ctrl+C 返回 null */
-function promptSelect(header, options) {
-  return new Promise((resolve) => {
-    const out = process.stdout
-    const stdin = process.stdin
-    const rows = options.length
-    const cols = (out.columns || 80) - 2
-    let idx = 0
-    let started = false
-    let buf = ''
-    const render = () => {
-      const lines = options.map((o, i) => {
-        const marker = i === idx ? '>' : ' '
-        const text = `${marker} ${o.label.padEnd(8)}${o.hint}`
-        return text.length > cols ? text.slice(0, cols) : text
-      })
-      if (started) out.write(`\x1b[${rows}A\r\x1b[J`)
-      out.write(lines.map((l) => `${l}\x1b[K\n`).join(''))
-      started = true
+/** 序号选择菜单（纯文本、零光标控制，任何终端都不会残影），resolve 选项下标 */
+async function promptChoice(header, options) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  console.log(header)
+  options.forEach((o, i) => console.log(`  ${i + 1}) ${o.label.padEnd(8)}${o.hint}`))
+  try {
+    for (;;) {
+      const answer = await rl.question(`输入序号回车（1-${options.length}，回车默认 1）：`)
+      const t = answer.trim()
+      if (t === '') return 0
+      const n = Number(t)
+      if (Number.isInteger(n) && n >= 1 && n <= options.length) return n - 1
+      console.log(RED(`  无效序号「${t}」，请输入 1-${options.length}`))
     }
-    const cleanup = () => {
-      stdin.removeListener('data', onData)
-      if (stdin.isTTY) stdin.setRawMode(false)
-      stdin.pause()
-      showCursor()
-    }
-    const onData = (chunk) => {
-      buf += String(chunk)
-      // 方向键是三字节序列，可能分片到达，攒齐再处理
-      if (buf === '\x1b' || buf === '\x1b[') return
-      const s = buf
-      buf = ''
-      if (s === '\x03') { cleanup(); out.write('\n'); resolve(null); return } // Ctrl+C
-      if (s === '\r' || s === '\n') { cleanup(); resolve(idx); return }
-      if (s === '\x1b[A' || s === 'k') { idx = (idx - 1 + rows) % rows; render() }
-      else if (s === '\x1b[B' || s === 'j') { idx = (idx + 1) % rows; render() }
-    }
-    console.log(header)
-    stdin.setRawMode(true)
-    stdin.resume()
-    stdin.setEncoding('utf8')
-    hideCursor()
-    stdin.on('data', onData)
-    render()
-  })
+  } finally {
+    rl.close()
+  }
 }
 
-/** Y/n 确认（单帧渲染，无重绘即无残影）；Ctrl+C 返回 null */
-function promptConfirm(message) {
-  return new Promise((resolve) => {
-    const out = process.stdout
-    const stdin = process.stdin
-    out.write(`${message} ${DIM('[Y/n]')} `)
-    const cleanup = () => {
-      stdin.removeListener('data', onData)
-      if (stdin.isTTY) stdin.setRawMode(false)
-      stdin.pause()
-      showCursor()
+/** y/n 确认（行输入），resolve true/false */
+async function promptConfirm(message) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    for (;;) {
+      const a = (await rl.question(`${message}（y/n，回车视为 n）：`)).trim().toLowerCase()
+      if (a === 'y' || a === 'yes') return true
+      if (a === '' || a === 'n' || a === 'no') return false
+      console.log(RED('  请输入 y 或 n'))
     }
-    const onData = (chunk) => {
-      const s = String(chunk).trim().toLowerCase()
-      if (s === '\x03') { cleanup(); out.write('\n'); resolve(null); return }
-      if (s === '' || s === 'y' || s === '\r' || s === '\n') { out.write('yes\n'); cleanup(); resolve(true) }
-      else if (s === 'n') { out.write('no\n'); cleanup(); resolve(false) }
-    }
-    stdin.setRawMode(true)
-    stdin.resume()
-    stdin.setEncoding('utf8')
-    stdin.on('data', onData)
-  })
+  } finally {
+    rl.close()
+  }
 }
 
 /** 文本输入（readline，终端自管回显） */
@@ -218,10 +173,10 @@ if (!DRY_RUN) {
   ok('门禁全绿')
 }
 
-/* ── 1. 版本选择（方向键 + 实时预览，自绘选择器见文件头说明） ── */
+/* ── 1. 版本选择（序号菜单 + 实时预览，零重绘见文件头说明） ── */
 let kind = 'patch'
 if (!DRY_RUN) {
-  const picked = await promptSelect(
+  const picked = await promptChoice(
     `选择版本类型（当前 ${fmt(current)}）`,
     [
       { label: 'patch', hint: `(${fmt(current)} -> ${bump(current, 'patch')})` },
@@ -231,7 +186,6 @@ if (!DRY_RUN) {
       { label: 'custom', hint: '(type version manually)' },
     ],
   )
-  if (picked === null) die('已取消')
   kind = ['patch', 'minor', 'major', 'beta', 'custom'][picked]
   ok(`已选择 ${kind}`)
 }
@@ -265,7 +219,6 @@ console.log(`  版本      : ${GREEN(fmt(current))} → ${GREEN(next)}`)
 console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物）`)
 if (!DRY_RUN) {
   const go = await promptConfirm('确认按以上内容发布？')
-  if (go === null) die('已取消')
   if (!go) die('已取消')
 }
 
