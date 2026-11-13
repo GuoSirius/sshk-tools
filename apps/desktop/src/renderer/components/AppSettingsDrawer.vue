@@ -151,6 +151,31 @@ async function pickRuntimePackage(): Promise<void> {
     ElMessage.error(`安装失败：${(err as Error).message}`)
   }
 }
+const publicKeys = ref<{ keyId: string; label: string; importedAt: string }[]>([])
+const keyImportOpen = ref(false)
+const keyLabel = ref('')
+const keyPem = ref('')
+async function refreshKeys(): Promise<void> {
+  publicKeys.value = (await window.api.runtime.keysList()) as { keyId: string; label: string; importedAt: string }[]
+}
+async function importKey(): Promise<void> {
+  if (!keyPem.value.trim()) { ElMessage.warning('请粘贴 PEM 公钥内容'); return }
+  try {
+    const entry = (await window.api.runtime.keysImport(keyLabel.value, keyPem.value)) as { keyId: string; label: string }
+    ElMessage.success('已导入：' + entry.label + '（' + entry.keyId + '）')
+    keyImportOpen.value = false
+    keyLabel.value = ''
+    keyPem.value = ''
+    await refreshKeys()
+  } catch (err) {
+    ElMessage.error('导入失败：' + (err as Error).message)
+  }
+}
+async function revokeKey(keyId: string): Promise<void> {
+  await window.api.runtime.keysRevoke(keyId)
+  ElMessage.success('已撤销')
+  await refreshKeys()
+}
 async function removeRuntime(id: string): Promise<void> {
   try {
     await window.api.runtime.uninstall(id)
@@ -160,7 +185,7 @@ async function removeRuntime(id: string): Promise<void> {
     ElMessage.error(`卸载失败：${(err as Error).message}`)
   }
 }
-onMounted(() => { void refreshRuntime() })
+onMounted(() => { void refreshRuntime(); void refreshKeys() })
 
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
@@ -426,6 +451,26 @@ async function cleanupOrphans(): Promise<void> {
                 <el-button size="small" text type="danger" @click="removeRuntime(pkg.id)">卸载</el-button>
               </div>
               <div v-if="runtimePackages.length === 0" class="kv-line"><span class="hint">暂无运行时安装的工具包</span></div>
+
+              <div class="card-title" style="margin-top: 12px">信任的发布者（公钥）</div>
+              <div class="kv-line">
+                <span>导入公钥</span>
+                <el-button size="small" @click="keyImportOpen = true">粘贴 PEM</el-button>
+              </div>
+              <div v-for="key in publicKeys" :key="key.keyId" class="kv-line">
+                <span>{{ key.label }}</span>
+                <span class="hint">{{ key.keyId }} · {{ key.importedAt }}</span>
+                <el-button size="small" text type="danger" @click="revokeKey(key.keyId)">撤销</el-button>
+              </div>
+              <div v-if="publicKeys.length === 0" class="kv-line"><span class="hint">未导入第三方公钥（官方公钥内置，无需导入）</span></div>
+              <el-dialog v-model="keyImportOpen" title="导入第三方公钥" width="520px" :close-on-click-modal="false" :close-on-press-escape="false">
+                <el-input v-model="keyLabel" placeholder="发布者名称（如：合作方 A）" style="margin-bottom: 10px" />
+                <el-input v-model="keyPem" type="textarea" :rows="8" placeholder="粘贴 PEM 公钥内容（-----BEGIN PUBLIC KEY----- ...）" />
+                <template #footer>
+                  <el-button size="small" @click="keyImportOpen = false">取消</el-button>
+                  <el-button size="small" type="primary" @click="importKey">导入</el-button>
+                </template>
+              </el-dialog>
               <div class="kv-line"><span class="hint">未签名包以 utility 沙箱安装；main 权限需要有效签名与显式信任</span></div>
             </section>
           </template>

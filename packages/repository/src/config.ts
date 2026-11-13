@@ -151,6 +151,8 @@ export const DEFAULT_SETTINGS: Settings = {
     llm: { activeProviderId: null, providers: [], providersSeeded: false },
     /** 访问密钥的 sha256（仅存摘要，明文只进 safeStorage） */
     accessKeyHash: null,
+    /** 运行时包信任的第三方公钥（PEM + 元数据） */
+    runtimePublicKeys: [],
     /** 打包版打开开发者工具的密钥哈希；默认 sshk-tools@888，可在配置文件改哈希更换 */
     devtoolsKeyHash: "789e19acc1e441f867ab917c68c499eeea29f5cb776ce2c666de68d768d3d34c",
     /** 分发白名单；null = 全部工具 */

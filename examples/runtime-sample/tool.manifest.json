@@ -1,0 +1,30 @@
+{
+  "id": "runtime-sample",
+  "name": "示例运行时工具",
+  "description": "验证运行时安装与页面动态加载（切片 2/4 端到端）",
+  "category": "扩展",
+  "icon": "auto",
+  "entryRoute": "home",
+  "enabled": true,
+  "visibility": "managed",
+  "menus": [
+    {
+      "id": "home",
+      "label": "首页"
+    }
+  ],
+  "plugin": {
+    "source": "external",
+    "renderer": "dist/page.js"
+  },
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": []
+    },
+    "sandbox": "utility",
+    "ipcAllowlist": []
+  }
+}

@@ -145,6 +145,9 @@ const api = {
     list: (): Promise<unknown[]> => invoke(IPC_CHANNELS.runtimeList),
     uninstall: (id: string): Promise<boolean> => invoke(IPC_CHANNELS.runtimeUninstall, id),
     readRenderer: (packageId: string): Promise<string> => invoke(IPC_CHANNELS.runtimeReadRenderer, packageId),
+    keysList: (): Promise<unknown[]> => invoke(IPC_CHANNELS.runtimeKeysList),
+    keysImport: (label: string, pem: string): Promise<unknown> => invoke(IPC_CHANNELS.runtimeKeysImport, label, pem),
+    keysRevoke: (keyId: string): Promise<boolean> => invoke(IPC_CHANNELS.runtimeKeysRevoke, keyId),
   },
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */

@@ -137,6 +137,9 @@ interface Window {
       list(): Promise<import('@sshk/shared').InstalledPackageRecord[]>
       uninstall(id: string): Promise<boolean>
       readRenderer(packageId: string): Promise<string>
+      keysList(): Promise<{ keyId: string; label: string; importedAt: string }[]>
+      keysImport(label: string, pem: string): Promise<{ keyId: string; label: string }>
+      keysRevoke(keyId: string): Promise<boolean>
     }
     accessKey: {
       set(key: string): Promise<import('@sshk/shared').ToolCatalogPayload>

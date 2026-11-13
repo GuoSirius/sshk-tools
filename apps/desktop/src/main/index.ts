@@ -3,7 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
 import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { createHash, createPublicKey } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
 import {
@@ -16,6 +16,7 @@ import {
   type ToolDescriptor,
   type ToolOverrides,
   type ToolPluginStatus,
+  now,
 } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
@@ -355,7 +356,7 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── 运行时工具包：.sshktool 导入 / 列表 / 卸载（用户经由文件选择器提供路径） ──
-  const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: [] })
+  const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: (cfg.get('app.runtime.publicKeys') ?? []) as never[] })
   ipcMain.handle(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
     const path = String(zipPath ?? '')
     if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
@@ -365,6 +366,24 @@ async function registerIpc(): Promise<void> {
   ipcMain.handle(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))
   ipcMain.handle(IPC_CHANNELS.runtimeUninstall, (_event, id: string) => uninstallPackage(String(id ?? ''), runtimeDeps()))
   ipcMain.handle(IPC_CHANNELS.runtimeReadRenderer, (_event, id: string) => readRenderer(String(id ?? ''), runtimeDeps()))
+  // ── 运行时公钥管理：导入（PEM 校验 + 指纹 keyId）/ 列表 / 撤销 ──
+  const keyFingerprint = (pem: string) => createHash('sha256').update(pem.trim()).digest('hex').slice(0, 12)
+  ipcMain.handle(IPC_CHANNELS.runtimeKeysList, () => cfg.get('app.runtime.publicKeys') ?? [])
+  ipcMain.handle(IPC_CHANNELS.runtimeKeysImport, (_event, label: string, pem: string) => {
+    const clean = String(pem ?? '').trim()
+    if (!clean.startsWith('-----BEGIN')) throw new Error('不是有效的 PEM 公钥')
+    try { createPublicKey(clean) } catch { throw new Error('PEM 公钥解析失败，请检查内容') }
+    const entry = { keyId: 'pk_' + keyFingerprint(clean), label: String(label || '未命名发布者'), pem: clean, importedAt: now() }
+    const keys = (cfg.get('app.runtime.publicKeys') ?? []) as { keyId: string }[]
+    if (keys.some((k) => k.keyId === entry.keyId)) throw new Error('该公钥已导入')
+    cfg.set('app.runtime.publicKeys', [...keys, entry])
+    return entry
+  })
+  ipcMain.handle(IPC_CHANNELS.runtimeKeysRevoke, (_event, keyId: string) => {
+    const keys = (cfg.get('app.runtime.publicKeys') ?? []) as { keyId: string }[]
+    cfg.set('app.runtime.publicKeys', keys.filter((k) => k.keyId !== String(keyId ?? '')))
+    return true
+  })
 
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send(IPC_CHANNELS.themeSystemChanged)
