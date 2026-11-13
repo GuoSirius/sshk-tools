@@ -68,27 +68,37 @@ export function setupServices(): AppServices {
 
   const secretsPath = join(userData, 'secrets.bin')
 
-  function loadSecrets(): Record<string, string> {
-    if (!existsSync(secretsPath)) return {}
+  let secretsCache: Record<string, string> | null = null
+  /** 启动时解密预载进内存缓存；之后同步读走缓存，写盘后即时更新（safeStorage 异步 API 迁移配套） */
+  async function loadSecrets(): Promise<Record<string, string>> {
+    if (secretsCache) return secretsCache
+    if (!existsSync(secretsPath)) { secretsCache = {}; return secretsCache }
     try {
       const raw = readFileSync(secretsPath)
-      if (!safeStorage.isEncryptionAvailable()) {
+      if (!(await safeStorage.isEncryptionAvailable())) {
         // 静默丢密钥会表现为「重启后配置失效」，必须把原因留在日志里
         console.warn('[sshk] safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
-        return {}
+        secretsCache = {}
+        return secretsCache
       }
-      return JSON.parse(safeStorage.decryptString(raw)) as Record<string, string>
+      secretsCache = JSON.parse(String(await safeStorage.decryptStringAsync(raw))) as Record<string, string>
+      return secretsCache
     } catch (err) {
       console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
-      return {}
+      secretsCache = {}
+      return secretsCache
     }
   }
 
-  function saveSecrets(secrets: Record<string, string>): void {
-    if (!safeStorage.isEncryptionAvailable()) {
+  /** 同步读缓存（启动预载后恒可用）；写路径必须走 saveSecrets */
+  function currentSecrets(): Record<string, string> { return secretsCache ?? {} }
+
+  async function saveSecrets(secrets: Record<string, string>): Promise<void> {
+    if (!(await safeStorage.isEncryptionAvailable())) {
       throw new Error('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
     }
     writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
+    secretsCache = secrets
   }
 
   /**
@@ -176,10 +186,10 @@ export function setupServices(): AppServices {
   }
 
   const host: ToolHostCapabilities = {
-    getToolSecret: (toolId, name) => loadSecrets()[toolSecretId(toolId, name)] ?? '',
+    getToolSecret: (toolId, name) => currentSecrets()[toolSecretId(toolId, name)] ?? '',
     setToolSecret: (toolId, name, value) => {
       const id = toolSecretId(toolId, name)
-      const secrets = loadSecrets()
+      const secrets = currentSecrets()
       if (!value) delete secrets[id]
       else secrets[id] = value
       saveSecrets(secrets)
@@ -210,13 +220,13 @@ export function setupServices(): AppServices {
       model: p.model,
       enabled: p.enabled,
       // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型控制台填 Key」
-      hasApiKey: Boolean(loadSecrets()[p._id]),
+      hasApiKey: Boolean(currentSecrets()[p._id]),
     })),
     chatByProvider: async (req) => {
       const provider = findProvider(req.providerId)
       const result = await llmChat({
         provider: req.model ? { ...provider, model: req.model } : provider,
-        apiKey: loadSecrets()[provider._id] ?? '',
+        apiKey: currentSecrets()[provider._id] ?? '',
         messages: req.messages,
         temperature: req.temperature,
         maxTokens: req.maxTokens,
@@ -225,10 +235,12 @@ export function setupServices(): AppServices {
     },
     listModelsByProvider: (providerId, apiKey) => llmListModels(
       findProvider(providerId),
-      typeof apiKey === 'string' && apiKey ? apiKey : (loadSecrets()[providerId] ?? ''),
+      typeof apiKey === 'string' && apiKey ? apiKey : (currentSecrets()[providerId] ?? ''),
     ),
     runLocalOcr,
   }
+
+  void loadSecrets()
 
   return {
     config,
@@ -236,16 +248,16 @@ export function setupServices(): AppServices {
     outputRoot,
     dbDir,
     host,
-    getApiKey: (providerId) => loadSecrets()[providerId] ?? '',
+    getApiKey: (providerId) => currentSecrets()[providerId] ?? '',
     setApiKey: (providerId, apiKey) => {
       if (!isProviderId(providerId)) throw new Error(`非法 providerId: ${providerId}`)
-      const secrets = loadSecrets()
+      const secrets = currentSecrets()
       if (apiKey === '') delete secrets[providerId]
       else secrets[providerId] = apiKey
       saveSecrets(secrets)
     },
     setAccessKey: (key) => {
-      const secrets = loadSecrets()
+      const secrets = currentSecrets()
       if (!key) delete secrets[ACCESS_KEY_SECRET_ID]
       else secrets[ACCESS_KEY_SECRET_ID] = key
       // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态
@@ -253,14 +265,14 @@ export function setupServices(): AppServices {
       config.set('app.accessKeyHash', key ? sha256(key) : null)
     },
     getAccessKeyState: () => {
-      const key = loadSecrets()[ACCESS_KEY_SECRET_ID] ?? ''
+      const key = currentSecrets()[ACCESS_KEY_SECRET_ID] ?? ''
       const hash = config.get('app.accessKeyHash') as string | null
       const valid = Boolean(key && hash && sha256(key) === hash)
       return { hasAccessKey: valid, grants: valid ? [ACCESS_GRANT] : [] }
     },
     importSecretsJson: (json) => {
       const parsed = JSON.parse(json) as { providers?: { _id?: string; apiKey?: string }[] }
-      const secrets = loadSecrets()
+      const secrets = currentSecrets()
       for (const item of parsed.providers ?? []) {
         if (!item || typeof item._id !== 'string' || !isProviderId(item._id)) continue
         if (typeof item.apiKey === 'string' && item.apiKey) secrets[item._id] = item.apiKey

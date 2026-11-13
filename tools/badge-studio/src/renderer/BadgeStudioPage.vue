@@ -969,17 +969,18 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="op-row">
               <el-button size="small" type="primary" plain @click="openPoster(row)">预览</el-button>
-              <el-button size="small" type="primary" plain @click="editPoster(row)">编辑</el-button>
+              <el-button size="small" plain @click="editPoster(row)">编辑</el-button>
               <el-button size="small" type="success" plain @click="exportPosterHtml(row)">导出</el-button>
               <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
                 <el-button size="small" plain>更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="copy">复制代码</el-dropdown-item>
-                  <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="copy">复制代码</el-dropdown-item>
+                    <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
