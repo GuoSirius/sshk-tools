@@ -15,7 +15,9 @@
   ],
   "plugin": {
     "source": "external",
-    "renderer": "dist/page.js"
+    "renderer": "dist/page.js",
+    "main": "dist/main.js",
+    "channels": ["runtime-sample:ping"]
   },
   "package": {
     "schemaVersion": 1,
@@ -25,6 +27,6 @@
       "capabilities": []
     },
     "sandbox": "utility",
-    "ipcAllowlist": []
+    "ipcAllowlist": ["runtime-sample:ping"]
   }
 }
