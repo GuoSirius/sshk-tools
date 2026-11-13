@@ -159,14 +159,22 @@ const nextSemver = next.replace(/^v/, '')
 step('生成本版本 changelog')
 const { md, counts, others } = collectCommits(tag)
 const featureCount = counts.feat.length + counts.fix.length + counts.perf.length
-console.log(DIM(md.trim() || '（无提交记录）'))
+// changelog 全文不进控制台：分组计数即可，全文在 body 文件里看
+const statLine = [
+  counts.feat.length && `feat ${counts.feat.length}`,
+  counts.fix.length && `fix ${counts.fix.length}`,
+  counts.perf.length && `perf ${counts.perf.length}`,
+  counts.refactor.length && `refactor ${counts.refactor.length}`,
+  counts.docs.length && `docs ${counts.docs.length}`,
+  others.length && `其他 ${others.length}`,
+].filter(Boolean).join(' · ')
+console.log(DIM(`  ${statLine || '（无提交）'}`))
 if (!featureCount && !others.length) die('上个版本以来没有任何提交，无需发布')
 
 const changedFiles = ['package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml']
 console.log(`\n${BLUE('发布预览')}`)
 console.log(`  版本      : ${GREEN(fmt(current))} → ${GREEN(next)}`)
-console.log(`  变更文件  : ${changedFiles.join(', ')} + dist/*`)
-console.log(`  构建产物  : apps/desktop/dist/*.exe (x64+arm64 nsis / x64 portable) + latest.yml`)
+console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物）`)
 if (!DRY_RUN) {
   const go = await confirm({ message: '确认按以上内容发布？', initialValue: false })
   aborted(go)
@@ -218,10 +226,11 @@ if (!DRY_RUN) {
 }
 
 /* ── 6. GitHub Release 指引 ── */
-const bodyPath = join(ROOT, '.tmp', `release-body-${nextSemver}.md`)
+// changelog 全文统一落盘预览：dry-run 用 -draft，正式发布用版本号命名
+const bodyPath = join(ROOT, '.tmp', DRY_RUN ? 'release-body-draft.md' : `release-body-${nextSemver}.md`)
+mkdirSync(join(ROOT, '.tmp'), { recursive: true })
+writeFileSync(bodyPath, entry)
 if (!DRY_RUN) {
-  mkdirSync(join(ROOT, '.tmp'), { recursive: true })
-  writeFileSync(bodyPath, entry)
   outro([
     `剩下最后一步 —— 创建 GitHub Release（body 只含 ${next} 段）：`,
     process.env.GH_TOKEN
@@ -231,5 +240,5 @@ if (!DRY_RUN) {
     `  3) 上传 apps/desktop/dist 下的 *.exe 与 latest.yml`,
   ].join('\n'))
 } else {
-  outro(`dry-run 完成：${fmt(current)} → ${next}，正式执行请去掉 --dry-run`)
+  outro(`dry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)
 }

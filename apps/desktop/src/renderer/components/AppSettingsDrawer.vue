@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState } from '@sshk/shared'
@@ -118,6 +118,8 @@ function startEdit(tool: ToolRuntimeState): void {
   form.category = tool.categories.join('、')
   form.icon = tool.icon
 }
+/** 两类四态：权限列表只显示显式工具（managed/desktop）；隐式基座与配置隐藏的不出现 */
+const manageableTools = computed(() => payload.value.tools.filter((item) => item.manageable))
 function otherTools(tool: ToolRuntimeState): ToolRuntimeState[] {
   return payload.value.tools.filter((item) => item.id !== tool.id)
 }
@@ -275,8 +277,8 @@ async function cleanupOrphans(): Promise<void> {
             </section>
 
             <section class="settings-card">
-              <div class="card-title">工具管理（{{ payload.tools.length }}）</div>
-              <div v-for="tool in payload.tools" :key="tool.id" class="tool-manage-row">
+              <div class="card-title">工具管理（{{ manageableTools.length }}）</div>
+              <div v-for="tool in manageableTools" :key="tool.id" class="tool-manage-row">
                 <div class="tool-manage-head">
                   <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="36" />
                   <div class="tool-manage-title">

@@ -232,3 +232,60 @@ describe('默认 Provider 播种（应用级共享）', () => {
     expect(collectDefaultProviders([dup])).toHaveLength(1)
   })
 })
+
+describe('工具两类四态（隐式基座 / 显式可见性分级）', () => {
+  function fake(id: string, visibility: 'implicit' | 'hidden' | 'managed' | 'desktop', enabled = true) {
+    return {
+      id, name: id, description: id, category: '测试', icon: 'auto', entryRoute: 'home',
+      enabled, visibility,
+      menus: [{ id: 'home', label: '首页' }],
+      plugin: { source: 'builtin', renderer: 'src/renderer/Page.vue' },
+    } as unknown as ToolDescriptor
+  }
+
+  it('隐式基座：恒不上桌面、不进权限列表，但能力可被依赖', () => {
+    const base = fake('render-base', 'implicit')
+    const app = fake('edm-app', 'desktop')
+    ;(app as { dependsOn?: string[] }).dependsOn = ['render-base']
+    const result = resolveToolCatalog([base, app], baseInput({
+      enabled: { 'render-base': true, 'edm-app': true },
+      dependsOn: { 'edm-app': ['render-base'] },
+    }))
+    const state = (id: string) => result.tools.find((t) => t.id === id)!
+    expect(state('render-base')).toMatchObject({ visible: false, manageable: false, serviceable: true })
+    // 依赖链按 serviceable 传播：基座桌面不可见，但依赖它的显式工具正常上桌面
+    expect(state('edm-app').visible).toBe(true)
+  })
+
+  it('显式三态：hidden 双隐藏、managed 权限列表可控、desktop 默认上桌面', () => {
+    const tools = [
+      fake('a-hidden', 'hidden'),
+      fake('b-managed', 'managed', false),
+      fake('c-desktop', 'desktop'),
+    ]
+    const result = resolveToolCatalog(tools, baseInput({
+      enabled: { 'a-hidden': true, 'b-managed': false, 'c-desktop': true },
+    }))
+    const state = (id: string) => result.tools.find((t) => t.id === id)!
+    expect(state('a-hidden')).toMatchObject({ visible: false, manageable: false })
+    expect(state('b-managed')).toMatchObject({ visible: false, manageable: true, reason: '已禁用' })
+    expect(state('c-desktop')).toMatchObject({ visible: true, manageable: true })
+    // managed 在权限列表开启后即上桌面
+    const on = resolveToolCatalog(tools, baseInput({
+      enabled: { 'b-managed': true, 'a-hidden': true, 'c-desktop': true },
+    }))
+    expect(on.tools.find((t) => t.id === 'b-managed')!.visible).toBe(true)
+  })
+
+  it('基座被禁用时，依赖它的显式工具随之隐藏', () => {
+    const base = fake('render-base', 'implicit', false)
+    const app = fake('edm-app', 'desktop')
+    const result = resolveToolCatalog([base, app], baseInput({
+      enabled: { 'render-base': false, 'edm-app': true },
+      dependsOn: { 'edm-app': ['render-base'] },
+    }))
+    const appState = result.tools.find((t) => t.id === 'edm-app')!
+    expect(appState.visible).toBe(false)
+    expect(appState.reason).toContain('依赖不可用')
+  })
+})

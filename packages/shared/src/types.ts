@@ -153,6 +153,10 @@ export interface ToolDescriptor {
   dependsOn?: string[]
   /** 权限 grant；运行时可由 `tools.<id>.requiredGrant` 覆盖 */
   requiredGrant?: string
+  /** 工具形态（两类四态）：implicit=隐式基座（永不上桌面、不进权限列表，仅被依赖）；
+   *  hidden=显式但配置隐藏（同 implicit 可见性，仍有独立启停）；managed=显式受控（默认
+   *  不上桌面、出现在权限列表，用户开启后上桌面）；desktop=默认上桌面。缺省 desktop */
+  visibility?: 'implicit' | 'hidden' | 'managed' | 'desktop'
   /** 工具自有配置声明（左侧「工具配置」按此生成表单） */
   configGroups?: ToolConfigGroup[]
   /** 软配置依赖（只读展示 + 缺失预警）；默认工具之间零依赖 */
@@ -198,7 +202,14 @@ export interface ToolRuntimeState {
   entryRoute: string
   configLayout: 'single' | 'tabs' | 'menu'
   enabled: boolean
+  /** 桌面可见（隐式基座与配置隐藏的工具恒 false） */
   visible: boolean
+  /** 是否出现在「应用设置 → 工具与权限」列表（隐式基座与配置隐藏恒 false） */
+  manageable: boolean
+  /** 能力可用（启停 / 插件 / 分发 / 密钥都满足）；硬依赖链按它传播，基座工具可被依赖 */
+  serviceable: boolean
+  /** 工具形态回传（UI 展示用） */
+  visibility: 'implicit' | 'hidden' | 'managed' | 'desktop'
   /** 插件是否成功加载（加载失败只影响本工具） */
   available: boolean
   pluginError?: string

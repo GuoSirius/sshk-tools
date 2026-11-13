@@ -158,7 +158,11 @@ export function resolveToolCatalog(
     // 覆盖值优先；未覆盖时取清单 category + tags
     const overridden = splitCategories(ov.category)
     const categories = overridden.length > 0 ? overridden : toolCategories(tool)
-    return {
+    // 两类四态：serviceable = 能力可用（依赖链按它传播）；visible/manageable 按形态分流
+    const visibility = tool.visibility ?? 'desktop'
+    const desktopLike = visibility === 'managed' || visibility === 'desktop'
+    const serviceable = !reason
+    const state: ToolRuntimeState = {
       id: tool.id,
       name: ov.name?.trim() || tool.name,
       description: ov.description?.trim() || tool.description,
@@ -169,7 +173,10 @@ export function resolveToolCatalog(
       entryRoute: tool.entryRoute,
       configLayout: tool.configLayout ?? 'single',
       enabled,
-      visible: !reason,
+      visible: desktopLike && serviceable,
+      manageable: desktopLike,
+      serviceable,
+      visibility,
       available,
       pluginError: plugin?.error,
       reason,
@@ -179,16 +186,18 @@ export function resolveToolCatalog(
       configGroups: tool.configGroups ?? [],
       configDeps: tool.configDeps ?? [],
     }
+    return state
   })
 
-  // 硬依赖链式传播：依赖不可见时本工具也不可见（多轮直到稳定）
+  // 硬依赖链式传播：依赖的「能力」不可用时本工具也不可见（多轮直到稳定）。
+  // 按 serviceable 而非 visible 判断——隐式基座桌面不可见，但作为能力可以被依赖。
   for (let round = 0; round < states.length; round += 1) {
     let changed = false
     for (const state of states) {
-      if (!state.visible) continue
+      if (!state.serviceable) continue
       const missing = state.dependsOn.filter((id) => {
         const dep = states.find((item) => item.id === id)
-        return !dep || !dep.visible || !inDistribution(id)
+        return !dep || !dep.serviceable || !inDistribution(id)
       })
       if (missing.length > 0) {
         state.visible = false

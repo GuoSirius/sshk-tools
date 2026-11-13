@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** 目录名常量：产物根下的固定布局（数据契约 §7 / §8） */
-export const OUTPUT_DIRS = ['outputs/edm', 'outputs/poster', 'assets/uploads', 'assets/brands', 'assets/templates'] as const
+export const OUTPUT_DIRS = ['outputs/edm', 'outputs/poster', 'assets/uploads', 'assets/brands', 'assets/templates', 'assets/edm/css'] as const
 
 export const STORAGE_MANIFEST = '.storage-manifest.json'
 
