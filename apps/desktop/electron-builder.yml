@@ -4,6 +4,8 @@
 appId: cn.sshk.tools
 productName: sshk-tools
 copyright: Copyright © 2026 SSHK
+# deb/rpm 的 fpm 元数据必填项，缺失时打包直接失败
+homepage: https://github.com/GuoSirius/sshk-tools
 
 directories:
   # 安装包产物落到仓库根 dist/（.gitignore 已忽略 dist/）；相对 apps/desktop 上溯两级
