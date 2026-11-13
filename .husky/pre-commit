@@ -1,0 +1,10 @@
+#!/bin/sh
+# 五步门禁：tsc → vue-tsc → eslint → build → test（本机工具进程与终端均可用，shebang 用绝对路径）
+REPO=$(CDPATH= cd -- "${0%/*}/.." && pwd) || exit 1
+cd "$REPO" || exit 1
+
+node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.base.json || exit 1
+node ./node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p tsconfig.vue.json || exit 1
+node ./node_modules/eslint/bin/eslint.js . || exit 1
+pnpm -C apps/desktop build || exit 1
+node ./node_modules/vitest/vitest.mjs run || exit 1
