@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
@@ -479,6 +479,19 @@ async function confirmDelete(): Promise<void> {
 }
 
 const previewFrame = ref<HTMLIFrameElement | null>(null)
+// 右列高度 = 滚动容器实测高度（ResizeObserver），不再用 100vh 减估算值
+const sidePreviewRef = ref<HTMLElement | null>(null)
+const previewColumnHeight = ref(620)
+let bodyObserver: ResizeObserver | null = null
+onMounted(() => {
+  const scroller = sidePreviewRef.value?.closest('.tool-page-body') as HTMLElement | null
+  if (!scroller) return
+  const measure = () => { previewColumnHeight.value = scroller.clientHeight }
+  bodyObserver = new ResizeObserver(measure)
+  bodyObserver.observe(scroller)
+  measure()
+})
+onBeforeUnmount(() => bodyObserver?.disconnect())
 
 onMounted(() => {
   void loadConfigAndRecent()
@@ -556,6 +569,36 @@ onMounted(() => {
             <el-button size="small" text type="danger" :disabled="!hasStats" @click="clearRows">清空表格</el-button>
             <span class="muted">共 {{ statRows.length }} 行{{ statsFile ? ` · 来自 ${statsFile.split(/[\\/]/).pop()}` : '' }}</span>
           </div>
+
+          <div v-if="imageFiles.length" class="image-list-panel">
+            <div class="panel-title">已选图片（{{ imageFiles.length }} 张）· 点图放大核对内容</div>
+            <div class="image-strip">
+              <div v-for="(file, index) in imageFiles" :key="file" class="image-item">
+                <el-image
+                  :src="imageThumbs[file] ?? ''"
+                  fit="cover"
+                  class="image-thumb"
+                  :preview-src-list="previewList"
+                  :initial-index="index"
+                  hide-on-click-modal
+                  preview-teleported
+                  @error="() => loadThumb(file)"
+                >
+                  <template #error>
+                    <div class="image-thumb-fallback" @click="() => loadThumb(file)">加载</div>
+                  </template>
+                </el-image>
+                <el-button class="image-remove" size="small" text type="danger" @click="imageFiles.splice(index, 1)">×</el-button>
+                <span class="image-name" :title="file">{{ file.split(/[\\/]/).pop() }}</span>
+              </div>
+            </div>
+            <div class="cfg-row" style="margin-top: 6px">
+              <el-button size="small" type="primary" :loading="recognizing" :disabled="vision.provider === 'manual'" @click="recognizeImages">
+                识别并追加到表格（{{ imageFiles.length }} 张）
+              </el-button>
+            </div>
+          </div>
+
           <div v-if="statsWarnings.length" class="warn">{{ statsWarnings.join('；') }}</div>
 
           <el-table v-if="hasStats" :data="statRows" size="small" max-height="260" class="stat-table">
@@ -602,36 +645,7 @@ onMounted(() => {
         </div>
 
         <div class="panel">
-          <div class="panel-title">图片识别（配置就地修改，保存为默认后重启沿用）</div>
-          <div v-if="imageFiles.length" class="image-list-panel">
-            <div class="panel-title">已选图片（{{ imageFiles.length }} 张）· 点图放大核对内容</div>
-            <div class="image-strip">
-              <div v-for="(file, index) in imageFiles" :key="file" class="image-item">
-                <el-image
-                  :src="imageThumbs[file] ?? ''"
-                  fit="cover"
-                  class="image-thumb"
-                  :preview-src-list="previewList"
-                  :initial-index="index"
-                  hide-on-click-modal
-                  preview-teleported
-                  @error="() => loadThumb(file)"
-                >
-                  <template #error>
-                    <div class="image-thumb-fallback" @click="() => loadThumb(file)">加载</div>
-                  </template>
-                </el-image>
-                <el-button class="image-remove" size="small" text type="danger" @click="imageFiles.splice(index, 1)">×</el-button>
-                <span class="image-name" :title="file">{{ file.split(/[\\/]/).pop() }}</span>
-              </div>
-            </div>
-            <div class="cfg-row" style="margin-top: 6px">
-              <el-button size="small" type="primary" :loading="recognizing" :disabled="vision.provider === 'manual'" @click="recognizeImages">
-                识别并追加到表格（{{ imageFiles.length }} 张）
-              </el-button>
-            </div>
-          </div>
-
+          <div class="panel-title">识别配置（就地修改，保存为默认后重启沿用）</div>
           <div class="cfg-row">
             <span>识别方式</span>
             <el-radio-group v-model="vision.provider" size="small">
@@ -714,7 +728,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="col side-preview">
+      <div ref="sidePreviewRef" class="col side-preview" :style="{ height: previewColumnHeight + 'px' }">
         <div class="panel">
           <div class="panel-title">badge 配置（作用于预览与生成）</div>
           <div class="cfg-row">
@@ -803,7 +817,6 @@ onMounted(() => {
 .side-preview {
   position: sticky;
   top: 0;
-  height: calc(100vh - 150px);
   display: flex;
   flex-direction: column;
 }
