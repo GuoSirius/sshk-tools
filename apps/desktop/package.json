@@ -25,7 +25,7 @@
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "dayjs": "latest",
-    "electron-updater": "latest",
+    "electron-updater": "^6",
     "element-plus": "latest",
     "fflate": "latest",
     "unocss": "latest",
