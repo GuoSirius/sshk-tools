@@ -28,7 +28,8 @@
     "electron-updater": "^6",
     "vue": "latest",
     "element-plus": "latest",
-    "unocss": "latest"
+    "unocss": "latest",
+    "fflate": "latest"
   },
   "devDependencies": {
     "electron": "latest",

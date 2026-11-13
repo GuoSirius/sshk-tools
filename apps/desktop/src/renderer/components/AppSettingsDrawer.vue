@@ -5,6 +5,7 @@ import { ACCESS_GRANT } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState } from '@sshk/shared'
 import ToolIcon from './ToolIcon.vue'
 import { useToolCatalog } from '../composables/useToolCatalog'
+import type { InstalledPackageRecord } from '@sshk/shared'
 import { useTheme } from '../composables/useTheme'
 
 const props = defineProps<{ modelValue: boolean; group?: string }>()
@@ -101,6 +102,36 @@ async function saveDistribution(): Promise<void> {
   accept(await window.api.tools.setDistribution(ids))
   ElMessage.success(ids ? '分发白名单已保存' : '已恢复为包含全部工具')
 }
+
+// ── 运行时工具包（#35 阶段二）：.sshktool 导入 / 列表 / 卸载 ──
+const runtimePackages = ref<InstalledPackageRecord[]>([])
+async function refreshRuntime(): Promise<void> {
+  runtimePackages.value = (await window.api.runtime.list()) as InstalledPackageRecord[]
+}
+async function pickRuntimePackage(): Promise<void> {
+  const [zip] = await window.api.os.pickFile({
+    filters: [{ name: '工具包', extensions: ['sshktool'] }],
+  })
+  if (!zip) return
+  try {
+    const { record, warnings } = (await window.api.runtime.install(zip)) as { record: InstalledPackageRecord; warnings: string[] }
+    for (const w of warnings) ElMessage.warning(w)
+    ElMessage.success(`已安装 ${record.id}@${record.version}（${record.trustLevel} / ${record.sandbox} 沙箱）`)
+    await refreshRuntime()
+  } catch (err) {
+    ElMessage.error(`安装失败：${(err as Error).message}`)
+  }
+}
+async function removeRuntime(id: string): Promise<void> {
+  try {
+    await window.api.runtime.uninstall(id)
+    ElMessage.success(`已卸载 ${id}`)
+    await refreshRuntime()
+  } catch (err) {
+    ElMessage.error(`卸载失败：${(err as Error).message}`)
+  }
+}
+onMounted(() => { void refreshRuntime() })
 
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
@@ -347,6 +378,21 @@ async function cleanupOrphans(): Promise<void> {
               <div class="kv-line"><span>数据目录</span><el-button size="small" text @click="openDataDir">打开</el-button></div>
               <div class="kv-line"><span>密钥管理</span><span class="hint">模型 Provider 密钥：Model Console；应用访问密钥：本页「工具与权限」</span></div>
               <div class="kv-line"><span>备份</span><span class="hint">导出 / 导入 zip 能力见 packages/backup（后续接入菜单）</span></div>
+            </section>
+
+            <section class="settings-card">
+              <div class="card-title">运行时工具包（.sshktool）</div>
+              <div class="kv-line">
+                <span>导入安装</span>
+                <el-button size="small" @click="pickRuntimePackage">选择 .sshktool 包</el-button>
+              </div>
+              <div v-for="pkg in runtimePackages" :key="pkg.id" class="kv-line">
+                <span>{{ pkg.id }}@{{ pkg.version }}</span>
+                <span class="hint">{{ pkg.trustLevel }} · {{ pkg.sandbox }} · sha256:{{ pkg.sha256.slice(0, 8) }}</span>
+                <el-button size="small" text type="danger" @click="removeRuntime(pkg.id)">卸载</el-button>
+              </div>
+              <div v-if="runtimePackages.length === 0" class="kv-line"><span class="hint">暂无运行时安装的工具包</span></div>
+              <div class="kv-line"><span class="hint">未签名包以 utility 沙箱安装；main 权限需要有效签名与显式信任</span></div>
             </section>
           </template>
 

@@ -17,6 +17,7 @@ import {
 } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
+import { installPackage, listInstalled, uninstallPackage } from './runtime-installer'
 import { loadToolPlugins } from './plugins'
 import { MANIFESTS } from './discovery'
 
@@ -276,6 +277,17 @@ async function registerIpc(): Promise<void> {
     services!.setAccessKey(String(key ?? ''))
     return buildCatalog()
   })
+
+  // ── 运行时工具包：.sshktool 导入 / 列表 / 卸载（用户经由文件选择器提供路径） ──
+  const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: [] })
+  ipcMain.handle(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
+    const path = String(zipPath ?? '')
+    if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
+    const result = installPackage(path, runtimeDeps(), { explicitlyTrusted })
+    return { record: result.record, warnings: result.warnings }
+  })
+  ipcMain.handle(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))
+  ipcMain.handle(IPC_CHANNELS.runtimeUninstall, (_event, id: string) => uninstallPackage(String(id ?? ''), runtimeDeps()))
 
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send(IPC_CHANNELS.themeSystemChanged)

@@ -660,9 +660,11 @@ onMounted(() => {
             <pre class="raw">{{ visionRaw }}</pre>
           </details>
         </div>
+      </div>
 
+      <div class="col side-preview">
         <div class="panel">
-          <div class="panel-title">badge 配置</div>
+          <div class="panel-title">badge 配置（作用于预览与生成）</div>
           <div class="cfg-row">
             <span>属性名</span>
             <el-input v-model="badgeAttr" size="small" style="width: 180px" />
@@ -680,12 +682,9 @@ onMounted(() => {
             >
               <el-option v-for="field in fieldOptions" :key="field" :label="field" :value="field" />
             </el-select>
-            <span class="muted">内置两列或上方表格里的任意自定义数值列</span>
+            <span class="muted">内置两列或左侧表格里的任意自定义数值列</span>
           </div>
         </div>
-      </div>
-
-      <div class="col">
         <div class="panel preview-panel">
           <div class="panel-title">badge 副本预览（680px）</div>
           <iframe
@@ -743,8 +742,14 @@ onMounted(() => {
 <style scoped>
 .badge-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(360px, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.15fr);
+  gap: 10px;
+  align-items: start;
+}
+/* 右列（配置+预览）sticky 跟随滚动，左列长内容独立滚动 */
+.side-preview {
+  position: sticky;
+  top: 0;
 }
 .col {
   display: flex;
@@ -768,7 +773,7 @@ onMounted(() => {
 .preview-frame {
   width: 680px;
   max-width: 100%;
-  height: 480px;
+  height: 560px;
   border: 1px dashed rgba(128, 128, 128, 0.35);
   background: #fff;
   border-radius: 4px;

@@ -23,13 +23,13 @@
 pnpm install    # 安装依赖（含 Electron 二进制，已配国内镜像）
 pnpm dev        # 开发态：主进程 / preload / 渲染三端热更新（自动开 DevTools）
 pnpm build      # 产出 out/ 供 electron-builder 打包
-pnpm local      # ★ 本地构建测试：NSIS 安装包（x64）→ apps/desktop/dist/*.exe
-pnpm local:dir  # 快速模式：只出免安装目录 win-unpacked（不发安装包）
+pnpm dist       # ★ 本地构建安装包（NSIS x64，带国内镜像兜底）→ apps/desktop/dist/*.exe
+pnpm pack       # 快速模式：只出免安装目录 win-unpacked（不发安装包）
 pnpm verify     # 结构/分层/preload/弹框/契约/latest + typecheck(.ts/.vue) + lint + test
 pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认 → 构建成功后 tag/推送
 ```
 
-> `pnpm local` 专为本机 Windows 构建测试设计：自动补 Electron 二进制、内置国内镜像
+> `pnpm dist` 专为本机 Windows 构建测试设计：自动补 Electron 二进制、内置国内镜像
 > （electron + electron-builder-binaries）、只打 x64、可选 `-- --run` 构建完直接启动安装包。
 > 等价长命令：`pnpm --filter @sshk/desktop dev|build`。
 

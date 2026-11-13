@@ -50,6 +50,10 @@ export const IPC_CHANNELS = {
   toolsCleanupOrphans: 'tools:cleanupOrphans',
   /** 应用访问密钥（写入 safeStorage，明文永不下发） */
   accessKeySet: 'accessKey:set',
+  /** 运行时工具包（#35 阶段二）：导入 / 列表 / 卸载 */
+  runtimeInstall: 'runtime:install',
+  runtimeList: 'runtime:list',
+  runtimeUninstall: 'runtime:uninstall',
   badgeGenerate: 'badge:generate',
   badgeRegenerate: 'badge:regenerate',
   badgeParseDatasource: 'badge:parseDatasource',

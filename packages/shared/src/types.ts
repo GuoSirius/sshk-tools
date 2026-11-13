@@ -112,6 +112,8 @@ export interface ToolHostCapabilities {
 export interface ToolPackageContract {
   /** manifest 结构版本；高于宿主 TOOL_PACKAGE_SCHEMA_VERSION 直接拒绝安装 */
   schemaVersion: number
+  /** 包自身版本（安装目录与升级判断用） */
+  version: string
   requiresHost: {
     /** 宿主能力 API 版本范围，如 ^1.0 */
     api: string

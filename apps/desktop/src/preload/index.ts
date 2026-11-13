@@ -120,6 +120,12 @@ const api = {
     cleanupOrphans: (): Promise<unknown> =>
       invoke(IPC_CHANNELS.toolsCleanupOrphans),
   },
+  runtime: {
+    install: (zipPath: string, explicitlyTrusted?: boolean): Promise<unknown> =>
+      invoke(IPC_CHANNELS.runtimeInstall, zipPath, explicitlyTrusted),
+    list: (): Promise<unknown[]> => invoke(IPC_CHANNELS.runtimeList),
+    uninstall: (id: string): Promise<boolean> => invoke(IPC_CHANNELS.runtimeUninstall, id),
+  },
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
     set: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.accessKeySet, key),

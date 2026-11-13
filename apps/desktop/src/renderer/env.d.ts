@@ -120,6 +120,11 @@ interface Window {
       setDistribution(ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload>
       cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>
     }
+    runtime: {
+      install(zipPath: string, explicitlyTrusted?: boolean): Promise<{ record: import('@sshk/shared').InstalledPackageRecord; warnings: string[] }>
+      list(): Promise<import('@sshk/shared').InstalledPackageRecord[]>
+      uninstall(id: string): Promise<boolean>
+    }
     accessKey: {
       set(key: string): Promise<import('@sshk/shared').ToolCatalogPayload>
     }
