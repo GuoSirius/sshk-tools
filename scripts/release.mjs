@@ -12,17 +12,21 @@
  *   → 给出 GitHub Release 发布指引（body 只含本次版本段）
  *
  * 用法：pnpm release [--dry-run]
- * 依赖：@clack/prompts（pnpm add -Dw @clack/prompts）
+ *
+ * 交互实现为内置零依赖组件（方向键选择 / 确认 / 文本输入）：
+ * 曾用 @clack/prompts，其 frame 差量重绘在 Windows 终端下光标回退行数算错，
+ * 上下切换时旧帧残留造成选项重复（2026-11-13）。自绘选择器整块清屏重绘、
+ * 选项行纯 ASCII 保证单行，行数确定，彻底规避。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline/promises'
 
 const ROOT = process.cwd()
 const DRY_RUN = process.argv.includes('--dry-run')
 const BLUE = (t) => `\x1b[36m${t}\x1b[0m`
 const RED = (t) => `\x1b[31m${t}\x1b[0m`
-const YELLOW = (t) => `\x1b[33m${t}\x1b[0m`
 const GREEN = (t) => `\x1b[32m${t}\x1b[0m`
 const DIM = (t) => `\x1b[2m${t}\x1b[0m`
 const step = (msg) => console.log(`${BLUE('▸')} ${msg}`)
@@ -38,15 +42,94 @@ function sh(cmd, args) {
 }
 function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
 
-/* ── @clack/prompts：未安装给友好提示 ── */
-let p
-try {
-  p = await import('@clack/prompts')
-} catch {
-  die('缺少交互依赖 @clack/prompts，请执行：pnpm add -Dw @clack/prompts')
+/* ── 零依赖交互：方向键选择 / Y-N 确认 / 文本输入 ──
+ * 渲染纪律（踩坑沉淀）：
+ *  1) 重绘 = 光标回块首 + \x1b[J 清到屏尾 + 整块重打，不用任何差量重绘；
+ *  2) 重绘块内只放 ASCII 行（'->' 不用 '→'），杜绝 CJK/宽字符导致的行数歧义；
+ *  3) 标题等含中文的行只打一次、永不在重绘块内。
+ */
+const hideCursor = () => process.stdout.write('\x1b[?25l')
+const showCursor = () => process.stdout.write('\x1b[?25h')
+
+/** 方向键选择器，resolve 选项下标；Ctrl+C 返回 null */
+function promptSelect(header, options) {
+  return new Promise((resolve) => {
+    const out = process.stdout
+    const stdin = process.stdin
+    const rows = options.length
+    const cols = (out.columns || 80) - 2
+    let idx = 0
+    let started = false
+    let buf = ''
+    const render = () => {
+      const lines = options.map((o, i) => {
+        const marker = i === idx ? '>' : ' '
+        const text = `${marker} ${o.label.padEnd(8)}${o.hint}`
+        return text.length > cols ? text.slice(0, cols) : text
+      })
+      if (started) out.write(`\x1b[${rows}A\r\x1b[J`)
+      out.write(lines.map((l) => `${l}\x1b[K\n`).join(''))
+      started = true
+    }
+    const cleanup = () => {
+      stdin.removeListener('data', onData)
+      if (stdin.isTTY) stdin.setRawMode(false)
+      stdin.pause()
+      showCursor()
+    }
+    const onData = (chunk) => {
+      buf += String(chunk)
+      // 方向键是三字节序列，可能分片到达，攒齐再处理
+      if (buf === '\x1b' || buf === '\x1b[') return
+      const s = buf
+      buf = ''
+      if (s === '\x03') { cleanup(); out.write('\n'); resolve(null); return } // Ctrl+C
+      if (s === '\r' || s === '\n') { cleanup(); resolve(idx); return }
+      if (s === '\x1b[A' || s === 'k') { idx = (idx - 1 + rows) % rows; render() }
+      else if (s === '\x1b[B' || s === 'j') { idx = (idx + 1) % rows; render() }
+    }
+    console.log(header)
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    hideCursor()
+    stdin.on('data', onData)
+    render()
+  })
 }
-const { intro, outro, select, text, confirm, spinner, isCancel, cancel } = p
-function aborted(v) { if (isCancel(v)) { cancel('已取消'); process.exit(0) } }
+
+/** Y/n 确认（单帧渲染，无重绘即无残影）；Ctrl+C 返回 null */
+function promptConfirm(message) {
+  return new Promise((resolve) => {
+    const out = process.stdout
+    const stdin = process.stdin
+    out.write(`${message} ${DIM('[Y/n]')} `)
+    const cleanup = () => {
+      stdin.removeListener('data', onData)
+      if (stdin.isTTY) stdin.setRawMode(false)
+      stdin.pause()
+      showCursor()
+    }
+    const onData = (chunk) => {
+      const s = String(chunk).trim().toLowerCase()
+      if (s === '\x03') { cleanup(); out.write('\n'); resolve(null); return }
+      if (s === '' || s === 'y' || s === '\r' || s === '\n') { out.write('yes\n'); cleanup(); resolve(true) }
+      else if (s === 'n') { out.write('no\n'); cleanup(); resolve(false) }
+    }
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    stdin.on('data', onData)
+  })
+}
+
+/** 文本输入（readline，终端自管回显） */
+async function promptText(message, placeholder) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await rl.question(`${message}（回车默认 ${placeholder}）：`)
+  rl.close()
+  return answer.trim()
+}
 
 /* ── semver（零依赖） ── */
 function parseSemver(v) {
@@ -104,7 +187,7 @@ function lastTag() {
 }
 
 /* ── 0. 前置检验 ── */
-intro(DRY_RUN ? '🚀 sshk-tools 发布（dry-run 预演）' : '🚀 sshk-tools 发布')
+console.log(DRY_RUN ? '🚀 sshk-tools 发布（dry-run 预演）' : '🚀 sshk-tools 发布')
 
 step('前置检验')
 if (!existsSync(join(ROOT, '.git'))) die('不在 git 仓库根目录')
@@ -128,32 +211,35 @@ const tag = lastTag()
 ok(`当前版本 ${current.prerelease ? DIM(current.prerelease) : GREEN(fmt(current))}${tag ? DIM(`（上个 tag：${tag}）`) : DIM('（无历史 tag，从首个提交起算）')}`)
 
 if (!DRY_RUN) {
-  const s = spinner()
-  s.start('pnpm verify（结构/分层/弹框/契约/typecheck/lint/test）')
+  step('pnpm verify（结构/分层/弹框/契约/typecheck/lint/test）')
+  console.log(DIM('  运行中，预计 1-2 分钟，请稍候…'))
   const r = spawnSync(win('pnpm'), ['verify'], { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT })
-  if (r.status !== 0) { s.stop('门禁未通过', 1); die('pnpm verify 未通过，已中止') }
-  s.stop('门禁全绿')
+  if (r.status !== 0) die('pnpm verify 未通过，已中止')
+  ok('门禁全绿')
 }
 
-/* ── 1. 版本选择（实时预览） ── */
-// 预览必须放 clack 原生 hint 字段：不能把 ANSI 转义码塞进 label——
-// Windows 终端下 clack 重绘会残留错行，表现为选项重复/预览错位（已踩坑）。
-const kind = DRY_RUN ? 'patch' : await select({
-  message: `选择版本类型（当前 ${fmt(current)}）`,
-  options: [
-    { value: 'patch', label: 'patch', hint: `${fmt(current)} → ${bump(current, 'patch')}` },
-    { value: 'minor', label: 'minor', hint: `${fmt(current)} → ${bump(current, 'minor')}` },
-    { value: 'major', label: 'major', hint: `${fmt(current)} → ${bump(current, 'major')}` },
-    { value: 'beta', label: 'beta', hint: `${fmt(current)} → ${bump(current, 'beta')}` },
-    { value: 'custom', label: 'custom', hint: '手动输入版本号' },
-  ],
-})
-aborted(kind)
+/* ── 1. 版本选择（方向键 + 实时预览，自绘选择器见文件头说明） ── */
+let kind = 'patch'
+if (!DRY_RUN) {
+  const picked = await promptSelect(
+    `选择版本类型（当前 ${fmt(current)}）`,
+    [
+      { label: 'patch', hint: `(${fmt(current)} -> ${bump(current, 'patch')})` },
+      { label: 'minor', hint: `(${fmt(current)} -> ${bump(current, 'minor')})` },
+      { label: 'major', hint: `(${fmt(current)} -> ${bump(current, 'major')})` },
+      { label: 'beta', hint: `(${fmt(current)} -> ${bump(current, 'beta')})` },
+      { label: 'custom', hint: '(type version manually)' },
+    ],
+  )
+  if (picked === null) die('已取消')
+  kind = ['patch', 'minor', 'major', 'beta', 'custom'][picked]
+  ok(`已选择 ${kind}`)
+}
 let next = bump(current, kind)
 if (kind === 'custom') {
-  const raw = DRY_RUN ? '' : await text({ message: '输入版本号（v 可省略）', placeholder: `${fmt(current)}` })
-  aborted(raw)
-  next = bump(current, kind, String(raw || ''))
+  const raw = DRY_RUN ? '' : await promptText('输入版本号（v 可省略）', fmt(current))
+  // 空输入回退当前版本，而不是误入 beta 分支
+  next = bump(current, 'custom', String(raw || fmt(current)))
 }
 const nextSemver = next.replace(/^v/, '')
 
@@ -178,8 +264,8 @@ console.log(`\n${BLUE('发布预览')}`)
 console.log(`  版本      : ${GREEN(fmt(current))} → ${GREEN(next)}`)
 console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物）`)
 if (!DRY_RUN) {
-  const go = await confirm({ message: '确认按以上内容发布？', initialValue: false })
-  aborted(go)
+  const go = await promptConfirm('确认按以上内容发布？')
+  if (go === null) die('已取消')
   if (!go) die('已取消')
 }
 
@@ -233,14 +319,14 @@ const bodyPath = join(ROOT, '.tmp', DRY_RUN ? 'release-body-draft.md' : `release
 mkdirSync(join(ROOT, '.tmp'), { recursive: true })
 writeFileSync(bodyPath, entry)
 if (!DRY_RUN) {
-  outro([
-    `剩下最后一步 —— 创建 GitHub Release（body 只含 ${next} 段）：`,
-    process.env.GH_TOKEN
-      ? `  检测到 GH_TOKEN：cd apps/desktop && pnpm exec electron-builder --publish always（自动建 Release 并上传产物）`
-      : `  1) 打开 https://github.com/GuoSirius/sshk-tools/releases/new?tag=${next}`,
-    `  2) 标题 ${next}；正文粘贴 ${bodyPath}（已只含本次版本段）`,
-    `  3) 上传 dist/ 下的 *.exe 与 latest.yml`,
-  ].join('\n'))
+  console.log(`\n${GREEN('🎉 发布流程完成')} —— 剩下最后一步，创建 GitHub Release（body 只含 ${next} 段）：`)
+  if (process.env.GH_TOKEN) {
+    console.log(`  检测到 GH_TOKEN：cd apps/desktop && pnpm exec electron-builder --publish always（自动建 Release 并上传产物）`)
+  } else {
+    console.log(`  1) 打开 https://github.com/GuoSirius/sshk-tools/releases/new?tag=${next}`)
+  }
+  console.log(`  2) 标题 ${next}；正文粘贴 ${bodyPath}（已只含本次版本段）`)
+  console.log(`  3) 上传 dist/ 下的 *.exe 与 latest.yml`)
 } else {
-  outro(`dry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)
+  console.log(`\ndry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)
 }
