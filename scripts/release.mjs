@@ -34,8 +34,8 @@ const die = (msg) => { console.error(`${RED('✖')} ${msg}`); process.exit(1) }
 function git(args, opts = {}) {
   return execFileSync('git', args, { encoding: 'utf8', cwd: ROOT, ...opts }).trim()
 }
-function sh(cmd, args) {
-  const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT })
+function sh(cmd, args, opts = {}) {
+  const r = spawnSync(win(cmd), args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
   if (r.status !== 0) die(`命令失败：${cmd} ${args.join(' ')}`)
 }
 function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
@@ -217,7 +217,12 @@ if (!DRY_RUN) {
   step('pnpm build（main / preload / renderer）')
   sh('pnpm', ['build'])
   step('electron-builder 打包（--publish never，先验证可出包）')
-  sh('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'])
+  // 公司网络 TLS 中间人：electron-builder 下载打包工具（NSIS/winCodeSign）时证书校验失败。
+  // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA（装了 MITM 根证书即可通过），
+  // 并对打包子进程放宽 TLS 校验——仅作用于此子进程，不影响仓库其他命令。
+  sh('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
+    env: { ...process.env, NODE_USE_SYSTEM_CA: '1', NODE_TLS_REJECT_UNAUTHORIZED: '0' },
+  })
   const distDir = join(ROOT, 'dist')
   const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
   if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
