@@ -207,10 +207,10 @@ if (!DRY_RUN) {
 
 /* ── 3. bump + CHANGELOG.md（快照原状：构建失败时自动回滚，版本号可复用） ── */
 const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date())
-// 版本头带 compare 链接（首个版本无上Tag 则省略），显示不带 v 前缀
+// 版本头始终是链接：有上 Tag 用 compare 链接，首个版本链到 tag 页面；显示不带 v 前缀
 const versionHeader = tag
   ? `## [${nextSemver}](${REPO_URL}/compare/${tag}...${next}) (${today})`
-  : `## ${nextSemver} (${today})`
+  : `## [${nextSemver}](${REPO_URL}/releases/tag/${next}) (${today})`
 const entry = `${versionHeader}\n\n${md}`
 step(`写入版本号 ${next} 与 CHANGELOG.md`)
 const clPath = join(ROOT, 'CHANGELOG.md')

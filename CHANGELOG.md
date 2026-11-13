@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (2026-11-14)
+## [1.0.0](https://github.com/GuoSirius/sshk-tools/releases/tag/v1.0.0) (2026-11-14)
 
 ### 🐛 缺陷修复 (Bug Fixes)
 
