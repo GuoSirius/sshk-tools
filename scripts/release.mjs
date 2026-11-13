@@ -84,18 +84,18 @@ function bump(v, kind, custom) {
 }
 
 /* ── changelog：standard-version 风格（对齐竞品爬虫仓库样式） ──
- * 章节顺序 = fix → perf → chore(其他) → refactor → docs → ci → feat；
+ * 章节顺序 = refactor → feat → fix → perf → ci → docs → chore(其他)；
  * 未归类 type（style/build/test/revert…）并入「其他」。
  * 条目：* 列表符，**scope:** 冒号在加粗内，sha 短码链接到完整 commit URL。 */
 const REPO_URL = 'https://github.com/GuoSirius/sshk-tools'
 const SECTIONS = [
+  ['refactor', '### ♻️ 代码重构 (Refactors)'],
+  ['feat', '### 🚀 新功能 (Features)'],
   ['fix', '### 🐛 缺陷修复 (Bug Fixes)'],
   ['perf', '### ⚡ 性能优化 (Performance)'],
-  ['chore', '### 🏠 其他 (Miscellaneous)'],
-  ['refactor', '### ♻️ 代码重构 (Refactors)'],
-  ['docs', '### 📚 文档 (Documentation)'],
   ['ci', '### 🔄 持续集成 (CI)'],
-  ['feat', '### 🚀 新功能 (Features)'],
+  ['docs', '### 📚 文档 (Documentation)'],
+  ['chore', '### 🏠 其他 (Miscellaneous)'],
 ]
 function collectCommits(from) {
   const range = from ? `${from}..HEAD` : 'HEAD'
