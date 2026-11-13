@@ -13,15 +13,13 @@
  *
  * 用法：pnpm release [--dry-run]
  *
- * 交互实现为内置零依赖组件，且**零光标控制**（无 cursor-up / 无整屏重绘）：
- * 用户终端实测不处理光标上移类序列（颜色正常但重绘必残影，clack 与自绘
- * 整块重绘均复现，2026-11-13），故版本选择/确认一律用「打印一次 + 行输入」，
- * 任何终端都不可能出现重复行。
+ * 交互用 @inquirer/prompts（与 juice-cli 同款，本机终端长期验证箭头键可用）：
+ * 曾用 @clack/prompts，其重绘实现在本机终端产生残影重复行（2026-11-13），
+ * 同终端下 inquirer 一直正常 —— 问题在库不在终端，换库即根治。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { createInterface } from 'node:readline/promises'
 
 const ROOT = process.cwd()
 const DRY_RUN = process.argv.includes('--dry-run')
@@ -42,49 +40,21 @@ function sh(cmd, args) {
 }
 function win(bin) { return process.platform === 'win32' ? `${bin}.cmd` : bin }
 
-/* ── 零依赖交互：序号选择 / y-n 确认 / 文本输入（全部打印一次 + 行输入，无重绘） ── */
-
-/** 序号选择菜单（纯文本、零光标控制，任何终端都不会残影），resolve 选项下标 */
-async function promptChoice(header, options) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  console.log(header)
-  options.forEach((o, i) => console.log(`  ${i + 1}) ${o.label.padEnd(8)}${o.hint}`))
-  try {
-    for (;;) {
-      const answer = await rl.question(`输入序号回车（1-${options.length}，回车默认 1）：`)
-      const t = answer.trim()
-      if (t === '') return 0
-      const n = Number(t)
-      if (Number.isInteger(n) && n >= 1 && n <= options.length) return n - 1
-      console.log(RED(`  无效序号「${t}」，请输入 1-${options.length}`))
-    }
-  } finally {
-    rl.close()
+/* ── @inquirer/prompts：未安装给友好提示；Ctrl+C 优雅退出 ── */
+let select, confirm, input
+try {
+  ;({ select, confirm, input } = await import('@inquirer/prompts'))
+} catch {
+  die('缺少交互依赖 @inquirer/prompts，请执行：pnpm install')
+}
+process.on('uncaughtException', (err) => {
+  if (err?.name === 'ExitPromptError' || /User force closed/i.test(String(err?.message ?? ''))) {
+    console.log('\n已取消')
+    process.exit(0)
   }
-}
-
-/** y/n 确认（行输入），resolve true/false */
-async function promptConfirm(message) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    for (;;) {
-      const a = (await rl.question(`${message}（y/n，回车视为 n）：`)).trim().toLowerCase()
-      if (a === 'y' || a === 'yes') return true
-      if (a === '' || a === 'n' || a === 'no') return false
-      console.log(RED('  请输入 y 或 n'))
-    }
-  } finally {
-    rl.close()
-  }
-}
-
-/** 文本输入（readline，终端自管回显） */
-async function promptText(message, placeholder) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await rl.question(`${message}（回车默认 ${placeholder}）：`)
-  rl.close()
-  return answer.trim()
-}
+  console.error(err)
+  process.exit(1)
+})
 
 /* ── semver（零依赖） ── */
 function parseSemver(v) {
@@ -173,25 +143,25 @@ if (!DRY_RUN) {
   ok('门禁全绿')
 }
 
-/* ── 1. 版本选择（序号菜单 + 实时预览，零重绘见文件头说明） ── */
+/* ── 1. 版本选择（上下箭头 + 实时预览） ── */
 let kind = 'patch'
 if (!DRY_RUN) {
-  const picked = await promptChoice(
-    `选择版本类型（当前 ${fmt(current)}）`,
-    [
-      { label: 'patch', hint: `(${fmt(current)} -> ${bump(current, 'patch')})` },
-      { label: 'minor', hint: `(${fmt(current)} -> ${bump(current, 'minor')})` },
-      { label: 'major', hint: `(${fmt(current)} -> ${bump(current, 'major')})` },
-      { label: 'beta', hint: `(${fmt(current)} -> ${bump(current, 'beta')})` },
-      { label: 'custom', hint: '(type version manually)' },
+  kind = await select({
+    message: `选择版本类型（当前 ${fmt(current)}）`,
+    default: 'patch',
+    choices: [
+      { value: 'patch', name: `patch   ${fmt(current)} -> ${bump(current, 'patch')}` },
+      { value: 'minor', name: `minor   ${fmt(current)} -> ${bump(current, 'minor')}` },
+      { value: 'major', name: `major   ${fmt(current)} -> ${bump(current, 'major')}` },
+      { value: 'beta', name: `beta    ${fmt(current)} -> ${bump(current, 'beta')}` },
+      { value: 'custom', name: 'custom  自定义版本号' },
     ],
-  )
-  kind = ['patch', 'minor', 'major', 'beta', 'custom'][picked]
+  })
   ok(`已选择 ${kind}`)
 }
 let next = bump(current, kind)
 if (kind === 'custom') {
-  const raw = DRY_RUN ? '' : await promptText('输入版本号（v 可省略）', fmt(current))
+  const raw = DRY_RUN ? '' : await input({ message: '输入版本号（v 可省略）', default: fmt(current) })
   // 空输入回退当前版本，而不是误入 beta 分支
   next = bump(current, 'custom', String(raw || fmt(current)))
 }
@@ -218,7 +188,7 @@ console.log(`\n${BLUE('发布预览')}`)
 console.log(`  版本      : ${GREEN(fmt(current))} → ${GREEN(next)}`)
 console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物）`)
 if (!DRY_RUN) {
-  const go = await promptConfirm('确认按以上内容发布？')
+  const go = await confirm({ message: '确认按以上内容发布？', default: false })
   if (!go) die('已取消')
 }
 

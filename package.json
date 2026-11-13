@@ -35,7 +35,7 @@
     "typescript": "6",
     "vitest": "latest",
     "vue-tsc": "latest",
-    "@clack/prompts": "latest"
+    "@inquirer/prompts": "latest"
   },
   "engines": {
     "node": ">=24"
