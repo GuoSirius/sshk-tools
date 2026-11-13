@@ -27,6 +27,6 @@
       "capabilities": []
     },
     "sandbox": "utility",
-    "ipcAllowlist": ["runtime-sample:ping"]
+    "ipcAllowlist": []
   }
 }
