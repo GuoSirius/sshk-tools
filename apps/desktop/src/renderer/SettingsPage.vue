@@ -25,8 +25,13 @@ const layout = computed(() => props.layout ?? 'single')
  * tabs  = 内容区分页；menu = 左侧子菜单逐页（由 App.vue 生成二级菜单）。
  * 保存始终针对 allFields()，切换布局不会漏存字段。
  */
+const isDev = import.meta.env.DEV
 const shownGroups = computed(() => {
-  const groups = tool.value?.configGroups ?? []
+  const raw = (tool.value?.configGroups ?? []).map((group) => ({
+    ...group,
+    fields: group.fields.filter((field) => !field.devOnly || isDev),
+  })).filter((group) => group.fields.length > 0)
+  const groups = raw
   if (layout.value === 'tabs') {
     return groups.filter((group) => group.id === activeTab.value)
   }

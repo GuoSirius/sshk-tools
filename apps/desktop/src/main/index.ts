@@ -3,6 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
 import { cpSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
 import {
@@ -229,7 +230,16 @@ async function registerIpc(): Promise<void> {
     else wc.reload()
     return true
   })
-  ipcMain.handle(IPC_CHANNELS.appToggleDevTools, () => {
+  // 开发环境随意开关；打包版必须持密钥（默认 sshk-tools@888，哈希存配置可更换）
+  ipcMain.handle(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
+    if (isDev) {
+      mainWindow?.webContents.toggleDevTools()
+      return true
+    }
+    const hash = createHash('sha256').update(String(key ?? ''), 'utf8').digest('hex')
+    if (hash !== String(cfg.get('app.devtoolsKeyHash') ?? '')) {
+      throw new Error('访问密钥不正确')
+    }
     mainWindow?.webContents.toggleDevTools()
     return true
   })
@@ -334,6 +344,8 @@ async function registerIpc(): Promise<void> {
     services!.setApiKey(providerId, String(apiKey ?? ''))
     return true
   })
+  // 编辑时按需查看已存密钥：用户主动点击才下发，绝不随列表默认下发
+  ipcMain.handle(IPC_CHANNELS.llmGetApiKey, (_event, providerId: string) => services!.getApiKey(String(providerId ?? '')))
   // 应用级 Provider 共享：所有工具列同一份清单、按 id 复用密钥，禁止各自重复配置
   ipcMain.handle(IPC_CHANNELS.llmProviders, () => services!.host.listProviders())
   ipcMain.handle(IPC_CHANNELS.llmProviderModels, (_event, providerId: string, apiKey?: string) =>

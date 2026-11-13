@@ -206,6 +206,17 @@ async function testProvider(row: Provider): Promise<void> {
   }
 }
 
+/** 按需回显已存密钥：用户主动点击才从主进程 safeStorage 拉取，不随编辑默认下发 */
+async function revealKey(): Promise<void> {
+  if (!editingId.value) return
+  try {
+    form.apiKey = await window.api.llm.getApiKey(editingId.value)
+    ElMessage.success('已填充已存密钥（仅本次编辑会话可见）')
+  } catch (err) {
+    ElMessage.error(`读取失败：${(err as Error).message}`)
+  }
+}
+
 async function sendChat(): Promise<void> {
   const provider = activeProvider.value
   if (!provider || !chatInput.value.trim()) return
@@ -375,12 +386,16 @@ onMounted(() => {
           <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
         </el-form-item>
         <el-form-item label="apiKey">
-          <el-input
-            v-model="form.apiKey"
-            type="password"
-            show-password
-            :placeholder="editingId ? '留空则不修改' : '本地服务可留空'"
-          />
+          <div class="model-row">
+            <el-input
+              v-model="form.apiKey"
+              type="password"
+              show-password
+              :placeholder="editingId ? '留空则不修改；可点右侧查看已存密钥' : '本地服务可留空'"
+              style="flex: 1"
+            />
+            <el-button v-if="editingId" size="small" @click="revealKey">查看已存</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="form.enabled" />

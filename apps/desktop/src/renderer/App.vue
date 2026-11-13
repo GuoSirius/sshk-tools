@@ -3,7 +3,7 @@ import {
   computed, onBeforeUnmount, onMounted, ref, watch,
   type Ref,
 } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolMenu } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
@@ -101,11 +101,29 @@ function openSettings(group = 'general'): void {
   settingsGroup.value = group
   settingsOpen.value = true
 }
+/** dev 随意开关；打包版先试无密钥（会抛错），再弹密钥输入（默认 sshk-tools@888） */
+async function openDevTools(): Promise<void> {
+  try {
+    await window.api.app.toggleDevTools()
+    return
+  } catch { /* 打包版需要密钥 */ }
+  try {
+    const { value } = await ElMessageBox.prompt('打开开发者工具需要访问密钥', '开发者工具', {
+      inputPlaceholder: '访问密钥',
+      inputType: 'password',
+      closeOnClickModal: false,
+    })
+    await window.api.app.toggleDevTools(String(value ?? ''))
+  } catch (err) {
+    const message = (err as Error).message
+    if (message && message !== 'cancel') ElMessage.error(message)
+  }
+}
 function onMoreCommand(command: string): void {
   if (command === 'dataDir') openDataDir()
   else if (command === 'reload') void window.api.app.reload()
   else if (command === 'reloadForce') void window.api.app.reload(true)
-  else if (command === 'devtools') void window.api.app.toggleDevTools()
+  else if (command === 'devtools') void openDevTools()
   else if (command === 'tools') openSettings('tools')
   else if (command === 'system') openSettings('system')
   else if (command === 'about') openSettings('about')

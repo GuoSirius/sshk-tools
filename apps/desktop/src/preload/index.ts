@@ -35,7 +35,7 @@ const api = {
     /** force=true 走 reloadIgnoringCache（等价 Ctrl+F5） */
     reload: (force?: boolean): Promise<boolean> =>
       invoke(IPC_CHANNELS.appReload, Boolean(force)),
-    toggleDevTools: (): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools),
+    toggleDevTools: (key?: string): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools, key),
   },
   update: {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }> =>
@@ -63,6 +63,8 @@ const api = {
       invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
     setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
+    /** 编辑时按需查看已存密钥（用户主动点击） */
+    getApiKey: (providerId: string): Promise<string> => invoke(IPC_CHANNELS.llmGetApiKey, providerId),
     /** 应用级 Provider 只读清单；所有工具共用，返回值绝不含密钥明文 */
     providers: (): Promise<unknown[]> => invoke(IPC_CHANNELS.llmProviders),
     /** 按 Provider id 真实查询 /models，密钥由主进程注入 */

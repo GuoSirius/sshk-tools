@@ -53,7 +53,7 @@ interface Window {
       version(): Promise<string>
       openDataDir(): Promise<void>
       reload(force?: boolean): Promise<boolean>
-      toggleDevTools(): Promise<boolean>
+      toggleDevTools(key?: string): Promise<boolean>
     }
     update: {
       check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null }>
@@ -75,6 +75,8 @@ interface Window {
       listModels(provider: LlmProvider, apiKey?: string): Promise<string[]>
       healthCheck(provider: LlmProvider, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }>
       setApiKey(providerId: string, apiKey: string): Promise<boolean>
+      /** 编辑时按需查看已存密钥（用户主动点击） */
+      getApiKey(providerId: string): Promise<string>
       /** 应用级 Provider 只读清单（不含密钥）；所有工具共用一份配置 */
       providers(): Promise<import('@sshk/shared').LlmProviderInfo[]>
       /** 按 Provider id 查 /models；不落盘密钥 */

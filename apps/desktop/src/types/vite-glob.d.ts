@@ -12,7 +12,14 @@
  * 无论 IDE 选中哪个 tsconfig、甚至是推断项目，都能拿到类型，且不丢 Vite 真实行为。
  * 只声明本项目实际用到的 import.meta.glob，其余能力由 env.d.ts 的模块声明覆盖。
  */
+interface ImportMetaEnv {
+  readonly DEV: boolean
+  readonly PROD: boolean
+  readonly MODE: string
+}
+
 interface ImportMeta {
+  readonly env: ImportMetaEnv
   glob<T = unknown>(
     pattern: string,
     options: { eager: true; import?: string; query?: string },

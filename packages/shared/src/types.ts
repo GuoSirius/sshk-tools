@@ -7,6 +7,8 @@ export type DatasourceKind = 'image' | 'xlsx' | 'csv' | 'json'
 export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'select'
 
 export interface ToolConfigField {
+  /** 仅开发环境展示（协助调试的配置项，发布版隐藏但保留其值） */
+  devOnly?: boolean
   /** 相对 `tools.<toolId>` 的点路径，如 `render.strict` */
   key: string
   label: string
