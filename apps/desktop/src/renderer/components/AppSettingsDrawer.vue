@@ -421,7 +421,8 @@ async function cleanupOrphans(): Promise<void> {
               </div>
               <div v-for="pkg in runtimePackages" :key="pkg.id" class="kv-line">
                 <span>{{ pkg.id }}@{{ pkg.version }}</span>
-                <span class="hint">{{ pkg.trustLevel }} · {{ pkg.sandbox }} · sha256:{{ pkg.sha256.slice(0, 8) }}</span>
+                <el-tag size="small" :type="pkg.trustLevel === 'official' ? 'success' : pkg.trustLevel === 'unsigned' ? 'danger' : 'warning'">{{ pkg.trustLevel }}</el-tag>
+                <span class="hint">{{ pkg.sandbox }} · sha256:{{ pkg.sha256.slice(0, 8) }}</span>
                 <el-button size="small" text type="danger" @click="removeRuntime(pkg.id)">卸载</el-button>
               </div>
               <div v-if="runtimePackages.length === 0" class="kv-line"><span class="hint">暂无运行时安装的工具包</span></div>

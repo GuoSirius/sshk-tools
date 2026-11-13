@@ -481,6 +481,14 @@ body {
 .el-table th.el-table__cell {
   font-weight: 600;
 }
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: var(--sshk-hover, rgba(79, 140, 255, 0.04));
+}
+/* 表格内操作按钮紧凑：间距 6px、圆角统一 */
+.op-row .el-button {
+  border-radius: 5px;
+  padding: 5px 10px;
+}
 /* 三段式表格容器：顶操作 / 中表格撑满滚动 / 底分页 */
 .table-flex-wrap {
   flex: 1;

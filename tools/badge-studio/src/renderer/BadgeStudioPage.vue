@@ -776,12 +776,11 @@ onMounted(() => {
             </el-table-column>
             <el-table-column label="标记" width="78">
               <template #default="{ row }">
-                <span v-if="row.matched === undefined" class="muted">—</span>
-                <span v-else-if="row.matched > 0" class="ok">{{ row.matched }}</span>
-                <span v-else>
-                  <span class="bad">0</span>
-                  <el-button size="small" text type="primary" title="在 HTML 中定位该 URL" @click="locateInHtml(row.url)">定位</el-button>
-                </span>
+                <template v-if="row.matched === undefined">—</template>
+                <el-tag v-else-if="row.matched > 0" size="small" type="success">{{ row.matched }}</el-tag>
+                <el-tooltip v-else content="该 URL 未被标记，点定位检查" placement="top">
+                  <el-tag size="small" type="danger" style="cursor: pointer" @click="locateInHtml(row.url)">0 定位</el-tag>
+                </el-tooltip>
               </template>
             </el-table-column>
             <el-table-column v-for="key in customMetricKeys" :key="key" min-width="100">
@@ -968,11 +967,12 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="操作" width="230" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" text @click="openPoster(row)">预览</el-button>
-            <el-button size="small" text @click="editPoster(row)">编辑</el-button>
-            <el-button size="small" text @click="exportPosterHtml(row)">导出</el-button>
-            <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
-              <el-button size="small" text>更多</el-button>
+            <div class="op-row">
+              <el-button size="small" type="primary" plain @click="openPoster(row)">预览</el-button>
+              <el-button size="small" type="primary" plain @click="editPoster(row)">编辑</el-button>
+              <el-button size="small" type="success" plain @click="exportPosterHtml(row)">导出</el-button>
+              <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
+                <el-button size="small" plain>更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="copy">复制代码</el-dropdown-item>
@@ -1014,6 +1014,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.op-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+.op-row .el-button + .el-button { margin-left: 0; }
 .poster-list-card {
   display: flex;
   flex-direction: column;
