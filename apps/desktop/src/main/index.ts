@@ -24,7 +24,7 @@ import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, readRenderer, uninstallPackage } from './runtime-installer'
 import { defaultConfigPath } from '@sshk/repository'
-import { loadToolPlugins } from './plugins'
+import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS } from './discovery'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -77,7 +77,11 @@ function createWindow(): void {
 
   // 关闭二次确认（防误触退出）：dev 不拦截；确认后置 quitting 放行 before-quit 链路
   let quitting = false
-  app.on('before-quit', () => { quitting = true })
+  app.on('before-quit', () => {
+    quitting = true
+    // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
+    killUtilityTools()
+  })
   mainWindow.on('close', (event) => {
     if (quitting || isDev) return
     event.preventDefault()
@@ -503,7 +507,7 @@ async function registerIpc(): Promise<void> {
     outputRoot: services!.outputRoot,
     host: services!.host,
     isActive: isToolActive,
-  }, allManifests())
+  }, allManifests(), { userDataDir: app.getPath('userData') })
 }
 
 /**
