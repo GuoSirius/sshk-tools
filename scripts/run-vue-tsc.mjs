@@ -18,7 +18,9 @@ if (!existsSync(bin)) {
   process.exit(0)
 }
 
-const result = spawnSync(`"${bin}"`, ['--noEmit', '-p', 'tsconfig.vue.json'], {
+// Windows 需 shell:true 解析 .cmd（此时路径要带引号防空格）；posix 必须 shell:false
+// 且不带引号——引号会被当成文件名的一部分（CI 在 Ubuntu 上曾因此 ENOENT 挂掉）
+const result = spawnSync(win ? `"${bin}"` : bin, ['--noEmit', '-p', 'tsconfig.vue.json'], {
   stdio: 'inherit',
   shell: win,
   cwd: ROOT,

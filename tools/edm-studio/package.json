@@ -28,5 +28,8 @@
     "@types/nunjucks": "latest",
     "typescript": "6",
     "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

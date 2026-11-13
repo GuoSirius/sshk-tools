@@ -83,32 +83,38 @@ function bump(v, kind, custom) {
   return fmt(base, `beta.${n}`)
 }
 
-/* ── changelog：conventional commits → 本次版本段 ── */
+/* ── changelog：conventional commits → 本次版本段（emoji 中文标题 + scope 加粗 + 短 sha） ── */
 const SECTIONS = [
-  ['feat', '### ✨ Features'],
-  ['fix', '### 🐛 Bug Fixes'],
-  ['perf', '### ⚡ Performance'],
-  ['refactor', '### ♻ Refactors'],
-  ['docs', '### 📝 Docs'],
+  ['feat', '### ✨ 新特性 (Features)'],
+  ['fix', '### 🐛 缺陷修复 (Bug Fixes)'],
+  ['perf', '### ⚡ 性能优化 (Performance)'],
+  ['refactor', '### ♻ 重构 (Refactors)'],
+  ['docs', '### 📝 文档 (Docs)'],
 ]
 function collectCommits(from) {
   const range = from ? `${from}..HEAD` : 'HEAD'
-  const raw = git(['log', range, '--pretty=%s']).split('\n').filter(Boolean)
+  // \x1f 作 hash 与 subject 的分隔符，避免 subject 含 | 时错切
+  const raw = git(['log', range, '--pretty=%h\x1f%s']).split('\n').filter(Boolean)
   const groups = Object.fromEntries(SECTIONS.map(([t]) => [t, []]))
   const others = []
-  for (const subject of raw) {
-    const m = /^(\w+)(?:\([^)]*\))?!?:\s*(.+)$/.exec(subject)
+  for (const line of raw) {
+    const idx = line.indexOf('\x1f')
+    const hash = line.slice(0, idx)
+    const subject = line.slice(idx + 1)
+    const m = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(subject)
     const type = m?.[1] ?? ''
-    const body = m?.[2] ?? subject
-    if (groups[type]) groups[type].push(body)
-    else others.push(subject)
+    const scope = m?.[2] ?? ''
+    const body = m?.[3] ?? subject
+    const item = scope ? `- **${scope}**: ${body} (\`${hash}\`)` : `- ${body} (\`${hash}\`)`
+    if (groups[type]) groups[type].push(item)
+    else others.push(`- ${subject} (\`${hash}\`)`)
   }
   let md = ''
   for (const [type, title] of SECTIONS) {
     if (groups[type].length === 0) continue
-    md += `${title}\n${groups[type].map((s) => `- ${s}`).join('\n')}\n\n`
+    md += `${title}\n${groups[type].join('\n')}\n\n`
   }
-  if (others.length) md += `### 🔧 Others\n${others.map((s) => `- ${s}`).join('\n')}\n\n`
+  if (others.length) md += `### 🔧 其他 (Miscellaneous)\n${others.join('\n')}\n\n`
   return { md, counts: groups, others }
 }
 function lastTag() {
@@ -265,12 +271,13 @@ if (!DRY_RUN) {
   let committed = false
   let tagged = false
   try {
-    git(['add', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'])
-    git(['-c', 'core.hooksPath=.git/cph', 'commit', '-m', `chore(release): ${next}`])
+    // add/commit/tag/push 的输出（含钩子与推送进度）直接透传控制台，过程可见
+    git(['add', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'], { stdio: 'inherit' })
+    git(['-c', 'core.hooksPath=.git/cph', 'commit', '-m', `chore(release): ${next}`], { stdio: 'inherit' })
     committed = true
     git(['tag', next])
     tagged = true
-    git(['push', 'origin', 'HEAD:refs/heads/main', next])
+    git(['push', 'origin', 'HEAD:refs/heads/main', next], { stdio: 'inherit' })
     ok(`已推送 ${next}（提交 + tag）`)
   } catch (err) {
     step('提交/推送失败，回滚本次发布写入')

@@ -40,5 +40,8 @@
     "@vitejs/plugin-vue": "latest",
     "typescript": "6",
     "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -18,5 +18,8 @@
   "devDependencies": {
     "typescript": "6",
     "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

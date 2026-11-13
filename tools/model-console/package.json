@@ -22,5 +22,8 @@
   },
   "devDependencies": {
     "typescript": "6"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
