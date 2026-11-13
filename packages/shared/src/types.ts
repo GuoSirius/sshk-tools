@@ -7,6 +7,8 @@ export type DatasourceKind = 'image' | 'xlsx' | 'csv' | 'json'
 export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'select' | 'dir' | 'file'
 
 export interface ToolConfigField {
+  /** 必填项：配置页红星标注，保存时空值拦截 */
+  required?: boolean
   /** 仅开发环境展示（协助调试的配置项，发布版隐藏但保留其值） */
   devOnly?: boolean
   /** 值为空时展示该配置键的当前值（如 defaultProviderId ← app.llm.activeProviderId） */

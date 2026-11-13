@@ -81,6 +81,12 @@ function display(value: unknown): string {
 }
 
 async function save(): Promise<void> {
+  // 必填拦截：manifest 标 required 的字段为空时不落盘
+  const missing = allFields().filter((field) => field.required && String(values[field.key] ?? "").trim() === "")
+  if (missing.length > 0) {
+    ElMessage.error("必填项未填写：" + missing.map((field) => field.label).join("、"))
+    return
+  }
   saving.value = true
   try {
     for (const field of allFields()) {

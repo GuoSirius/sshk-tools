@@ -8,11 +8,9 @@ defineProps<{
 
 <template>
   <div class="tool-page-layout">
+    <!-- 页面标题/描述与侧栏工具名重复，统一只保留侧栏；head 仅承载右侧操作区 -->
     <div class="tool-page-head">
-      <strong v-if="title">{{ title }}</strong>
-      <span v-if="description" class="muted">{{ description }}</span>
       <span class="app-spacer" />
-      <!-- 顶部操作区：新增 / 批量按钮等 -->
       <div class="tool-page-actions">
         <slot name="actions" />
       </div>

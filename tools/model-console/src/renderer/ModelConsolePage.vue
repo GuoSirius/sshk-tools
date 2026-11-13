@@ -34,6 +34,14 @@ const modelOptions = ref<string[]>([])
 const presetId = ref('')
 const fetchingModels = ref(false)
 const dialogOpen = ref(false)
+// 必填校验（红星由 el-form rules 自动标注；kind=local 时 baseURL 不要求，编辑时 apiKey 可留空不改）
+const formRef = ref<{ validate: () => Promise<boolean> } | null>(null)
+const formRules = computed(() => ({
+  name: [{ required: true, message: "请输入名称", trigger: "blur" }],
+  baseURL: [{ required: form.value.kind === "remote", message: "云端 Provider 必须填写 baseURL", trigger: "blur" }],
+  model: [{ required: true, message: "请输入模型名", trigger: "blur" }],
+  apiKey: [{ required: !editingId.value && form.value.kind === "remote", message: "云端 Provider 必须填写 API Key", trigger: "blur" }],
+}))
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const form = ref<Provider & { apiKey: string }>({
@@ -142,6 +150,13 @@ async function fetchModels(): Promise<void> {
 }
 
 async function saveProvider(): Promise<void> {
+  // 必填校验统一走 el-form rules（红星标注入口），通过后才执行保存
+  try {
+    await formRef.value?.validate()
+  } catch {
+    ElMessage.warning('请先补全带红星标记的必填项')
+    return
+  }
   if (!form.value.name.trim() || !form.value.baseURL.trim() || !form.value.model.trim()) {
     ElMessage.warning('名称、baseURL、模型名必填')
     return
@@ -350,7 +365,7 @@ onMounted(() => {
       :close-on-click-modal="false"
       :close-on-press-escape="false"
     >
-      <el-form label-width="90px" size="small">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px" size="small">
         <el-form-item v-if="presets.length" label="快速预设">
           <el-select
             v-model="presetId"
@@ -363,7 +378,7 @@ onMounted(() => {
           </el-select>
           <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
         </el-form-item>
-        <el-form-item label="名称">
+        <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="如：本地 Ollama" />
         </el-form-item>
         <el-form-item label="类型">
@@ -372,10 +387,10 @@ onMounted(() => {
             <el-radio value="remote">云端</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="baseURL">
+        <el-form-item label="baseURL" prop="baseURL">
           <el-input v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
         </el-form-item>
-        <el-form-item label="模型名">
+        <el-form-item label="模型名" prop="model">
           <div class="model-row">
             <el-select
               v-model="form.model"
@@ -392,7 +407,7 @@ onMounted(() => {
           </div>
           <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
         </el-form-item>
-        <el-form-item label="apiKey">
+        <el-form-item label="apiKey" prop="apiKey">
           <div class="model-row">
             <el-input
               v-model="form.apiKey"
