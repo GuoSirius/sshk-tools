@@ -25,10 +25,13 @@ function walk(dir, acc = []) {
 // 受控例外：typescript-eslint 8 不支持 TS 7，TypeScript 约束在 6.x 最新版（用户决策）。
 // 其余所有外部依赖仍必须是 "latest"。
 // electron-updater：electron-builder 26 要求 package.json 写明确 semver（不接受 latest 字面量），lockfile 固定实际版本
+// http(s) CDN tarball（如 sheetjs 官方 cdn.sheetjs.com 的 xlsx 安装包）：npm 公共源 xlsx 长期陈旧，
+//   官方推荐从其 CDN 安装最新版，属刻意的「latest 等价」例外，不要求 latest 字面量。
 const VERSION_EXCEPTIONS = { typescript: '6', 'electron-updater': '^6' }
 
 function isAllowed(dep, spec) {
   if (VERSION_EXCEPTIONS[dep]) return spec === VERSION_EXCEPTIONS[dep]
+  if (spec.startsWith('http://') || spec.startsWith('https://')) return true // CDN tarball 安装（sheetjs 等）
   return spec === 'latest' || spec.startsWith('workspace:') || spec.startsWith('catalog:')
 }
 
