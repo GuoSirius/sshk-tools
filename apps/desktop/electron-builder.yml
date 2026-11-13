@@ -71,6 +71,10 @@ dmg:
 #   AppImage 无法在打包层授予永久 root，运行时提权需按操作逐次 sudo/polkit。
 linux:
   icon: build/icon.png
+  # 默认取包名 @sshk/desktop，含 / 无法作为 Linux 可执行文件名（AppImage 曾因此构建失败）
+  executableName: sshk-tools
+  # 桌面入口改用 productName，修 WM_CLASS 窗口关联告警
+  syncDesktopName: true
   target:
     - deb
     - rpm
