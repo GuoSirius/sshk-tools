@@ -1,5 +1,5 @@
 {
-  "//": "IDE 用根项目：把 apps / packages / tools 全部挂到同一个 TS 项目，配合 paths 解析 @sshk/*，消除 .vue 里的 Cannot find module 红波浪线。CI 门禁仍走 tsconfig.base.json（-p 显式指定）。",
+  "//": "IDE 用根项目：packages / tools / scripts 挂到同一 TS 项目。apps/desktop 有自己更具体的 tsconfig.json（含 vite/client），这里刻意不 include apps，避免 Volar / TS Server 在两个项目间选错，导致 .vue 里 vue / element-plus / @sshk/* 报找不到模块。CI 门禁仍走 tsconfig.base.json（-p 显式指定）。",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
@@ -7,7 +7,6 @@
     "noEmit": true
   },
   "include": [
-    "apps/**/*",
     "packages/**/*",
     "tools/**/*",
     "scripts/**/*",
@@ -15,5 +14,5 @@
     "eslint.config.js",
     "commitlint.config.js"
   ],
-  "exclude": ["node_modules", "**/node_modules", "dist", "out", ".tmp", ".git"]
+  "exclude": ["node_modules", "**/node_modules", "dist", "out", ".tmp", ".git", "apps"]
 }

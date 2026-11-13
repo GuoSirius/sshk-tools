@@ -2,8 +2,7 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "typescript.preferences.includePackageJsonAutoImports": "off",
-  "typescript.tsserver.experimental.enableProjectDiagnostics": true,
-  "vue.server.hybridMode": false,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
   "files.associations": {
     "*.vue": "vue"
   },
@@ -14,5 +13,25 @@
     "**/dist": true,
     "**/out": true,
     "**/.tmp": true
-  }
+  },
+  "cspell.words": [
+    "sshk",
+    "ulid",
+    "nedb",
+    "snapdom",
+    "unocss",
+    "pnpm",
+    "vitejs",
+    "dayjs",
+    "paddleocr",
+    "agnes",
+    "apihub",
+    "edm",
+    "badged",
+    "safeStorage",
+    "wincred",
+    "commitlint",
+    "vitest",
+    "ctranslate"
+  ]
 }

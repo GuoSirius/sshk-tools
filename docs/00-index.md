@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
-- 状态：**M0~M7 全部落地；应用设置中心 / 工具插件化 / 工具包自包含 / Badge 图片识别已落地；76 单测全绿、`pnpm verify` 与三端构建通过；待用户 dev 实测、PaddleOCR 绑定确认与 tag 发布**
-- 版本：v1.0
-- 最后更新：2026-11-13 09:45（北京时间）
+- 状态：**M0~M7 全部落地；应用设置中心 / 工具插件化 / 工具包自包含 / Badge 图片识别 / Model Console 模型预设已落地；80 单测全绿、`pnpm verify` 与三端构建通过；IDE 需按文档 §7.3 重载；待 PaddleOCR 绑定确认与 tag 发布**
+- 版本：v1.1
+- 最后更新：2026-11-13 10:10（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -123,6 +123,9 @@ docs/
 | **D43** | **多分类 / 标签** | `category: string \| string[]` + `tags[]` → 裁决层 `categories[]`；卡片 / 侧栏 / 搜索 / 设置覆盖全链路支持多个分类 |
 | **D44** | **Badge 图片数据源** | 图片 → 云端视觉模型或本机 OCR → `parseVisionResult()` → 标准 `StatRow[]` → 回填可校对 CSV；`llm-gateway` 支持 `image_url` 多模态；**视觉模型 API Key 只进 safeStorage，绝不写仓库** |
 | **D45** | **PaddleOCR 作为可插拔识别源** | 与云端模型共用「图片识别 provider → 标准结构」抽象；宿主 `runLocalOcr`（无 shell、超时、输出上限）+ 工具包 `scripts/paddleocr_adapter.py` 参考适配器；实际绑定待用户确认本机命令与截图版式 |
+| **D46** | **密钥标识校验纯函数化** | `app:tool:<id>:<name>` 标识抽出 `secret-ids.ts` 并放宽为大小写/下划线/连字符；修掉驼峰 `visionApiKey` 被判非法导致 Badge 加载即报错，补 3 个回归单测 |
+| **D47** | **模型预设与真实模型列表下拉** | 常用 OpenAI 兼容端点（含 Agnes AI `/v1`）由 `model-console` manifest 自带，用户只填 Key；模型名 `el-select allow-create` + 「拉取模型列表」真实请求 `/models`；保存前可用临时 key 探测且不落盘；预设不含任何密钥 |
+| **D48** | **IDE 项目归属收口** | 三套 tsconfig 全 0 错误即证明代码无误；根 `tsconfig.json` 刻意排除 apps，让 `apps/desktop/tsconfig.json` 独占 `.vue`；显式 `types: ["node","vite/client"]`；新增 `electron` paths；去掉反向作用的 Volar takeover 设置；`cspell.json` 消除拼写波浪线；换电脑后须按架构文档 §7.3 重载窗口 / 切工作区 TS 版本 / 重启 TS Server |
 
 > **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
 > shared 现为**纯契约 / 裁决层**（零具体工具数据），真相源下沉到各工具包 manifest；`DEFAULT_SETTINGS.tools` 也已清空。
@@ -140,6 +143,7 @@ docs/
 | **可选提供** | 代码签名证书、Apple ID、国产 OS 实机（不阻塞开发） |
 | 旧工具存量数据 | 是否要 M4 附一次性迁移脚本 |
 | M1 补校验 | preload `.cjs` 产物检查、条件导出双格式冒烟 |
+| **用户执行（IDE）** | 按 `02-architecture/2026-11-13-工具插件化与需求台账.md` §7.3 七步操作：确认打开仓库根 → 装 Vue - Official → Reload Window → Use Workspace TS Version → Restart TS Server → Go to Project Configuration 验证 |
 | **用户确认（PaddleOCR）** | 本机 Python 解释器绝对路径、PaddleOCR 版本 / 调用方式、点击统计截图版式（链接与数字是否同行、有无千分位 / 合计列），用于校准 `rows_from_lines()` |
 | **用户填写（视觉模型）** | Badge Studio「图片识别」面板填入 API Key（只落本机 safeStorage，不进仓库）→ 上传截图实测 |
 | **用户执行（安装包）** | 本轮大量改动后重新 `pnpm local` 生成 Windows 安装包做安装测试 |
@@ -159,6 +163,7 @@ docs/
 | **v0.8** | 15:12 | **D28 不设根 public/**；修复 `.gitignore` 误屏蔽 `apps/desktop/build/`；M2 落地（release.yml、首次安装指引、electron-updater IPC + 检查更新按钮）；pnpm 构建脚本白名单收敛为 `allowBuilds` | 删除 docs/assets |
 | **v0.9** | 11-13 00:12 | D29~D36：品牌管理、配置分层、目录裁决、访问密钥、图标覆盖、设置中心、侧栏 hover 浮层与递归菜单 | 配置真相源上移（后被 v1.0 推翻） |
 | **v1.0** | 11-13 09:45 | **D37~D45**：工具包自包含 + 构建期自动发现、插件化零依赖隔离、插件入口强契约、配置布局三选一、F5 刷新、多分类标签、Badge 图片识别 / PaddleOCR、IDE 红波浪线修复；76 测试全绿、三端构建通过 | **推翻 D33/D35**：真相源下沉工具包 manifest、宿主内置图标删除、`DEFAULT_SETTINGS.tools` 清空；删除空 ADR 占位目录；`.vscode/` 纳入提交 |
+| **v1.1** | 11-13 10:10 | **D46~D48**：密钥标识 bug 修复 + 回归单测、Model Console 常用模型预设 + 真实 `/models` 下拉、IDE 三套 tsconfig 收口与操作步骤；80 测试全绿 | 去掉 `vue.server.hybridMode: false`（反向作用）；根 tsconfig 排除 apps，避免 Volar 选错项目 |
 
 ## 六、ADR 记录格式（按主题）
 
