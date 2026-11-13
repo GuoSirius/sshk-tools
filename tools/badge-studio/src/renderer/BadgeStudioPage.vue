@@ -16,6 +16,11 @@ interface RecentHtml {
 const props = defineProps<{ menu?: string }>()
 const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
+// 角标样式 / URL 归一 / 海报尺寸全部来自工具配置，生成页不再写死
+const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 })
+const urlNorm = reactive({ stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true })
+const posterWidth = ref(680)
+const captureScale = ref(2)
 /** 角标取值列：可填 clicks / totalClicks / 任意自定义数值列名 */
 const clicksField = ref('clicks')
 
@@ -91,6 +96,12 @@ async function textConfig(key: string, fallback: string): Promise<string> {
 async function loadConfigAndRecent(): Promise<void> {
   badgeAttr.value = await textConfig('badgeAttr', 'data-edm-badge')
   clicksField.value = await textConfig('clicksField', 'clicks')
+  const savedStyle = (await window.api.config.get('tools.badge-studio.badgeStyle')) as Partial<typeof badgeStyle> | null
+  if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
+  const savedNorm = (await window.api.config.get('tools.badge-studio.urlNorm')) as Partial<typeof urlNorm> | null
+  if (savedNorm && typeof savedNorm === 'object') Object.assign(urlNorm, savedNorm)
+  posterWidth.value = Number(await window.api.config.get('tools.badge-studio.posterWidth')) || 680
+  captureScale.value = Number(await window.api.config.get('tools.badge-studio.scale')) || 2
   const recent = (await window.api.config.get('tools.badge-studio.recentHtmls')) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
   const provider = await textConfig('vision.provider', 'cloud')
@@ -369,8 +380,8 @@ async function generate(): Promise<void> {
       config: {
         badgeAttr: badgeAttr.value,
         clicksField: clicksField.value,
-        urlNorm: { stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true },
-        badgeStyle: { background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 },
+        urlNorm: { ...urlNorm },
+        badgeStyle: { ...badgeStyle },
       },
     })
     currentPosterId.value = res.posterId
@@ -396,7 +407,7 @@ async function capturePoster(): Promise<void> {
     const doc = frame.contentDocument
     const target = doc?.body
     if (!target || target.children.length === 0) throw new Error('预览内容为空')
-    const capture = (await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: 2 }))
+    const capture = (await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value }))
     const out = await (capture as { toPng?: () => Promise<unknown> }).toPng?.()
     const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')
     if (dataUrl === '') throw new Error('截图失败：未获得图像数据')
@@ -519,6 +530,7 @@ onMounted(() => {
           />
           <div class="cfg-row" style="margin-top: 8px">
             <el-button size="small" @click="parsePastedStats">解析文本</el-button>
+            <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
             <el-button size="small" @click="addRow">新增一行</el-button>
             <el-button size="small" text type="danger" :disabled="!hasStats" @click="clearRows">清空表格</el-button>
             <span class="muted">共 {{ statRows.length }} 行{{ statsFile ? ` · 来自 ${statsFile.split(/[\\/]/).pop()}` : '' }}</span>
@@ -577,11 +589,6 @@ onMounted(() => {
               <el-radio-button value="paddleocr">本机 PaddleOCR</el-radio-button>
               <el-radio-button value="manual">仅人工校对</el-radio-button>
             </el-radio-group>
-          </div>
-          <div class="cfg-row">
-            <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
-            <el-button size="small" type="primary" :loading="recognizing" @click="recognizeImages">识别并追加到表格</el-button>
-            <span class="muted">{{ imageFiles.length ? `已选 ${imageFiles.length} 张` : '未选择图片' }}</span>
           </div>
           <div v-if="imageFiles.length" class="image-list">
             <el-tag
@@ -650,9 +657,12 @@ onMounted(() => {
             仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
           </div>
 
-          <div v-if="vision.provider !== 'manual'" class="cfg-row">
-            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
-            <span class="muted">不保存则本次会话内有效</span>
+          <div class="cfg-row">
+            <el-button size="small" type="primary" :loading="recognizing" :disabled="imageFiles.length === 0 || vision.provider === 'manual'" @click="recognizeImages">
+              识别并追加到表格（{{ imageFiles.length || 0 }} 张）
+            </el-button>
+            <el-button v-if="vision.provider !== 'manual'" size="small" @click="saveVisionConfig">保存为默认配置</el-button>
+            <span class="muted" v-if="vision.provider !== 'manual'">不保存则本次会话内有效</span>
           </div>
 
           <details v-if="visionRaw" style="margin-top: 6px">
@@ -686,11 +696,12 @@ onMounted(() => {
           </div>
         </div>
         <div class="panel preview-panel">
-          <div class="panel-title">badge 副本预览（680px）</div>
+          <div class="panel-title">badge 副本预览（{{ posterWidth }}px）</div>
           <iframe
             v-if="previewHtml"
             ref="previewFrame"
             class="preview-frame"
+            :style="{ width: posterWidth + 'px' }"
             :srcdoc="previewHtml"
             sandbox="allow-same-origin"
           />
@@ -777,7 +788,6 @@ onMounted(() => {
   flex-direction: column;
 }
 .preview-frame {
-  width: 680px;
   max-width: 100%;
   flex: 1;
   min-height: 240px;
