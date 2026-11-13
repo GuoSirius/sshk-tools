@@ -332,6 +332,14 @@ async function recognizeImages(): Promise<void> {
 }
 
 /** 图片识别配置就地保存：不再跳工具配置页，识别方式 / Provider / 模型 / OCR 命令一处改完 */
+/** 路径类配置统一交互：选择 + 可手动修改 */
+async function pickPython(): Promise<void> {
+  const [file] = await window.api.os.pickFile({
+    filters: [{ name: 'Python 解释器', extensions: ['exe'] }],
+  })
+  if (file) vision.paddleCommand = file
+}
+
 async function saveVisionConfig(): Promise<void> {
   try {
     await window.api.config.set('tools.badge-studio.vision', {
@@ -639,8 +647,11 @@ onMounted(() => {
           <template v-else-if="vision.provider === 'paddleocr'">
             <div class="cfg-row">
               <span>命令</span>
-              <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径" style="width: 250px" />
-              <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="width: 250px" />
+              <div class="path-row" style="flex: 1">
+                <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径" />
+                <el-button size="small" @click="pickPython">选择文件</el-button>
+                <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="flex: 1" />
+              </div>
             </div>
             <div class="cfg-row">
               <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>

@@ -42,6 +42,13 @@ const shownGroups = computed(() => {
   return groups
 })
 
+/** 路径类配置统一交互：选择 + 可手动修改（与产物目录一致） */
+async function pickPath(field: ToolConfigField): Promise<void> {
+  const picked = field.type === 'dir'
+    ? await window.api.os.pickDir()
+    : (await window.api.os.pickFile({}))[0] ?? ''
+  if (picked) values[field.key] = picked
+}
 function pathFor(field: ToolConfigField): string {
   return `tools.${props.toolId}.${field.key}`
 }
@@ -134,6 +141,12 @@ watch(() => props.section, focusSection, { immediate: true })
               :min="field.min"
               :max="field.max"
             />
+            <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row">
+              <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
+              <el-button size="small" @click="pickPath(field)">
+                {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
+              </el-button>
+            </div>
             <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px">
               <el-option v-for="opt in field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
@@ -203,4 +216,9 @@ watch(() => props.section, focusSection, { immediate: true })
 }
 .kv code { font-size: 12px; opacity: .75; word-break: break-all; }
 .warning-line { font-size: 12px; color: #ffb35c; padding: 6px 0; }
+.path-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
 </style>

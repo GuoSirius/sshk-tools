@@ -4,7 +4,7 @@ export type EntityStatus = 'draft' | 'previewed' | 'generated' | 'archived'
 export type DatasourceKind = 'image' | 'xlsx' | 'csv' | 'json'
 
 /** 工具配置项类型：工具级配置页按 schema 自动生成表单 */
-export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'select'
+export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'select' | 'dir' | 'file'
 
 export interface ToolConfigField {
   /** 仅开发环境展示（协助调试的配置项，发布版隐藏但保留其值） */

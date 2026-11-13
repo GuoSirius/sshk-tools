@@ -21,7 +21,9 @@ function readManifest(id: string): ToolDescriptor {
 const edmManifest = readManifest('edm-studio')
 const badgeManifest = readManifest('badge-studio')
 const modelManifest = readManifest('model-console')
+// edm 的 visibility:hidden 是发布策略，裁决单测保持 desktop 基准
 const MANIFESTS = [edmManifest, badgeManifest, modelManifest]
+delete (edmManifest as { visibility?: string }).visibility
 
 function baseInput(patch: Partial<ResolveCatalogInput> = {}): ResolveCatalogInput {
   return {

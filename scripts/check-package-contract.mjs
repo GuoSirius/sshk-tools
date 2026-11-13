@@ -24,9 +24,20 @@ for (const name of existsSync(toolsDir) ? readdirSync(toolsDir) : []) {
   if (!existsSync(file)) continue
   manifests += 1
   const manifest = JSON.parse(readFileSync(file, 'utf8'))
+  const where = relative(ROOT, file)
+  // 同类交互统一：路径/目录类配置必须用 dir / file 类型（渲染成 选择+可改，不许裸 string 手填）
+  for (const group of manifest.configGroups ?? []) {
+    for (const field of group.fields ?? []) {
+      const label = field.label ?? ''
+      const pathLike = !/文件名|filename/i.test(field.key + ' ' + label) && /dir|目录|路径|path|file|文件/i.test(field.key + ' ' + label)
+      const isPathType = field.type === 'dir' || field.type === 'file'
+      if (pathLike && !isPathType && field.type === 'string') {
+        errors.push(`${where}: 路径类字段 ${field.key} 应用 dir / file 类型（选择+可改），不要 string 手填`)
+      }
+    }
+  }
   if (!manifest.package) continue
   contracted += 1
-  const where = relative(ROOT, file)
   const pkg = manifest.package
   if (pkg.schemaVersion !== SCHEMA) errors.push(`${where}: schemaVersion 应为 ${SCHEMA}`)
   if (pkg.sandbox !== 'main' && pkg.sandbox !== 'utility') errors.push(`${where}: sandbox 非法`)
