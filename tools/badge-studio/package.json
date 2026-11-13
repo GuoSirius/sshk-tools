@@ -20,7 +20,9 @@
     "cheerio": "latest",
     "element-plus": "latest",
     "vue": "latest",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "fflate": "latest",
+    "vue-router": "latest"
   },
   "devDependencies": {
     "typescript": "6",

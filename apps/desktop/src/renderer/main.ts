@@ -11,7 +11,9 @@ import { installPlainApi } from './api-plain'
 // Vue Proxy 跨 contextBridge 传参会触发结构化克隆错误；必须在任何组件调用前脱壳
 installPlainApi()
 
+import { router } from "./router"
+
 const { init } = useTheme()
 void init()
 
-createApp(App).use(ElementPlus).mount('#app')
+createApp(App).use(router).use(ElementPlus).mount('#app')

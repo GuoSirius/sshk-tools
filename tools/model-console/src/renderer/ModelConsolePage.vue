@@ -320,6 +320,7 @@ onMounted(() => {
     />
 
     <el-table v-else :data="providers" size="small">
+      <el-table-column type="index" label="#" width="50" align="center" />
       <el-table-column prop="name" label="名称" min-width="120" />
       <el-table-column prop="kind" label="类型" width="80">
         <template #default="{ row }">

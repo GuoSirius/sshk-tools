@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { extname, isAbsolute, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { zipSync, type Zippable } from 'fflate'
+import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
@@ -235,22 +236,27 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   }))
 
   // ④b 导出产物文件（badge 副本 + 海报长图）：目录来自用户选择，文件名取海报名
-  ipc.handle(IPC_CHANNELS.badgeExportFiles, wrap(async (payload: { posterId: string; dir: string }) => {
-    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
-    if (!poster) throw new Error('海报不存在')
-    if (!poster.outputs.badged) throw new Error('该海报没有可导出的 badge 副本')
-    const safeName = (poster.name || poster._id).replace(/[\\/:*?"<>|]/g, '_')
-    const badged = readFileSync(resolveSafe(deps.outputRoot, poster.outputs.badged))
-    writeFileSync(join(payload.dir, safeName + '.html'), badged)
-    const files = [safeName + '.html']
-    if (poster.outputs.poster) {
-      const posterPng = resolveSafe(deps.outputRoot, poster.outputs.poster)
-      if (existsSync(posterPng)) {
-        writeFileSync(join(payload.dir, safeName + '.png'), readFileSync(posterPng))
-        files.push(safeName + '.png')
+  // ④b 导出产物文件（badge 副本 + 海报长图）→ 单个 zip 包；批量时每个海报一个子目录
+  ipc.handle(IPC_CHANNELS.badgeExportFiles, wrap(async (payload: { posterIds: string[]; outPath: string }) => {
+    const outPath = String(payload.outPath || '')
+    if (!outPath.toLowerCase().endsWith('.zip')) throw new Error('导出路径必须是 .zip 文件')
+    const zipObj: Zippable = {}
+    let exported = 0
+    for (const posterId of payload.posterIds) {
+      const poster = await deps.repository.get<Poster>('posters', posterId)
+      if (!poster || !poster.outputs.badged) continue
+      const safeName = (poster.name || posterId).replace(/[\\/:*?"<>|]/g, '_')
+      zipObj[safeName + '.html'] = new Uint8Array(readFileSync(resolveSafe(deps.outputRoot, poster.outputs.badged)))
+      if (poster.outputs.poster) {
+        const posterPng = resolveSafe(deps.outputRoot, poster.outputs.poster)
+        if (existsSync(posterPng)) zipObj[safeName + '.png'] = new Uint8Array(readFileSync(posterPng))
       }
+      exported += 1
     }
-    return { dir: payload.dir, files }
+    if (exported === 0) throw new Error('没有可导出的海报')
+    mkdirSync(dirname(outPath), { recursive: true })
+    writeFileSync(outPath, zipSync(zipObj))
+    return { outPath, posters: exported }
   }))
 
   // ⑤ 海报 PNG 落盘（渲染层 snapdom 截图后回传 base64）

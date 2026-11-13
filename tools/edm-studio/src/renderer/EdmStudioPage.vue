@@ -269,6 +269,7 @@ onMounted(async () => {
     <!-- 模板 -->
     <template v-else-if="tab === 'templates'">
       <el-table :data="templates" size="small" highlight-current-row @row-click="selectTemplate">
+        <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="name" label="模板" min-width="160" />
         <el-table-column label="品牌" min-width="120">
           <template #default="{ row }">{{ brands.find((b) => b._id === row.brandId)?.name ?? row.brandId }}</template>
@@ -286,6 +287,7 @@ onMounted(async () => {
       <div v-if="currentTpl" class="panel" style="margin-top: 8px">
         <div class="panel-title">「{{ currentTpl.name }}」版本（不可变，保存即新版本）</div>
         <el-table :data="tplVersions" size="small">
+          <el-table-column type="index" label="#" width="50" align="center" />
           <el-table-column prop="label" label="版本" width="80" />
           <el-table-column label="创建时间" width="160">
             <template #default="{ row }"><TimeText :value="row.createdAt" /></template>
@@ -302,6 +304,7 @@ onMounted(async () => {
     <!-- 片段 -->
     <template v-else-if="tab === 'fragments'">
       <el-table :data="fragments" size="small">
+        <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="name" label="片段" min-width="140" />
         <el-table-column prop="type" label="槽位类型" width="110" />
         <el-table-column label="品牌" min-width="120">
@@ -320,6 +323,7 @@ onMounted(async () => {
     <!-- 邮件 -->
     <template v-else>
       <el-table :data="mails" size="small">
+        <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="name" label="邮件" min-width="150" />
         <el-table-column label="生成时间" width="160">
           <template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { EmptyState, ConfirmDialog, TimeText, ToolPageLayout } from '@sshk/ui-kit'
@@ -14,7 +15,12 @@ interface RecentHtml {
 }
 
 const props = defineProps<{ menu?: string }>()
-const emit = defineEmits<{ navigate: [menu: string] }>()
+const route = useRoute()
+const router = useRouter()
+/** 页面内切视图：走路由（宿主菜单/高亮/URL 全同步），不再用 emit 补丁 */
+function navigateToGenerate(): void {
+  void router.push("/tool/" + String(route.params.toolId) + "/generate")
+}
 // 视图由侧栏菜单驱动；页面内需要切视图时 emit navigate 让宿主同步菜单与路由
 const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
@@ -475,36 +481,44 @@ const selectedPosters = ref<PosterRecord[]>([])
 function onSelectionChange(rows: PosterRecord[]): void { selectedPosters.value = rows }
 async function editPoster(row: PosterRecord): Promise<void> {
   if (!row.source.htmlPath) return
-  const { html } = await window.api.badge.readHtml(row.source.htmlPath)
-  htmlPath.value = ""
-  pastedHtml.value = html
-  statRows.value = toStatRows(row.statsSnapshot ?? [], [])
+  navigateToGenerate()
+  try {
+    const { html } = await window.api.badge.readHtml(row.source.htmlPath)
+    pastedHtml.value = html
+    statRows.value = toStatRows(row.statsSnapshot ?? [], [])
+  } catch (err) {
+    ElMessage.error("载入海报失败：" + (err as Error).message)
+    return
+  }
   syncCsvFromRows()
   badgeAttr.value = row.configSnapshot.badgeAttr || badgeAttr.value
   clicksField.value = row.configSnapshot.clicksField || clicksField.value
   currentPosterId.value = row._id
-  emit('navigate', 'generate')
+  navigateToGenerate()
   ElMessage.success("已载入「" + row.name + "」到工作区，改完点「生成海报」覆盖该海报")
 }
 async function exportPosterHtml(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  const dir = await window.api.os.pickDir()
-  if (!dir) return
-  const { files } = (await window.api.badge.exportFiles({ posterId: row._id, dir })) as { files: string[] }
-  ElMessage.success("已导出：" + files.join("、"))
+  const save = await window.api.os.pickSave({
+    fileName: (row.name || "poster") + ".zip",
+    extensions: ["zip"],
+  })
+  if (!save) return
+  const { outPath, posters } = (await window.api.badge.exportFiles({ posterIds: [row._id], outPath: save })) as { outPath: string; posters: number }
+  ElMessage.success("已导出 " + posters + " 个海报（HTML + 长图）：" + outPath)
 }
 async function batchExportHtml(): Promise<void> {
   const rows = selectedPosters.value.filter((row) => row.outputs.badged)
   if (rows.length === 0) { ElMessage.warning("请先勾选要导出的海报")
     return }
-  const dir = await window.api.os.pickDir()
-  if (!dir) return
-  let done = 0
-  for (const row of rows) {
-    await window.api.badge.exportFiles({ posterId: row._id, dir })
-    done += 1
-  }
-  ElMessage.success("已批量导出 " + done + " 个海报（HTML + 长图）到 " + dir)
+  const date = new Date().toLocaleDateString("sv-SE")
+  const save = await window.api.os.pickSave({
+    fileName: "sshk-posters-" + date + ".zip",
+    extensions: ["zip"],
+  })
+  if (!save) return
+  const { outPath, posters } = (await window.api.badge.exportFiles({ posterIds: rows.map((row) => row._id), outPath: save })) as { outPath: string; posters: number }
+  ElMessage.success("已批量导出 " + posters + " 个海报（HTML + 长图，按名称分目录）：" + outPath)
 }
 function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === "copy") void copyCode(row)
@@ -522,9 +536,14 @@ async function batchDeletePosters(): Promise<void> {
 async function openPoster(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
   // 预览区在生成视图中：emit navigate 同步侧栏菜单，否则「点了没反应」
-  emit('navigate', 'generate')
-  const { html } = await window.api.badge.readHtml(row.outputs.badged)
-  previewHtml.value = html
+  navigateToGenerate()
+  try {
+    const { html } = await window.api.badge.readHtml(row.outputs.badged)
+    previewHtml.value = html
+  } catch (err) {
+    ElMessage.error("读取海报失败：" + (err as Error).message)
+    return
+  }
   currentPosterId.value = row._id
 }
 
@@ -892,6 +911,7 @@ onMounted(() => {
 
       <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
+        <el-table-column type="index" label="#" width="46" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
         <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column label="生成时间" width="160">

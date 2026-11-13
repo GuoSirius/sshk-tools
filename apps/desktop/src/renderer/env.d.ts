@@ -100,7 +100,7 @@ interface Window {
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
       deletePoster(posterId: string): Promise<boolean>
-      exportFiles(payload: { posterId: string; dir: string }): Promise<{ dir: string; files: string[] }>
+      exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {
         file: string
         provider: 'cloud' | 'paddleocr' | 'manual'

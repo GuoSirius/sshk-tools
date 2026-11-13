@@ -96,7 +96,7 @@ const api = {
     savePosterPng: (payload: { posterId: string; base64: string }): Promise<string> =>
       invoke(IPC_CHANNELS.badgeSavePosterPng, payload),
     listPosters: (): Promise<unknown[]> => invoke(IPC_CHANNELS.badgeListPosters),
-    exportFiles: (payload: { posterId: string; dir: string }): Promise<{ dir: string; files: string[] }> =>
+    exportFiles: (payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }> =>
       invoke(IPC_CHANNELS.badgeExportFiles, payload),
     deletePoster: (posterId: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
