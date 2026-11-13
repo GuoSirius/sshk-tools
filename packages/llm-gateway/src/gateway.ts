@@ -4,7 +4,7 @@ function trimBase(url: string): string {
   return url.replace(/\/+$/, '')
 }
 
-function headers(provider: LlmProvider, apiKey?: string): Record<string, string> {
+function headers(apiKey?: string): Record<string, string> {
   const h: Record<string, string> = { 'content-type': 'application/json' }
   if (apiKey) h['authorization'] = `Bearer ${apiKey}`
   return h
@@ -16,7 +16,7 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   const stream = typeof onDelta === 'function'
   const res = await fetch(`${trimBase(provider.baseURL)}/chat/completions`, {
     method: 'POST',
-    headers: headers(provider, apiKey),
+    headers: headers(apiKey),
     signal,
     body: JSON.stringify({
       model: provider.model,
@@ -85,7 +85,7 @@ export async function listModels(provider: LlmProvider, apiKey?: string): Promis
   let res: Response
   try {
     res = await fetch(`${trimBase(provider.baseURL)}/models`, {
-      headers: headers(provider, apiKey),
+      headers: headers(apiKey),
       signal: AbortSignal.timeout(8000),
     })
   } catch (err) {
@@ -108,7 +108,7 @@ export async function healthCheck(provider: LlmProvider, apiKey?: string): Promi
   const started = performance.now()
   try {
     const res = await fetch(`${trimBase(provider.baseURL)}/models`, {
-      headers: headers(provider, apiKey),
+      headers: headers(apiKey),
       signal: AbortSignal.timeout(8000),
     })
     const latencyMs = Math.round(performance.now() - started)

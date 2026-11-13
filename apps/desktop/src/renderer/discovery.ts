@@ -1,6 +1,4 @@
 /// <reference path="../types/vite-glob.d.ts" />
-import type { Component } from 'vue'
-
 /**
  * 渲染层插件发现：与 main/discovery.ts 同一套约定，扫描各工具包自带的
  * 图标与页面组件。新增工具包放进 tools/ 后无需改宿主代码。

@@ -2,7 +2,6 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { now } from '@sshk/shared'
 import {
   edmOutputRel,
-  entityId,
   readOutput,
   writeOutput,
   type Brand,
