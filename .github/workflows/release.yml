@@ -49,6 +49,9 @@ jobs:
       - name: 门禁
         run: pnpm verify
 
+      - name: 清理陈旧产物（避免 stale dist 混入）
+        run: rm -rf dist
+
       - name: 构建三端产物
         run: pnpm --filter @sshk/desktop build
 

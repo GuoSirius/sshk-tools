@@ -245,6 +245,8 @@ if (!DRY_RUN) {
 /* ── 4. 先构建：vite 产物 + electron-builder 打包（失败自动回滚 bump） ── */
 if (!DRY_RUN) {
   try {
+    step('清理 dist/（避免陈旧产物混入本次发布）')
+    rmSync(join(ROOT, 'dist'), { recursive: true, force: true })
     step('pnpm build（main / preload / renderer）')
     shThrow('pnpm', ['build'])
     step('electron-builder 打包（--publish never，先验证可出包）')
@@ -309,7 +311,8 @@ if (!DRY_RUN) {
     console.log(`  1) 打开 https://github.com/GuoSirius/sshk-tools/releases/new?tag=${next}`)
   }
   console.log(`  2) 标题 ${next}；正文粘贴 ${bodyPath}（已只含本次版本段）`)
-  console.log(`  3) 上传 dist/ 下的 *.exe 与 latest.yml`)
+  console.log(`  3) 上传 dist/ 下的安装器（*-Setup-*.exe）/ 便携版（*-Portable-*.exe）与 latest.yml`)
+  console.log(`     ⚠️ 普通用户请下载「*-Setup-*.exe」安装；Portable 为免安装单文件、双击直接运行无安装向导`)
 } else {
   console.log(`\ndry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)
 }

@@ -369,7 +369,22 @@ onMounted(() => {
               <div class="chat-empty-desc">多轮 · 流式打字 · Markdown 回显；apiKey 在主进程注入，不落渲染层</div>
             </div>
             <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
-              <div class="chat-role">{{ m.role === 'user' ? '你' : '模型' }}</div>
+              <div class="chat-head">
+                <span class="chat-avatar" :class="m.role">
+                  <svg v-if="m.role === 'user'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="4" y="8" width="16" height="11" rx="2.5" />
+                    <path d="M12 8V4M9.5 4h5" />
+                    <circle cx="9" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
+                    <circle cx="15" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
+                    <path d="M2.5 13h1.5M20 13h1.5" />
+                  </svg>
+                </span>
+                <span class="chat-role">{{ m.role === 'user' ? '我' : (activeProvider ? activeProvider.model : 'AI 助手') }}</span>
+              </div>
               <div class="chat-body" :class="{ error: m.error }" v-html="renderMd(m.content)"></div>
             </div>
           </div>
@@ -589,7 +604,15 @@ onMounted(() => {
 .chat-msg { display: flex; flex-direction: column; max-width: 88%; }
 .chat-msg.user { align-self: flex-end; align-items: flex-end; }
 .chat-msg.assistant { align-self: flex-start; align-items: flex-start; }
-.chat-role { font-size: 11px; opacity: .6; margin-bottom: 2px; }
+.chat-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.chat-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.chat-avatar svg { width: 14px; height: 14px; display: block; }
+.chat-avatar.user { background: var(--el-color-primary-light-8); color: var(--el-color-primary); }
+.chat-avatar.assistant { background: rgba(128,128,128,.16); color: var(--el-color-info); }
+.chat-role { font-size: 12px; font-weight: 600; opacity: .75; }
 .chat-body {
   border-radius: 8px;
   padding: 8px 10px;

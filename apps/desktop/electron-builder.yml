@@ -37,6 +37,8 @@ win:
   # certificatePassword: ${env.WIN_CSC_KEY_PASSWORD}
 
 nsis:
+  # 安装器命名加 Setup 前缀，与 portable 免安装单文件明确区分，避免用户误下 portable（无安装向导）
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true   # 允许用户在安装时选择安装目录
   perMachine: true                           # 全机安装：写入 Program Files，需要管理员（UAC）
@@ -48,6 +50,11 @@ nsis:
   language: "2052"                           # 简体中文
   multiLanguageInstaller: true
   deleteAppDataOnUninstall: false            # 卸载保留模板/邮件/海报/配置
+
+# portable 免安装单文件：双击直接运行、无安装向导，每次启动自解压（首启较慢）。
+# 命名加 Portable 前缀，与上面的 Setup 安装器区分，避免误下载。
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}
 
 # ---------------- macOS ----------------
 # ⚠️ 系统硬限制：macOS 不允许应用配置"永久最高权限"——
