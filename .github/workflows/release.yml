@@ -85,8 +85,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      # conventional commits -> GitHub 自动生成 changelog / Release notes
+      # Release 正文用仓库 CHANGELOG.md 顶部段（release.mjs 生成的新格式本版本说明）
+      - name: 提取本版本 changelog
+        run: |
+          awk '/^## /{if (found) exit; found=1} found{print}' CHANGELOG.md > release-body.md
+
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release-body.md
           files: artifacts/*
