@@ -52,25 +52,6 @@
       ]
     },
     {
-      "id": "config-vision",
-      "label": "图片识别",
-      "fields": [
-        {
-          "key": "vision.provider", "label": "识别方式", "type": "select",
-          "options": [
-            { "label": "云端视觉模型", "value": "cloud" },
-            { "label": "本机 PaddleOCR", "value": "paddleocr" },
-            { "label": "仅人工校对", "value": "manual" }
-          ],
-          "hint": "云端模型直接复用「模型控制台」已配置的 Provider 与密钥，工具不再重复配置"
-        },
-        { "key": "vision.providerId", "label": "默认 Provider ID", "type": "string", "hint": "留空则用应用当前激活的 Provider；生成页可临时改选" },
-        { "key": "vision.modelOverride", "label": "默认模型名", "type": "string", "hint": "留空用 Provider 自带模型；生成页可下拉选真实 /models 或手填" },
-        { "key": "vision.paddleCommand", "label": "Python 绝对路径", "type": "string", "hint": "Anaconda 环境 python.exe 绝对路径，例如 D:\\Anaconda3\\python.exe；自查命令见生成页" },
-        { "key": "vision.paddleArgs", "label": "OCR 调用参数", "type": "string", "hint": "PaddleOCR 实际调用方式（脚本/模块/CLI）；支持双引号，{image} 替换为图片绝对路径" }
-      ]
-    },
-    {
       "id": "config-ocr",
       "label": "OCR 截图版式",
       "fields": [

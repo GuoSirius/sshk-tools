@@ -70,9 +70,14 @@ export function setupServices(): AppServices {
     if (!existsSync(secretsPath)) return {}
     try {
       const raw = readFileSync(secretsPath)
-      if (!safeStorage.isEncryptionAvailable()) return {}
+      if (!safeStorage.isEncryptionAvailable()) {
+        // 静默丢密钥会表现为「重启后配置失效」，必须把原因留在日志里
+        console.warn('[sshk] safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
+        return {}
+      }
       return JSON.parse(safeStorage.decryptString(raw)) as Record<string, string>
-    } catch {
+    } catch (err) {
+      console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
       return {}
     }
   }

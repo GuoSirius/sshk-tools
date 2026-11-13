@@ -47,11 +47,6 @@ const imageFiles = ref<string[]>([])
 const recognizing = ref(false)
 const visionRaw = ref('')
 const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT })
-const providerLabel = computed(() => ({
-  cloud: '云端视觉模型',
-  paddleocr: '本机 PaddleOCR',
-  manual: '仅人工校对',
-})[vision.provider])
 const activeProvider = computed(() => providers.value.find((p) => p._id === visionProviderId.value) ?? null)
 
 // 生成结果 / 海报列表
@@ -325,6 +320,22 @@ async function recognizeImages(): Promise<void> {
   }
 }
 
+/** 图片识别配置就地保存：不再跳工具配置页，识别方式 / Provider / 模型 / OCR 命令一处改完 */
+async function saveVisionConfig(): Promise<void> {
+  try {
+    await window.api.config.set('tools.badge-studio.vision', {
+      provider: vision.provider,
+      providerId: visionProviderId.value,
+      modelOverride: visionModel.value,
+      paddleCommand: vision.paddleCommand,
+      paddleArgs: vision.paddleArgs,
+    })
+    ElMessage.success('图片识别配置已保存为默认（OCR 版式仍在「工具配置 → OCR 截图版式」）')
+  } catch (err) {
+    ElMessage.error(`保存失败：${(err as Error).message}`)
+  }
+}
+
 async function copySelfCheck(): Promise<void> {
   await window.api.os.clipboardWrite(selfCheckCommand.value)
   ElMessage.success('自查命令已复制，请在 Anaconda 环境执行并把结果填入工具配置')
@@ -520,14 +531,14 @@ onMounted(() => {
                 <el-input v-model="row.url" size="small" @input="syncCsvFromRows" />
               </template>
             </el-table-column>
-            <el-table-column label="clicks" width="92">
+            <el-table-column label="clicks" width="112">
               <template #default="{ row }">
-                <el-input-number v-model="row.clicks" size="small" :min="0" :controls="false" @change="syncCsvFromRows" />
+                <el-input-number v-model="row.clicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
               </template>
             </el-table-column>
-            <el-table-column label="totalClicks" width="100">
+            <el-table-column label="totalClicks" width="120">
               <template #default="{ row }">
-                <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" @change="syncCsvFromRows" />
+                <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
               </template>
             </el-table-column>
             <el-table-column v-for="key in customMetricKeys" :key="key" min-width="100">
@@ -558,7 +569,15 @@ onMounted(() => {
         </div>
 
         <div class="panel">
-          <div class="panel-title">图片识别（{{ providerLabel }}）· 支持多选</div>
+          <div class="panel-title">图片识别 · 支持多选（配置就地修改，保存为默认后重启沿用）</div>
+          <div class="cfg-row">
+            <span>识别方式</span>
+            <el-radio-group v-model="vision.provider" size="small">
+              <el-radio-button value="cloud">云端模型</el-radio-button>
+              <el-radio-button value="paddleocr">本机 PaddleOCR</el-radio-button>
+              <el-radio-button value="manual">仅人工校对</el-radio-button>
+            </el-radio-group>
+          </div>
           <div class="cfg-row">
             <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
             <el-button size="small" type="primary" :loading="recognizing" @click="recognizeImages">识别并追加到表格</el-button>
@@ -606,22 +625,35 @@ onMounted(() => {
                 <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
               </el-select>
               <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
+              <span class="muted">端点与密钥来自「模型控制台」的同一份 Provider</span>
             </div>
-            <div class="hint">端点与密钥来自「模型控制台」的同一份 Provider，这里只选择、不重复配置；/models 拉取失败可直接手填模型名。</div>
           </template>
 
-          <template v-if="vision.provider === 'paddleocr'">
-            <div class="cfg-row"><span class="muted">命令：{{ vision.paddleCommand }} {{ vision.paddleArgs }}</span></div>
+          <template v-else-if="vision.provider === 'paddleocr'">
+            <div class="cfg-row">
+              <span>命令</span>
+              <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径" style="width: 250px" />
+              <el-input v-model="vision.paddleArgs" size="small" placeholder="适配器绝对路径 {image}" style="width: 250px" />
+            </div>
             <div class="cfg-row">
               <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>
-              <span class="muted">Python 路径 / PaddleOCR 版本 / 截图版式三项由本机自查后填入「工具配置」</span>
+              <span class="muted">Python 路径 / PaddleOCR 版本 / 截图版式三项由本机自查后填入</span>
             </div>
             <details>
               <summary class="muted" style="cursor: pointer">查看自查命令与当前版式</summary>
               <pre class="raw">{{ selfCheckCommand }}</pre>
             </details>
-            <div class="hint">版式配置（同行/千分位/合计行/列顺序）会由宿主自动以 --layout 注入适配器，不需手写在命令参数里。</div>
+            <div class="hint">版式配置（同行/千分位/合计行/列顺序）会由宿主自动以 --layout 注入适配器；精细版式在「工具配置 → OCR 截图版式」。</div>
           </template>
+
+          <div v-else class="hint">
+            仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
+          </div>
+
+          <div v-if="vision.provider !== 'manual'" class="cfg-row">
+            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
+            <span class="muted">不保存则本次会话内有效</span>
+          </div>
 
           <details v-if="visionRaw" style="margin-top: 6px">
             <summary class="muted" style="cursor: pointer">查看识别原文</summary>
@@ -768,6 +800,12 @@ onMounted(() => {
 }
 .stat-table {
   margin-top: 8px;
+}
+.stat-table :deep(.el-input-number) {
+  width: 100%;
+}
+.stat-table :deep(.el-input__inner) {
+  text-align: left;
 }
 .warn {
   color: var(--el-color-warning);
