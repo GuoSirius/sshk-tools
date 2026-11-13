@@ -49,3 +49,10 @@ export const POSTER_OUTPUT_FILES = {
   badged: 'badged.html',
   poster: 'poster.png',
 } as const
+
+/** 访问密钥解锁的 grant；工具声明 requiredGrant 后必须持有它才可见 */
+export const ACCESS_GRANT = 'tools.restricted'
+/** safeStorage 中应用访问密钥的条目名（密钥永不进入 settings.json） */
+export const ACCESS_KEY_SECRET_ID = 'app:accessKey'
+/** 图标未配置 / 配置无效时回退的系统默认图标 key */
+export const DEFAULT_TOOL_ICON = 'default'

@@ -80,6 +80,17 @@ interface Window {
       listPosters(): Promise<PosterRecord[]>
       deletePoster(posterId: string): Promise<boolean>
     }
+    tools: {
+      list(): Promise<import('@sshk/shared').ToolCatalogPayload>
+      setEnabled(id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload>
+      setGrant(id: string, grant: string): Promise<import('@sshk/shared').ToolCatalogPayload>
+      setOverrides(id: string, overrides: Record<string, string>): Promise<import('@sshk/shared').ToolCatalogPayload>
+      setDistribution(ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload>
+      cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>
+    }
+    accessKey: {
+      set(key: string): Promise<import('@sshk/shared').ToolCatalogPayload>
+    }
     edm: {
       api(action: string, data?: Record<string, unknown>): Promise<unknown>
     }

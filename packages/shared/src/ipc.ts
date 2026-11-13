@@ -35,6 +35,15 @@ export const IPC_CHANNELS = {
   edmRegenerate: 'edm:regenerate',
   /** M4/M5：EDM 全量能力走单通道 action 白名单（brands/tpl/frg/mail/share） */
   edmApi: 'edm:api',
+  /** 工具目录：主进程单一裁决，渲染层只拿可见性结果 */
+  toolsList: 'tools:list',
+  toolsSetEnabled: 'tools:setEnabled',
+  toolsSetGrant: 'tools:setGrant',
+  toolsSetOverrides: 'tools:setOverrides',
+  toolsSetDistribution: 'tools:setDistribution',
+  toolsCleanupOrphans: 'tools:cleanupOrphans',
+  /** 应用访问密钥（写入 safeStorage，明文永不下发） */
+  accessKeySet: 'accessKey:set',
   badgeGenerate: 'badge:generate',
   badgeRegenerate: 'badge:regenerate',
   badgeParseDatasource: 'badge:parseDatasource',

@@ -70,6 +70,24 @@ const api = {
     deletePoster: (posterId: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
   },
+  tools: {
+    /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
+    list: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.toolsList),
+    setEnabled: (id: string, enabled: boolean): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsSetEnabled, id, enabled),
+    setGrant: (id: string, grant: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsSetGrant, id, grant),
+    setOverrides: (id: string, overrides: Record<string, string>): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsSetOverrides, id, overrides),
+    setDistribution: (ids: string[] | null): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsSetDistribution, ids),
+    cleanupOrphans: (): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.toolsCleanupOrphans),
+  },
+  accessKey: {
+    /** 仅写入 safeStorage；明文不会回传渲染层 */
+    set: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.accessKeySet, key),
+  },
   edm: {
     /** action 白名单单通道：brands / tpl / frg / mail / share */
     api: (action: string, data?: Record<string, unknown>): Promise<unknown> =>

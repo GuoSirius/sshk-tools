@@ -21,6 +21,8 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
 
 /**
  * 配置服务（数据契约 §3）：settings.json 两层结构 `app.* / tools.<id>.*`。
+ * - app.*：应用/系统级（主题、产物目录、访问密钥 hash、分发白名单、工具元数据覆盖）
+ * - tools.<id>.*：工具自有配置 + enabled / requiredGrant 运行时策略
  * - 写入原子化（tmp + rename）；目录自动创建（先检测后创建）
  * - 缺字段逐级补默认值；非法 JSON 视为损坏并回退默认值
  * - 写成功后触发 onChange（主进程负责经 IPC 广播 config:changed）
@@ -91,6 +93,32 @@ export class ConfigService {
     for (const fn of this.listeners) fn(ns, parts.slice(1).join('.'), value)
   }
 
+  /** 删除一个配置段（清理已删除工具留下的孤儿配置） */
+  remove(path: string): void {
+    const parts = path.split('.')
+    const ns = parts[0]
+    if (ns !== 'app' && ns !== 'tools') {
+      throw new Error(`配置命名空间仅限 app / tools: ${path}`)
+    }
+    if (parts.length < 2) throw new Error(`配置删除必须带 key: ${path}`)
+    const section = this.data[ns]
+    if (!section) return
+    let cur = section
+    for (let i = 1; i < parts.length - 1; i++) {
+      const next = cur[parts[i]!]
+      if (!isPlainObject(next)) return
+      cur = next
+    }
+    delete cur[parts[parts.length - 1]!]
+    this.persist()
+    for (const fn of this.listeners) fn(ns, parts.slice(1).join('.'), undefined)
+  }
+
+  /** settings.json 中已有的 tools.<id>，用于孤儿配置识别 */
+  listToolIds(): string[] {
+    return Object.keys(this.data.tools ?? {})
+  }
+
   onChanged(fn: ConfigListener): () => void {
     this.listeners.add(fn)
     return () => this.listeners.delete(fn)
@@ -120,13 +148,23 @@ export const DEFAULT_SETTINGS: Settings = {
     tray: true,
     window: { width: 1440, height: 900, maximized: false },
     llm: { activeProviderId: null, providers: [] },
+    /** 访问密钥的 sha256（仅存摘要，明文只进 safeStorage） */
+    accessKeyHash: null,
+    /** 分发白名单；null = 全部工具 */
+    distribution: { includeTools: null },
+    /** 工具元数据覆盖：app.toolOverrides.<id> = { name, description, category, icon } */
+    toolOverrides: {},
   },
   tools: {
     'edm-studio': {
+      enabled: true,
+      requiredGrant: '',
       render: { strict: true, autoEscape: true },
-      export: { defaultStages: ['final'] },
+      export: { defaultStages: ['final'], defaultFileName: 'edm.html', openAfterGenerate: false },
     },
     'badge-studio': {
+      enabled: true,
+      requiredGrant: '',
       badgeAttr: 'data-edm-badge',
       badgeStyle: { background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 },
       clicksField: 'clicks',
@@ -136,7 +174,13 @@ export const DEFAULT_SETTINGS: Settings = {
       recentHtmls: [],
       commonHtmlDir: null,
     },
-    'model-console': {},
+    'model-console': {
+      enabled: true,
+      requiredGrant: '',
+      defaultProviderId: '',
+      chatTimeoutMs: 30000,
+      streamEnabled: true,
+    },
   },
 }
 

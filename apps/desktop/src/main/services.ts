@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { app, safeStorage } from 'electron'
 import {
   ConfigService,
@@ -9,6 +10,7 @@ import {
   ensureOutputDirs,
   resolveOutputRoot,
 } from '@sshk/repository'
+import { ACCESS_GRANT, ACCESS_KEY_SECRET_ID } from '@sshk/shared'
 
 export interface AppServices {
   config: ConfigService
@@ -18,11 +20,19 @@ export interface AppServices {
   /** 按 providerId 读取 apiKey（safeStorage 解密；永不下发渲染层） */
   getApiKey: (providerId: string) => string
   setApiKey: (providerId: string, apiKey: string) => void
+  /** 应用访问密钥：写入 safeStorage，settings 只留 sha256 摘要 */
+  setAccessKey: (key: string) => void
+  /** 权限裁决输入：是否有效 + 已持有的 grants（不含明文） */
+  getAccessKeyState: () => { hasAccessKey: boolean; grants: string[] }
   /** 全量密钥 JSON（zip 导出加密迁移用；默认导出路径拿不到它） */
   exportSecretsJson: () => string
 }
 
 const PROVIDER_ID_RE = /^prv_[0-9a-z]+$/
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex')
+}
 
 /**
  * 应用级服务装配（M3 → 主进程）：
@@ -70,6 +80,28 @@ export function setupServices(): AppServices {
       else secrets[providerId] = apiKey
       saveSecrets(secrets)
     },
-    exportSecretsJson: () => JSON.stringify({ providers: Object.entries(loadSecrets()).map(([id, apiKey]) => ({ _id: id, apiKey })) }),
+    setAccessKey: (key) => {
+      const secrets = loadSecrets()
+      if (!key) {
+        delete secrets[ACCESS_KEY_SECRET_ID]
+        config.set('app.accessKeyHash', null)
+      } else {
+        secrets[ACCESS_KEY_SECRET_ID] = key
+        config.set('app.accessKeyHash', sha256(key))
+      }
+      saveSecrets(secrets)
+    },
+    getAccessKeyState: () => {
+      const key = loadSecrets()[ACCESS_KEY_SECRET_ID] ?? ''
+      const hash = config.get('app.accessKeyHash') as string | null
+      const valid = Boolean(key && hash && sha256(key) === hash)
+      return { hasAccessKey: valid, grants: valid ? [ACCESS_GRANT] : [] }
+    },
+    // 应用访问密钥不参与 provider 迁移，避免导入后被误当成模型密钥
+    exportSecretsJson: () => JSON.stringify({
+      providers: Object.entries(loadSecrets())
+        .filter(([id]) => !id.startsWith('app:'))
+        .map(([id, apiKey]) => ({ _id: id, apiKey })),
+    }),
   }
 }
