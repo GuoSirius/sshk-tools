@@ -26,6 +26,15 @@ const view = computed(() => props.menu ?? 'generate')
 const badgeAttr = ref('data-edm-badge')
 // 角标样式 / URL 归一 / 海报尺寸全部来自工具配置，生成页不再写死
 const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 })
+// 角标默认位置（9 位置）来自工具配置，与 data-edm-badge 同源
+const posterName = ref("")
+const badgePositionText = ref('top-right')
+const badgePositionImage = ref('center')
+const badgePositionOptions = [
+  { label: '左上', value: 'top-left' }, { label: '上中', value: 'top-center' }, { label: '右上', value: 'top-right' },
+  { label: '左中', value: 'left-center' }, { label: '居中', value: 'center' }, { label: '右中', value: 'right-center' },
+  { label: '左下', value: 'bottom-left' }, { label: '下中', value: 'bottom-center' }, { label: '右下', value: 'bottom-right' },
+]
 const urlNorm = reactive({ stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true })
 const posterWidth = ref(680)
 const captureScale = ref(2)
@@ -121,6 +130,8 @@ async function loadConfigAndRecent(): Promise<void> {
   clicksField.value = await textConfig('clicksField', 'clicks')
   const savedStyle = (await window.api.config.get('tools.badge-studio.badgeStyle')) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
+  badgePositionText.value = String(await window.api.config.get('tools.badge-studio.badgePositionText')) || 'top-right'
+  badgePositionImage.value = String(await window.api.config.get('tools.badge-studio.badgePositionImage')) || 'center'
   const savedNorm = (await window.api.config.get('tools.badge-studio.urlNorm')) as Partial<typeof urlNorm> | null
   if (savedNorm && typeof savedNorm === 'object') Object.assign(urlNorm, savedNorm)
   posterWidth.value = Number(await window.api.config.get('tools.badge-studio.posterWidth')) || 680
@@ -404,7 +415,7 @@ async function generate(): Promise<void> {
   }
   generating.value = true
   try {
-    const name = htmlPath.value.split(/[\\/]/).pop() ?? `海报 ${new Date().toLocaleString('sv-SE')}`
+    const name = posterName.value.trim() || htmlPath.value.split(/[\\/]/).pop()?.replace(/\.html?$/i, "") || `海报 ${new Date().toLocaleString("sv-SE")}`
     const res = await window.api.badge.generate({
       name,
       sourceHtml: pastedHtml.value,
@@ -416,6 +427,7 @@ async function generate(): Promise<void> {
         clicksField: clicksField.value,
         urlNorm: { ...urlNorm },
         badgeStyle: { ...badgeStyle },
+        defaultPositions: { text: badgePositionText.value as never, image: badgePositionImage.value as never },
       },
     })
     currentPosterId.value = res.posterId
@@ -875,6 +887,21 @@ onMounted(() => {
           <div class="cfg-row">
             <span>属性名</span>
             <el-input v-model="badgeAttr" size="small" style="width: 180px" />
+          </div>
+          <div class="cfg-row">
+            <span>海报名</span>
+            <el-input v-model="posterName" size="small" placeholder="海报名称（列表与导出文件名）" style="max-width: 320px" />
+          </div>
+          <div class="cfg-row">
+            <span>文本位置</span>
+            <el-select v-model="badgePositionText" size="small" style="width: 160px">
+              <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+            <span>图片位置</span>
+            <el-select v-model="badgePositionImage" size="small" style="width: 160px">
+              <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+            <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
           </div>
           <div class="cfg-row">
             <span>数值列</span>

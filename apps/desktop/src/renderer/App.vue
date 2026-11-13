@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-  computed, onBeforeUnmount, onMounted, ref, watch,
+  computed, nextTick, onBeforeUnmount, onMounted, ref, watch,
   type Ref,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -41,6 +41,18 @@ let hoverTimer: number | undefined
 
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
 const currentTool = computed(() => byId.value.get(activeToolId.value ?? '') ?? null)
+// 侧栏分类行自动循环滚动（内容超宽才启动；hover 暂停）
+const sidebarMarqueeRef = ref<HTMLElement | null>(null)
+const sidebarMarqueeRun = ref(false)
+function measureMarquee(): void {
+  void nextTick(() => {
+    const el = sidebarMarqueeRef.value
+    if (!el) { sidebarMarqueeRun.value = false; return }
+    sidebarMarqueeRun.value = el.scrollWidth > el.clientWidth + 2
+  })
+}
+watch([currentTool, sidebarCollapsed], () => measureMarquee(), { immediate: true })
+onMounted(() => { void nextTick(measureMarquee) })
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
 // 渲染插件按清单动态加载，单个工具组件失败只影响它自己
 const toolView = computed(() => currentTool.value ? toolComponent(currentTool.value.id) : null)
@@ -247,7 +259,14 @@ onMounted(async () => {
             <ToolIcon :icon="currentTool.icon" :tool-id="currentTool.id" :name="currentTool.name" :size="28" />
             <div class="sidebar-head-text">
               <strong>{{ currentTool.name }}</strong>
-              <small :title="currentTool.categories.join(' / ')">{{ currentTool.categories.join(' / ') }}</small>
+              <small
+                ref="sidebarMarqueeRef"
+                class="sidebar-marquee"
+                :class="{ running: sidebarMarqueeRun }"
+                :title="currentTool.categories.join(' / ')"
+              >
+                <span class="sidebar-marquee-track">{{ currentTool.categories.join(" / ") }}&nbsp;&nbsp;&nbsp;&nbsp;{{ currentTool.categories.join(" / ") }}</span>
+              </small>
             </div>
           </div>
           <SidebarMenu

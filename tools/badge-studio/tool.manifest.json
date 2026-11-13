@@ -32,6 +32,8 @@
       "label": "角标",
       "fields": [
         { "key": "badgeAttr", "label": "badge 属性", "type": "string", "hint": "注入到 HTML 的自定义属性名" },
+        { "key": "badgePositionText", "label": "文本链接默认位置", "type": "select", "options": [{"label":"左上","value":"top-left"},{"label":"上中","value":"top-center"},{"label":"右上","value":"top-right"},{"label":"左中","value":"left-center"},{"label":"居中","value":"center"},{"label":"右中","value":"right-center"},{"label":"左下","value":"bottom-left"},{"label":"下中","value":"bottom-center"},{"label":"右下","value":"bottom-right"}], "hint": "未手写 data-badge-position 的文本类 <a> 的角标位置" },
+        { "key": "badgePositionImage", "label": "图片链接默认位置", "type": "select", "options": [{"label":"左上","value":"top-left"},{"label":"上中","value":"top-center"},{"label":"右上","value":"top-right"},{"label":"左中","value":"left-center"},{"label":"居中","value":"center"},{"label":"右中","value":"right-center"},{"label":"左下","value":"bottom-left"},{"label":"下中","value":"bottom-center"},{"label":"右下","value":"bottom-right"}], "hint": "带 <img> 的 <a> 的角标位置；<a> 上手写的 data-badge-position 优先级最高" },
         {
           "key": "clicksField", "label": "角标数值列", "type": "string",
           "hint": "clicks / totalClicks，或表格里任意自定义数值列名"
@@ -75,7 +77,9 @@
     "requiredGrant": "",
     "dependsOn": [],
     "badgeAttr": "data-edm-badge",
-    "badgeStyle": { "background": "#e60012", "color": "#fff", "size": 18, "offsetY": -9, "offsetX": -11 },
+    "badgePositionText": "top-right",
+      "badgePositionImage": "center",
+      "badgeStyle": { "background": "#e60012", "color": "#fff", "size": 18, "offsetY": -9, "offsetX": -11 },
     "clicksField": "clicks",
     "urlNorm": {
       "stripUtm": true, "stripHash": true, "stripTrailingSlash": true,

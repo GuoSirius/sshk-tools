@@ -119,6 +119,22 @@ body {
   scrollbar-width: none;
 }
 .sidebar-head-text small::-webkit-scrollbar { display: none; }
+/* 分类行超宽时自动循环滚动（hover 暂停）；不超宽则静止 */
+.sidebar-marquee-track {
+  display: inline-block;
+  animation: sshk-marquee 14s linear infinite;
+  animation-play-state: paused;
+}
+.sidebar-marquee.running .sidebar-marquee-track {
+  animation-play-state: running;
+}
+.sidebar-marquee:hover .sidebar-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes sshk-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
 .tool-sidebar.is-narrow .sidebar-head { padding: 0 6px 12px; justify-content: center; }
 .tool-sidebar.is-narrow .sidebar-head-text {
   max-width: 0;

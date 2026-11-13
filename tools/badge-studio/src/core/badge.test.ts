@@ -7,6 +7,7 @@ const cfg: BadgeInjectConfig = {
   clicksField: 'clicks',
   urlNorm: { stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true },
   badgeStyle: { background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 },
+  defaultPositions: { text: 'top-right', image: 'center' },
 }
 
 const stats = [{ url: 'https://a.com/p/1?utm_source=w', clicks: 12, totalClicks: 30 }]
@@ -59,6 +60,17 @@ describe('badge 注入（严格门控）', () => {
 
     const customHtml = '<a href="https://a.com/p/1" data-edm-badge="" data-badge-position="bottom-left">A</a>'
     expect(injectBadges(customHtml, stats, cfg).html).toContain('data-badge-position="bottom-left"')
+  })
+
+  it('默认位置来自工具配置（data-badge-position 配置化），显式属性仍最优先', () => {
+    const html = '<a href="https://a.com/p/1" data-edm-badge="">文本</a><a href="https://a.com/p/1?utm_source=x" data-edm-badge=""><img src="x.png"></a>'
+    const configured = { ...cfg, defaultPositions: { text: 'bottom-left' as const, image: 'left-center' as const } }
+    const { html: out } = injectBadges(html, stats, configured)
+    expect(out).toContain('data-badge-position="bottom-left"')
+    expect(out).toContain('data-badge-position="left-center"')
+    // <a> 手写 data-badge-position 覆盖配置
+    const customHtml = '<a href="https://a.com/p/1" data-edm-badge="" data-badge-position="center">A</a>'
+    expect(injectBadges(customHtml, stats, configured).html).toContain('data-badge-position="center"')
   })
 
   it('一对多：同一 URL 命中多个 <a> 时计数累加', () => {

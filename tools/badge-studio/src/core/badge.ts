@@ -16,6 +16,8 @@ export interface BadgeInjectConfig {
   clicksField: string
   urlNorm: UrlNormConfig
   badgeStyle: BadgeStyle
+  /** 默认位置（来自工具配置）：文本 a 与图片 a 各自的出厂角标位置 */
+  defaultPositions: { text: BadgePosition; image: BadgePosition }
 }
 
 /** 角标锚点位置：四角 + 四边中点 + 中心；写入 <a data-badge-position>，包内作者可手动覆盖 */
@@ -87,8 +89,8 @@ export function injectBadges(html: string, stats: StatRow[], cfg: BadgeInjectCon
 
     const hasImage = $(el).find('img').length > 0
     const declared = $(el).attr('data-badge-position') as BadgePosition | undefined
-    const position: BadgePosition =
-      declared && POSITION_STYLES[declared] ? declared : hasImage ? 'center' : 'top-right'
+    const fallback = hasImage ? cfg.defaultPositions.image : cfg.defaultPositions.text
+    const position: BadgePosition = declared && POSITION_STYLES[declared] ? declared : fallback
     $(el).attr('data-badge-position', position)
 
     $(el).append(
