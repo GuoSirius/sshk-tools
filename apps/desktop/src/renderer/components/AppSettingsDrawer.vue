@@ -85,6 +85,10 @@ const devState = ref<{ available: boolean; repoRoot: string | null; reason: stri
 const manifestOpen = ref(false)
 const manifestToolId = ref('')
 function openManifest(tool: ToolRuntimeState): void {
+  if (!devState.value.available) {
+    ElMessage.warning(`开发者工具不可用：${devState.value.reason || '当前为打包版或未找到源码仓库'}`)
+    return
+  }
   manifestToolId.value = tool.id
   manifestOpen.value = true
 }
@@ -164,6 +168,8 @@ async function saveDistribution(): Promise<void> {
 }
 
 // ── 备份：settings + NeDB + 产物 → zip（导入含快照回滚与密钥迁移） ──
+/** D18 密钥迁移口令：仅当 SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1 启动时主进程才采用；为空则密钥不加密直存 */
+const migrationPassphrase = ref('')
 async function exportBackup(): Promise<void> {
   const save = await window.api.os.pickSave({
     fileName: `sshk-tools-backup-${new Date().toLocaleDateString('sv-SE')}.zip`,
@@ -171,7 +177,7 @@ async function exportBackup(): Promise<void> {
   })
   if (!save) return
   try {
-    const { counts } = (await window.api.backup.export(save)) as { counts: Record<string, number> }
+    const { counts } = (await window.api.backup.export(save, migrationPassphrase.value || undefined)) as { counts: Record<string, number> }
     const summary = Object.entries(counts).map(([k, v]) => `${k} ${v} 项`).join(' / ')
     ElMessage.success(`备份已导出：${save}（${summary}）`)
   } catch (err) {
@@ -182,8 +188,8 @@ async function importBackup(): Promise<void> {
   const [zip] = await window.api.os.pickFile({ filters: [{ name: '备份包', extensions: ['zip'] }] })
   if (!zip) return
   try {
-    const result = (await window.api.backup.import(zip)) as { secretsRestored: number }
-    ElMessage.success(`导入完成${result.secretsRestored ? `，已还原 ${result.secretsRestored} 个密钥` : ''}；重启应用后数据完全生效`)
+    const result = (await window.api.backup.import(zip, migrationPassphrase.value || undefined)) as { secretsRestored: number; secretsMessage?: string }
+    ElMessage.success(`导入完成${result.secretsMessage ? `：${result.secretsMessage}` : ''}；重启应用后数据完全生效`)
   } catch (err) {
     ElMessage.error(`导入失败：${(err as Error).message}`)
   }
@@ -477,8 +483,7 @@ async function cleanupOrphans(): Promise<void> {
                     size="small"
                     type="success"
                     text
-                    :disabled="!devState.available"
-                    :title="devState.reason"
+                    :title="devState.available ? '打开工具清单配置与打包表单' : devState.reason"
                     @click="openManifest(tool)"
                   >
                     配置
@@ -583,6 +588,11 @@ async function cleanupOrphans(): Promise<void> {
                   <el-button size="small" type="info" @click="importBackup">导入</el-button>
                 </div>
               </div>
+              <div class="kv-line">
+                <span>迁移口令</span>
+                <el-input v-model="migrationPassphrase" size="small" type="password" show-password clearable placeholder="留空 = 密钥不加密" style="width: 230px" />
+              </div>
+              <div class="hint">D18：仅当以 SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1 启动时口令才生效（加密备份内密钥，导入时用同一口令还原）；开关关闭时口令被忽略、密钥不迁移。跨设备迁移需两端同开。</div>
             </section>
 
             <section class="settings-card">
