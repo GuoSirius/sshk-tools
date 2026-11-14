@@ -50,6 +50,7 @@ jobs:
         run: pnpm verify
 
       - name: 清理陈旧产物（避免 stale dist 混入）
+        shell: bash
         run: rm -rf dist
 
       - name: 构建三端产物
@@ -96,5 +97,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # tag 推送触发时用 github.ref_name；手动 dispatch 时用输入的 tag（修复后重跑需指定 v1.1.0）
+          tag_name: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
           body_path: release-body.md
           files: artifacts/*
