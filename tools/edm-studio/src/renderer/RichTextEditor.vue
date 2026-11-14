@@ -18,9 +18,8 @@ import {
  *  - wangEditor 的 fullScreen() 要求「toolbar 与 textarea 的父节点一致」，否则抛
  *    "不能设置全屏，因为 toolbar DOM 父节点和 textarea DOM 父节点不一致"。
  *    故 toolbar 与编辑器用【同一容器 selector】创建，二者父节点一致，全屏校验通过。
- *  - wangEditor 给容器加 .w-e-full-screen-container（position:fixed 但无 z-index，且若祖先有
- *    transform 会被局限）。故监听 fullScreen/unFullScreen，把容器临时挂到 body 并补 z-index，
- *    确保真正铺满视口、不被应用外壳遮挡。
+ *  - wangEditor 给容器加 .w-e-full-screen-container（position:fixed 但无 z-index），
+ *    用 CSS 补 z-index 使其压过应用外壳；不手动搬移 DOM 节点（会破坏 Vue 虚拟 DOM 导致编辑器丢失）。
  */
 const props = withDefaults(
   defineProps<{ modelValue?: string; readonly?: boolean }>(),
@@ -31,38 +30,12 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 const editorRef = shallowRef<IDomEditor>()
 const containerEl = ref<HTMLElement | null>(null)
 
-// 全屏时挂到 body 用的回挂信息
-let savedParent: HTMLElement | null = null
-let savedNext: Node | null = null
-let fullScreenOn = false
-
 const editorConfig: Partial<IEditorConfig> = {
   placeholder: '请输入内容…',
   readOnly: props.readonly,
   onChange(editor: IDomEditor) {
     emit('update:modelValue', editor.getHtml())
   },
-}
-
-// wangEditor 的 on/off 来自 emitter，用最小类型断言避免公共类型差异
-type EditorEvents = { on: (t: string, fn: () => void) => void; off: (t: string, fn: () => void) => void }
-
-function enterFullScreen(): void {
-  const el = containerEl.value
-  if (!el || fullScreenOn) return
-  fullScreenOn = true
-  savedParent = el.parentNode as HTMLElement
-  savedNext = el.nextSibling
-  document.body.appendChild(el)
-}
-function exitFullScreen(): void {
-  const el = containerEl.value
-  if (!el || !fullScreenOn || !savedParent) return
-  if (savedNext && savedNext.parentNode === savedParent) savedParent.insertBefore(el, savedNext)
-  else savedParent.appendChild(el)
-  savedParent = null
-  savedNext = null
-  fullScreenOn = false
 }
 
 onMounted(() => {
@@ -81,9 +54,6 @@ onMounted(() => {
     config: {} as Partial<IToolbarConfig>,
     mode: 'default',
   })
-  const ev = editor as unknown as EditorEvents
-  ev.on('fullScreen', enterFullScreen)
-  ev.on('unFullScreen', exitFullScreen)
 })
 
 // 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环
@@ -106,10 +76,6 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  const ed = editorRef.value as unknown as EditorEvents | undefined
-  if (fullScreenOn) exitFullScreen()
-  ed?.off('fullScreen', enterFullScreen)
-  ed?.off('unFullScreen', exitFullScreen)
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
@@ -152,7 +118,7 @@ onBeforeUnmount(() => {
   --w-e-modal-button-border-color: #444;
 }
 
-/* 全屏：wangEditor 只给 position:fixed（无 z-index），补 z-index 并铺满视口背景 */
+/* 全屏：wangEditor 只给 position:fixed（无 z-index），补 z-index 压过应用外壳 */
 .rich.w-e-full-screen-container {
   z-index: 9999 !important;
   background-color: var(--w-e-toolbar-bg-color);
