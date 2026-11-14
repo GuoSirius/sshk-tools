@@ -26,6 +26,8 @@ import { ShareServer } from './share.js'
 export interface EdmIpcDeps {
   repository: Repository
   outputRoot: string
+  /** 应用配置（只读）；系统内容编辑门控用（R12：!isPackaged || app.developerMode） */
+  config?: { get(key: string): unknown }
 }
 
 type Payload = Record<string, unknown>
@@ -40,7 +42,11 @@ const ACTIONS = new Set([
   'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:readFinal', 'mail:export',
   'share:start', 'share:stop', 'share:status',
   'system:load', 'system:render', 'system:readFile',
+  'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
 ])
+
+/** 系统内容文件允许的扩展名（白名单防误写垃圾文件；css 文件名随意） */
+const SYSTEM_FILE_EXTS = new Set(['.css', '.yaml', '.yml', '.njk'])
 
 /**
  * 系统内容根（R6 双模解析）：
@@ -82,6 +88,26 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   seedSystemContent(repo, resolveEdmRoot()).catch((err: unknown) =>
     console.warn('[edm] 系统内容播种失败：', err instanceof Error ? err.message : err),
   )
+
+  // ── 系统内容编辑门控（R12）：dev 全权；打包版需 developerMode。main 端校验为安全边界 ──
+  function systemEditable(): boolean {
+    if (!app.isPackaged) return true
+    return deps.config?.get('app.developerMode') === true
+  }
+  function assertSystemEditable(): void {
+    if (!systemEditable()) throw new Error('系统内容在当前模式下只读（打包版需开启开发者模式）')
+  }
+  /** 限制在 edm 根内（越权即拒）；返回绝对路径 */
+  function confine(file: string): string {
+    const root = resolveEdmRoot()
+    const abs = path.resolve(root, file)
+    if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('越权路径')
+    return abs
+  }
+  /** 相对路径规范化（POSIX 分隔，渲染层统一用 /） */
+  function relOf(file: string): string {
+    return path.resolve(resolveEdmRoot(), file).split(path.sep).join('/')
+  }
 
   ipc.handle(IPC_CHANNELS.edmApi, async (_event: IpcMainInvokeEvent, payload: { action: string; data?: Payload }) => {
     const { action, data = {} as Payload } = payload
@@ -379,6 +405,44 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         } catch {
           return null
         }
+      }
+      // ── 系统内容编辑（R12–R14）：写/改名/删，全部过门控 + 根内限制 ──
+      case 'system:canEdit':
+        return { canEdit: systemEditable() }
+      case 'system:writeFile': {
+        assertSystemEditable()
+        const file = str(data, 'file')
+        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new Error(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`)
+        const abs = confine(file)
+        await fs.mkdir(path.dirname(abs), { recursive: true })
+        await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')
+        return true
+      }
+      case 'system:rename': {
+        assertSystemEditable()
+        const file = str(data, 'file')
+        const newName = str(data, 'newName').trim()
+        if (!newName || /[/\\]|\.\./.test(newName)) throw new Error('新名称非法（不得含路径分隔符）')
+        const abs = confine(file)
+        const dst = path.join(path.dirname(abs), newName)
+        if (dst !== abs && !dst.startsWith(resolveEdmRoot() + path.sep)) throw new Error('越权路径')
+        let exists = false
+        try {
+          await fs.access(dst)
+          exists = true
+        } catch {
+          /* 不存在即目标可用 */
+        }
+        if (exists) throw new Error(`「${newName}」已存在，请先处理同名冲突`)
+        await fs.rename(abs, dst)
+        return relOf(dst)
+      }
+      case 'system:remove': {
+        assertSystemEditable()
+        const abs = confine(str(data, 'file'))
+        if (abs === resolveEdmRoot()) throw new Error('不能删除 EDM 根目录')
+        await fs.rm(abs, { recursive: true, force: false })
+        return true
       }
       default:
         throw new Error(`未实现: ${action}`)

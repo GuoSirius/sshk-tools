@@ -46,6 +46,15 @@ async function findSource(p: string): Promise<{ name: string; path: string } | n
   }
 }
 
+/** 某层级 css/ 目录下的文件名列表（不递归；目录不存在返回空，v5 各级 css 目录） */
+async function cssFilesIn(dir: string): Promise<string[]> {
+  try {
+    return (await fs.readdir(dir)).filter((f) => f.endsWith('.css')).sort()
+  } catch {
+    return []
+  }
+}
+
 async function collectCss(dir: string): Promise<string[]> {
   const out: string[] = []
   const walk = async (d: string, rel: string): Promise<void> => {
@@ -107,11 +116,11 @@ async function loadVersions<TMeta>(familyDir: string): Promise<VersionNode<TMeta
 
 async function loadFamily<TFamily, TVersion>(
   familyDir: string,
-): Promise<{ meta: TFamily; versions: VersionNode<TVersion>[] } | null> {
+): Promise<{ meta: TFamily; css: string[]; versions: VersionNode<TVersion>[] } | null> {
   const meta = await readYaml<TFamily>(path.join(familyDir, 'meta.yaml'))
   if (meta == null) return null
   const versions = await loadVersions<TVersion>(familyDir)
-  return { meta, versions }
+  return { meta, css: await cssFilesIn(path.join(familyDir, 'css')), versions }
 }
 
 async function loadBrand(brandDir: string): Promise<BrandNode | null> {
@@ -133,7 +142,16 @@ async function loadBrand(brandDir: string): Promise<BrandNode | null> {
   }
 
   const brandCss = (await collectCss(path.join(brandDir, 'css'))).map((p) => path.relative(brandDir, path.join(brandDir, p)))
-  return { code: meta.code, path: brandDir, meta, css: brandCss, fragments: fragmentFamilies, templates: templateFamilies }
+  return {
+    code: meta.code,
+    path: brandDir,
+    meta,
+    css: brandCss,
+    fragmentCss: await cssFilesIn(path.join(brandDir, 'fragment', 'css')),
+    templateCss: await cssFilesIn(path.join(brandDir, 'template', 'css')),
+    fragments: fragmentFamilies,
+    templates: templateFamilies,
+  }
 }
 
 /** 解析系统内容根目录 → 完整内存模型（R3）。root 由调用方注入（builtin/dev 或 external，R6）。 */

@@ -18,6 +18,8 @@ export interface PluginDeps {
   repository: Repository
   outputRoot: string
   host: ToolHostCapabilities
+  /** 应用配置（只读快照语义）；内置工具用于功能门控（如 edm 系统内容编辑需 developerMode） */
+  config: { get(key: string): unknown }
 }
 
 /**
@@ -47,6 +49,8 @@ export interface PluginHost {
   repository: Repository
   outputRoot: string
   host: ToolHostCapabilities
+  /** 应用配置（只读）；随 PluginDeps 下发内置工具，用于功能门控 */
+  config: { get(key: string): unknown }
   /** 每次 IPC 调用时实时裁决：禁用 / 缺依赖 / 缺权限的工具拒绝服务 */
   isActive: (toolId: string) => boolean
 }
@@ -232,6 +236,7 @@ export async function loadToolPlugins(
           repository: host.repository,
           outputRoot: host.outputRoot,
           host: host.host,
+          config: host.config,
         })
       } else if (record) {
         // 运行时已安装外部包：按 sandbox 选择加载方式

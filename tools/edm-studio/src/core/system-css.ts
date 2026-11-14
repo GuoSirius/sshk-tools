@@ -46,12 +46,14 @@ export interface SystemSelector {
 }
 
 /**
- * 按就近原则收集某版本相关的 css 文件绝对路径，顺序：顶层 → 品牌 → 族 → 版本。
+ * 按就近原则收集某版本相关的 css 文件绝对路径，顺序：顶层 → 品牌 → 类目 → 族 → 版本。
+ * 类目级 = <brand>/<kind>/css/（v5：作用域覆盖该类全部族/版本）。
  */
 export async function collectSystemCss(root: string, sel: SystemSelector): Promise<string[]> {
   const levels = [
     path.join(root, 'css'),
     path.join(root, sel.brandCode, 'css'),
+    path.join(root, sel.brandCode, sel.kind, 'css'),
     path.join(root, sel.brandCode, sel.kind, sel.familyCode, 'css'),
   ]
   if (sel.versionDir) levels.push(path.join(root, sel.brandCode, sel.kind, sel.familyCode, sel.versionDir, 'css'))

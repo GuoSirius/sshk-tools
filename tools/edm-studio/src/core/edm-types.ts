@@ -85,6 +85,8 @@ export interface FragmentFamilyNode {
   code: string
   path: string
   meta: FragmentFamilyMeta
+  /** 族级 css/ 下的文件名列表（css/ 目录根相对路径 = path + '/css/' + 文件名） */
+  css: string[]
   versions: VersionNode<FragmentVersionMeta>[]
 }
 
@@ -92,6 +94,8 @@ export interface TemplateFamilyNode {
   code: string
   path: string
   meta: TemplateFamilyMeta
+  /** 族级 css/ 下的文件名列表 */
+  css: string[]
   versions: VersionNode<TemplateVersionMeta>[]
 }
 
@@ -99,8 +103,12 @@ export interface BrandNode {
   code: string
   path: string
   meta: BrandMeta
-  /** 品牌级 css/ 下的文件（root 相对路径，就近提升 R5） */
+  /** 品牌级 css/ 下的文件（就近提升 R5） */
   css: string[]
+  /** 片段类目级 css/（<brand>/fragment/css/）文件名列表（v5） */
+  fragmentCss: string[]
+  /** 模板类目级 css/（<brand>/template/css/）文件名列表（v5） */
+  templateCss: string[]
   fragments: FragmentFamilyNode[]
   templates: TemplateFamilyNode[]
 }

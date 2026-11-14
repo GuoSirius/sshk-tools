@@ -31,6 +31,7 @@ function fakeHost(): PluginHost {
     repository: {} as PluginHost['repository'],
     outputRoot: '',
     host,
+    config: { get: () => undefined },
     isActive: () => true,
   }
 }

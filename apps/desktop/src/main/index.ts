@@ -550,6 +550,7 @@ async function registerIpc(): Promise<void> {
     repository: services!.repository,
     outputRoot: services!.outputRoot,
     host: services!.host,
+    config: services!.config,
     isActive: isToolActive,
   }, allManifests(), { userDataDir: app.getPath('userData') })
 }
