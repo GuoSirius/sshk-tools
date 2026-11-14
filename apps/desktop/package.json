@@ -27,6 +27,8 @@
     "dayjs": "latest",
     "electron-updater": "^6",
     "element-plus": "latest",
+    "@element-plus/icons-vue": "latest",
+    "@fortawesome/fontawesome-free": "latest",
     "fflate": "latest",
     "unocss": "latest",
     "vue": "latest",

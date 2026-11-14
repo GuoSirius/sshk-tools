@@ -6,6 +6,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown, Download } from '@element-plus/icons-vue'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolMenu } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
@@ -287,7 +288,7 @@ onMounted(async () => {
         size="small"
         type="warning"
         @click="checkUpdate"
-      >↓ 有可用包</el-button>
+      ><el-icon><Download /></el-icon> 有可用包</el-button>
       <!-- 下载中：文字行盖一层进度遮罩，按百分比从左填充，能看清是否完成 -->
       <el-button
         v-else-if="updater.phase === 'downloading'"
@@ -313,7 +314,7 @@ onMounted(async () => {
         <template v-else-if="updater.phase === 'dev'">开发版</template>
       </el-button>
       <el-dropdown trigger="click" @command="onMoreCommand">
-        <el-button size="small" text>更多 ▾</el-button>
+        <el-button size="small" text>更多<el-icon><ArrowDown /></el-icon></el-button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="reload">刷新页面（F5 / Ctrl+R）</el-dropdown-item>
