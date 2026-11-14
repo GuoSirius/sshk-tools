@@ -700,9 +700,9 @@ const saveAsTargetOptions = computed<{ path: string; label: string }[]>(() => {
   const walk = (nodes: TreeNode[]): void => {
     for (const n of nodes) {
       if (node.kind === 'family' && n.kind === 'category' && n.data.cat === wantCat)
-        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.data.cat}` })
+        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.label}` })
       if (node.kind === 'version' && n.kind === 'family' && n.data.cat === wantCat)
-        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.data.label}` })
+        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.label}` })
       if (n.children) walk(n.children)
     }
   }

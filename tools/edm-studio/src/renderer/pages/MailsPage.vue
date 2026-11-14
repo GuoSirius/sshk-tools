@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, TimeText } from '@sshk/ui-kit'
 import { mails, tplVersions, loadMails } from '../state'
-import { api, confirmRemove, type MailRow } from '../shared'
+import { api, confirmRemove, osApi, type MailRow } from '../shared'
 
 /**
  * 邮件管理页（表格/操作/弹框约定）：
@@ -81,20 +81,20 @@ async function generateMail(row: MailRow): Promise<void> {
 async function copyFinal(row: MailRow): Promise<void> {
   try {
     const html = (await api('mail:readFinal', { _id: row._id })) as string
-    await window.api.os.clipboardWrite(html)
+    await osApi().clipboardWrite(html)
     ElMessage.success('final.html 已复制')
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 
 async function openOutput(row: MailRow): Promise<void> {
-  if (row.outputs?.final) await window.api.os.shellOpen(`outputs/edm/${row._id}/final.html`)
+  if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/final.html`)
 }
 
 // ── 导出（导出约定：单封 .html / 批量 .zip） ──
 async function exportMail(row: MailRow): Promise<void> {
   try {
     if (!row.outputs?.final) { ElMessage.warning('该邮件尚未生成产物'); return }
-    const save = await window.api.os.pickSave({ fileName: `${row.name || 'mail'}.html`, extensions: ['html'] })
+    const save = await osApi().pickSave({ fileName: `${row.name || 'mail'}.html`, extensions: ['html'] })
     if (!save) return
     const res = (await api('mail:export', { ids: [row._id], outPath: save })) as { count: number; outPath: string }
     ElMessage.success(`已导出 ${res.count} 封：${res.outPath}`)
@@ -106,7 +106,7 @@ async function batchExport(): Promise<void> {
     const rows = selectedMails.value.filter((row) => row.outputs?.final)
     if (rows.length === 0) { ElMessage.warning('请先勾选已生成产物的邮件'); return }
     const date = new Date().toLocaleDateString('sv-SE')
-    const save = await window.api.os.pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
+    const save = await osApi().pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
     if (!save) return
     const res = (await api('mail:export', { ids: rows.map((r) => r._id), outPath: save })) as { count: number; outPath: string }
     ElMessage.success(`已批量导出 ${res.count} 封：${res.outPath}`)
@@ -133,7 +133,7 @@ async function refreshShare(): Promise<void> {
 async function shareStart(): Promise<void> {
   try {
     const res = (await api('share:start', { ttlHours: 72 })) as { urls: string[] }
-    await window.api.os.clipboardWrite(res.urls[0] ?? '')
+    await osApi().clipboardWrite(res.urls[0] ?? '')
     await refreshShare()
     ElMessage.success(`分享已启动：${res.urls[0]}（已复制，72h 有效）`)
   } catch (err) { ElMessage.error((err as Error).message) }
@@ -146,7 +146,7 @@ async function shareStop(): Promise<void> {
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 async function copyShareUrl(url: string): Promise<void> {
-  await window.api.os.clipboardWrite(url)
+  await osApi().clipboardWrite(url)
   ElMessage.success('分享链接已复制')
 }
 
