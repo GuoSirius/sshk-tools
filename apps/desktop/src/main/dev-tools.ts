@@ -85,7 +85,7 @@ function validateManifest(raw: string, id: string): string {
   return JSON.stringify(obj, null, 2) + '\n'
 }
 
-export function registerDevTools(): DevState {
+export function registerDevTools(onManifestSaved?: (file: string) => unknown): DevState {
   const root = findRepoRoot()
   const state: DevState = root
     ? { available: true, repoRoot: root, reason: '' }
@@ -111,7 +111,10 @@ export function registerDevTools(): DevState {
     const tmp = `${file}.tmp`
     writeFileSync(tmp, normalized, 'utf8')
     renameSync(tmp, file)
-    return { ok: true, output: `已写入 ${file}` }
+    // 内建工具（tools/）写盘后原地重载内存清单并重建目录，渲染层拿到新 payload 立即刷新；
+    // examples/ 外部源码不参与目录，无需重载
+    const catalog = /[/\\]tools[/\\]/.test(file) && onManifestSaved ? onManifestSaved(file) : undefined
+    return { ok: true, output: `已写入 ${file}`, catalog }
   })
 
   ipcMain.handle(IPC_CHANNELS.devVerify, async () => run('pnpm', ['verify'], guard()))

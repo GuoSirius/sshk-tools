@@ -9,7 +9,7 @@ import { HOST_API_VERSION, IPC_CHANNELS, TOOL_PACKAGE_SCHEMA_VERSION } from '@ss
  * 由设置抽屉打开：源码 dev 运行始终可用；打包/安装版需 app.developerMode 且主进程确认源码仓库可用。
  */
 const props = defineProps<{ modelValue: boolean; toolId: string }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
+const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [unknown] }>()
 
 const CAPABILITIES = [
   'getToolSecret', 'setToolSecret', 'chat', 'listProviders',
@@ -200,6 +200,8 @@ async function saveAndVerify(): Promise<void> {
   await execute('保存并校验', async () => {
     const saved = await window.api.dev.manifestSet(props.toolId, raw)
     if (!saved.ok) return saved
+    // 主进程已重载清单并重建目录：随响应回传新 payload，交给父组件 accept 全局刷新（权限列表/桌面）
+    if (saved.catalog) emit('saved', saved.catalog)
     const verified = await window.api.dev.verify()
     return { ok: verified.ok, output: `${saved.output}\n${verified.output}` }
   })

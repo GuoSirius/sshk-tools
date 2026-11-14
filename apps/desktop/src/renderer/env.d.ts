@@ -163,7 +163,7 @@ interface Window {
     dev: {
       state(): Promise<{ available: boolean; repoRoot: string | null; reason: string }>
       manifestGet(id: string): Promise<string>
-      manifestSet(id: string, raw: string): Promise<{ ok: boolean; output: string }>
+      manifestSet(id: string, raw: string): Promise<{ ok: boolean; output: string; catalog?: import('@sshk/shared').ToolCatalogPayload }>
       verify(): Promise<{ ok: boolean; output: string }>
       build(): Promise<{ ok: boolean; output: string }>
       buildExternal(id: string): Promise<{ ok: boolean; output: string }>

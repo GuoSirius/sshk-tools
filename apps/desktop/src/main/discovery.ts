@@ -1,4 +1,5 @@
 /// <reference path="../types/vite-glob.d.ts" />
+import { readFileSync } from 'node:fs'
 import type { ToolDescriptor } from '@sshk/shared'
 
 /**
@@ -38,4 +39,23 @@ export const MAIN_LOADERS: Record<string, () => Promise<unknown>> = {}
 for (const [file, loader] of Object.entries(mainModules)) {
   const id = toolIdOf(file)
   if (id) MAIN_LOADERS[id] = loader as () => Promise<unknown>
+}
+
+/**
+ * 运行时重载单个内建工具清单（开发者模式改 manifest 后原地覆盖内存快照，
+ * 随后 buildCatalog 即可反映新可见性/菜单等，无需重启）。
+ * 仅接受 tools/<id>/ 路径且 id 与目录名一致；成功返回 true。
+ */
+export function reloadManifestFile(file: string): boolean {
+  try {
+    const manifest = JSON.parse(readFileSync(file, 'utf8')) as ToolDescriptor
+    const dirId = file.replace(/\\/g, '/').match(/\/tools\/([^/]+)\//)?.[1] ?? ''
+    if (!manifest?.id || manifest.id !== dirId) return false
+    const idx = MANIFESTS.findIndex((m) => m.id === manifest.id)
+    if (idx >= 0) MANIFESTS[idx] = manifest
+    else MANIFESTS.push(manifest)
+    return true
+  } catch {
+    return false
+  }
 }

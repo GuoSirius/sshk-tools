@@ -2,7 +2,7 @@
 import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT } from '@sshk/shared'
-import type { ThemeMode, ToolRuntimeState, InstallPreview } from '@sshk/shared'
+import type { ThemeMode, ToolRuntimeState, InstallPreview, ToolCatalogPayload } from '@sshk/shared'
 
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
@@ -91,6 +91,10 @@ function openManifest(tool: ToolRuntimeState): void {
   }
   manifestToolId.value = tool.id
   manifestOpen.value = true
+}
+/** 配置表单保存后：主进程重载清单重建的目录 payload 就地刷新（权限列表/桌面同源） */
+function onManifestSaved(next: unknown): void {
+  accept(next as ToolCatalogPayload)
 }
 onMounted(() => {
   void window.api.dev.state().then((s) => { devState.value = s }).catch(() => { /* 打包版不可用，保持默认 */ })
@@ -656,5 +660,5 @@ async function cleanupOrphans(): Promise<void> {
       </div>
     </div>
   </el-drawer>
-  <ToolManifestDialog v-model="manifestOpen" :tool-id="manifestToolId" />
+  <ToolManifestDialog v-model="manifestOpen" :tool-id="manifestToolId" @saved="onManifestSaved" />
 </template>

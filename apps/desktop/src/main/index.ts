@@ -26,7 +26,7 @@ import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
 import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
-import { MANIFESTS } from './discovery'
+import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -242,7 +242,11 @@ async function registerIpc(): Promise<void> {
   const cfg = services!.config
 
   // ── 开发者工具：仅源码开发环境注册（打包版自动禁用）──
-  registerDevTools()
+  registerDevTools((file) => {
+    // 开发者改完 manifest 写盘后：原地重载内存清单 → 重建目录随响应返回渲染层刷新
+    if (!reloadManifestFile(file)) return undefined
+    return buildCatalog()
+  })
 
   // ── 配置 ──
   ipcMain.handle(IPC_CHANNELS.configGet, (_event, key: string) => cfg.get(key) ?? null)
