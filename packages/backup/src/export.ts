@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { zipSync, type Zippable } from 'fflate'
-import { BACKUP_COLLECTIONS, listOutputFiles, type Repository } from '@sshk/repository'
+import { BACKUP_COLLECTIONS, listOutputFiles, type BaseEntity, type Repository } from '@sshk/repository'
 import { now } from '@sshk/shared'
 import { README_TEXT, SCHEMA_VERSION, type BackupManifest, type SecretKdf } from './manifest.js'
 import { encryptSecrets, PBKDF2_ITERATIONS } from './crypto.js'
@@ -33,6 +33,20 @@ function checksumOf(entries: Zippable): string {
 }
 
 /**
+ * R7 系统内容不入包：origin='system' 实体（R8 播种的内置品牌/模板/片段）文件即源真相，
+ * 随包导出会与导入端播种产生双真相。只导出「引用关系」——邮件等自定义实体里的
+ * frgv_sys_* / tplv_sys_* ID 原样保留，导入端播种按相同确定性 ID 重建实体后引用自然恢复
+ * （若目标机内置内容版本不含该 ID，邮件生成时明确报「模板版本不存在」，属可解释降级）。
+ */
+const SYSTEM_EXCLUDED_COLLECTIONS: ReadonlySet<string> = new Set([
+  'brands', 'templates', 'templateVersions', 'fragments', 'fragmentVersions',
+])
+
+function isSystemDoc(doc: BaseEntity): boolean {
+  return (doc as { origin?: string }).origin === 'system'
+}
+
+/**
  * 导出备份 zip（数据契约 §4）：
  * manifest.json + settings/ + data/ + assets/ + outputs/ + secrets.enc? + README.txt
  * 包内全相对路径（正斜杠）；机器绝对路径绝不出包。
@@ -45,7 +59,8 @@ export async function exportBackup(opts: ExportOptions): Promise<BackupManifest>
 
   const counts: BackupManifest['counts'] = {}
   for (const name of BACKUP_COLLECTIONS) {
-    const docs = await opts.repository.exportCollection(name)
+    const all = await opts.repository.exportCollection(name)
+    const docs = SYSTEM_EXCLUDED_COLLECTIONS.has(name) ? all.filter((doc) => !isSystemDoc(doc)) : all
     counts[name] = docs.length
     entries[`data/${name}.json`] = new TextEncoder().encode(JSON.stringify(docs, null, 2))
   }

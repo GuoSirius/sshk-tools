@@ -74,6 +74,32 @@ describe('导出 → 导入闭环', () => {
     expect(mails[0]?.outputs.final).toBe('outputs/edm/mail_x/final.html')
   })
 
+  it('系统内容不入包，引用关系随自定义实体保留（R7）', async () => {
+    const dbDir = tempDir('db-sys')
+    const repo = new Repository(dbDir)
+    await repo.insert<Brand>('brands', { _id: 'brd_sys_elabscience', code: 'elabscience', name: 'Elabscience', origin: 'system' })
+    await repo.insert<Brand>('brands', { code: 'procell', name: 'Procell' })
+    await repo.insert<Mail>('mails', {
+      name: '引用系统模板版本', brandId: 'brd_sys_elabscience', templateVersionId: 'tplv_sys_elabscience_standard_v1',
+      bindings: [{ slot: 'header', fragmentVersionId: 'frgv_sys_elabscience_banner_v1' }],
+      data: {}, status: 'draft', outputs: {},
+    })
+    const zipPath = join(tempDir('zip-sys'), 'backup.zip')
+    const manifest = await exportBackup({
+      repository: repo, settings: {}, outputRoot: tempDir('out-sys'),
+      outZipPath: zipPath, appVersion: '0.1.0',
+    })
+    expect(manifest.counts['brands']).toBe(1) // 系统品牌被剔除，自定义品牌保留
+    expect(manifest.counts['mails']).toBe(1)
+
+    const entries = unzipSync(new Uint8Array(readFileSync(zipPath)))
+    const brands = JSON.parse(new TextDecoder().decode(entries['data/brands.json'])) as { _id: string }[]
+    expect(brands.map((b) => b._id)).not.toContain('brd_sys_elabscience')
+    // 邮件里的系统 ID 引用关系原样保留（导入端播种按相同 ID 重建后即恢复可用）
+    const mails = JSON.parse(new TextDecoder().decode(entries['data/mails.json'])) as { bindings: { fragmentVersionId: string }[] }[]
+    expect(mails[0]?.bindings[0]?.fragmentVersionId).toBe('frgv_sys_elabscience_banner_v1')
+  })
+
   it('checksum 校验：内容被篡改被拒', async () => {
     const ctx = await setup()
     await exportBackup({
