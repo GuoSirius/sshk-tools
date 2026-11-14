@@ -258,9 +258,6 @@ importers:
       '@wangeditor/editor':
         specifier: latest
         version: 5.1.23
-      '@wangeditor/editor-for-vue':
-        specifier: latest
-        version: 1.0.2(@wangeditor/editor@5.1.23)(vue@3.5.45(typescript@6.0.3))
       ajv:
         specifier: latest
         version: 8.20.0
@@ -291,6 +288,9 @@ importers:
       vue:
         specifier: latest
         version: 3.5.45(typescript@6.0.3)
+      vue-draggable-plus:
+        specifier: latest
+        version: 0.6.1(@types/sortablejs@1.15.9)
     devDependencies:
       '@types/js-yaml':
         specifier: latest
@@ -1228,6 +1228,9 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
+  '@types/sortablejs@1.15.9':
+    resolution: {integrity: sha512-7HP+rZGE2p886PKV9c9OJzLBI6BBJu1O7lJGYnPyG3fS4/duUCcngkNCjsLwIMV+WMqANe3tt4irrXHSIe68OQ==}
+
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
@@ -1518,12 +1521,6 @@ packages:
       nanoid: ^3.2.0
       slate: ^0.72.0
       snabbdom: ^3.1.0
-
-  '@wangeditor/editor-for-vue@1.0.2':
-    resolution: {integrity: sha512-BOENvAXJVtVXlE2X50AAvjV82YlCUeu5cbeR0cvEQHQjYtiVnJtq7HSoj85r2kTgGouI5OrpJG9BBEjSjUSPyA==}
-    peerDependencies:
-      '@wangeditor/editor': '>=5.1.0'
-      vue: ^2.6.14
 
   '@wangeditor/editor@5.1.23':
     resolution: {integrity: sha512-0RxfeVTuK1tktUaPROnCoFfaHVJpRAIE2zdS0mpP+vq1axVQpLjM8+fCvKzqYIkH0Pg+C+44hJpe3VVroSkEuQ==}
@@ -3746,6 +3743,15 @@ packages:
       '@vue/composition-api':
         optional: true
 
+  vue-draggable-plus@0.6.1:
+    resolution: {integrity: sha512-FbtQ/fuoixiOfTZzG3yoPl4JAo9HJXRHmBQZFB9x2NYCh6pq0TomHf7g5MUmpaDYv+LU2n6BPq2YN9sBO+FbIg==}
+    peerDependencies:
+      '@types/sortablejs': ^1.15.0
+      '@vue/composition-api': '*'
+    peerDependenciesMeta:
+      '@vue/composition-api':
+        optional: true
+
   vue-router@5.5.1:
     resolution: {integrity: sha512-lUENd/QIhKd2HWACnXID3us0GWBnuOi3BwkTUzce2+4nfM/b3seV5saNURM9+wt48/qUxviotpcm7yFxC0U4qA==}
     peerDependencies:
@@ -4757,6 +4763,8 @@ snapshots:
     dependencies:
       '@types/node': 26.6.6
 
+  '@types/sortablejs@1.15.9': {}
+
   '@types/trusted-types@2.0.7':
     optional: true
 
@@ -5201,11 +5209,6 @@ snapshots:
       slate: 0.72.8
       slate-history: 0.66.0(slate@0.72.8)
       snabbdom: 3.6.4
-
-  '@wangeditor/editor-for-vue@1.0.2(@wangeditor/editor@5.1.23)(vue@3.5.45(typescript@6.0.3))':
-    dependencies:
-      '@wangeditor/editor': 5.1.23
-      vue: 3.5.45(typescript@6.0.3)
 
   '@wangeditor/editor@5.1.23':
     dependencies:
@@ -7465,6 +7468,10 @@ snapshots:
   vue-demi@0.14.10(vue@3.5.45(typescript@6.0.3)):
     dependencies:
       vue: 3.5.45(typescript@6.0.3)
+
+  vue-draggable-plus@0.6.1(@types/sortablejs@1.15.9):
+    dependencies:
+      '@types/sortablejs': 1.15.9
 
   vue-router@5.5.1(@vue/compiler-sfc@3.5.45)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))(vue@3.5.45(typescript@6.0.3)):
     dependencies:

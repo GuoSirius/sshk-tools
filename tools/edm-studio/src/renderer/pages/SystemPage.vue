@@ -5,7 +5,9 @@ import * as yaml from 'js-yaml'
 import { EmptyState } from '@sshk/ui-kit'
 import MonacoEditor from '../MonacoEditor.vue'
 import SampleForm from '../SampleForm.vue'
+import FieldSchemaDesigner from '../FieldSchemaDesigner.vue'
 import { applyDefaults, normalizeFields, validateModel, type FieldDef } from '../sample-schema'
+import { replaceFieldsInMeta } from '../meta-fields'
 import { api } from '../shared'
 
 /**
@@ -230,7 +232,7 @@ const styleText = ref('')
 const previewHtml = ref('')
 const previewing = ref(false)
 /* R15：示例数据表单化 —— schema（版本 meta fields 优先，族 meta 兜底）+ 表单模型 + 表单|数据切换 */
-const sampleMode = ref<'form' | 'data'>('form')
+const sampleMode = ref<'form' | 'data' | 'design'>('form')
 const sampleSchema = ref<FieldDef[]>([])
 const sampleObj = ref<Record<string, unknown>>({})
 const form = ref({
@@ -332,8 +334,9 @@ async function readFamilyFields(famPath: string): Promise<unknown> {
 }
 
 /** 示例数据 表单↔数据 切换（R15） */
-function switchSampleMode(mode: 'form' | 'data'): void {
+function switchSampleMode(mode: 'form' | 'data' | 'design'): void {
   if (mode === sampleMode.value) return
+  if (mode === 'design') { sampleMode.value = 'design'; return }
   if (mode === 'data') sampleText.value = yaml.dump(sampleObj.value, { lineWidth: -1 })
   else {
     try {
@@ -450,6 +453,28 @@ async function saveSample(): Promise<void> {
   try {
     await write(node.data.samplePath, sampleText.value)
     ElMessage.success('示例数据已保存')
+    await renderPreview(node)
+  } catch (err) {
+    ElMessage.error(`保存失败：${(err as Error).message}`)
+  }
+}
+
+/** 字段设计器写回：把 fields 外科手术式替换进 meta.yaml（保留其余键与注释） */
+async function saveFields(): Promise<void> {
+  const node = selected.value
+  if (!node?.data.metaPath) return
+  const fields = normalizeFields(sampleSchema.value)
+  if (fields.length !== sampleSchema.value.length) {
+    ElMessage.warning(`已忽略 ${sampleSchema.value.length - fields.length} 个非法字段（缺 key 或未知类型）`)
+    sampleSchema.value = fields
+  }
+  try {
+    const raw = metaText.value || (await read(node.data.metaPath))
+    const updated = replaceFieldsInMeta(raw, fields)
+    await write(node.data.metaPath, updated)
+    metaText.value = updated
+    metaRaw.value = (yaml.load(updated) as Record<string, unknown>) ?? {}
+    ElMessage.success('字段定义已保存（meta.yaml fields:）')
     await renderPreview(node)
   } catch (err) {
     ElMessage.error(`保存失败：${(err as Error).message}`)
@@ -820,14 +845,19 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
-              <el-radio-group v-model="sampleMode" size="small" :disabled="!sampleSchema.length" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data')">
-                <el-radio-button value="form">表单</el-radio-button>
+              <el-radio-group v-model="sampleMode" size="small" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data' | 'design')">
+                <el-radio-button value="design">设计</el-radio-button>
+                <el-radio-button value="form" :disabled="!sampleSchema.length">表单</el-radio-button>
                 <el-radio-button value="data">数据</el-radio-button>
               </el-radio-group>
-              <el-tag v-if="!sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
-              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSample">保存</el-button>
+              <el-tag v-if="sampleMode !== 'design' && !sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
+              <el-tag v-else-if="sampleMode === 'design' && !sampleSchema.length" size="small" type="warning">尚无字段，点「新增字段」开始设计</el-tag>
+              <span v-if="sampleMode === 'design'" class="hint">拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</span>
+              <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" @click="saveFields">保存字段定义</el-button>
+              <el-button v-else size="small" type="primary" :disabled="!canEdit" @click="saveSample">保存</el-button>
             </div>
-            <div v-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
+            <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="sampleSchema" :readonly="!canEdit" />
+            <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
               <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
             </div>
             <MonacoEditor v-else :model-value="sampleText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
@@ -865,7 +895,7 @@ async function confirmSaveAs(): Promise<void> {
     </teleport>
 
     <!-- 另存为弹框（一屏简化版） -->
-    <el-dialog v-model="saveAsState.visible" title="另存为" width="460px" :close-on-click-modal="false">
+    <el-dialog v-model="saveAsState.visible" title="另存为" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
       <el-form label-width="100px">
         <template v-if="saveAsIsEntity">
           <el-form-item label="新名称"><el-input v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
