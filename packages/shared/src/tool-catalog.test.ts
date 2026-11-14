@@ -7,6 +7,7 @@ import {
   mergeToolDefaults,
   resolveToolCatalog,
   shouldSeedDefaultProviders,
+  toolCategories,
   toolGroups,
   type ResolveCatalogInput,
 } from './tool-catalog'
@@ -41,29 +42,42 @@ function baseInput(patch: Partial<ResolveCatalogInput> = {}): ResolveCatalogInpu
 }
 
 describe('工具插件清单（自包含 manifest）', () => {
-  it('三个工具包清单结构完整且默认零依赖', () => {
-    expect(MANIFESTS).toHaveLength(3)
+  it('全部工具包清单结构完整且默认零依赖', () => {
+    expect(MANIFESTS.length).toBeGreaterThanOrEqual(3)
     for (const tool of MANIFESTS) {
       expect(tool.id).toBeTruthy()
-      expect(tool.icon).toBe('auto')
+      expect(tool.icon).toBeTruthy()
       expect(tool.plugin?.renderer).toBeTruthy()
       expect(tool.dependsOn ?? []).toEqual([])
       expect(tool.configDeps ?? []).toEqual([])
       expect(tool.defaults).toBeTruthy()
     }
-    expect(toolGroups(MANIFESTS)).toContain('邮件营销')
-    expect(toolGroups(MANIFESTS)).toContain('OCR 识别')
+    // 分组自洽：清单声明的每个分类/标签都应出现在目录分组里。
+    // 断言只校验「派生与清单一致」，不硬编码任何文案——开发者随意改分类/标签不被门禁误杀（台账 #22）。
+    const groups = toolGroups(MANIFESTS)
+    expect(groups.length).toBeGreaterThan(0)
+    for (const tool of MANIFESTS) {
+      for (const category of toolCategories(tool)) expect(groups).toContain(category)
+    }
   })
 
-  it('一个工具可跨属多个分类 / 标签，且能从应用设置覆盖', () => {
-    const result = resolveToolCatalog(MANIFESTS, baseInput())
-    const badge = result.tools.find((tool) => tool.id === 'badge-studio')!
-    expect(badge.categories).toEqual(['邮件营销', '数据分析', 'OCR 识别', '海报生成'])
-    expect(badge.category).toBe('邮件营销')
-    expect(badge.configLayout).toBe('single')
-    const overridden = resolveToolCatalog(MANIFESTS, baseInput({
-      overrides: { 'badge-studio': { category: '增长、投放' } },
-    })).tools.find((tool) => tool.id === 'badge-studio')!
+  it('一个工具可跨属多个分类 / 标签（含空格），且能从应用设置覆盖', () => {
+    // 逻辑测试用内联夹具，不耦合真实清单内容（台账 #22）
+    const fixture = {
+      id: 'fixture-multi', name: '多分类工具', description: '内容随意',
+      category: ['分类 甲', '分类乙'], tags: ['标签 丙', '标签丁'],
+      icon: 'auto', entryRoute: 'home', enabled: true,
+      menus: [], plugin: { source: 'builtin', renderer: 'x.vue' }, defaults: {},
+    } as unknown as ToolDescriptor
+    const derived = resolveToolCatalog([fixture], baseInput({ settingsToolIds: ['fixture-multi'] }))
+      .tools.find((tool) => tool.id === 'fixture-multi')!
+    // category + tags 去重串联；空格是标签合法字符（#21）
+    expect(derived.categories).toEqual(['分类 甲', '分类乙', '标签 丙', '标签丁'])
+    expect(derived.category).toBe('分类 甲')
+    const overridden = resolveToolCatalog([fixture], baseInput({
+      settingsToolIds: ['fixture-multi'],
+      overrides: { 'fixture-multi': { category: '增长、投放' } },
+    })).tools.find((tool) => tool.id === 'fixture-multi')!
     expect(overridden.categories).toEqual(['增长', '投放'])
   })
 
@@ -138,7 +152,7 @@ describe('工具插件清单（自包含 manifest）', () => {
       : tool)
     const result = resolveToolCatalog(withMenu, baseInput())
     expect(result.tools.find((t) => t.id === 'edm-studio')?.configLayout).toBe('menu')
-    expect(result.tools.find((t) => t.id === 'badge-studio')?.configLayout).toBe('single')
+    expect(result.tools.find((t) => t.id === 'badge-studio')?.configLayout).toBe(badgeManifest.configLayout ?? 'single')
   })
 
   it('工具菜单只声明工具自有配置分组', () => {
