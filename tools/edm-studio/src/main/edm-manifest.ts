@@ -141,6 +141,7 @@ export async function loadEdmModel(root: string): Promise<EdmModel> {
   const topCss = (await collectCss(path.join(root, 'css'))).map((p) => p)
   const brands: BrandNode[] = []
   for (const b of await listDirs(root)) {
+    if (b === 'css') continue // 顶层公共样式目录，非品牌（避免每次播种打无效品牌警告）
     const brandDir = path.join(root, b)
     const brand = await loadBrand(brandDir)
     if (brand) brands.push(brand)

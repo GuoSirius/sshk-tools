@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
+import { seedSystemContent } from './edm-seed.js'
 import {
   edmOutputRel,
   readOutput,
@@ -70,6 +71,17 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   const repo = deps.repository
   const share = new ShareServer(deps.outputRoot)
 
+  /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
+  async function assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void> {
+    const doc = await repo.get(name, id)
+    if (doc && (doc as { origin?: string }).origin === 'system') throw new Error('系统内容只读：请用「另存为」派生自定义副本')
+  }
+
+  // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种；不阻塞注册）
+  seedSystemContent(repo, resolveEdmRoot()).catch((err: unknown) =>
+    console.warn('[edm] 系统内容播种失败：', err instanceof Error ? err.message : err),
+  )
+
   ipc.handle(IPC_CHANNELS.edmApi, async (_event: IpcMainInvokeEvent, payload: { action: string; data?: Payload }) => {
     const { action, data = {} as Payload } = payload
     if (!ACTIONS.has(action)) throw new Error(`非法 action: ${action}`)
@@ -85,9 +97,11 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
           if (!meta.code || !meta.name) throw new Error('品牌 code 与名称必填')
           return repo.insert<Brand>('brands', meta)
         }
+        await assertMutable('brands', id)
         return repo.update<Brand>('brands', id, meta)
       }
       case 'brand:remove':
+        await assertMutable('brands', str(data, '_id'))
         return repo.archive('brands', str(data, '_id'))
 
       // ── 模板族 ──
@@ -102,9 +116,11 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         }
         if (!meta.brandId || !meta.name) throw new Error('品牌与模板名称必填')
         if (id === '') return repo.insert<Template>('templates', meta)
+        await assertMutable('templates', id)
         return repo.update<Template>('templates', id, meta)
       }
       case 'tpl:remove':
+        await assertMutable('templates', str(data, '_id'))
         return repo.archive('templates', str(data, '_id'))
 
       // ── 模板版本（不可变；保存 = 新版本 D8） ──
@@ -114,6 +130,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (!templateId) throw new Error('templateId 必填')
         const tpl = await repo.get<Template>('templates', templateId)
         if (!tpl) throw new Error('模板不存在')
+        if (tpl.origin === 'system') throw new Error('系统模板只读：请用「另存为」派生自定义副本')
         let version = 1
         if (prev !== '') {
           const prevV = await repo.get<TemplateVersion>('templateVersions', prev)
@@ -172,15 +189,18 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         }
         if (!meta.brandId || !meta.name) throw new Error('品牌与片段名称必填')
         if (id === '') return repo.insert<Fragment>('fragments', meta)
+        await assertMutable('fragments', id)
         return repo.update<Fragment>('fragments', id, meta)
       }
       case 'frg:remove':
+        await assertMutable('fragments', str(data, '_id'))
         return repo.archive('fragments', str(data, '_id'))
       case 'frgv:save': {
         const fragmentId = str(data, 'fragmentId')
         const prev = str(data, 'prevVersionId')
         const frg = await repo.get<Fragment>('fragments', fragmentId)
         if (!frg) throw new Error('片段不存在')
+        if (frg.origin === 'system') throw new Error('系统片段只读：请用「另存为」派生自定义副本')
         let version = 1
         if (prev !== '') {
           const prevV = await repo.get<FragmentVersion>('fragmentVersions', prev)

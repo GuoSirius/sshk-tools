@@ -13,6 +13,8 @@ export interface Brand extends BaseEntity {
   name: string
   /** 相对 app.outputDir 的路径，禁止绝对路径（数据契约 §1） */
   logo?: string
+  /** 来源：system = R8 播种的内置品牌（只读）；undefined/custom = 用户自建 */
+  origin?: Origin
 }
 
 /** 模板族：只放元信息，不放代码（数据契约 §2.1） */
