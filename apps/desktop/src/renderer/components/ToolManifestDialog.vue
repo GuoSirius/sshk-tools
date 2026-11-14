@@ -215,34 +215,42 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
   <el-dialog
     :model-value="modelValue"
     :title="title"
-    width="min(900px, 92vw)"
+    width="min(960px, 92vw)"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     @update:model-value="emit('update:modelValue', Boolean($event))"
   >
-    <el-tabs v-model="tab" type="card">
+    <div class="manifest-shell">
+      <el-tabs v-model="tab" type="card" class="manifest-tabs">
       <el-tab-pane v-for="t in tabList" :key="t.id" :name="t.id" :label="t.label">
-        <el-form v-if="t.id === 'basic'" label-width="110px" size="small">
-          <el-form-item label="id"><el-input :model-value="form.id" disabled /><div class="hint">唯一真相源，必须与目录名一致，不可改</div></el-form-item>
-          <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-          <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-          <el-form-item label="分类"><el-input v-model="form.category" placeholder="多个用顿号分隔" /></el-form-item>
-          <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔" /></el-form-item>
-          <el-form-item label="图标"><el-input v-model="form.icon" placeholder="auto = assets/icon.svg" /></el-form-item>
-          <el-form-item label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
-          <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
-          <el-form-item label="可见性">
-            <el-select v-model="form.visibility" style="width: 200px">
-              <el-option v-for="v in VISIBILITY_OPTIONS" :key="v" :label="v" :value="v" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="配置布局">
-            <el-select v-model="form.configLayout" style="width: 200px">
-              <el-option label="single（单页）" value="single" />
-              <el-option label="tabs（分页）" value="tabs" />
-              <el-option label="menu（子菜单）" value="menu" />
-            </el-select>
-          </el-form-item>
+        <el-form v-if="t.id === 'basic'" label-width="96px" size="small" class="manifest-form">
+          <div class="form-grid">
+            <el-form-item label="id" class="span-2">
+              <el-input :model-value="form.id" disabled />
+              <div class="hint">唯一真相源，必须与目录名一致，不可改</div>
+            </el-form-item>
+            <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
+            <el-form-item label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
+            <el-form-item label="分类"><el-input v-model="form.category" placeholder="多个用顿号分隔" /></el-form-item>
+            <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔" /></el-form-item>
+            <el-form-item label="图标"><el-input v-model="form.icon" placeholder="auto = assets/icon.svg" /></el-form-item>
+            <el-form-item label="配置布局">
+              <el-select v-model="form.configLayout" style="width: 100%">
+                <el-option label="single（单页）" value="single" />
+                <el-option label="tabs（分页）" value="tabs" />
+                <el-option label="menu（子菜单）" value="menu" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
+            <el-form-item label="可见性">
+              <el-select v-model="form.visibility" style="width: 100%">
+                <el-option v-for="v in VISIBILITY_OPTIONS" :key="v" :label="v" :value="v" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="描述" class="span-2">
+              <el-input v-model="form.description" type="textarea" :rows="2" />
+            </el-form-item>
+          </div>
         </el-form>
 
         <div v-else-if="t.id === 'menus'">
@@ -272,9 +280,12 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <el-form-item label="requiresHost.api"><el-input :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
           <el-form-item label="版本号"><el-input v-model="form.pkg.version" /></el-form-item>
           <el-form-item label="宿主能力">
-            <el-checkbox-group v-model="form.pkg.capabilities">
-              <el-checkbox v-for="c in CAPABILITIES" :key="c" :value="c" :label="c" />
-            </el-checkbox-group>
+            <div class="cap-box">
+              <el-checkbox-group v-model="form.pkg.capabilities">
+                <el-checkbox v-for="c in CAPABILITIES" :key="c" :value="c" :label="c" />
+              </el-checkbox-group>
+              <div class="hint">全选 = 最高权限形态（外部包分发需有效签名）</div>
+            </div>
           </el-form-item>
           <el-form-item label="沙箱">
             <el-select v-model="form.pkg.sandbox" style="width: 220px">
@@ -303,16 +314,17 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
       </el-tab-pane>
     </el-tabs>
 
-    <div class="dev-actions">
-      <el-button type="primary" size="small" :loading="busy" @click="saveAndVerify">保存并校验</el-button>
-      <el-button type="warning" size="small" :loading="busy" @click="buildExternalAction">构建外部产物</el-button>
-      <el-button type="info" size="small" :loading="busy" @click="buildBuiltinAction">打包应用（内建）</el-button>
-      <el-button type="success" size="small" :loading="busy" @click="packAction">
-        导出 .sshktool
-      </el-button>
-      <el-checkbox v-model="signBeforePack" size="small">导出前签名</el-checkbox>
+      <div class="manifest-actionbar">
+        <div class="dev-actions">
+          <el-button type="primary" size="small" :loading="busy" @click="saveAndVerify">保存并校验</el-button>
+          <el-button type="warning" size="small" :loading="busy" @click="buildExternalAction">构建外部产物</el-button>
+          <el-button type="info" size="small" :loading="busy" @click="buildBuiltinAction">打包应用（内建）</el-button>
+          <el-button type="success" size="small" :loading="busy" @click="packAction">导出 .sshktool</el-button>
+          <el-checkbox v-model="signBeforePack" size="small">导出前签名</el-checkbox>
+        </div>
+        <pre v-if="output" class="dev-output">{{ output }}</pre>
+      </div>
     </div>
-    <pre v-if="output" class="dev-output">{{ output }}</pre>
 
     <template #footer>
       <el-button size="small" type="info" plain @click="close">关闭</el-button>
@@ -323,6 +335,24 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 <style scoped>
 .hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
 .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-.dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
-.dev-output { max-height: 220px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 4px; font-size: 12px; white-space: pre-wrap; }
+
+/* 固定高度壳：头部 tab + 底部操作条固定，仅内容区滚动，切换 tab 不抖动 */
+.manifest-shell { display: flex; flex-direction: column; height: min(70vh, 680px); }
+.manifest-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.manifest-tabs :deep(.el-tabs__header) { flex: none; margin-bottom: 0; padding: 4px 6px 0; background: var(--el-fill-color-light); border-radius: 8px 8px 0 0; }
+.manifest-tabs :deep(.el-tabs__item) { height: 34px; font-size: 13px; transition: color 0.15s, background-color 0.15s; }
+.manifest-tabs :deep(.el-tabs__item.is-active) { font-weight: 600; }
+.manifest-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 6px 4px; }
+
+/* 基础页双列栅格：短字段并排，长字段跨两列 */
+.manifest-form :deep(.form-grid) { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+.manifest-form :deep(.form-grid .span-2) { grid-column: 1 / -1; }
+
+.cap-box { width: 100%; border: 1px dashed var(--el-border-color); border-radius: 8px; padding: 8px 12px 0; }
+.cap-box :deep(.el-checkbox) { margin-right: 14px; }
+
+/* 底部操作条：与内容区隔离固定，输出区独立滚动 */
+.manifest-actionbar { flex: none; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color-lighter); }
+.dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 </style>

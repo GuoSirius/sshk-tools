@@ -476,9 +476,6 @@ async function cleanupOrphans(): Promise<void> {
                     <strong>{{ tool.name }}</strong>
                     <small>{{ tool.categories.join(' / ') }} · {{ tool.id }}</small>
                   </div>
-                  <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
-                  <el-tag v-if="devFeatures" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
-                  <el-tag v-if="devFeatures && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
                   <el-switch :model-value="tool.enabled" size="small" @change="(v: unknown) => toggleEnabled(tool, Boolean(v))" />
                   <el-button
                     v-if="devFeatures"
@@ -495,6 +492,9 @@ async function cleanupOrphans(): Promise<void> {
                   </el-button>
                 </div>
                 <div class="tool-manage-meta">
+                  <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
+                  <el-tag v-if="devFeatures" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
+                  <el-tag v-if="devFeatures && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
                   <span>权限要求：</span>
                   <el-select :model-value="tool.requiredGrant ?? ''" size="small" style="width: 160px" @change="(v: unknown) => setGrant(tool, String(v ?? ''))">
                     <el-option label="公开" value="" />
