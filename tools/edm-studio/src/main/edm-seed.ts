@@ -42,8 +42,8 @@ async function readText(file: string): Promise<string | null> {
   }
 }
 
-/** 版本号取 meta.version；缺失时按目录名 vN 兜底，default 记 1 */
-function versionNumberOf(dir: string, metaVersion: unknown): number {
+/** 版本号取 meta.version；缺失时按目录名 vN 兜底，default 记 1（system:derive 派生亦复用） */
+export function versionNumberOf(dir: string, metaVersion: unknown): number {
   if (typeof metaVersion === 'number' && Number.isFinite(metaVersion) && metaVersion > 0) return metaVersion
   const m = /v(\d+)/.exec(dir)
   return m ? Number(m[1]) : 1

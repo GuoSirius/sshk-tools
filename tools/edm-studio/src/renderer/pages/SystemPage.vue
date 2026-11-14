@@ -52,6 +52,14 @@ interface CssTab {
   dirty: boolean
 }
 type Clipboard = { type: 'cssDir'; dirPath: string; files: string[] } | { type: 'cssFile'; file: string } | null
+/** system:derive 返回的派生计数 */
+interface DeriveCounts {
+  brands: number
+  fragments: number
+  fragmentVersions: number
+  templates: number
+  templateVersions: number
+}
 
 const model = ref<{ topCss: string[]; brands: any[] }>({ topCss: [], brands: [] })
 const canEdit = ref(false)
@@ -920,6 +928,26 @@ async function confirmSaveAs(): Promise<void> {
     return
   }
   try {
+    // 自定义内容库派生（R21）：brand/family/version → NeDB 自定义副本（文件域不动，system:derive）
+    if (saveAsState.value.origin === 'custom') {
+      const res = await api<DeriveCounts>('system:derive', {
+        kind: node.kind, name: cleanName,
+        brandCode: node.data.brandCode ?? '', cat: node.data.cat ?? '',
+        familyCode: node.data.familyCode ?? '', versionDir: node.data.versionDir ?? '',
+        target: saveAsState.value.target,
+      })
+      saveAsState.value.visible = false
+      const parts = [
+        res.templates > 0 ? `模板族×${res.templates}` : '',
+        res.templateVersions > 0 ? `模板版本×${res.templateVersions}` : '',
+        res.fragments > 0 ? `片段族×${res.fragments}` : '',
+        res.fragmentVersions > 0 ? `片段版本×${res.fragmentVersions}` : '',
+        res.brands > 0 ? `品牌×${res.brands}` : '',
+      ].filter(Boolean)
+      ElMessage.success(`已派生到自定义内容库${parts.length ? `：${parts.join('、')}` : ''}`)
+      await load(true)
+      return
+    }
     if (node.kind === 'brand') {
       const newCode = (code.trim() || cleanName).trim()
       if (await existsIn(`${newCode}/meta.yaml`)) {
@@ -1144,7 +1172,7 @@ async function confirmSaveAs(): Promise<void> {
       <el-form label-width="130px">
         <template v-if="saveAsIsEntity">
           <el-form-item label="新名称"><el-input v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
-          <el-form-item v-if="saveAsState.node?.kind !== 'version'" label="code（目录名）">
+          <el-form-item v-if="saveAsState.node?.kind !== 'version' && saveAsState.origin === 'system'" label="code（目录名）">
             <el-input v-model="saveAsState.code" placeholder="留空则用新名称" />
           </el-form-item>
           <el-form-item v-if="saveAsState.node?.kind === 'family' || saveAsState.node?.kind === 'version'" label="目标位置">
@@ -1154,9 +1182,12 @@ async function confirmSaveAs(): Promise<void> {
           </el-form-item>
           <el-form-item label="保存目标">
             <el-radio-group v-model="saveAsState.origin">
-              <el-radio value="system">系统内容（新副本）</el-radio>
-              <el-radio value="custom" disabled>自定义内容库（下一版开放）</el-radio>
+              <el-radio value="system">系统内容（文件域新副本）</el-radio>
+              <el-radio value="custom">自定义内容库（NeDB 可编辑副本）</el-radio>
             </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="saveAsState.origin === 'custom'" label="携带内容">
+            <span class="hint">派生为自定义副本：html/css 就近链内联 + 元数据/示例/policy 一并带入，可在邮件编辑器直接使用</span>
           </el-form-item>
           <el-form-item v-if="saveAsState.node?.kind === 'version'" label="携带内容">
             <span class="hint">版本内全部文件 + 版本级 css 目录（品牌/族级 css 与元数据不跟）</span>

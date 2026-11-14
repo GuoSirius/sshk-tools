@@ -5,7 +5,15 @@ import { zipSync } from 'fflate'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
-import { seedSystemContent } from './edm-seed.js'
+import { seedSystemContent, versionNumberOf } from './edm-seed.js'
+import type {
+  FragmentFamilyNode,
+  FragmentVersionMeta,
+  TemplateFamilyNode,
+  TemplateVersionMeta,
+  VersionNode,
+} from '../core/edm-types.js'
+import { collectSystemCssContent } from '../core/system-css.js'
 import {
   edmOutputRel,
   readOutput,
@@ -42,6 +50,7 @@ const ACTIONS = new Set([
   'share:start', 'share:stop', 'share:status',
   'system:load', 'system:render', 'system:readFile',
   'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
+  'system:derive',
 ])
 
 /** 系统内容文件允许的扩展名（白名单防误写垃圾文件；css 文件名随意） */
@@ -501,6 +510,132 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         }
         if (exists) await fs.rm(abs, { recursive: true, force: true })
         return true
+      }
+      // ── 自定义内容库派生（R21）：assets 系统内容 → NeDB 自定义可编辑副本（origin='custom'，ULID 主键） ──
+      // kind: brand=派生品牌下全部族+版本（挂同一品牌，不建重复品牌实体）；family=族+全部版本；
+      //       version=族壳+单版本副本。目标品牌取另存落点首段（跨品牌派生），缺省回落源品牌。
+      case 'system:derive': {
+        const kind = str(data, 'kind')
+        const name = str(data, 'name').trim()
+        const brandCode = str(data, 'brandCode')
+        const cat = str(data, 'cat') === 'template' ? 'template' : 'fragment'
+        const familyCode = str(data, 'familyCode')
+        const versionDir = str(data, 'versionDir')
+        const target = str(data, 'target')
+        if (!name) throw new Error('名称必填')
+        const root = resolveEdmRoot()
+        const model = await loadEdmModel(root)
+        const srcBrand = model.brands.find((b) => b.code === brandCode)
+        if (!srcBrand) throw new Error(`系统品牌「${brandCode}」不存在`)
+        const counts = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0 }
+        const readFileOr = async (p: string): Promise<string> => {
+          try {
+            return await fs.readFile(p, 'utf8')
+          } catch {
+            return ''
+          }
+        }
+        const targetBrandCode = (target.split('/')[0] ?? '').trim() || brandCode
+        const brandIdOf = async (code: string): Promise<string> => {
+          const brands = await repo.list<Brand>('brands', { archived: false })
+          const hit = brands.find((b) => b.code === code)
+          if (hit) return hit._id
+          counts.brands++
+          const meta = model.brands.find((b) => b.code === code)
+          return (await repo.insert<Brand>('brands', { code, name: meta?.meta.name ?? code, origin: 'custom' }))._id
+        }
+        const deriveFragmentFamily = async (
+          fam: FragmentFamilyNode,
+          bid: string,
+          only?: VersionNode<FragmentVersionMeta>,
+        ): Promise<void> => {
+          const frg = await repo.insert<Fragment>('fragments', {
+            brandId: bid, name, description: fam.meta.description,
+            type: fam.meta.type || 'product', origin: 'custom',
+          })
+          counts.fragments++
+          let latest: { id: string; version: number } | null = null
+          for (const v of only ? [only] : fam.versions) {
+            const n = versionNumberOf(v.dir, v.meta.version)
+            const policy = v.meta.policy ?? fam.meta.policy
+            const fv = await repo.insert<FragmentVersion>('fragmentVersions', {
+              fragmentId: frg._id, brandId: bid, version: n, label: `v${n}`, type: frg.type,
+              source: {
+                html: await readFileOr(v.sourcePath),
+                css: await collectSystemCssContent(root, { brandCode: srcBrand.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
+                cssMode: 'inline',
+              },
+              policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
+              dataSchema: fam.meta.dataSchema,
+              fields: v.meta.fields ?? fam.meta.fields ?? undefined,
+              sampleData: v.sample ?? undefined,
+              origin: 'custom',
+            })
+            counts.fragmentVersions++
+            if (!latest || n > latest.version) latest = { id: fv._id, version: n }
+          }
+          if (latest) await repo.update<Fragment>('fragments', frg._id, { latestVersionId: latest.id })
+        }
+        const deriveTemplateFamily = async (
+          fam: TemplateFamilyNode,
+          bid: string,
+          only?: VersionNode<TemplateVersionMeta>,
+        ): Promise<void> => {
+          const tpl = await repo.insert<Template>('templates', {
+            brandId: bid, name, description: fam.meta.description, origin: 'custom',
+          })
+          counts.templates++
+          let latest: { id: string; version: number } | null = null
+          for (const v of only ? [only] : fam.versions) {
+            const n = versionNumberOf(v.dir, v.meta.version)
+            const tv = await repo.insert<TemplateVersion>('templateVersions', {
+              templateId: tpl._id, brandId: bid, version: n, label: `v${n}`,
+              source: {
+                html: await readFileOr(v.sourcePath),
+                css: await collectSystemCssContent(root, { brandCode: srcBrand.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
+                cssMode: 'inline',
+              },
+              slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
+              dataSchema: fam.meta.dataSchema,
+              fields: v.meta.fields ?? undefined,
+              sampleData: v.sample ?? undefined,
+              origin: 'custom',
+            })
+            counts.templateVersions++
+            if (!latest || n > latest.version) latest = { id: tv._id, version: n }
+          }
+          if (latest) await repo.update<Template>('templates', tpl._id, { latestVersionId: latest.id })
+        }
+        const bid = await brandIdOf(targetBrandCode)
+        if (kind === 'brand') {
+          for (const fam of srcBrand.fragments) await deriveFragmentFamily(fam, bid)
+          for (const fam of srcBrand.templates) await deriveTemplateFamily(fam, bid)
+        } else if (kind === 'family') {
+          if (cat === 'template') {
+            const fam = srcBrand.templates.find((f) => f.code === familyCode)
+            if (!fam) throw new Error(`系统模板族「${familyCode}」不存在`)
+            await deriveTemplateFamily(fam, bid)
+          } else {
+            const fam = srcBrand.fragments.find((f) => f.code === familyCode)
+            if (!fam) throw new Error(`系统片段族「${familyCode}」不存在`)
+            await deriveFragmentFamily(fam, bid)
+          }
+        } else if (kind === 'version') {
+          if (cat === 'template') {
+            const fam = srcBrand.templates.find((f) => f.code === familyCode)
+            const v = fam?.versions.find((x) => x.dir === versionDir)
+            if (!fam || !v) throw new Error(`系统模板版本「${familyCode}/${versionDir || 'default'}」不存在`)
+            await deriveTemplateFamily(fam, bid, v)
+          } else {
+            const fam = srcBrand.fragments.find((f) => f.code === familyCode)
+            const v = fam?.versions.find((x) => x.dir === versionDir)
+            if (!fam || !v) throw new Error(`系统片段版本「${familyCode}/${versionDir || 'default'}」不存在`)
+            await deriveFragmentFamily(fam, bid, v)
+          }
+        } else {
+          throw new Error(`非法 kind: ${kind}`)
+        }
+        return counts
       }
       default:
         throw new Error(`未实现: ${action}`)

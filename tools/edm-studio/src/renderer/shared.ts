@@ -24,7 +24,8 @@ interface SshkApi {
 function sshkApi(): SshkApi {
   return (window as unknown as { api: SshkApi }).api
 }
-export const api = (action: string, data?: Record<string, unknown>): Promise<unknown> => sshkApi().edm.api(action, data)
+export const api = <T = unknown>(action: string, data?: Record<string, unknown>): Promise<T> =>
+  sshkApi().edm.api(action, data) as Promise<T>
 /** os 通道（剪贴板 / 打开产物 / 导出另存为，MailsPage 用） */
 export const osApi = (): SshkOsApi => sshkApi().os
 
