@@ -14,5 +14,5 @@
 
 ## 其它约定
 
-- 需求/优化/决策一律登记 `docs/02-architecture/2026-11-13-工具插件化与需求台账.md`（含跨会话补记）。
+- 需求/优化/决策一律登记 `docs/02-architecture/工具插件化需求台账.md`（含跨会话补记）。
 - 门禁：`pnpm verify` 全绿才准提交（13 道检查 + vitest）；提交用 conventional commits，推送 main。

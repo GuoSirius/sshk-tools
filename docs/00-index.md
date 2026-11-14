@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
-- 状态：**M0~M7 全部落地；应用设置中心 / 工具插件化 / 工具包自包含 / Badge 图片识别 / Model Console 模型预设已落地；80 单测全绿、`pnpm verify` 与三端构建通过；IDE 需按文档 §7.3 重载；待 PaddleOCR 绑定确认与 tag 发布**
-- 版本：v1.1
-- 最后更新：2026-11-13 10:10（北京时间）
+- 状态：**M0~M7 全部落地；应用设置中心 / 工具插件化 / 工具包自包含 / Badge 图片识别 / Model Console 模型预设已落地；132 单测全绿、`pnpm verify` 全门禁通过、三端构建通过；IDE 需按文档 §7.3 重载；待 PaddleOCR 绑定确认与 tag 发布。文档已规范化重整：需求 4 合 1、台账去日期前缀、依赖选型反转与 UI 视觉铁律入板（D49/D50）**
+- 版本：v1.2
+- 最后更新：2026-11-14 20:30（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -14,15 +14,12 @@
 
 | 文档 | 路径 | 状态 | 说明 |
 |---|---|---|---|
-| 初始需求（结构化） | `01-requirements/2026-11-12-初始需求.md` | 已归档沟通 | 需求 0~7 + 三张图证据 + 术语表 |
-| 第二轮需求补充与决策 | `01-requirements/2026-11-12-第二轮需求补充与决策.md` | 已归档沟通 | 第二轮 0~19 + 拍板 + D10 重述 |
-| 第三轮需求补充与决策 | `01-requirements/2026-11-12-第三轮需求补充与决策.md` | 已归档沟通 | D10 重定义、D4 收口、D13~D20、时间规范、产物目录迁移 |
-| 第四轮决策与开工 | `01-requirements/2026-11-12-第四轮决策与开工.md` | 已定稿 | 仓库地址、latest+lockfile、D19/D21 定稿、M0 交付范围 |
+| **需求沟通记录（多轮合并归档）** | `01-requirements/需求沟通记录.md` | 已合并归档（原 4 份逐轮文档已删） | 需求 0~7 + 术语表 + D10 输入组合 + 逐轮决策浓缩 + 图证登记 + 开放问题；按状态分组 |
 | **技术选型与任务拆分 v0.4** | `02-architecture/2026-11-12-技术选型与任务拆分.md` | 讨论中（决策全定） | 选型对比、四层 UI、导入导出、目录迁移、T1~T10、M0~M7、决策清单、风险 |
 | **模块规范（ESM 优先 / 兼容 CJS）** | `02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md` | 已定（D23） | 分层格式、条件导出模板、preload 产物必须 CJS、常见坑 |
 | **实现顺序与 M6 先行方案** | `02-architecture/2026-11-12-实现顺序与M6先行方案.md` | 已定（D26） | 新顺序、依赖校验、M6 补齐空白功能、juice-email-cli 衔接 |
 | **开发环境与热更新** | `02-architecture/2026-11-12-开发环境与热更新.md` | 已定（D27） | 方案对比、三端行为对照、命令、M7 依赖修正说明 |
-| **工具插件化与需求台账** | `02-architecture/2026-11-13-工具插件化与需求台账.md` | **已落地（D37~D45）** | 穿插需求台账、工具包契约、宿主能力、Badge 图片识别 / PaddleOCR、IDE 红波浪线、运行时插件路线图 |
+| **工具插件化与需求台账（长期维护）** | `02-architecture/工具插件化需求台账.md` | **持续演进（D37~D48 + 51.x / 52.x 批次）** | 穿插需求台账、工具包契约、宿主能力、Badge 图片识别 / PaddleOCR、IDE 红波浪线、运行时插件路线图、2026-11-14 依赖选型反转与 UI 视觉铁律 |
 | **数据契约 v0.2** | `04-api/2026-11-12-数据契约.md` | 讨论中 | 品牌树、黑白名单、北京时间、配置、zip + 加密密钥、IPC、组件、目录迁移 |
 | **发布流程与本机提交钩子** | `05-release/2026-11-12-发布流程与本机提交钩子.md` | 讨论中 | 按 juice-email-cli、`.git/cph` 钩子、Git 铁律、lockfile、无签名发布、**Electron 配置与缺失项清单** |
 | **首次安装指引** | `05-release/2026-11-12-首次安装指引.md` | 已落 | Windows SmartScreen / macOS Gatekeeper / deb·rpm·AppImage 无签名安装说明 |
@@ -31,7 +28,7 @@
 | **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
 | UI / 交互稿 | `03-design/` | 待建 | M1 产出 |
-| ADR 决策记录 | 本文件 §四 + `02-architecture/2026-11-13-工具插件化与需求台账.md` | 已收口 | 早期预留的空目录 `01-requirements/decisions/` 从未落地任何 ADR（Git 也不跟踪空目录），已删除；D1~D45 统一记在本看板，插件化相关细节记在架构文档。后续确需按主题单开 ADR 时再建目录，格式见 §六 |
+| ADR 决策记录 | 本文件 §四 + `02-architecture/工具插件化需求台账.md` | 已收口 | 早期预留的空目录 `01-requirements/decisions/` 从未落地任何 ADR（Git 也不跟踪空目录），已删除；D1~D50 统一记在本看板，插件化相关细节记在架构文档。后续确需按主题单开 ADR 时再建目录，格式见 §六 |
 | 归档 | `99-archive/` | 待建 | 过期文档只移不删 |
 
 ## 二、目录规范（需求 0）
@@ -78,7 +75,7 @@ docs/
 | TS 6 切换 | ✅ `typescript: "6"` → 6.0.3，lockfile 已同步 |
 | **M2 发布与更新** | ✅ `release.yml`（tag 触发三平台）、`05-release/首次安装指引.md`、autoUpdater IPC + 检查更新按钮 |
 | **构建脚本白名单** | ✅ `allowBuilds: electron / esbuild / electron-winstaller`（pnpm 12 规范写法，修复 `ERR_PNPM_IGNORED_BUILDS`） |
-| **本机验证** | ✅ 依赖已安装；`pnpm verify`（13 文件 / 67 测试）、`pnpm dev`、`pnpm local` Windows 打包均实测通过 |
+| **本机验证** | ✅ 依赖已安装；`pnpm verify`（13 门禁 / 132 测试）、`pnpm dev`、`pnpm local` Windows 打包均实测通过 |
 | 功能页 | ✅ M7 / M6 / M4 / M5 三个工具功能页全部落地 |
 | **工具目录与设置中心** | ✅ 主进程单一裁决（启用 / 密钥权限 / 依赖 / 分发白名单 / 元数据覆盖）；顶部设置抽屉管理应用级配置，工具左侧只管工具自有配置；三张独立工具图标 + 无效回退 |
 
@@ -126,6 +123,8 @@ docs/
 | **D46** | **密钥标识校验纯函数化** | `app:tool:<id>:<name>` 标识抽出 `secret-ids.ts` 并放宽为大小写/下划线/连字符；修掉驼峰 `visionApiKey` 被判非法导致 Badge 加载即报错，补 3 个回归单测 |
 | **D47** | **模型预设与真实模型列表下拉** | 常用 OpenAI 兼容端点（含 Agnes AI `/v1`）由 `model-console` manifest 自带，用户只填 Key；模型名 `el-select allow-create` + 「拉取模型列表」真实请求 `/models`；保存前可用临时 key 探测且不落盘；预设不含任何密钥 |
 | **D48** | **IDE 项目归属收口** | 三套 tsconfig 全 0 错误即证明代码无误；根 `tsconfig.json` 刻意排除 apps，让 `apps/desktop/tsconfig.json` 独占 `.vue`；显式 `types: ["node","vite/client"]`；新增 `electron` paths；去掉反向作用的 Volar takeover 设置；`cspell.json` 消除拼写波浪线；换电脑后须按架构文档 §7.3 重载窗口 / 切工作区 TS 版本 / 重启 TS Server |
+| **D49** | **依赖选型反转（强化）** | **推翻旧「优先不新增依赖」倾向**：设计方案时**优先使用成熟第三方 / npm 包，不造轮子**；图标、字体、日期、工具库等常见需求先查成熟包。`@element-plus/icons-vue` 与 **Font Awesome**（`@fortawesome/fontawesome-free`）已批准直接用；仅零依赖校验脚本 / icon 生成脚本等无合适包时自研（与 D30 同源，措辞强化） |
+| **D50** | **UI 视觉铁律** | **后续所有界面开发，能用图标处尽量用图标**（按钮 / 状态 / 操作列等）；界面须**美观大方、吸引用户、增强视觉体验**，不将就纯文字或裸箭头（`↓`/`▾` 等一律换图标库）。触发：自动更新按钮曾用 Unicode `↓` 被纠正 |
 
 > **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
 > shared 现为**纯契约 / 裁决层**（零具体工具数据），真相源下沉到各工具包 manifest；`DEFAULT_SETTINGS.tools` 也已清空。
@@ -143,7 +142,7 @@ docs/
 | **可选提供** | 代码签名证书、Apple ID、国产 OS 实机（不阻塞开发） |
 | 旧工具存量数据 | 是否要 M4 附一次性迁移脚本 |
 | M1 补校验 | preload `.cjs` 产物检查、条件导出双格式冒烟 |
-| **用户执行（IDE）** | 按 `02-architecture/2026-11-13-工具插件化与需求台账.md` §7.3 七步操作：确认打开仓库根 → 装 Vue - Official → Reload Window → Use Workspace TS Version → Restart TS Server → Go to Project Configuration 验证 |
+| **用户执行（IDE）** | 按 `02-architecture/工具插件化需求台账.md` §7.3 七步操作：确认打开仓库根 → 装 Vue - Official → Reload Window → Use Workspace TS Version → Restart TS Server → Go to Project Configuration 验证 |
 | **用户确认（PaddleOCR）** | 本机 Python 解释器绝对路径、PaddleOCR 版本 / 调用方式、点击统计截图版式（链接与数字是否同行、有无千分位 / 合计列），用于校准 `rows_from_lines()` |
 | **用户填写（视觉模型）** | Badge Studio「图片识别」面板填入 API Key（只落本机 safeStorage，不进仓库）→ 上传截图实测 |
 | **用户执行（安装包）** | 本轮大量改动后重新 `pnpm local` 生成 Windows 安装包做安装测试 |
