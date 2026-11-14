@@ -189,11 +189,12 @@ export function killUtilityTools(): void {
  * - 该工具标记 loaded=false（桌面隐藏并给出原因）
  * - 它的专属通道注册明确拒绝 handler，其它工具照常工作
  *
- * 加载策略：
+ * 加载策略（同 id 冲突一律源码优先）：
  * - 无 plugin.main：只消费宿主能力（如 model-console 用 llm/* IPC）
+ * - 内置工具（有 MAIN_LOADERS）：一律走构建期入口，不被安装副本覆盖——dev 迭代已安装的
+ *   外部包时始终消费 tools/ 源码、实时生效；沙箱/权限语义与打包版一致
  * - 已安装运行时包（readInstalled 有记录）：按 sandbox 选 utility 沙箱 或 主进程内加载
- * - 内置工具（有 MAIN_LOADERS）：保持原有构建期动态加载，行为不变
- * - 声明了 main 但既无安装记录也无内置入口的运行时包：跳过（未安装，不报错）
+ * - 声明了 main 但既无内置入口也无安装记录的运行时包：跳过（未安装，不报错）
  *
  * @param opts.userDataDir 传入后才会尝试加载已安装的运行时包（utility / main 沙箱）。
  */
@@ -218,19 +219,8 @@ export async function loadToolPlugins(
     const record = installed[tool.id]
     const builtinLoader = MAIN_LOADERS[tool.id]
     try {
-      if (record) {
-        // 运行时已安装外部包：按 sandbox 选择加载方式
-        const packageDir = join(root, 'packages', record.id, record.version)
-        const mainFile = join(packageDir, tool.plugin.main)
-        if (record.sandbox === 'utility') {
-          // 沙箱子进程：异步 fork，注册通道后由 onRegister 建转发 handler
-          await forkRuntime(tool, host, packageDir, mainFile, utilityInstances)
-        } else {
-          // sandbox=main：签名+信任，主进程内直接加载外部 main
-          await loadExternalInMain(tool, host, packageDir, mainFile)
-        }
-      } else if (builtinLoader) {
-        // 内置工具（构建期发现，有 MAIN_LOADERS）
+      if (builtinLoader) {
+        // 内置工具（构建期发现，有 MAIN_LOADERS）：源码优先，安装副本存在也不消费
         const mod = (await builtinLoader()) as Record<string, unknown>
         // 只认明确的 default / register 导出，契约不清晰就判加载失败。
         const candidate = mod['default'] ?? mod['register']
@@ -243,6 +233,17 @@ export async function loadToolPlugins(
           outputRoot: host.outputRoot,
           host: host.host,
         })
+      } else if (record) {
+        // 运行时已安装外部包：按 sandbox 选择加载方式
+        const packageDir = join(root, 'packages', record.id, record.version)
+        const mainFile = join(packageDir, tool.plugin.main)
+        if (record.sandbox === 'utility') {
+          // 沙箱子进程：异步 fork，注册通道后由 onRegister 建转发 handler
+          await forkRuntime(tool, host, packageDir, mainFile, utilityInstances)
+        } else {
+          // sandbox=main：签名+信任，主进程内直接加载外部 main
+          await loadExternalInMain(tool, host, packageDir, mainFile)
+        }
       } else {
         // 运行时工具声明了 main 但本地未安装：跳过，不报错（渲染层随安装状态裁决可见性）
         status[tool.id] = { loaded: true }

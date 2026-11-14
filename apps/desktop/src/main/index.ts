@@ -120,11 +120,14 @@ function readProvider(_event: unknown, provider: LlmProvider): LlmProvider {
   return provider
 }
 
-/** 构建期内置清单 + 运行时已安装包清单，统一参与目录裁决 */
+/** 构建期内置清单 + 运行时已安装包清单，统一参与目录裁决。
+ *  同 id 冲突一律 tools/ 源码优先、安装副本仅补位：内建工具不可被外部安装覆盖（既定规则），
+ *  dev 迭代已安装的外部包时也因此始终消费源码、实时生效（安装记录保留但不消费）。 */
 function allManifests(): ToolDescriptor[] {
   const runtime = loadRuntimeManifests({ userDataDir: app.getPath('userData'), importedKeys: [] })
   for (const problem of runtime.problems) console.warn('[sshk] 运行时工具包：', problem)
-  return [...MANIFESTS, ...runtime.manifests]
+  const builtinIds = new Set(MANIFESTS.map((m) => m.id))
+  return [...MANIFESTS, ...runtime.manifests.filter((m) => !builtinIds.has(m.id))]
 }
 
 function assertKnownTool(id: string): void {
