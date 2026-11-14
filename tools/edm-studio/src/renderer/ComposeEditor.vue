@@ -1,6 +1,7 @@
 <script lang="ts">
 /** 区块 / 片段摆放类型（三场景共用：片段预览 / 模板预览 / 邮件编辑） */
-export interface SlotDef { key: string; label?: string }
+export interface SlotDef { key: string; label?: string; type?: string }
+export interface FragmentOption { id: string; label: string; type?: string }
 export interface PlacementItem {
   uid: string
   /** 片段标识：系统内容域=JSON(selector)；NeDB 域=片段版本 _id */
@@ -14,7 +15,7 @@ export interface PlacementItem {
 </script>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Rank } from '@element-plus/icons-vue'
 
@@ -24,7 +25,7 @@ import { Delete, Rank } from '@element-plus/icons-vue'
  * placement.data 的编辑由父级处理（edit-data 事件），本组件只管布局。
  */
 const props = withDefaults(
-  defineProps<{ slots: SlotDef[]; fragmentOptions: { id: string; label: string }[]; modelValue: PlacementItem[]; readonly?: boolean }>(),
+  defineProps<{ slots: SlotDef[]; fragmentOptions: FragmentOption[]; modelValue: PlacementItem[]; readonly?: boolean }>(),
   { readonly: false },
 )
 const emit = defineEmits<{
@@ -35,6 +36,13 @@ const emit = defineEmits<{
 const pickFragment = ref('')
 const pickSlot = ref('')
 let uidSeed = 0
+
+/** 落点区块选定后，片段下拉按 slot.type ↔ 片段 type 匹配过滤（无 type 约束时全给） */
+const pickOptions = computed<FragmentOption[]>(() => {
+  const slotType = props.slots.find((s) => s.key === (pickSlot.value || props.slots[0]?.key))?.type
+  if (!slotType) return props.fragmentOptions
+  return props.fragmentOptions.filter((o) => !o.type || o.type === slotType)
+})
 
 function itemsOf(slot: string): PlacementItem[] {
   return props.modelValue.filter((p) => p.slot === slot).sort((a, b) => a.order - b.order)
@@ -54,6 +62,8 @@ function addPlacement(): void {
   if (!opt) return
   const slotKey = pickSlot.value || props.slots[0]?.key || ''
   if (!slotKey) return
+  const slotType = props.slots.find((s) => s.key === slotKey)?.type
+  if (slotType && opt.type && opt.type !== slotType) return // 槽位类型不匹配（下拉已过滤，双保险）
   emitChange([
     ...props.modelValue,
     { uid: `p_${Date.now()}_${uidSeed++}`, fragmentId: opt.id, label: opt.label, slot: slotKey, order: itemsOf(slotKey).length, repeat: 1 },
@@ -81,7 +91,7 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
   <div class="compose" :class="{ readonly }">
     <div class="toolbar">
       <el-select v-model="pickFragment" size="small" filterable placeholder="选择片段" class="pick">
-        <el-option v-for="f in fragmentOptions" :key="f.id" :value="f.id" :label="f.label" />
+        <el-option v-for="f in pickOptions" :key="f.id" :value="f.id" :label="f.label" />
       </el-select>
       <el-select v-model="pickSlot" size="small" placeholder="落点区块" class="pick-sm">
         <el-option v-for="s in slots" :key="s.key" :value="s.key" :label="s.label || s.key" />

@@ -34,9 +34,9 @@ type Payload = Record<string, unknown>
 const ACTIONS = new Set([
   'brand:list', 'brand:save', 'brand:remove',
   'tpl:list', 'tpl:save', 'tpl:remove',
-  'tplv:save', 'tplv:saveAsNew', 'tplv:get',
+  'tplv:save', 'tplv:saveAsNew', 'tplv:get', 'tplv:list',
   'frg:list', 'frg:save', 'frg:remove',
-  'frgv:save', 'frgv:saveAsNew', 'frgv:get',
+  'frgv:save', 'frgv:saveAsNew', 'frgv:get', 'frgv:list',
   'candidates:pick',
   'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:preview', 'mail:readFinal', 'mail:export',
   'share:start', 'share:stop', 'share:status',
@@ -203,6 +203,8 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
       }
       case 'tplv:get':
         return repo.get<TemplateVersion>('templateVersions', str(data, '_id'))
+      case 'tplv:list':
+        return repo.list<TemplateVersion>('templateVersions', { archived: false })
 
       // ── 片段族 / 版本 ──
       case 'frg:list':
@@ -265,6 +267,8 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
       }
       case 'frgv:get':
         return repo.get<FragmentVersion>('fragmentVersions', str(data, '_id'))
+      case 'frgv:list':
+        return repo.list<FragmentVersion>('fragmentVersions', { archived: false })
 
       // ── 候选片段（两道过滤下推 Repository，黑名单优先 §2.2） ──
       case 'candidates:pick': {

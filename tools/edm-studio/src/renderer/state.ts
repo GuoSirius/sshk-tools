@@ -9,6 +9,9 @@ import { api } from './shared'
 export const brands = ref<BrandRow[]>([])
 export const templates = ref<Named[]>([])
 export const tplVersions = ref<VersionRow[]>([])
+/** 全量模板/片段版本（R20 邮件编辑器跨品牌选择用） */
+export const tplVersionsAll = ref<VersionRow[]>([])
+export const frgvVersions = ref<VersionRow[]>([])
 export const currentTpl = ref<Named | null>(null)
 export const fragments = ref<Named[]>([])
 export const mails = ref<MailRow[]>([])
@@ -30,6 +33,12 @@ export async function loadFragments(): Promise<void> {
 export async function loadMails(): Promise<void> {
   mails.value = (await api('mail:list')) as MailRow[]
 }
+export async function loadTplVersionsAll(): Promise<void> {
+  tplVersionsAll.value = (await api('tplv:list')) as VersionRow[]
+}
+export async function loadFrgvVersions(): Promise<void> {
+  frgvVersions.value = (await api('frgv:list')) as VersionRow[]
+}
 
 let loaded = false
 export async function ensureLoaded(): Promise<void> {
@@ -39,4 +48,6 @@ export async function ensureLoaded(): Promise<void> {
   await loadTemplates()
   await loadFragments()
   await loadMails()
+  await loadTplVersionsAll()
+  await loadFrgvVersions()
 }

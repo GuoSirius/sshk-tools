@@ -100,6 +100,8 @@ export interface MailOutputs {
 
 export interface Mail extends BaseEntity {
   name: string
+  /** 来源标记（system=基于系统内容产出 / custom=自定义；Q/C 拍板：邮件为独立实体） */
+  origin?: Origin
   brandId: string
   templateVersionId: string
   bindings: SlotBinding[]

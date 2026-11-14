@@ -2,16 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, TimeText } from '@sshk/ui-kit'
-import { mails, tplVersions, loadMails } from '../state'
+import { brands, mails, tplVersionsAll, loadMails } from '../state'
 import { api, confirmRemove, osApi, type MailRow } from '../shared'
+import MailEditor from '../MailEditor.vue'
 
 /**
- * 邮件管理页（表格/操作/弹框约定）：
- * 三段式 + # 跨页序号 + 选择列(reserve) + 批量导出/删除 + 操作列 ≤3 按钮、其余进「更多」。
- * 导出：单封 .html / 批量 .zip（os.pickSave 选路径，main mail:export 落盘）；分享：局域网 token。
+ * 邮件管理页（R20，§6.3 拍板语义）：
+ * 列表：名称/来源/品牌/模板版本/片段数/生成时间；操作 = 生成 | 导出 | 更多(编辑/复制为新邮件/打开产物/删除)。
+ * 编辑走 MailEditor 分步流程；导出 zip 含各形态 html；分享复用局域网 token 通道。
  */
-const mailOpen = ref(false)
-const mailForm = ref<{ _id: string; name: string; templateVersionId: string; bindingsText: string; dataText: string }>({ _id: '', name: '', templateVersionId: '', bindingsText: '', dataText: '{}' })
+const editorOpen = ref(false)
+const editorMail = ref<MailRow | null>(null)
 const mailGenerating = ref('')
 
 // ── 分页（底部分页固定；# 序号跨页连续） ──
@@ -23,49 +24,25 @@ const pagedMails = computed(() => mails.value.slice((currentPage.value - 1) * pa
 const selectedMails = ref<MailRow[]>([])
 function onSelectionChange(rows: MailRow[]): void { selectedMails.value = rows }
 
-const tplvOptions = computed(() => tplVersions.value.map((v) => ({ label: `${v.label ?? `v${v.version}`}`, value: v._id })))
+function brandLabel(brandId: string): string {
+  const b = brands.value.find((x) => x._id === brandId)
+  return b ? b.name : brandId.slice(0, 10) + '…'
+}
 function tplLabel(id: string): string {
-  const v = tplVersions.value.find((t) => t._id === id)
+  const v = tplVersionsAll.value.find((t) => t._id === id)
   return v ? (v.label ?? `v${v.version}`) : id.slice(0, 12) + '…'
 }
-
-function openMail(row?: MailRow): void {
-  mailForm.value = row
-    ? {
-        _id: row._id,
-        name: String(row.name ?? ''),
-        templateVersionId: row.templateVersionId,
-        bindingsText: JSON.stringify(row.bindings ?? []),
-        dataText: JSON.stringify(row.data ?? {}, null, 2),
-      }
-    : { _id: '', name: '', templateVersionId: tplVersions.value[0]?._id ?? '', bindingsText: '[{"slot":"header","fragmentVersionId":""}]', dataText: '{}' }
-  mailOpen.value = true
-}
-async function saveMail(): Promise<void> {
-  try {
-    await api('mail:save', {
-      ...mailForm.value,
-      bindings: JSON.parse(mailForm.value.bindingsText),
-      data: JSON.parse(mailForm.value.dataText),
-    })
-    mailOpen.value = false
-    await loadMails()
-    ElMessage.success('邮件已保存')
-  } catch (err) { ElMessage.error((err as Error).message) }
+function placementCount(row: MailRow): number {
+  return row.bindings?.length ?? 0
 }
 
-/** 复制副本（复制约定）：内容原样，名称加「副本」后缀 */
-async function duplicateMail(row: MailRow): Promise<void> {
-  try {
-    await api('mail:save', {
-      name: `${row.name} 副本`,
-      templateVersionId: row.templateVersionId,
-      bindings: row.bindings ?? [],
-      data: row.data ?? {},
-    })
-    await loadMails()
-    ElMessage.success('已创建副本')
-  } catch (err) { ElMessage.error((err as Error).message) }
+function openEditor(row?: MailRow): void {
+  editorMail.value = row ?? null
+  editorOpen.value = true
+}
+
+async function onEditorSaved(): Promise<void> {
+  await loadMails()
 }
 
 async function generateMail(row: MailRow): Promise<void> {
@@ -78,11 +55,19 @@ async function generateMail(row: MailRow): Promise<void> {
   finally { mailGenerating.value = '' }
 }
 
-async function copyFinal(row: MailRow): Promise<void> {
+/** 复制为新邮件（§6.3）：以此为参考深拷一份，简单修改即成新邮件 */
+async function duplicateMail(row: MailRow): Promise<void> {
   try {
-    const html = (await api('mail:readFinal', { _id: row._id })) as string
-    await osApi().clipboardWrite(html)
-    ElMessage.success('final.html 已复制')
+    await api('mail:save', {
+      name: `${row.name} 副本`,
+      origin: 'custom',
+      brandId: row.brandId,
+      templateVersionId: row.templateVersionId,
+      bindings: row.bindings ?? [],
+      data: row.data ?? {},
+    })
+    await loadMails()
+    ElMessage.success('已复制为新邮件，可编辑后生成')
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 
@@ -90,7 +75,7 @@ async function openOutput(row: MailRow): Promise<void> {
   if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/final.html`)
 }
 
-// ── 导出（导出约定：单封 .html / 批量 .zip） ──
+// ── 导出（单封 .html(final) / 批量 .zip 含各形态 html） ──
 async function exportMail(row: MailRow): Promise<void> {
   try {
     if (!row.outputs?.final) { ElMessage.warning('该邮件尚未生成产物'); return }
@@ -109,7 +94,7 @@ async function batchExport(): Promise<void> {
     const save = await osApi().pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
     if (!save) return
     const res = (await api('mail:export', { ids: rows.map((r) => r._id), outPath: save })) as { count: number; outPath: string }
-    ElMessage.success(`已批量导出 ${res.count} 封：${res.outPath}`)
+    ElMessage.success(`已批量导出 ${res.count} 封（zip 含各形态 html）：${res.outPath}`)
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 
@@ -125,7 +110,7 @@ async function batchRemove(): Promise<void> {
   ElMessage.success(`已删除 ${rows.length} 封邮件`)
 }
 
-// ── 分享（分享约定：局域网 token，状态可见可停止） ──
+// ── 分享（局域网 token，状态可见可停止） ──
 const share = ref<{ running: boolean; urls: string[] }>({ running: false, urls: [] })
 async function refreshShare(): Promise<void> {
   try { share.value = (await api('share:status')) as { running: boolean; urls: string[] } } catch { /* 忽略 */ }
@@ -154,8 +139,7 @@ onMounted(refreshShare)
 
 /** 行内「更多」命令分发 */
 async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
-  if (cmd === 'edit') { openMail(row); return }
-  if (cmd === 'copy') { await copyFinal(row); return }
+  if (cmd === 'edit') { openEditor(row); return }
   if (cmd === 'duplicate') { await duplicateMail(row); return }
   if (cmd === 'open') { await openOutput(row); return }
   if (cmd === 'delete') await confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })
@@ -165,7 +149,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
 <template>
   <div class="mails-page">
     <div class="toolbar">
-      <el-button size="small" type="primary" plain @click="openMail()">新增邮件</el-button>
+      <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>
       <el-button size="small" type="success" plain :disabled="selectedMails.length === 0" @click="batchExport">批量导出（{{ selectedMails.length }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selectedMails.length === 0" @click="batchRemove">批量删除（{{ selectedMails.length }}）</el-button>
       <span class="spacer" />
@@ -182,9 +166,20 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
         <el-table :data="pagedMails" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
           <el-table-column type="index" label="#" width="46" align="center" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
           <el-table-column type="selection" width="40" reserve-selection />
-          <el-table-column prop="name" label="邮件" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="name" label="邮件" min-width="140" show-overflow-tooltip />
+          <el-table-column label="来源" width="76" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="品牌" width="120" show-overflow-tooltip>
+            <template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template>
+          </el-table-column>
           <el-table-column label="模板版本" width="110">
             <template #default="{ row }"><span class="muted">{{ tplLabel(row.templateVersionId) }}</span></template>
+          </el-table-column>
+          <el-table-column label="片段" width="60" align="center">
+            <template #default="{ row }"><span class="muted">{{ placementCount(row) }}</span></template>
           </el-table-column>
           <el-table-column label="生成时间" width="150">
             <template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template>
@@ -200,8 +195,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                      <el-dropdown-item command="copy">复制代码</el-dropdown-item>
-                      <el-dropdown-item command="duplicate">复制副本</el-dropdown-item>
+                      <el-dropdown-item command="duplicate">复制为新邮件</el-dropdown-item>
                       <el-dropdown-item command="open">打开产物</el-dropdown-item>
                       <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
                     </el-dropdown-menu>
@@ -212,7 +206,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
           </el-table-column>
         </el-table>
       </template>
-      <EmptyState v-else description="还没有邮件；邮件绑定模板版本与片段版本后一键生成三阶段产物" />
+      <EmptyState v-else description="还没有邮件；点「新增邮件」走 名称→来源→品牌→模板→片段布局→数据→生成 的完整流程" />
     </div>
 
     <div class="foot">
@@ -224,25 +218,10 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
         layout="total, sizes, prev, pager, next"
         small
       />
-      <span class="muted">产物覆盖式（D19）· 分享 final.html（72h token）</span>
+      <span class="muted">产物覆盖式（D19）· 分享 final.html（72h token）· 导出 zip 含各形态 html</span>
     </div>
 
-    <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="mailOpen" :title="mailForm._id ? '编辑邮件' : '新增邮件'" width="640px">
-      <el-form label-width="80px" size="small">
-        <el-form-item label="名称"><el-input v-model="mailForm.name" /></el-form-item>
-        <el-form-item label="模板版本">
-          <el-select v-model="mailForm.templateVersionId" style="width: 100%">
-            <el-option v-for="v in tplvOptions" :key="v.value" :label="v.label" :value="v.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="绑定"><el-input v-model="mailForm.bindingsText" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="数据"><el-input v-model="mailForm.dataText" type="textarea" :rows="6" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button size="small" @click="mailOpen = false">取消</el-button>
-        <el-button size="small" type="primary" @click="saveMail">保存</el-button>
-      </template>
-    </el-dialog>
+    <MailEditor v-model:visible="editorOpen" :mail="editorMail" @saved="onEditorSaved" />
   </div>
 </template>
 
