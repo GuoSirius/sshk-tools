@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { validateModel, type FieldDef } from './sample-schema'
+import RichTextEditor from './RichTextEditor.vue'
+import ImageField from './ImageField.vue'
 
 /**
  * 示例数据表单渲染器（R15）：按 fields schema 渲染 10 类控件，实时校验标红。
  * 递归：list 行内渲染子 SampleForm（depth 限 3 层防套娃）。
- * richtext 当前以多行文本兜底（wangEditor 依赖声明后接入，行为/校验不变）。
- * 图片上传通道（本地/云）接入后，image/image-list 追加上传按钮，本版先支持 URL 直填。
+ * richtext 已接入 wangEditor（@wangeditor/editor core 直接驱动，绕开 editor-for-vue 的 Vue2 版本陷阱）。
+ * image/image-list 已支持「本地上传 + 预览 + URL 直填」（ImageField）：当前上传走 dataURL 离线预览，
+ * 待上传通道（local/云）接入后改为真实上传并回填服务端 URL，本控件向后兼容。
  */
 const props = withDefaults(
   defineProps<{
@@ -94,12 +97,18 @@ function canNest(f: FieldDef): boolean {
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <el-input
-            v-else-if="f.type === 'textarea' || f.type === 'richtext'"
+            v-else-if="f.type === 'textarea'"
             :model-value="strVal(f.key)"
             type="textarea"
-            :rows="f.type === 'richtext' ? 6 : 3"
-            :placeholder="f.type === 'richtext' ? `${f.placeholder ?? ''}（富文本控件待 wangEditor 接入）` : f.placeholder"
+            :rows="3"
+            :placeholder="f.placeholder"
             :disabled="readonly"
+            @update:model-value="(v: string) => set(f.key, v)"
+          />
+          <RichTextEditor
+            v-else-if="f.type === 'richtext'"
+            :model-value="strVal(f.key)"
+            :readonly="readonly"
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <!-- 单选 -->
@@ -133,26 +142,20 @@ function canNest(f: FieldDef): boolean {
           >
             <el-option v-for="o in f.options ?? []" :key="o.value" :value="o.value" :label="o.label" />
           </el-select>
-          <!-- 单图（URL 直填，上传通道接入后追加上传按钮） -->
+          <!-- 单图（上传 + 预览 + URL 直填） -->
           <template v-else-if="f.type === 'image'">
-            <div class="image-row">
-              <el-image v-if="strVal(f.key)" :src="strVal(f.key)" fit="cover" class="thumb" :preview-src-list="[strVal(f.key)]" preview-teleported />
-              <el-input
-                :model-value="strVal(f.key)"
-                placeholder="图片 URL（上传通道下一版接入）"
-                :disabled="readonly"
-                @update:model-value="(v: string) => set(f.key, v)"
-              />
-            </div>
+            <ImageField
+              :model-value="strVal(f.key)"
+              :readonly="readonly"
+              @update:model-value="(v: string) => set(f.key, v)"
+            />
           </template>
           <!-- 多图（max 限数量） -->
           <template v-else-if="f.type === 'image-list'">
             <div v-for="(img, i) in arrVal(f.key)" :key="i" class="image-row">
-              <el-image v-if="img" :src="String(img)" fit="cover" class="thumb" :preview-src-list="[String(img)]" preview-teleported />
-              <el-input
+              <ImageField
                 :model-value="String(img ?? '')"
-                placeholder="图片 URL"
-                :disabled="readonly"
+                :readonly="readonly"
                 @update:model-value="(v: string) => setArr(f.key, arrVal(f.key).map((x, j) => (j === i ? v : x)))"
               />
               <el-button size="small" type="danger" plain :disabled="readonly" @click="removeImage(f.key, i)">删</el-button>
