@@ -24,8 +24,9 @@ async function refresh(): Promise<void> {
   }
 }
 
-/** IPC 变更类接口直接返回新 catalog，省一次往返 */
+/** IPC 变更类接口直接返回新 catalog，省一次往返；空值防御：绝不用空 payload 冲掉现目录 */
 function accept(next: ToolCatalogPayload): void {
+  if (!next) return
   payload.value = next
 }
 

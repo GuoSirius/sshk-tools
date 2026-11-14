@@ -92,9 +92,11 @@ function openManifest(tool: ToolRuntimeState): void {
   manifestToolId.value = tool.id
   manifestOpen.value = true
 }
-/** 配置表单保存后：主进程重载清单重建的目录 payload 就地刷新（权限列表/桌面同源） */
+/** 配置表单保存后：主进程重载清单重建的目录 payload 就地刷新（权限列表/桌面同源）；
+ *  catalog 缺失（主进程旧代码/重载失败）时退回主动拉取，保证刷新不静默丢失 */
 function onManifestSaved(next: unknown): void {
-  accept(next as ToolCatalogPayload)
+  if (next) accept(next as ToolCatalogPayload)
+  else void refreshCatalog()
 }
 onMounted(() => {
   void window.api.dev.state().then((s) => { devState.value = s }).catch(() => { /* 打包版不可用，保持默认 */ })

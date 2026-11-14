@@ -90,9 +90,11 @@ async function loadRuntimeComponent(id: string): Promise<void> {
   }
 }
 // 加载触发独立于 toolView：computed 只做纯渲染推导，副作用放 watch（进工具时拉起一次）
+// 仅「无构建期内置渲染层」的运行时包才走安装副本加载：manifest 带 package 契约的内建工具
+// 同样会 runtime=true，但内置组件优先，绝不能去请求 runtime:readRenderer（未装外部副本必报错）
 watch(() => {
   const tool = currentTool.value
-  return tool?.runtime ? tool.id : null
+  return tool?.runtime && !toolComponent(tool.id) ? tool.id : null
 }, (id) => {
   if (id) void loadRuntimeComponent(id)
 }, { immediate: true })

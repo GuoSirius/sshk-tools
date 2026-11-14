@@ -170,7 +170,7 @@ const api = {
     state: (): Promise<{ available: boolean; repoRoot: string | null; reason: string }> =>
       invoke(IPC_CHANNELS.devState),
     manifestGet: (id: string): Promise<string> => invoke(IPC_CHANNELS.devManifestGet, id),
-    manifestSet: (id: string, raw: string): Promise<{ ok: boolean; output: string }> =>
+    manifestSet: (id: string, raw: string): Promise<{ ok: boolean; output: string; catalog?: unknown }> =>
       invoke(IPC_CHANNELS.devManifestSet, id, raw),
     verify: (): Promise<{ ok: boolean; output: string }> => invoke(IPC_CHANNELS.devVerify),
     build: (): Promise<{ ok: boolean; output: string }> => invoke(IPC_CHANNELS.devBuild),
