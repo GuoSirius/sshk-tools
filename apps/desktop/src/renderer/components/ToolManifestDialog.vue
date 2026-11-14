@@ -321,14 +321,11 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <el-button type="info" size="small" :loading="busy" @click="buildBuiltinAction">打包应用（内建）</el-button>
           <el-button type="success" size="small" :loading="busy" @click="packAction">导出 .sshktool</el-button>
           <el-checkbox v-model="signBeforePack" size="small">导出前签名</el-checkbox>
+          <el-button size="small" type="info" plain class="action-close" @click="close">关闭</el-button>
         </div>
         <pre v-if="output" class="dev-output">{{ output }}</pre>
       </div>
     </div>
-
-    <template #footer>
-      <el-button size="small" type="info" plain @click="close">关闭</el-button>
-    </template>
   </el-dialog>
 </template>
 
@@ -354,5 +351,6 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 /* 底部操作条：与内容区隔离固定，输出区独立滚动 */
 .manifest-actionbar { flex: none; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color-lighter); }
 .dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dev-actions .action-close { margin-left: auto; }
 .dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 </style>

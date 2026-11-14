@@ -491,10 +491,12 @@ async function cleanupOrphans(): Promise<void> {
                     {{ editing === tool.id ? '收起' : '编辑' }}
                   </el-button>
                 </div>
-                <div class="tool-manage-meta">
+                <div class="tool-manage-meta tag-row">
                   <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
                   <el-tag v-if="devFeatures" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
                   <el-tag v-if="devFeatures && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
+                </div>
+                <div class="tool-manage-meta">
                   <span>权限要求：</span>
                   <el-select :model-value="tool.requiredGrant ?? ''" size="small" style="width: 160px" @change="(v: unknown) => setGrant(tool, String(v ?? ''))">
                     <el-option label="公开" value="" />

@@ -460,6 +460,14 @@ body {
 .card-title { font-weight: 600; margin-bottom: 14px; }
 .card-actions { display: flex; gap: 8px; margin-top: 14px; }
 .hint { font-size: 12px; color: var(--sshk-muted); line-height: 1.6; }
+
+/* ── 弹框/抽屉全局行为（适用于所有弹框逻辑） ──
+   1) 禁止滚动穿透：遮罩内滚动到达边界后不链到背景容器（页面/抽屉不再跟着滚）；
+   2) 抽屉内容区同理 contain，避免在抽屉里滚到头时带动主页面；
+   3) 点遮罩不关闭由 check:dialogs 门禁强制（close-on-click-modal="false" 全量覆盖）。 */
+.el-overlay { overscroll-behavior: contain; }
+.el-drawer__body { overscroll-behavior: contain; }
+.el-dialog { overscroll-behavior: contain; }
 .kv-line {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 0; border-bottom: 1px dashed var(--sshk-border); font-size: 13px;
