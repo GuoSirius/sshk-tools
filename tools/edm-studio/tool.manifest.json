@@ -5,13 +5,12 @@
   "category": "邮件营销",
   "tags": [
     "内容生产",
-    "HTML",
-    "生成"
+    "HTML 生成"
   ],
   "icon": "auto",
   "entryRoute": "mails",
   "enabled": true,
-  "visibility": "hidden",
+  "visibility": "desktop",
   "configLayout": "single",
   "plugin": {
     "source": "builtin",
@@ -30,19 +29,19 @@
   "menus": [
     {
       "id": "brands",
-      "label": "品牌"
+      "label": "品牌管理"
     },
     {
       "id": "templates",
-      "label": "模板"
+      "label": "模板管理"
     },
     {
       "id": "fragments",
-      "label": "片段"
+      "label": "片段管理"
     },
     {
       "id": "mails",
-      "label": "邮件"
+      "label": "邮件管理"
     },
     {
       "id": "system",

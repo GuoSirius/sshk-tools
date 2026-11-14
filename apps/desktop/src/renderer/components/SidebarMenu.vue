@@ -21,6 +21,7 @@ const ICONS: Record<string, string> = {
   templates: 'M4 4h16v4H4zM4 10h10v10H4zM16 10h4v10h-4z',
   fragments: 'M4 4h7v7H4zM13 11h7v7h-7zM4 13h7v7H4zM13 4h4v4h4',
   mails: 'M3 5h18v14H3zM3 6l9 7 9-7',
+  system: 'M3 4h18v5H3zM5 9v11h14V9M9 13h6M9 16h6',
   generate: 'M4 20h16M6 16l9-9 3 3-9 9H6zM14 5l3 3',
   posters: 'M3 4h18v16H3zM3 15l5-5 4 4 3-3 6 6',
   providers: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
