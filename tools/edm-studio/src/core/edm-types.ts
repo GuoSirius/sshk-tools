@@ -39,6 +39,8 @@ export interface FragmentFamilyMeta {
   /** 黑白名单：本族片段可服务的模板族/版本 ID（D14） */
   policy?: FragmentPolicy
   dataSchema?: Record<string, unknown>
+  /** 字段 schema 族级兜底（版本未声明 fields 时） */
+  fields?: unknown[]
   tags?: string[]
 }
 
@@ -47,6 +49,8 @@ export interface FragmentVersionMeta {
   version: number
   changelog?: string
   policy?: FragmentPolicy
+  /** 字段 schema（R15 示例表单 + 邮件数据填写） */
+  fields?: unknown[]
 }
 
 /** 模板族元数据：<brand>/template/<family>/meta.yaml */
@@ -63,6 +67,8 @@ export interface TemplateFamilyMeta {
 export interface TemplateVersionMeta {
   version: number
   changelog?: string
+  /** 模板级字段 schema（可选） */
+  fields?: unknown[]
 }
 
 /** 单个版本节点（目录不可变，D8） */

@@ -18,9 +18,8 @@ import {
   type Template,
   type TemplateVersion,
 } from '@sshk/repository'
-import { renderFragment, renderMail } from '../core/render.js'
-import { collectCss, type CssSource } from '../core/css-bundle.js'
-import { renderSystemPreview, type SystemSelector } from '../core/system-css.js'
+import { compose, type ComposePlacement } from '../core/compose.js'
+import { renderSystemPreview, renderSystemCompose, type SystemSelector } from '../core/system-css.js'
 import { ShareServer } from './share.js'
 
 export interface EdmIpcDeps {
@@ -39,7 +38,7 @@ const ACTIONS = new Set([
   'frg:list', 'frg:save', 'frg:remove',
   'frgv:save', 'frgv:saveAsNew', 'frgv:get',
   'candidates:pick',
-  'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:readFinal', 'mail:export',
+  'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:preview', 'mail:readFinal', 'mail:export',
   'share:start', 'share:stop', 'share:status',
   'system:load', 'system:render', 'system:readFile',
   'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
@@ -302,31 +301,28 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (!mail) throw new Error('邮件不存在')
         const tv = await repo.get<TemplateVersion>('templateVersions', mail.templateVersionId)
         if (!tv) throw new Error('模板版本不存在')
-        // 槽位绑定：片段版本渲染 + 槽位声明式注入；同时收集 css 来源与原子类扫描源
-        const bindings: Record<string, string> = {}
-        const cssSources: CssSource[] = []
-        const scanCodes = [tv.source.html]
+        // R19 统一组合引擎：placements（per-placement data/order/repeat，Q12）→ slot_* → 三阶段
+        const placements: ComposePlacement[] = []
         for (const b of mail.bindings) {
           const fv = await repo.get<FragmentVersion>('fragmentVersions', b.fragmentVersionId)
           if (!fv) continue
-          bindings[b.slot] = renderFragment(fv.source.html, (mail.data ?? {}) as Payload)
-          scanCodes.push(fv.source.html)
-          cssSources.push({ mode: fv.source.cssMode, content: fv.source.css, file: fv.source.cssFile })
+          placements.push({
+            html: fv.source.html,
+            css: fv.source.cssMode === 'inline' ? fv.source.css : undefined,
+            data: (b.data ?? mail.data ?? {}) as Record<string, unknown>,
+            slot: b.slot,
+            order: b.order,
+            repeat: b.repeat,
+          })
         }
-        cssSources.push({ mode: tv.source.cssMode, content: tv.source.css, file: tv.source.cssFile })
-        const bundle = await collectCss({
-          outputRoot: deps.outputRoot,
-          sources: cssSources,
-          scanCodes,
-          unoEnabled: true,
-        })
-        for (const warning of bundle.warnings) console.warn(`[edm] css 汇集警告：${warning}`)
-        const stages = await renderMail({
+        const stages = await compose({
           templateHtml: tv.source.html,
-          bindings,
-          data: (mail.data ?? {}) as Payload,
-          render: { strict: true, autoEscape: true },
-          cssBundle: bundle.css,
+          templateCss: tv.source.cssMode === 'inline' ? tv.source.css : undefined,
+          placements,
+          data: (mail.data ?? {}) as Record<string, unknown>,
+          strict: true,
+          outputRoot: deps.outputRoot,
+          unoEnabled: true,
         })
         const outputs = {
           assembled: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled),
@@ -340,35 +336,74 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
           sourceHash: stages.sourceHash,
         })
       }
+      case 'mail:preview': {
+        // 草稿组合预览（不落库不写产物；R20 编辑页实时预览用）
+        const tv = await repo.get<TemplateVersion>('templateVersions', str(data, 'templateVersionId'))
+        if (!tv) throw new Error('模板版本不存在')
+        const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
+        const placements: ComposePlacement[] = []
+        for (const p of raw) {
+          const fv = await repo.get<FragmentVersion>('fragmentVersions', String(p['fragmentVersionId'] ?? ''))
+          if (!fv) continue
+          placements.push({
+            html: fv.source.html,
+            css: fv.source.cssMode === 'inline' ? fv.source.css : undefined,
+            data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
+            slot: String(p['slot'] ?? ''),
+            order: typeof p['order'] === 'number' ? p['order'] : undefined,
+            repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
+          })
+        }
+        const stages = await compose({
+          templateHtml: tv.source.html,
+          templateCss: tv.source.cssMode === 'inline' ? tv.source.css : undefined,
+          placements,
+          data: (data['mailData'] as Record<string, unknown>) ?? {},
+          strict: false,
+          outputRoot: deps.outputRoot,
+          unoEnabled: true,
+        })
+        return { html: stages.assembled }
+      }
       case 'mail:readFinal': {
         const mail = await repo.get<Mail>('mails', str(data, '_id'))
         if (!mail?.outputs.final) throw new Error('尚未生成产物')
         return readOutput(deps.outputRoot, mail.outputs.final)
       }
-      // ── 导出（约定：单封 .html / 批量 .zip，路径来自渲染层 os.pickSave） ──
+      // ── 导出（约定：单封 .html(final) / 批量 .zip 含各形态 assembled/inlined/final，§6.3） ──
       case 'mail:export': {
         const ids = Array.isArray(data['ids']) ? (data['ids'] as unknown[]).map(String).filter(Boolean) : []
         const outPath = str(data, 'outPath')
         if (ids.length === 0) throw new Error('ids 必填')
         if (!outPath) throw new Error('outPath 必填（os.pickSave 结果）')
-        const items: { id: string; name: string; html: string }[] = []
+        const read = async (rel?: string): Promise<string> => (rel ? await readOutput(deps.outputRoot, rel) : '')
+        const items: { id: string; name: string; assembled: string; inlined: string; final: string }[] = []
         for (const id of ids) {
           const mail = await repo.get<Mail>('mails', id)
           if (!mail?.outputs.final) continue
-          items.push({ id, name: mail.name, html: await readOutput(deps.outputRoot, mail.outputs.final) })
+          items.push({
+            id,
+            name: mail.name,
+            assembled: await read(mail.outputs.assembled),
+            inlined: await read(mail.outputs.inlined),
+            final: await read(mail.outputs.final),
+          })
         }
         if (items.length === 0) throw new Error('所选邮件均无产物，请先生成')
         if (items.length === 1 && !outPath.endsWith('.zip')) {
-          await fs.writeFile(outPath, items[0]!.html, 'utf8')
+          await fs.writeFile(outPath, items[0]!.final, 'utf8')
           return { count: 1, outPath }
         }
-        // zip 内文件名：名称非法字符替换为 _，空名回退 id
+        // zip 内文件名：名称非法字符替换为 _，空名回退 id；每封含三个形态
         const safe = (s: string): string => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'mail'
-        const zipped = zipSync(
-          Object.fromEntries(items.map((it) => [`${safe(it.name)}.html`, new TextEncoder().encode(it.html)])),
-          { level: 6 },
-        )
-        await fs.writeFile(outPath, zipped)
+        const enc = (s: string): Uint8Array => new TextEncoder().encode(s)
+        const files: Record<string, Uint8Array> = {}
+        for (const it of items) {
+          if (it.assembled) files[`${safe(it.name)}.assembled.html`] = enc(it.assembled)
+          if (it.inlined) files[`${safe(it.name)}.inlined.html`] = enc(it.inlined)
+          if (it.final) files[`${safe(it.name)}.final.html`] = enc(it.final)
+        }
+        await fs.writeFile(outPath, zipSync(files, { level: 6 }))
         return { count: items.length, outPath }
       }
 
@@ -388,11 +423,23 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
       case 'system:load':
         return await loadEdmModel(resolveEdmRoot())
 
-      // ── 系统内容预览渲染（R5：就近 css 汇集 + 三阶段渲染的 assembled 产物） ──
+      // ── 系统内容预览渲染（R5 就近 css + R19 组合预览：placements 非空 → 片段/模板统一组合入口） ──
       case 'system:render': {
         const sel = obj(data, 'selector') as unknown as SystemSelector
         if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
-        return await renderSystemPreview(resolveEdmRoot(), sel)
+        const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
+        if (raw.length === 0) return await renderSystemPreview(resolveEdmRoot(), sel)
+        return await renderSystemCompose(
+          resolveEdmRoot(),
+          sel,
+          raw.map((p) => ({
+            selector: p['selector'] as unknown as SystemSelector,
+            slot: String(p['slot'] ?? ''),
+            order: typeof p['order'] === 'number' ? p['order'] : undefined,
+            repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
+            data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
+          })),
+        )
       }
       // ── 读取系统内容原文（只读；限制在 edm 根内，越权即拒） ──
       case 'system:readFile': {

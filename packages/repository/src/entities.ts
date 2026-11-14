@@ -47,6 +47,8 @@ export interface TemplateVersion extends BaseEntity {
   source: VersionSource
   slots: TemplateSlot[]
   dataSchema?: Record<string, unknown>
+  /** 模板级字段 schema（meta.yaml fields:；宽松结构避免跨层依赖） */
+  fields?: unknown[]
   sampleData?: Record<string, unknown>
   origin: Origin
 }
@@ -72,14 +74,22 @@ export interface FragmentVersion extends BaseEntity {
   /** 黑名单优先；黑名单/白名单允许 `tpl_…` 表示整族（D14，查询层展开） */
   policy: FragmentPolicy
   dataSchema?: Record<string, unknown>
+  /** 字段 schema（meta.yaml fields:，R15 示例表单 / 邮件数据填写用；宽松结构避免跨层依赖） */
+  fields?: unknown[]
   sampleData?: Record<string, unknown>
   origin: Origin
 }
 
-/** 槽位绑定：存版本 ID 快照，不存引用指针 */
+/** 槽位绑定（placement）：存版本 ID 快照，不存引用指针 */
 export interface SlotBinding {
   slot: string
   fragmentVersionId: string
+  /** 同区块内顺序（缺省按数组顺序） */
+  order?: number
+  /** 重复次数（≥1，缺省 1） */
+  repeat?: number
+  /** 该 placement 独立数据（缺省回落 mail.data；Q12 拍板：按 placement 各带 data） */
+  data?: Record<string, unknown>
 }
 
 export interface MailOutputs {

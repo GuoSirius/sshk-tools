@@ -16,7 +16,7 @@ import type {
   TemplateVersion,
 } from '@sshk/repository'
 import { loadEdmModel } from './edm-manifest.js'
-import { collectSystemCss } from '../core/system-css.js'
+import { collectSystemCssContent } from '../core/system-css.js'
 
 const sysBrandId = (code: string): string => `brd_sys_${code}`
 const sysFragmentId = (brand: string, fam: string): string => `frg_sys_${brand}_${fam}`
@@ -40,23 +40,6 @@ async function readText(file: string): Promise<string | null> {
   } catch {
     return null
   }
-}
-
-/** css 就近链（顶层 → 品牌 → 族 → 版本）拼接为单段 inline 内容 */
-async function cssChainContent(
-  root: string,
-  brandCode: string,
-  kind: string,
-  familyCode: string,
-  versionDir: string,
-): Promise<string> {
-  const files = await collectSystemCss(root, { brandCode, kind, familyCode, versionDir })
-  const parts: string[] = []
-  for (const f of files) {
-    const txt = await readText(f)
-    if (txt != null) parts.push(txt)
-  }
-  return parts.join('\n\n')
 }
 
 /** 版本号取 meta.version；缺失时按目录名 vN 兜底，default 记 1 */
@@ -110,11 +93,12 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             type: fam.meta.type || 'product',
             source: {
               html: (await readText(v.sourcePath)) ?? '',
-              css: await cssChainContent(root, b.code, 'fragment', fam.code, v.dir),
+              css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
               cssMode: 'inline',
             },
             policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
             dataSchema: fam.meta.dataSchema,
+            fields: v.meta.fields ?? fam.meta.fields ?? undefined,
             sampleData: v.sample ?? undefined,
             origin: 'system',
           })
@@ -151,11 +135,12 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             label: `v${n}`,
             source: {
               html: (await readText(v.sourcePath)) ?? '',
-              css: await cssChainContent(root, b.code, 'template', fam.code, v.dir),
+              css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
               cssMode: 'inline',
             },
             slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
             dataSchema: fam.meta.dataSchema,
+            fields: v.meta.fields ?? undefined,
             sampleData: v.sample ?? undefined,
             origin: 'system',
           })
