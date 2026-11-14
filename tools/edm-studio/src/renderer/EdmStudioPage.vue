@@ -5,6 +5,7 @@ import BrandsPage from './pages/BrandsPage.vue'
 import TemplatesPage from './pages/TemplatesPage.vue'
 import FragmentsPage from './pages/FragmentsPage.vue'
 import MailsPage from './pages/MailsPage.vue'
+import SystemPage from './pages/SystemPage.vue'
 import { ensureLoaded } from './state'
 
 /**
@@ -16,7 +17,7 @@ import { ensureLoaded } from './state'
 const props = defineProps<{ menu?: string }>()
 
 const tab = computed(() => props.menu ?? 'brands')
-const pages: Record<string, unknown> = { brands: BrandsPage, templates: TemplatesPage, fragments: FragmentsPage, mails: MailsPage }
+const pages: Record<string, unknown> = { brands: BrandsPage, templates: TemplatesPage, fragments: FragmentsPage, mails: MailsPage, system: SystemPage }
 const active = computed(() => pages[tab.value] ?? BrandsPage)
 
 onMounted(() => { void ensureLoaded() })

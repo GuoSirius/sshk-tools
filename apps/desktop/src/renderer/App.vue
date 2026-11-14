@@ -281,14 +281,14 @@ onMounted(async () => {
         size="small"
         type="success"
         @click="installUpdate"
-      >可安装 v{{ updater.version }}</el-button>
+      >立即更新 v{{ updater.version }}</el-button>
       <!-- 有可用包：醒目提示 + 箭头，暗示可点击（自动下载仍在后台进行） -->
       <el-button
         v-else-if="updater.phase === 'available'"
         size="small"
         type="warning"
         @click="checkUpdate"
-      ><el-icon><Download /></el-icon> 有可用包</el-button>
+      ><el-icon><Download /></el-icon> 发现新版本</el-button>
       <!-- 下载中：文字行盖一层进度遮罩，按百分比从左填充，能看清是否完成 -->
       <el-button
         v-else-if="updater.phase === 'downloading'"
@@ -317,13 +317,13 @@ onMounted(async () => {
         <el-button size="small" text>更多<el-icon><ArrowDown /></el-icon></el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="reload">刷新页面（F5 / Ctrl+R）</el-dropdown-item>
-            <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
-            <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
-            <el-dropdown-item command="dataDir" divided>数据目录</el-dropdown-item>
+            <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
             <el-dropdown-item command="about">关于</el-dropdown-item>
+            <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
+            <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
+            <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

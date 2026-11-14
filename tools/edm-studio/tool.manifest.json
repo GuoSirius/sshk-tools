@@ -45,6 +45,10 @@
       "label": "邮件"
     },
     {
+      "id": "system",
+      "label": "系统内容"
+    },
+    {
       "id": "config",
       "label": "工具配置"
     }
