@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { TimeText } from '@sshk/ui-kit'
 import { brands, currentTpl, loadTemplates, selectTemplate, templates, tplVersions } from '../state'
-import { api, confirmRemove, type Named, type VersionRow } from '../shared'
+import { api, confirmRemove, isSystem, type Named, type VersionRow } from '../shared'
 
 /** 模板页：模板族列表 + 版本（不可变，保存即新版本，D8） */
 const tplOpen = ref(false)
@@ -38,6 +38,18 @@ function openTplv(row?: VersionRow): void {
   }
   tplvOpen.value = true
 }
+async function saveTplAsNew(row: VersionRow): Promise<void> {
+  try {
+    const res = await api('tplv:saveAsNew', {
+      _id: row._id,
+      name: `${currentTpl.value?.name ?? ''} ${row.label ?? ''} 副本`,
+      brandId: String(currentTpl.value?.brandId ?? ''),
+    }) as { template: Named }
+    await loadTemplates()
+    await selectTemplate(res.template)
+    ElMessage.success('系统模板已派生为自定义副本（版本不可变，D8）')
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
 async function saveTplv(): Promise<void> {
   try {
     const sampleData = JSON.parse(tplvForm.value.sampleDataText) as Record<string, unknown>
@@ -58,11 +70,17 @@ async function saveTplv(): Promise<void> {
 <template>
   <div>
     <el-button size="small" @click="openTpl()">新增模板</el-button>
-    <el-button type="primary" size="small" @click="openTplv()">新建版本</el-button>
+    <el-button v-if="!currentTpl || !isSystem(currentTpl)" type="primary" size="small" @click="openTplv()">新建版本</el-button>
+    <span v-else class="sys-hint">系统模板只读：在版本行「另存为副本」派生后可编辑</span>
 
     <el-table :data="templates" size="small" highlight-current-row style="margin-top: 8px" @row-click="selectTemplate">
       <el-table-column type="index" label="#" width="50" align="center" />
-      <el-table-column prop="name" label="模板" min-width="160" />
+      <el-table-column prop="name" label="模板" min-width="160">
+        <template #default="{ row }">
+          {{ row.name }}
+          <el-tag v-if="isSystem(row)" size="small" type="info" style="margin-left: 6px">系统</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="品牌" min-width="120">
         <template #default="{ row }">{{ brands.find((b) => b._id === row.brandId)?.name ?? row.brandId }}</template>
       </el-table-column>
@@ -71,8 +89,11 @@ async function saveTplv(): Promise<void> {
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" text @click="openTpl(row)">编辑</el-button>
-          <el-button size="small" text type="danger" @click="confirmRemove('删除模板', String(row.name), async () => { await api('tpl:remove', { _id: row._id }); await loadTemplates() })">删除</el-button>
+          <template v-if="!isSystem(row)">
+            <el-button size="small" text @click="openTpl(row)">编辑</el-button>
+            <el-button size="small" text type="danger" @click="confirmRemove('删除模板', String(row.name), async () => { await api('tpl:remove', { _id: row._id }); await loadTemplates() })">删除</el-button>
+          </template>
+          <span v-else style="font-size: 12px; opacity: 0.6">内置只读</span>
         </template>
       </el-table-column>
     </el-table>
@@ -86,7 +107,8 @@ async function saveTplv(): Promise<void> {
         </el-table-column>
         <el-table-column label="操作">
           <template #default="{ row }">
-            <el-button size="small" text @click="openTplv(row)">基于此版本修改</el-button>
+            <el-button v-if="currentTpl && !isSystem(currentTpl)" size="small" text @click="openTplv(row)">基于此版本修改</el-button>
+            <el-button v-else size="small" text type="primary" @click="saveTplAsNew(row)">另存为副本</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -122,4 +144,5 @@ async function saveTplv(): Promise<void> {
 <style scoped>
 .panel { border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 6px; padding: 10px; }
 .panel-title { font-size: 12px; opacity: 0.7; margin-bottom: 8px; }
+.sys-hint { font-size: 12px; opacity: 0.65; margin-left: 10px; }
 </style>

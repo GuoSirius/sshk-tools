@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fragments, brands, loadFragments } from '../state'
-import { api, confirmRemove, type Named, type VersionRow } from '../shared'
+import { api, confirmRemove, isSystem, type Named, type VersionRow } from '../shared'
 
 /** 片段页：片段族 + 版本（黑名单优先，D14） */
 const frgOpen = ref(false)
@@ -59,16 +59,24 @@ async function saveFrgv(): Promise<void> {
 
     <el-table :data="fragments" size="small" style="margin-top: 8px">
       <el-table-column type="index" label="#" width="50" align="center" />
-      <el-table-column prop="name" label="片段" min-width="140" />
+      <el-table-column label="片段" min-width="140">
+        <template #default="{ row }">
+          {{ row.name }}
+          <el-tag v-if="isSystem(row)" size="small" type="info" style="margin-left: 6px">系统</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="type" label="槽位类型" width="110" />
       <el-table-column label="品牌" min-width="120">
         <template #default="{ row }">{{ brands.find((b) => b._id === row.brandId)?.name ?? row.brandId }}</template>
       </el-table-column>
       <el-table-column label="操作" width="190" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" text @click="openFrgv(row)">新建版本</el-button>
-          <el-button size="small" text @click="openFrg(row)">编辑</el-button>
-          <el-button size="small" text type="danger" @click="confirmRemove('删除片段', String(row.name), async () => { await api('frg:remove', { _id: row._id }); await loadFragments() })">删除</el-button>
+          <template v-if="!isSystem(row)">
+            <el-button size="small" text @click="openFrgv(row)">新建版本</el-button>
+            <el-button size="small" text @click="openFrg(row)">编辑</el-button>
+            <el-button size="small" text type="danger" @click="confirmRemove('删除片段', String(row.name), async () => { await api('frg:remove', { _id: row._id }); await loadFragments() })">删除</el-button>
+          </template>
+          <span v-else style="font-size: 12px; opacity: 0.6">内置只读</span>
         </template>
       </el-table-column>
     </el-table>
