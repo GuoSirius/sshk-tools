@@ -11,7 +11,7 @@
   "icon": "auto",
   "entryRoute": "mails",
   "enabled": true,
-  "visibility": "managed",
+  "visibility": "hidden",
   "configLayout": "single",
   "plugin": {
     "source": "builtin",
