@@ -16,7 +16,6 @@ const CAPABILITIES = [
   'chatByProvider', 'listModelsByProvider', 'runLocalOcr',
 ]
 const HOST_CHANNELS = Object.values(IPC_CHANNELS) as string[]
-const VISIBILITY_OPTIONS = ['managed', 'desktop', 'hidden', 'implicit']
 
 interface MenuRow { id: string; label: string }
 interface ManifestForm {
@@ -246,7 +245,10 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
             <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
             <el-form-item label="可见性">
               <el-select v-model="form.visibility" style="width: 100%">
-                <el-option v-for="v in VISIBILITY_OPTIONS" :key="v" :label="v" :value="v" />
+                <el-option label="desktop（默认上桌面）" value="desktop" />
+                <el-option label="managed（受控：进权限列表，用户开启后上桌面）" value="managed" />
+                <el-option label="hidden（隐藏：不上桌面也不进列表，仅可独立启停）" value="hidden" />
+                <el-option label="implicit（隐式基座：永不上桌面、仅被其它工具依赖）" value="implicit" />
               </el-select>
             </el-form-item>
             <el-form-item label="描述" class="span-2">
