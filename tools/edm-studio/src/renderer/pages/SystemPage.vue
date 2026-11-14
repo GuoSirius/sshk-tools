@@ -6,6 +6,8 @@ import { EmptyState } from '@sshk/ui-kit'
 import MonacoEditor from '../MonacoEditor.vue'
 import SampleForm from '../SampleForm.vue'
 import FieldSchemaDesigner from '../FieldSchemaDesigner.vue'
+import ComposeEditor from '../ComposeEditor.vue'
+import type { PlacementItem, SlotDef } from '../ComposeEditor.vue'
 import { applyDefaults, normalizeFields, validateModel, type FieldDef } from '../sample-schema'
 import { replaceFieldsInMeta } from '../meta-fields'
 import { api } from '../shared'
@@ -218,6 +220,7 @@ async function load(silent = false): Promise<void> {
     const prevId = selected.value?.id
     await nextTick()
     if (prevId) treeRef?.setCurrentKey(prevId)
+    void prefetchFamilyMetas() // 组合预览选项用（后台，不阻塞）
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -266,6 +269,182 @@ async function renderPreview(node: TreeNode): Promise<void> {
   } finally {
     previewing.value = false
   }
+}
+
+/* ── R19 组合预览（片段/模板统一入口）：宿主模板 + 片段摆放 → system:render placements ── */
+interface SysSelector { brandCode: string; kind: string; familyCode: string; versionDir: string }
+interface Policy { blacklist?: string[]; whitelist?: string[] }
+interface FamilyMetaLite { policy?: Policy; slots?: { key: string; type?: string }[]; fields?: unknown[] }
+const composeTemplate = ref('') // 片段预览：宿主模板（id = JSON selector）
+const composeSlots = ref<SlotDef[]>([])
+const composePlacements = ref<PlacementItem[]>([])
+const familyMetaCache = ref<Record<string, FamilyMetaLite>>({})
+
+/** D14 黑白名单（复刻 repository policyAllows）：匹配集合 = 模板族/版本播种 ID */
+function policyAllows(policy: Policy | undefined, ids: string[]): boolean {
+  if (!policy) return true
+  if ((policy.blacklist ?? []).some((x) => ids.includes(x))) return false
+  const wl = policy.whitelist ?? []
+  if (wl.length === 0) return true
+  return wl.some((x) => ids.includes(x))
+}
+
+/** 预读全部族 meta（policy / slots / fields），组合预览选项构造用（后台不阻塞 load） */
+async function prefetchFamilyMetas(): Promise<void> {
+  const out: Record<string, FamilyMetaLite> = {}
+  const walk = async (nodes: TreeNode[]): Promise<void> => {
+    for (const n of nodes) {
+      if (n.kind === 'family' && n.data.metaPath) {
+        try {
+          out[n.data.path] = ((yaml.load(await read(n.data.metaPath)) as Record<string, unknown>) ?? {}) as FamilyMetaLite
+        } catch { /* 忽略单族解析失败 */ }
+      }
+      if (n.children) await walk(n.children)
+    }
+  }
+  await walk(tree.value)
+  familyMetaCache.value = out
+}
+
+function versionSelector(node: TreeNode): SysSelector {
+  return {
+    brandCode: node.data.brandCode ?? '',
+    kind: node.data.cat ?? '',
+    familyCode: node.data.familyCode ?? '',
+    versionDir: node.data.versionDir ?? '',
+  }
+}
+
+/** 片段预览：宿主模板选项（本品牌模板族×版本，按当前片段黑白名单过滤） */
+const hostTemplateOptions = computed<{ id: string; label: string; slots: SlotDef[] }[]>(() => {
+  const node = selected.value
+  if (node?.kind !== 'version' || node.data.cat !== 'fragment') return []
+  const brand = node.data.brandCode ?? ''
+  const famPolicy = familyMetaCache.value[`${brand}/fragment/${node.data.familyCode}`]?.policy
+  const policy = (metaRaw.value?.policy as Policy | undefined) ?? famPolicy
+  const out: { id: string; label: string; slots: SlotDef[] }[] = []
+  const bNode = tree.value[0]?.children?.find((n) => n.kind === 'brand' && n.data.brandCode === brand)
+  const tplCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'template')
+  for (const fam of tplCat?.children?.filter((n) => n.kind === 'family') ?? []) {
+    const famCode = fam.data.familyCode ?? ''
+    const slots = (familyMetaCache.value[fam.data.path]?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key }))
+    for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
+      const dir = ver.data.versionDir ?? ''
+      const ids = [`tpl_sys_${brand}_${famCode}`, `tplv_sys_${brand}_${famCode}_${dir || 'default'}`]
+      if (!policyAllows(policy, ids)) continue
+      out.push({
+        id: JSON.stringify({ brandCode: brand, kind: 'template', familyCode: famCode, versionDir: dir }),
+        label: `${fam.label} / ${ver.label}`,
+        slots,
+      })
+    }
+  }
+  return out
+})
+
+/** 组合编辑器的片段选项：片段预览=当前片段；模板预览=本品牌片段版本（族级 policy 过滤） */
+const composeFragmentOptions = computed<{ id: string; label: string }[]>(() => {
+  const node = selected.value
+  if (node?.kind !== 'version') return []
+  if (node.data.cat === 'fragment') return [{ id: JSON.stringify(versionSelector(node)), label: node.label }]
+  const brand = node.data.brandCode ?? ''
+  const famCode = node.data.familyCode ?? ''
+  const dir = node.data.versionDir ?? ''
+  const tplIds = [`tpl_sys_${brand}_${famCode}`, `tplv_sys_${brand}_${famCode}_${dir || 'default'}`]
+  const out: { id: string; label: string }[] = []
+  const bNode = tree.value[0]?.children?.find((n) => n.kind === 'brand' && n.data.brandCode === brand)
+  const fragCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'fragment')
+  for (const fam of fragCat?.children?.filter((n) => n.kind === 'family') ?? []) {
+    if (!policyAllows(familyMetaCache.value[fam.data.path]?.policy, tplIds)) continue
+    for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
+      out.push({ id: JSON.stringify(versionSelector(ver)), label: `${fam.label} / ${ver.label}` })
+    }
+  }
+  return out
+})
+
+/** 区块清单：片段预览=宿主模板 slots（选定后填充）；模板预览=本族 slots */
+const composeSlotDefs = computed<SlotDef[]>(() => {
+  if (composeSlots.value.length) return composeSlots.value
+  const node = selected.value
+  if (node?.kind === 'version' && node.data.cat === 'template') {
+    const famMeta = familyMetaCache.value[`${node.data.brandCode}/template/${node.data.familyCode}`]
+    return (famMeta?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key }))
+  }
+  return []
+})
+
+function onHostTemplateChange(id: string): void {
+  composeSlots.value = hostTemplateOptions.value.find((t) => t.id === id)?.slots ?? []
+  const first = composeSlots.value[0]?.key ?? ''
+  composePlacements.value = composePlacements.value.map((p, i) => ({
+    ...p,
+    slot: composeSlots.value.some((s) => s.key === p.slot) ? p.slot : first,
+    order: i,
+  }))
+  void renderComposePreview()
+}
+
+async function renderComposePreview(): Promise<void> {
+  const node = selected.value
+  if (node?.kind !== 'version') return
+  previewing.value = true
+  try {
+    const templateSel = node.data.cat === 'fragment'
+      ? (JSON.parse(composeTemplate.value || 'null') as SysSelector | null)
+      : versionSelector(node)
+    if (!templateSel?.familyCode) {
+      ElMessage.warning('请先选择宿主模板')
+      return
+    }
+    const placements = composePlacements.value.map((p) => ({
+      selector: JSON.parse(p.fragmentId) as SysSelector,
+      slot: p.slot,
+      order: p.order,
+      repeat: p.repeat,
+      data: p.data,
+    }))
+    const res = (await api('system:render', { selector: templateSel, placements })) as { html: string }
+    previewHtml.value = res.html
+  } catch (err) {
+    ElMessage.warning(`组合预览失败：${(err as Error).message}`)
+  } finally {
+    previewing.value = false
+  }
+}
+
+/* placement 独立数据编辑（Q12）：有 fields schema 用 SampleForm，否则 YAML */
+const placementData = ref<{ open: boolean; uid: string; fields: FieldDef[]; obj: Record<string, unknown>; yamlText: string }>({
+  open: false, uid: '', fields: [], obj: {}, yamlText: '',
+})
+async function openPlacementData(item: PlacementItem): Promise<void> {
+  let fields: FieldDef[] = []
+  try {
+    const sel = JSON.parse(item.fragmentId) as SysSelector
+    const famPath = `${sel.brandCode}/${sel.kind}/${sel.familyCode}`
+    const verPath = sel.versionDir ? `${famPath}/${sel.versionDir}` : famPath
+    const verMeta = ((yaml.load(await read(`${verPath}/meta.yaml`)) as Record<string, unknown>) ?? {})
+    fields = normalizeFields((verMeta['fields'] as unknown) ?? familyMetaCache.value[famPath]?.fields ?? [])
+  } catch { /* 无 schema 走 YAML */ }
+  const obj = { ...(item.data ?? {}) }
+  placementData.value = { open: true, uid: item.uid, fields, obj, yamlText: yaml.dump(obj, { lineWidth: -1 }) }
+}
+function savePlacementData(): void {
+  const st = placementData.value
+  let data: Record<string, unknown>
+  if (st.fields.length) {
+    data = { ...st.obj }
+  } else {
+    try {
+      data = (yaml.load(st.yamlText) as Record<string, unknown>) ?? {}
+    } catch (err) {
+      ElMessage.error(`YAML 解析失败：${(err as Error).message}`)
+      return
+    }
+  }
+  composePlacements.value = composePlacements.value.map((p) => (p.uid === st.uid ? { ...p, data } : p))
+  st.open = false
+  void renderComposePreview()
 }
 
 function fillForm(raw: Record<string, unknown>): void {
@@ -322,6 +501,12 @@ async function onNode(node: TreeNode): Promise<void> {
     sampleSchema.value = fields
     sampleObj.value = applyDefaults(fields, parsedSample)
     sampleMode.value = fields.length ? 'form' : 'data'
+    // R19 组合预览初始化：片段=预置自身 placement（待选宿主模板）；模板=空布局
+    composeSlots.value = []
+    composeTemplate.value = ''
+    composePlacements.value = node.data.cat === 'fragment'
+      ? [{ uid: `p_${Date.now()}_0`, fragmentId: JSON.stringify(versionSelector(node)), label: node.label, slot: '', order: 0, repeat: 1 }]
+      : []
     await renderPreview(node)
   }
 }
@@ -896,9 +1081,37 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
-              <el-button size="small" type="success" plain :loading="previewing" @click="renderPreview(selected)">刷新预览</el-button>
+              <el-button size="small" type="success" plain :loading="previewing" @click="renderComposePreview">刷新预览</el-button>
+              <template v-if="selected.data.cat === 'fragment'">
+                <span class="hint">宿主模板</span>
+                <el-select
+                  size="small"
+                  filterable
+                  style="width: 240px"
+                  :model-value="composeTemplate"
+                  placeholder="选择宿主模板（组合预览）"
+                  @update:model-value="(v: string) => { composeTemplate = v; onHostTemplateChange(v) }"
+                >
+                  <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
+                </el-select>
+              </template>
+              <span v-else class="hint">拖入片段布局，模板 css + 片段 css 就近合并看真实效果</span>
             </div>
+            <ComposeEditor
+              v-if="composeSlotDefs.length"
+              v-model="composePlacements"
+              :slots="composeSlotDefs"
+              :fragment-options="composeFragmentOptions"
+              :readonly="!canEdit"
+              class="compose-wrap"
+              @edit-data="openPlacementData"
+            />
             <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
+            <el-empty
+              v-else-if="selected.data.cat === 'fragment' && !composeTemplate"
+              description="选择宿主模板并刷新预览 —— 片段 css 与模板 css 合并的组合效果（未选时上方「刷新预览」为本片段单渲）"
+              :image-size="60"
+            />
             <el-empty v-else description="无预览" :image-size="60" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码">
@@ -970,6 +1183,16 @@ async function confirmSaveAs(): Promise<void> {
         <el-button type="primary" @click="confirmSaveAs">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
+    <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
+      <MonacoEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
+      <template #footer>
+        <el-button @click="placementData.open = false">取消</el-button>
+        <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1002,6 +1225,7 @@ async function confirmSaveAs(): Promise<void> {
 .sample-wrap { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }
 .overview { display: flex; flex-direction: column; gap: 16px; overflow: auto; }
 .preview { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }
+.compose-wrap { flex: none; max-height: 45%; overflow: auto; padding-bottom: 6px; }
 
 .ctx-menu { position: fixed; z-index: 3000; min-width: 130px; background: var(--el-bg-color-overlay, #fff); border: 1px solid rgba(128,128,128,.25); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 4px; }
 .ctx-item { padding: 6px 12px; font-size: 13px; border-radius: 4px; cursor: pointer; color: var(--el-text-color-primary); }
