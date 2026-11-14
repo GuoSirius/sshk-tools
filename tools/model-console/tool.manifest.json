@@ -3,7 +3,9 @@
   "name": "Model Console",
   "description": "配置本地 / 云 / 自部署模型，连接测试与对话调试",
   "category": "AI 能力",
-  "tags": ["模型网关"],
+  "tags": [
+    "模型网关"
+  ],
   "icon": "auto",
   "entryRoute": "providers",
   "enabled": true,
@@ -11,24 +13,51 @@
   "plugin": {
     "source": "builtin",
     "renderer": "src/renderer/ModelConsolePage.vue",
-    "channels": []
+    "channels": [],
+    "main": ""
   },
   "dependsOn": [],
   "configDeps": [],
   "requiredGrant": "",
   "menus": [
-    { "id": "providers", "label": "模型 Provider" },
-    { "id": "chat", "label": "对话调试" },
-    { "id": "config", "label": "工具配置" }
+    {
+      "id": "providers",
+      "label": "模型 Provider"
+    },
+    {
+      "id": "chat",
+      "label": "对话调试"
+    },
+    {
+      "id": "config",
+      "label": "工具配置"
+    }
   ],
   "configGroups": [
     {
       "id": "config-gateway",
       "label": "网关",
       "fields": [
-        { "key": "defaultProviderId", "label": "默认 Provider", "type": "string", "devOnly": true, "fallbackKey": "app.llm.activeProviderId", "hint": "留空则用应用当前激活的 Provider（下方展示其生效值）" },
-        { "key": "chatTimeoutMs", "label": "请求超时(ms)", "type": "number", "min": 1000, "max": 120000 },
-        { "key": "streamEnabled", "label": "启用流式输出", "type": "boolean" }
+        {
+          "key": "defaultProviderId",
+          "label": "默认 Provider",
+          "type": "string",
+          "devOnly": true,
+          "fallbackKey": "app.llm.activeProviderId",
+          "hint": "留空则用应用当前激活的 Provider（下方展示其生效值）"
+        },
+        {
+          "key": "chatTimeoutMs",
+          "label": "请求超时(ms)",
+          "type": "number",
+          "min": 1000,
+          "max": 120000
+        },
+        {
+          "key": "streamEnabled",
+          "label": "启用流式输出",
+          "type": "boolean"
+        }
       ]
     }
   ],
@@ -56,7 +85,10 @@
         "baseURL": "https://apihub.agnes-ai.com/v1",
         "kind": "remote",
         "defaultModel": "agnes-3.0-flash",
-        "models": ["agnes-3.0-flash", "agnes-3.0-pro"],
+        "models": [
+          "agnes-3.0-flash",
+          "agnes-3.0-pro"
+        ],
         "hint": "填 API Key 即可；模型名可点「拉取模型列表」实时查询"
       },
       {
@@ -65,7 +97,11 @@
         "baseURL": "https://api.openai.com/v1",
         "kind": "remote",
         "defaultModel": "gpt-4o-mini",
-        "models": ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+        "models": [
+          "gpt-4o-mini",
+          "gpt-4o",
+          "gpt-3.5-turbo"
+        ],
         "hint": "官方 /v1 端点"
       },
       {
@@ -74,7 +110,10 @@
         "baseURL": "https://api.deepseek.com/v1",
         "kind": "remote",
         "defaultModel": "deepseek-chat",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "models": [
+          "deepseek-chat",
+          "deepseek-reasoner"
+        ],
         "hint": "OpenAI 兼容端点"
       },
       {
@@ -83,7 +122,11 @@
         "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "kind": "remote",
         "defaultModel": "qwen-plus",
-        "models": ["qwen-plus", "qwen-turbo", "qwen-max"],
+        "models": [
+          "qwen-plus",
+          "qwen-turbo",
+          "qwen-max"
+        ],
         "hint": "阿里云百炼 OpenAI 兼容模式"
       },
       {
@@ -92,7 +135,11 @@
         "baseURL": "https://open.bigmodel.cn/api/paas/v4",
         "kind": "remote",
         "defaultModel": "glm-4-flash",
-        "models": ["glm-4-flash", "glm-4-air", "glm-4"],
+        "models": [
+          "glm-4-flash",
+          "glm-4-air",
+          "glm-4"
+        ],
         "hint": "OpenAI 兼容端点"
       },
       {
@@ -101,7 +148,10 @@
         "baseURL": "http://127.0.0.1:11434/v1",
         "kind": "local",
         "defaultModel": "qwen2.5:7b",
-        "models": ["qwen2.5:7b", "llama3.1:8b"],
+        "models": [
+          "qwen2.5:7b",
+          "llama3.1:8b"
+        ],
         "hint": "本机推理无需 API Key；模型列表由本机 /models 真实返回"
       },
       {
@@ -114,5 +164,16 @@
         "hint": "留空模型名，保存前点「拉取模型列表」自动获取"
       }
     ]
+  },
+  "visibility": "desktop",
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": []
+    },
+    "sandbox": "utility",
+    "ipcAllowlist": []
   }
 }

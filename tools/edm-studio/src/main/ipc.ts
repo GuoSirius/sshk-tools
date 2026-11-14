@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
+import { zipSync } from 'fflate'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
@@ -36,7 +37,7 @@ const ACTIONS = new Set([
   'frg:list', 'frg:save', 'frg:remove',
   'frgv:save', 'frgv:saveAsNew', 'frgv:get',
   'candidates:pick',
-  'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:readFinal',
+  'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:readFinal', 'mail:export',
   'share:start', 'share:stop', 'share:status',
   'system:load', 'system:render', 'system:readFile',
 ])
@@ -317,6 +318,32 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         const mail = await repo.get<Mail>('mails', str(data, '_id'))
         if (!mail?.outputs.final) throw new Error('尚未生成产物')
         return readOutput(deps.outputRoot, mail.outputs.final)
+      }
+      // ── 导出（约定：单封 .html / 批量 .zip，路径来自渲染层 os.pickSave） ──
+      case 'mail:export': {
+        const ids = Array.isArray(data['ids']) ? (data['ids'] as unknown[]).map(String).filter(Boolean) : []
+        const outPath = str(data, 'outPath')
+        if (ids.length === 0) throw new Error('ids 必填')
+        if (!outPath) throw new Error('outPath 必填（os.pickSave 结果）')
+        const items: { id: string; name: string; html: string }[] = []
+        for (const id of ids) {
+          const mail = await repo.get<Mail>('mails', id)
+          if (!mail?.outputs.final) continue
+          items.push({ id, name: mail.name, html: await readOutput(deps.outputRoot, mail.outputs.final) })
+        }
+        if (items.length === 0) throw new Error('所选邮件均无产物，请先生成')
+        if (items.length === 1 && !outPath.endsWith('.zip')) {
+          await fs.writeFile(outPath, items[0]!.html, 'utf8')
+          return { count: 1, outPath }
+        }
+        // zip 内文件名：名称非法字符替换为 _，空名回退 id
+        const safe = (s: string): string => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'mail'
+        const zipped = zipSync(
+          Object.fromEntries(items.map((it) => [`${safe(it.name)}.html`, new TextEncoder().encode(it.html)])),
+          { level: 6 },
+        )
+        await fs.writeFile(outPath, zipped)
+        return { count: items.length, outPath }
       }
 
       // ── 分享（M5 / D15） ──
