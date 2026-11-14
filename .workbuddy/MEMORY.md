@@ -10,7 +10,7 @@
 
 ## 里程碑状态
 - **1.0.0 已发布**（tag v1.0.0，2026-11-14）：含自动更新 UX 重塑、GitHub 安装器命名区分、发布构建前清 dist；发布后修复若干运行时问题（runtime-sample 打包态加载、按钮样式等）。由用户手动 `pnpm release` 发布（非 AI 代发），AI 提交后 push。
-- **下一步：edm-studio 部分开发**——用户强调代码风格、规范必须严格守（见下方铁律）。
+- **edm-studio 系统内容页效果版已交付**（2026-11-15，commits 1026dfc/6dde4d0）：实体树 EDM→品牌→类目→族→版本 + 六处 css 目录、v5 分层右键、元数据表单↔数据、版本 tab（元数据/示例数据/预览/源码/样式）、内联 style.css、IPC 门控（!isPackaged||developerMode）；规划文档 v5（R12–R18），用户边看效果边提需求迭代中。**插件宿主 PluginDeps 已注入 config**（内置工具门控用，写死在 apps/desktop/src/main/plugins.ts）。
 
 ## dev/build 一致性铁律（2026-11-14，最高优先级）
 - dev 与 build 的**权限/沙箱/可见性/功能裁决完全一致**；dev 只允许多「开发辅助入口」（清单编辑、构建、打包按钮等）。
