@@ -36,7 +36,9 @@ const ok = (msg) => console.log(`${GREEN('✔')} ${msg}`)
 const die = (msg) => { console.error(`${RED('✖')} ${msg}`); process.exit(1) }
 
 function git(args, opts = {}) {
-  return execFileSync('git', args, { encoding: 'utf8', cwd: ROOT, ...opts }).trim()
+  const out = execFileSync('git', args, { encoding: 'utf8', cwd: ROOT, ...opts })
+  // stdio:'inherit' 时 execFileSync 不捕获输出、返回 null；兜底避免 .trim() 抛 TypeError（#51.8）
+  return typeof out === 'string' ? out.trim() : ''
 }
 /** 子命令执行（stdio 直通）。win32 走 shell 可同时解析 .cmd shim（pnpm）与 .exe（git），跨平台 */
 function shThrow(cmd, args, opts = {}) {
@@ -225,6 +227,10 @@ function rollbackBump() {
     if (content === null) rmSync(f, { force: true })
     else writeFileSync(f, content)
   }
+  // 还原暂存区：git add 已在抛错前把 bump 改动暂存，仅还原工作树会残留脏暂存（#51.8）
+  try {
+    git(['restore', '--staged', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'], { stdio: 'inherit' })
+  } catch { /* 未暂存时 restore 为 no-op，可忽略 */ }
   console.error(RED('已回滚版本号与 CHANGELOG（未提交未推送），同版本号可直接重新发布'))
 }
 if (!DRY_RUN) {
