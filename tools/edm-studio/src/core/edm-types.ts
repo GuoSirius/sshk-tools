@@ -99,6 +99,13 @@ export interface TemplateFamilyNode {
   versions: VersionNode<TemplateVersionMeta>[]
 }
 
+/** 类目（片段/模板）元数据：<brand>/<fragment|template>/meta.yaml（2026-11-15 用户拍板：类目也有元数据） */
+export interface CategoryMeta {
+  name?: string
+  description?: string
+  tags?: string[]
+}
+
 export interface BrandNode {
   code: string
   path: string
@@ -109,6 +116,9 @@ export interface BrandNode {
   fragmentCss: string[]
   /** 模板类目级 css/（<brand>/template/css/）文件名列表（v5） */
   templateCss: string[]
+  /** 类目元数据（文件缺失为 null，保存时创建） */
+  fragmentMeta: CategoryMeta | null
+  templateMeta: CategoryMeta | null
   fragments: FragmentFamilyNode[]
   templates: TemplateFamilyNode[]
 }

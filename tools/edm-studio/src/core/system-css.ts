@@ -94,6 +94,12 @@ export async function renderSystemPreview(root: string, sel: SystemSelector): Pr
     if (f === baseReset) continue
     parts.push(await fs.readFile(f, 'utf8'))
   }
+  // 版本级内联样式 <verDir>/style.css（不在就近链内，最后注入 = 优先级最高）
+  try {
+    parts.push(await fs.readFile(path.join(versionDir, 'style.css'), 'utf8'))
+  } catch {
+    /* 无内联样式不阻塞 */
+  }
   const cssBundle = parts.join('\n\n')
 
   if (sel.kind === 'fragment') {

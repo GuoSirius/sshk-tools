@@ -149,6 +149,8 @@ async function loadBrand(brandDir: string): Promise<BrandNode | null> {
     css: brandCss,
     fragmentCss: await cssFilesIn(path.join(brandDir, 'fragment', 'css')),
     templateCss: await cssFilesIn(path.join(brandDir, 'template', 'css')),
+    fragmentMeta: await readYaml(path.join(brandDir, 'fragment', 'meta.yaml')),
+    templateMeta: await readYaml(path.join(brandDir, 'template', 'meta.yaml')),
     fragments: fragmentFamilies,
     templates: templateFamilies,
   }

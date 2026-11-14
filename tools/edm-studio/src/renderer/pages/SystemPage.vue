@@ -126,13 +126,13 @@ function familyNode(brand: string, cat: Cat, f: any): TreeNode {
 
 function brandNode(b: any): TreeNode {
   const id = `brand:${b.code}`
-  const catNode = (cat: Cat, label: string, cssFiles: string[], families: any[]): TreeNode => {
+  const catNode = (cat: Cat, label: string, cssFiles: string[], families: any[], metaPath: string): TreeNode => {
     const cid = `cat:${b.code}:${cat}`
     return {
       id: cid,
       label,
       kind: 'category',
-      data: { kind: 'category', path: `${b.code}/${cat}`, brandCode: b.code, cat, label },
+      data: { kind: 'category', path: `${b.code}/${cat}`, brandCode: b.code, cat, metaPath, label },
       children: [cssDirNode(`${b.code}/${cat}`, cssFiles, cid), ...families.map((f) => familyNode(b.code, cat, f))],
     }
   }
@@ -143,8 +143,8 @@ function brandNode(b: any): TreeNode {
     data: { kind: 'brand', path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
       cssDirNode(b.code, b.css ?? [], id),
-      catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? []),
-      catNode('template', '模板', b.templateCss ?? [], b.templates ?? []),
+      catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`),
+      catNode('template', '模板', b.templateCss ?? [], b.templates ?? [], `${b.code}/template/meta.yaml`),
     ],
   }
 }
@@ -224,6 +224,7 @@ const metaMode = ref<'form' | 'data'>('form')
 const metaText = ref('')
 const sourceText = ref('')
 const sampleText = ref('')
+const styleText = ref('')
 const previewHtml = ref('')
 const previewing = ref(false)
 const form = ref({
@@ -232,6 +233,7 @@ const form = ref({
 })
 
 const showForm = computed(() => ({
+  catBase: selected.value?.kind === 'category',
   brandBase: selected.value?.kind === 'brand' || selected.value?.kind === 'family',
   policy: selected.value?.kind === 'family' && selected.value?.data.cat === 'fragment',
   version: selected.value?.kind === 'version',
@@ -281,6 +283,7 @@ async function onNode(node: TreeNode): Promise<void> {
   metaText.value = ''
   sourceText.value = ''
   sampleText.value = ''
+  styleText.value = ''
   previewHtml.value = ''
   if (node.data.metaPath) {
     metaText.value = await read(node.data.metaPath)
@@ -295,6 +298,7 @@ async function onNode(node: TreeNode): Promise<void> {
   if (node.kind === 'version') {
     sourceText.value = await read(node.data.sourcePath ?? '')
     sampleText.value = await read(node.data.samplePath ?? '')
+    styleText.value = await read(`${node.data.path}/style.css`)
     await renderPreview(node)
   }
 }
@@ -302,10 +306,10 @@ async function onNode(node: TreeNode): Promise<void> {
 function syncFormToRaw(): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
   const s = showForm.value
-  if (s.brandBase || s.version) {
+  if (s.catBase || s.brandBase || s.version) {
     if (form.value.name !== '') patch.name = form.value.name.trim()
-    if (form.value.code !== '') patch.code = form.value.code.trim()
     patch.description = form.value.description.trim() || undefined
+    if (s.brandBase && form.value.code !== '') patch.code = form.value.code.trim()
   }
   if (s.brandBase && form.value.logo !== '') patch.logo = form.value.logo.trim()
   if (s.policy) {
@@ -359,7 +363,20 @@ async function saveSource(): Promise<void> {
   if (!node?.data.sourcePath) return
   try {
     await write(node.data.sourcePath, sourceText.value)
-    ElMessage.success('源文件已保存')
+    ElMessage.success('源码已保存')
+    await renderPreview(node)
+  } catch (err) {
+    ElMessage.error(`保存失败：${(err as Error).message}`)
+  }
+}
+
+/** 版本级内联样式：<verDir>/style.css，渲染时最后注入（优先级最高） */
+async function saveStyle(): Promise<void> {
+  const node = selected.value
+  if (!node || node.kind !== 'version') return
+  try {
+    await write(`${node.data.path}/style.css`, styleText.value)
+    ElMessage.success('样式已保存')
     await renderPreview(node)
   } catch (err) {
     ElMessage.error(`保存失败：${(err as Error).message}`)
@@ -721,9 +738,7 @@ async function confirmSaveAs(): Promise<void> {
         </div>
         <!-- css 目录：仅展开折叠入口 -->
         <el-empty v-else-if="selected.kind === 'cssDir'" description="点具体 css 文件进行编辑（多 tab 互相参照）；右键可复制 / 粘贴 / 新建文件 / 另存为" :image-size="80" />
-        <!-- 类目说明 -->
-        <el-empty v-else-if="selected.kind === 'category'" description="类目仅分组导航：右键可 重命名 / 删除 / 粘贴 css；无自身元数据" :image-size="80" />
-        <!-- 品牌 / 族 / 版本 -->
+        <!-- 品牌 / 类目 / 族 / 版本 -->
         <el-tabs v-else class="detail-tabs">
           <el-tab-pane label="元数据">
             <div class="editor-toolbar">
@@ -733,7 +748,7 @@ async function confirmSaveAs(): Promise<void> {
               </el-radio-group>
               <el-button size="small" type="primary" :disabled="!canEdit" @click="saveMeta">保存</el-button>
             </div>
-            <el-form v-if="metaMode === 'form' && (showForm.brandBase || showForm.version)" label-width="90px" class="meta-form">
+            <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="90px" class="meta-form">
               <el-form-item label="名称"><el-input v-model="form.name" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.brandBase" label="code"><el-input v-model="form.code" :disabled="!canEdit" /></el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
@@ -748,19 +763,12 @@ async function confirmSaveAs(): Promise<void> {
             </el-form>
             <MonacoEditor v-else :model-value="metaText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
           </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="示例 sample.yaml">
+          <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
-              <el-tag size="small" type="info">表单渲染器（R15）下一版提供，本版直接编辑 YAML</el-tag>
+              <el-tag size="small" type="info">表单渲染器下一版提供（R15），本版直接编辑 YAML</el-tag>
               <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSample">保存</el-button>
             </div>
             <MonacoEditor :model-value="sampleText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
-          </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="源 njk">
-            <div class="editor-toolbar">
-              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSource">保存</el-button>
-              <span class="hint">内联 css 可直接写在 njk 的 &lt;style&gt; 内；外置 css 走左树 css 目录</span>
-            </div>
-            <MonacoEditor :model-value="sourceText" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
@@ -768,6 +776,20 @@ async function confirmSaveAs(): Promise<void> {
             </div>
             <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
             <el-empty v-else description="无预览" :image-size="60" />
+          </el-tab-pane>
+          <el-tab-pane v-if="selected.kind === 'version'" label="源码">
+            <div class="editor-toolbar">
+              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSource">保存</el-button>
+              <span class="hint">内联 css 也可直接写在 njk 的 &lt;style&gt; 内</span>
+            </div>
+            <MonacoEditor :model-value="sourceText" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
+          </el-tab-pane>
+          <el-tab-pane v-if="selected.kind === 'version'" label="样式">
+            <div class="editor-toolbar">
+              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveStyle">保存</el-button>
+              <span class="hint">内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</span>
+            </div>
+            <MonacoEditor :model-value="styleText" language="css" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
           </el-tab-pane>
         </el-tabs>
       </div>
