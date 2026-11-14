@@ -353,5 +353,4 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 .manifest-actionbar { flex: none; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color-lighter); }
 .dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
-.dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 </style>
