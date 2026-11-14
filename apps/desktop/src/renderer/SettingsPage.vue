@@ -211,6 +211,8 @@ watch(() => props.section, focusSection, { immediate: true })
 }
 .hint, .muted { font-size: 12px; opacity: .6; }
 .hint { display: block; line-height: 1.5; }
+/* 开关/控件与说明文字保持间距（2026-11-15 用户反馈：挤在一起，全项目注意） */
+:deep(.el-form-item) .hint { display: inline; margin-left: 12px; }
 .kv {
   display: flex;
   align-items: center;
