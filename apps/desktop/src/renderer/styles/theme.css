@@ -464,10 +464,15 @@ body {
 /* ── 弹框/抽屉全局行为（适用于所有弹框逻辑） ──
    1) 禁止滚动穿透：遮罩内滚动到达边界后不链到背景容器（页面/抽屉不再跟着滚）；
    2) 抽屉内容区同理 contain，避免在抽屉里滚到头时带动主页面；
-   3) 点遮罩不关闭由 check:dialogs 门禁强制（close-on-click-modal="false" 全量覆盖）。 */
-.el-overlay { overscroll-behavior: contain; }
+   3) 点遮罩不关闭由 check:dialogs 门禁强制（close-on-click-modal="false" 全量覆盖）；
+   4) 所有弹框垂直/水平居中（覆盖默认 15vh 顶边距）；高度上限 86vh 视口百分比，
+      内容超出时仅 body 区滚动（头部/底部固定）；底部按钮水平居中。
+   说明：el-drawer 为 absolute 定位，不受 overlay flex 布局影响。 */
+.el-overlay { overscroll-behavior: contain; display: flex; align-items: center; justify-content: center; }
 .el-drawer__body { overscroll-behavior: contain; }
-.el-dialog { overscroll-behavior: contain; }
+.el-dialog { overscroll-behavior: contain; margin: 0; max-height: 86vh; display: flex; flex-direction: column; }
+.el-dialog__body { flex: 1; min-height: 0; overflow-y: auto; }
+.el-dialog__footer { text-align: center; }
 .kv-line {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 0; border-bottom: 1px dashed var(--sshk-border); font-size: 13px;

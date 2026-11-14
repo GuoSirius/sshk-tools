@@ -333,8 +333,9 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 .hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
 .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 
-/* 固定高度壳：头部 tab + 底部操作条固定，仅内容区滚动，切换 tab 不抖动 */
-.manifest-shell { display: flex; flex-direction: column; height: min(70vh, 680px); }
+/* 固定高度壳：头部 tab + 底部操作条固定，仅内容区滚动，切换 tab 不抖动。
+   高度按视口百分比（66vh 上限 640px），叠加弹框头/底后总高 < 86vh 全局上限，不触发外层滚动 */
+.manifest-shell { display: flex; flex-direction: column; height: min(66vh, 640px); }
 .manifest-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .manifest-tabs :deep(.el-tabs__header) { flex: none; margin-bottom: 0; padding: 4px 6px 0; background: var(--el-fill-color-light); border-radius: 8px 8px 0 0; }
 .manifest-tabs :deep(.el-tabs__item) { height: 34px; font-size: 13px; transition: color 0.15s, background-color 0.15s; }
@@ -348,9 +349,9 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 .cap-box { width: 100%; border: 1px dashed var(--el-border-color); border-radius: 8px; padding: 8px 12px 0; }
 .cap-box :deep(.el-checkbox) { margin-right: 14px; }
 
-/* 底部操作条：与内容区隔离固定，输出区独立滚动 */
+/* 底部操作条：与内容区隔离固定，按钮水平居中（全局弹框规范），输出区独立滚动 */
 .manifest-actionbar { flex: none; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color-lighter); }
-.dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.dev-actions .action-close { margin-left: auto; }
+.dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 .dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 </style>
