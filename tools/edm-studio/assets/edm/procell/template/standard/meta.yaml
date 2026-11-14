@@ -1,0 +1,12 @@
+code: standard
+name: 标准邮件模板
+description: Procell 通用骨架
+slots:
+  - key: header
+    type: header
+  - key: body
+    type: product
+  - key: footer
+    type: footer
+dataSchema: {}
+tags: [通用]
