@@ -1,7 +1,7 @@
 # EDM 目录结构与模板/片段维护规划
 
-- 状态：规划中（用户已答复 Q1–Q7 并补充两点修正，待最终审核；未启动任何代码/目录落地）
-- 最后更新：2026-11-14
+- 状态：实施中（R1/R2/R3解析与浏览/R4/R5/R6/R9 已完成，R10 策略层完成；R7/R8/R11 待开发；黑白名单已收敛为仅 fragment 侧）
+- 最后更新：2026-11-15
 - 关联：D8（版本不可变）/ D14（名单粒度=版本 ID）/ D29（品牌管理独立页）/ 需求 5（系统只读+复制、自定义 CRUD）/ 数据契约 §2（领域模型）/ 选型稿 L71 / 工具包开发打包分发工作流 / D49（优先第三方包）/ D50（UI 视觉铁律）
 - 参考结构：`D:\workspace\code\juice-cli\edm`（仅参考**目录形态**与「每目录自带元数据+示例」，语法按本项目约定）
 - 冲突裁决：本文与 `docs/00-index.md` 决策看板冲突时以看板为准；与 `../requirement.txt` 冲突时以快照为准。
@@ -181,17 +181,17 @@ tools/edm-studio/assets/edm/                ← 系统内容根（随工具包�
 
 | # | 需求 / 任务 | 归类 | 状态 |
 |---|---|---|---|
-| R1 | 落定 `tools/edm-studio/assets/edm/` 目录规范，补齐示例品牌(procell/elabscience)最小骨架（YAML 元数据 + css 就近规则） | 结构落地 | 待开发 |
-| R2 | 定义元数据 schema（`meta.yaml`）+ 黑白名单字段，写 JSON Schema 校验（ajv / monaco-yaml） | 数据模型 | 待开发 |
-| R3 | 文件解析层：扫描 `assets/edm/` 树 → 构造 Brand→Family→Version 内存模型；**文件为源真相，NeDB 作查询索引**（Q3） | 解析/索引 | 待开发 |
-| R4 | 代码编辑器：Monaco 集成，支持 `.njk/.css/.yaml` 语法高亮 + 实时检测；自定义内容按同格式写用户数据目录；系统只读 + 复制派生 | 编辑器 | 待开发 |
-| R5 | css 就近解析与汇集（assembled 阶段 head 注入顺序按第三节） | 渲染管线 | 待开发 |
-| R6 | 系统内容双模解析：`resolveEdmRoot(manifest)=baseDir+'assets/edm'`，按 `plugin.source` 自动切换 builtin / external（无需额外配置） | 运行时解析 | 待开发 |
-| R7 | 备份/迁移：系统内容只导出引用关系；自定义内容随 `assets/` 迁移（数据契约 §4.1） | 备份 | 待开发 |
-| R8 | 首次运行播种（catalog 或目录扫描）将系统内容注册进 NeDB 查询索引 | 初始化 | 待开发 |
-| R9 | 编辑器选型集成：Monaco + monaco-yaml + js-yaml + nunjucks 检测，配 worker（不自研内核，D49） | 编辑器/依赖 | 待开发 |
-| R10 | 品牌隔离：模板片段候选仅限同品牌，黑白名单同品牌内细控（用户规则 #2） | 约束/策略 | 待开发 |
-| R11 | 内建工具 `assets/edm` 随包发布：electron-builder `extraResources` 或构建期 copy，确保打包后 `assets/edm` 在运行时目录（discovery.ts 当前仅 glob 清单+入口） | 打包/构建 | 待开发 |
+| R1 | 落定 `tools/edm-studio/assets/edm/` 目录规范，补齐示例品牌(procell/elabscience)最小骨架（YAML 元数据 + css 就近规则） | 结构落地 | ✅ 已完成（batch3：26 文件，含 css/base-reset、品牌 brand.css、fragment/template 族与版本） |
+| R2 | 定义元数据 schema（`meta.yaml`）+ 黑白名单字段，写 JSON Schema 校验（ajv / monaco-yaml） | 数据模型 | ✅ 已完成（batch2：`meta-schema.ts` + `validateMeta`；黑白名单字段仅在 fragment 侧 `policy`） |
+| R3 | 文件解析层：扫描 `assets/edm/` 树 → 构造 Brand→Family→Version 内存模型；**文件为源真相，NeDB 作查询索引**（Q3） | 解析/索引 | 🟢 解析+浏览已完成（`edm-manifest.ts` 扫描构造模型；`SystemPage.vue` 只读树+预览）；NeDB 索引见 R8 |
+| R4 | 代码编辑器：Monaco 集成，支持 `.njk/.css/.yaml` 语法高亮 + 实时检测；自定义内容按同格式写用户数据目录；系统只读 + 复制派生 | 编辑器 | ✅ 已完成（batch4+5：`MonacoEditor.vue` + `monaco-setup.ts`，worker 路径修复后打包通过） |
+| R5 | css 就近解析与汇集（assembled 阶段 head 注入顺序按第三节） | 渲染管线 | ✅ 已完成（batch2：`system-css.ts` `collectSystemCss` 顶层→品牌→族→版本顺序汇集） |
+| R6 | 系统内容双模解析：`resolveEdmRoot(manifest)=baseDir+'assets/edm'`，按 `plugin.source` 自动切换 builtin / external（无需额外配置） | 运行时解析 | ✅ 已完成（batch2：`ipc.ts` `resolveEdmRoot` packed→`process.resourcesPath/edm-studio/assets/edm`，dev→源码 `tools/edm-studio/assets/edm`） |
+| R7 | 备份/迁移：系统内容只导出引用关系；自定义内容随 `assets/` 迁移（数据契约 §4.1） | 备份 | ⏳ 未开始 |
+| R8 | 首次运行播种（catalog 或目录扫描）将系统内容注册进 NeDB 查询索引 | 初始化 | ⏳ 未开始 |
+| R9 | 编辑器选型集成：Monaco + monaco-yaml + js-yaml + nunjucks 检测，配 worker（不自研内核，D49） | 编辑器/依赖 | ✅ 已完成（batch4：依赖 `@guolao/vue-monaco-editor`/`monaco-editor`/`monaco-yaml`/`ajv`/`js-yaml`，worker 经 `?worker` 注入） |
+| R10 | 品牌隔离：模板片段候选仅限同品牌，黑白名单同品牌内细控（用户规则 #2） | 约束/策略 | 🟢 策略层已完成（运行时 `repository.policyAllows` 读 `fv.policy` 已按 fragment 侧黑白名单过滤）；UI 暴露片段 policy 字段待做 |
+| R11 | 内建工具 `assets/edm` 随包发布：electron-builder `extraResources` 或构建期 copy，确保打包后 `assets/edm` 在运行时目录（discovery.ts 当前仅 glob 清单+入口） | 打包/构建 | ⏳ 未开始 |
 
 ---
 
