@@ -240,7 +240,9 @@ function selField(): FieldDef | undefined {
 .field-item.active { border-color: var(--el-color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 14%, transparent); }
 .drag-ghost { opacity: .5; background: var(--el-color-primary-light-9, rgba(64, 158, 255, 0.08)); }
 .field-item.danger { border-color: var(--el-color-danger); }
-.handle { cursor: grab; color: var(--el-text-color-secondary); flex: none; display: inline-flex; }
+.handle { cursor: grab; color: var(--el-text-color-secondary); flex: none; display: inline-flex; padding: 2px; border-radius: 4px; transition: background-color .15s, color .15s; }
+.handle:hover { color: var(--el-color-primary); background: var(--el-fill-color-light); }
+.handle:active { cursor: grabbing; }
 .meta { flex: 1; min-width: 0; }
 .row1 { display: flex; align-items: center; gap: 6px; }
 .row2 { font-size: 12px; opacity: .65; display: flex; gap: 8px; align-items: center; }

@@ -118,7 +118,7 @@ function familyNode(brand: string, cat: Cat, f: any): TreeNode {
   const id = `fam:${brand}:${cat}:${f.code}`
   return {
     id,
-    label: f.meta.name ?? f.code,
+    label: f.meta.name ? `${f.code}（${f.meta.name}）` : f.code,
     kind: 'family',
     data: { kind: 'family', path: famPath, brandCode: brand, cat, familyCode: f.code, metaPath: `${famPath}/meta.yaml` },
     children: [
@@ -142,7 +142,7 @@ function brandNode(b: any): TreeNode {
   }
   return {
     id,
-    label: `${b.meta.name}（${b.code}）`,
+    label: `${b.code}（${b.meta.name}）`,
     kind: 'brand',
     data: { kind: 'brand', path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
@@ -196,8 +196,11 @@ async function existsIn(file: string): Promise<boolean> {
 async function write(file: string, content: string): Promise<void> {
   await api('system:writeFile', { file, content })
 }
+function splitPath(p: string): string[] {
+  return p.split(/[/\\]/)
+}
 function basename(p: string): string {
-  return p.split('/').pop() ?? p
+  return splitPath(p).pop() ?? p
 }
 function splitList(s: string | undefined): string[] {
   return (s ?? '').split(/[,，、]+/).map((x) => x.trim()).filter(Boolean)
@@ -399,6 +402,7 @@ async function saveMeta(): Promise<void> {
       out = metaText.value
     }
     await write(node.data.metaPath, out)
+    if (node.kind !== 'root') await load(true) // 元数据名称/code 变更实时反馈到左树（#4）
     ElMessage.success('元数据已保存')
     if (node.kind === 'version') await renderPreview(node)
   } catch (err) {
@@ -554,9 +558,13 @@ function onContextMenu(event: MouseEvent, node: TreeNode): void {
 function closeMenu(): void {
   menu.value = null
 }
+function onDocMouseDown(e: MouseEvent): void {
+  if (!menu.value) return
+  const el = document.querySelector('.ctx-menu')
+  if (el && !el.contains(e.target as Node)) closeMenu()
+}
 onMounted(async () => {
-  document.addEventListener('click', closeMenu)
-  document.addEventListener('contextmenu', closeMenu)
+  document.addEventListener('mousedown', onDocMouseDown)
   try {
     canEdit.value = ((await api('system:canEdit')) as { canEdit: boolean }).canEdit
   } catch {
@@ -565,8 +573,7 @@ onMounted(async () => {
   await load()
 })
 onUnmounted(() => {
-  document.removeEventListener('click', closeMenu)
-  document.removeEventListener('contextmenu', closeMenu)
+  document.removeEventListener('mousedown', onDocMouseDown)
 })
 
 /* ── 菜单动作 ── */
@@ -673,16 +680,35 @@ async function onMenu(key: string): Promise<void> {
     }
     if (key === 'saveAs') void openSaveAs(node)
   } catch (err) {
+    if (err === 'cancel' || err === 'close') return // 取消/关闭不视为错误（#3）
     ElMessage.error((err as Error).message)
   }
 }
 
 /* ── 另存为弹框（R14 简化版：一屏） ── */
-const saveAsState = ref<{ visible: boolean; node: TreeNode | null; name: string; code: string; target: string; raw: Record<string, unknown> }>({
-  visible: false, node: null, name: '', code: '', target: '', raw: {},
+const saveAsState = ref<{ visible: boolean; node: TreeNode | null; name: string; code: string; target: string; origin: 'system' | 'custom'; raw: Record<string, unknown> }>({
+  visible: false, node: null, name: '', code: '', target: '', origin: 'system', raw: {},
 })
 const saveAsIsEntity = computed(() => ['brand', 'family', 'version'].includes(saveAsState.value.node?.kind ?? ''))
 const saveAsIsCssFile = computed(() => saveAsState.value.node?.kind === 'cssFile')
+/** 另存为目标位置（按类型过滤：片段→片段类目/族，模板→模板类目/族），#5 */
+const saveAsTargetOptions = computed<{ path: string; label: string }[]>(() => {
+  const node = saveAsState.value.node
+  if (!node || (node.kind !== 'family' && node.kind !== 'version')) return []
+  const wantCat = node.data.cat
+  const out: { path: string; label: string }[] = []
+  const walk = (nodes: TreeNode[]): void => {
+    for (const n of nodes) {
+      if (node.kind === 'family' && n.kind === 'category' && n.data.cat === wantCat)
+        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.data.cat}` })
+      if (node.kind === 'version' && n.kind === 'family' && n.data.cat === wantCat)
+        out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.data.label}` })
+      if (n.children) walk(n.children)
+    }
+  }
+  walk(tree.value)
+  return out
+})
 async function openSaveAs(node: TreeNode): Promise<void> {
   let raw: Record<string, unknown> = {}
   if (node.data.metaPath) {
@@ -692,7 +718,13 @@ async function openSaveAs(node: TreeNode): Promise<void> {
       raw = {}
     }
   }
-  saveAsState.value = { visible: true, node, name: `${basename(node.data.path)}-copy`, code: '', target: allCssDirs.value[0]?.path ?? '', raw }
+  const isEntity = ['brand', 'family', 'version'].includes(node.kind)
+  saveAsState.value = { visible: true, node, name: `${basename(node.data.path)}-copy`, code: '', target: '', origin: 'system', raw }
+  // 默认目标落点：实体按类型过滤后的首个候选；css 取首个 css 目录（#1/#5）
+  const opts = saveAsTargetOptions.value
+  saveAsState.value.target = isEntity
+    ? (opts[0]?.path ?? splitPath(node.data.path).slice(0, node.kind === 'version' ? 3 : 2).join('/'))
+    : (allCssDirs.value[0]?.path ?? '')
 }
 async function confirmSaveAs(): Promise<void> {
   const { node, name, code, target, raw } = saveAsState.value
@@ -712,14 +744,14 @@ async function confirmSaveAs(): Promise<void> {
       await write(`${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }))
     } else if (node.kind === 'family') {
       const newCode = (code.trim() || cleanName).trim()
-      const parent = node.data.path.split('/').slice(0, 2).join('/')
+      const parent = saveAsState.value.target || splitPath(node.data.path).slice(0, 2).join('/')
       if (await existsIn(`${parent}/${newCode}/meta.yaml`)) {
         ElMessage.error(`同层已存在「${newCode}」`)
         return
       }
       await write(`${parent}/${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }))
     } else if (node.kind === 'version') {
-      const famPath = node.data.path.split('/').slice(0, 3).join('/')
+      const famPath = saveAsState.value.target || splitPath(node.data.path).slice(0, 3).join('/')
       const dst = `${famPath}/${cleanName}`
       if (await existsIn(`${dst}/meta.yaml`)) {
         ElMessage.error(`版本目录「${cleanName}」已存在`)
@@ -895,15 +927,20 @@ async function confirmSaveAs(): Promise<void> {
     </teleport>
 
     <!-- 另存为弹框（一屏简化版） -->
-    <el-dialog v-model="saveAsState.visible" title="另存为" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-form label-width="100px">
+    <el-dialog v-model="saveAsState.visible" title="另存为" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-form label-width="130px">
         <template v-if="saveAsIsEntity">
           <el-form-item label="新名称"><el-input v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
           <el-form-item v-if="saveAsState.node?.kind !== 'version'" label="code（目录名）">
             <el-input v-model="saveAsState.code" placeholder="留空则用新名称" />
           </el-form-item>
+          <el-form-item v-if="saveAsState.node?.kind === 'family' || saveAsState.node?.kind === 'version'" label="目标位置">
+            <el-select v-model="saveAsState.target" filterable style="width: 100%">
+              <el-option v-for="t in saveAsTargetOptions" :key="t.path" :value="t.path" :label="t.label" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="保存目标">
-            <el-radio-group model-value="system">
+            <el-radio-group v-model="saveAsState.origin">
               <el-radio value="system">系统内容（新副本）</el-radio>
               <el-radio value="custom" disabled>自定义内容库（下一版开放）</el-radio>
             </el-radio-group>
@@ -913,6 +950,12 @@ async function confirmSaveAs(): Promise<void> {
           </el-form-item>
         </template>
         <template v-else>
+          <el-form-item label="来源">
+            <el-radio-group v-model="saveAsState.origin">
+              <el-radio value="system">系统内容</el-radio>
+              <el-radio value="custom" disabled>自定义内容库（下一版开放）</el-radio>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="目标 css 目录">
             <el-select v-model="saveAsState.target" filterable style="width: 100%">
               <el-option v-for="d in allCssDirs" :key="d.path" :value="d.path" :label="d.label" />
@@ -953,6 +996,9 @@ async function confirmSaveAs(): Promise<void> {
 .editor-toolbar { display: flex; align-items: center; gap: 10px; flex: none; padding-bottom: 6px; }
 .hint { font-size: 12px; opacity: .6; }
 .meta-form { overflow: auto; }
+/* #2 表单 label 防换行：长 label（如「code（目录名）」）不再折行破坏行对齐 */
+.meta-form :deep(.el-form-item__label),
+:deep(.el-dialog .el-form-item__label) { white-space: nowrap; }
 .sample-wrap { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }
 .overview { display: flex; flex-direction: column; gap: 16px; overflow: auto; }
 .preview { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }

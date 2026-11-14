@@ -441,7 +441,14 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         assertSystemEditable()
         const abs = confine(str(data, 'file'))
         if (abs === resolveEdmRoot()) throw new Error('不能删除 EDM 根目录')
-        await fs.rm(abs, { recursive: true, force: false })
+        let exists = false
+        try {
+          await fs.access(abs)
+          exists = true
+        } catch {
+          /* 不存在即视为已删除（幂等，避免 ENOENT，#7） */
+        }
+        if (exists) await fs.rm(abs, { recursive: true, force: true })
         return true
       }
       default:
