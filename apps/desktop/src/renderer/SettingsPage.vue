@@ -157,7 +157,7 @@ watch(() => props.section, focusSection, { immediate: true })
               <el-option v-for="opt in field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
             <el-input v-else v-model="values[field.key]" style="width: 260px" />
-            <span v-if="field.hint" class="hint">{{ field.hint }}</span>
+            <span v-if="field.hint" :class="['hint', { 'hint-inline': field.type === 'boolean' }]">{{ field.hint }}</span>
           </el-form-item>
         </el-form>
       </section>
@@ -209,10 +209,11 @@ watch(() => props.section, focusSection, { immediate: true })
   border-radius: 3px;
   background: var(--sshk-accent);
 }
-.hint, .muted { font-size: 12px; opacity: .6; }
-.hint { display: block; line-height: 1.5; }
-/* 开关/控件与说明文字保持间距（2026-11-15 用户反馈：挤在一起，全项目注意） */
-:deep(.el-form-item) .hint { display: inline; margin-left: 12px; }
+.hint, .muted { font-size: 12px; opacity: .6; line-height: 1.5; }
+.hint { display: block; }
+/* 开关后接说明文字需与控件保持间距（2026-11-15 用户反馈，全项目铁律）；
+   输入框 / 下拉等控件的 hint 在控件下方，需与控件左对齐（此处不加 margin-left） */
+.hint-inline { display: inline; margin-left: 12px; }
 .kv {
   display: flex;
   align-items: center;
