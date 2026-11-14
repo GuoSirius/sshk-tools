@@ -1,5 +1,9 @@
+import { app } from 'electron'
+import path from 'node:path'
+import { promises as fs } from 'node:fs'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now } from '@sshk/shared'
+import { loadEdmModel } from './edm-manifest.js'
 import {
   edmOutputRel,
   readOutput,
@@ -14,6 +18,7 @@ import {
 } from '@sshk/repository'
 import { renderFragment, renderMail } from '../core/render.js'
 import { collectCss, type CssSource } from '../core/css-bundle.js'
+import { renderSystemPreview, type SystemSelector } from '../core/system-css.js'
 import { ShareServer } from './share.js'
 
 export interface EdmIpcDeps {
@@ -32,7 +37,22 @@ const ACTIONS = new Set([
   'candidates:pick',
   'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:readFinal',
   'share:start', 'share:stop', 'share:status',
+  'system:load', 'system:render', 'system:readFile',
 ])
+
+/**
+ * 系统内容根（R6 双模解析）：
+ * - 打包态：随包发布于 resources/edm-studio/assets/edm（R11：electron-builder extraResources）。
+ * - 开发态：apps/desktop 在仓库根下两级，工具源码位于 <repo>/tools/edm-studio/assets/edm。
+ * 外部安装包（plugin.source='external'）模式依赖 runtime-installer 解压落点，待该模块落地后
+ * 再按 manifest.plugin.source 切换 baseDir，此处预留 source 入参。
+ */
+function resolveEdmRoot(_source: string = 'builtin', _baseDir?: string): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'edm-studio', 'assets', 'edm')
+  }
+  return path.resolve(app.getAppPath(), '../../tools/edm-studio/assets/edm')
+}
 
 function str(p: Payload, key: string): string {
   return String(p[key] ?? '')
@@ -290,6 +310,29 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         return true
       case 'share:status':
         return { running: share.running, urls: share.urls() }
+
+      // ── 系统内容模型（R3）：文件为源真相，构造内存模型供维护 UI 只读浏览 ──
+      case 'system:load':
+        return await loadEdmModel(resolveEdmRoot())
+
+      // ── 系统内容预览渲染（R5：就近 css 汇集 + 三阶段渲染的 assembled 产物） ──
+      case 'system:render': {
+        const sel = obj(data, 'selector') as unknown as SystemSelector
+        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
+        return await renderSystemPreview(resolveEdmRoot(), sel)
+      }
+      // ── 读取系统内容原文（只读；限制在 edm 根内，越权即拒） ──
+      case 'system:readFile': {
+        const root = resolveEdmRoot()
+        const file = str(data, 'file')
+        const abs = path.resolve(root, file)
+        if (!abs.startsWith(root)) throw new Error('越权读取系统文件')
+        try {
+          return await fs.readFile(abs, 'utf8')
+        } catch {
+          return null
+        }
+      }
       default:
         throw new Error(`未实现: ${action}`)
     }
