@@ -274,23 +274,40 @@ onMounted(async () => {
       >
         <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
+      <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
       <el-button
         v-if="updater.phase === 'downloaded'"
         size="small"
         type="success"
         @click="installUpdate"
-      >立即更新 v{{ updater.version }}</el-button>
+      >可安装 v{{ updater.version }}</el-button>
+      <!-- 有可用包：醒目提示 + 箭头，暗示可点击（自动下载仍在后台进行） -->
+      <el-button
+        v-else-if="updater.phase === 'available'"
+        size="small"
+        type="warning"
+        @click="checkUpdate"
+      >↓ 有可用包</el-button>
+      <!-- 下载中：文字行盖一层进度遮罩，按百分比从左填充，能看清是否完成 -->
+      <el-button
+        v-else-if="updater.phase === 'downloading'"
+        size="small"
+        text
+        class="update-btn--progress"
+        :style="{ '--p': (updater.percent ?? 0) + '%' }"
+        :title="updater.error ?? ''"
+        @click="checkUpdate"
+      ><span class="update-btn__mask"></span><span class="update-btn__label">下载 {{ updater.percent ?? 0 }}%</span></el-button>
+      <!-- 其余：检查 / 出错 / 开发版，朴素 text -->
       <el-button
         v-else
         size="small"
         text
-        :loading="updater.phase === 'checking' || updater.phase === 'downloading'"
+        :loading="updater.phase === 'checking'"
         :title="updater.error ?? ''"
         @click="checkUpdate"
       >
         <template v-if="updater.phase === 'idle' || updater.phase === 'not-available'">检查更新</template>
-        <template v-else-if="updater.phase === 'available'">发现新版本</template>
-        <template v-else-if="updater.phase === 'downloading'">下载 {{ updater.percent }}%</template>
         <template v-else-if="updater.phase === 'checking'">检查中…</template>
         <template v-else-if="updater.phase === 'error'">更新出错</template>
         <template v-else-if="updater.phase === 'dev'">开发版</template>
