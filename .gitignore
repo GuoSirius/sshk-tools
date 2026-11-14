@@ -4,6 +4,10 @@ node_modules/
 dist*/
 dist/
 out/
+# 例外：examples/ 下工具包的 dist/ 是手写零 import 运行时源码（page.js / main.js），
+# 不是构建产物，必须入库，否则 checkout 后打包出的 .sshktool 缺运行时产物
+!examples/*/dist/
+!examples/*/dist/**
 # 注意：不要忽略 build/ —— apps/desktop/build/ 是必须提交的应用图标与品牌资源
 .vite/
 coverage/

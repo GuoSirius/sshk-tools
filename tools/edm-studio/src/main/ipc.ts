@@ -1,5 +1,5 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { now } from '@sshk/shared'
+import { IPC_CHANNELS, now } from '@sshk/shared'
 import {
   edmOutputRel,
   readOutput,
@@ -50,7 +50,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   const repo = deps.repository
   const share = new ShareServer(deps.outputRoot)
 
-  ipc.handle('edm:api', async (_event: IpcMainInvokeEvent, payload: { action: string; data?: Payload }) => {
+  ipc.handle(IPC_CHANNELS.edmApi, async (_event: IpcMainInvokeEvent, payload: { action: string; data?: Payload }) => {
     const { action, data = {} as Payload } = payload
     if (!ACTIONS.has(action)) throw new Error(`非法 action: ${action}`)
 

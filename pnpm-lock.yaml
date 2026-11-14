@@ -296,6 +296,25 @@ importers:
         specifier: '6'
         version: 6.0.3
 
+  tools/template-tool:
+    dependencies:
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@sshk/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
+      element-plus:
+        specifier: latest
+        version: 2.14.8(vue@3.5.45(typescript@6.0.3))
+      vue:
+        specifier: latest
+        version: 3.5.45(typescript@6.0.3)
+    devDependencies:
+      typescript:
+        specifier: '6'
+        version: 6.0.3
+
 packages:
 
   '@antfu/install-pkg@2.1.0':

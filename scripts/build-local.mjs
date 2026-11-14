@@ -22,12 +22,14 @@ const args = process.argv.slice(2)
 const fast = args.includes('--dir')
 const runAfter = args.includes('--run')
 
+// 默认镜像/TLS 兜底，但必须允许 .env / 真实环境变量覆盖，否则 .env.example 里的声明就成了「配了也不生效」的僵尸 env
 const MIRRORS = {
   ...process.env,
-  ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
-  ELECTRON_BUILDER_BINARIES_MIRROR: 'https://npmmirror.com/mirrors/electron-builder-binaries/',
+  ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+  ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/',
+  NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA || '1',
   // 仅本地构建：公司网络/安全软件的 TLS 中间链会导致 "unable to verify the first certificate"
-  NODE_TLS_REJECT_UNAUTHORIZED: '0',
+  NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED ?? '0',
 }
 
 const PM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'

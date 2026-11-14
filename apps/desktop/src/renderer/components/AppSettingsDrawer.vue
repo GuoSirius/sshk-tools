@@ -2,7 +2,7 @@
 import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT } from '@sshk/shared'
-import type { ThemeMode, ToolRuntimeState } from '@sshk/shared'
+import type { ThemeMode, ToolRuntimeState, InstallPreview } from '@sshk/shared'
 
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
@@ -181,10 +181,34 @@ async function pickRuntimePackage(): Promise<void> {
     filters: [{ name: '工具包', extensions: ['sshktool'] }],
   })
   if (!zip) return
+  // 写盘前预览：内建冲突拦截 + 升降级裁决（D-C / D-D）
+  let preview: InstallPreview
+  try {
+    preview = (await window.api.runtime.preview(zip)) as InstallPreview
+  } catch (err) {
+    ElMessage.error(`预览失败：${(err as Error).message}`)
+    return
+  }
+  if (preview.status === 'builtin-conflict') {
+    ElMessage.error(`工具「${preview.id}」已作为内置工具随本应用分发，禁止重复安装同名外部包（如需替换请在「工具与权限」中先禁用内置版本）`)
+    return
+  }
+  if (preview.status === 'downgrade') {
+    try {
+      await ElMessageBox.confirm(
+        `即将从 v${preview.installedVersion} 降级到 v${preview.newVersion}。新版本可能存在问题，降级可回退；但旧版本能力 / 数据可能不兼容，确定继续？`,
+        '降级安装确认',
+        { type: 'warning', confirmButtonText: '仍要降级', cancelButtonText: '取消' },
+      )
+    } catch {
+      return
+    }
+  }
   try {
     const { record, warnings } = (await window.api.runtime.install(zip)) as { record: InstalledPackageRecord; warnings: string[] }
     for (const w of warnings) ElMessage.warning(w)
-    ElMessage.success(`已安装 ${record.id}@${record.version}（${record.trustLevel} / ${record.sandbox} 沙箱）`)
+    const tip = preview.status === 'upgrade' ? `（从 v${preview.installedVersion} 升级到 v${preview.newVersion}）` : ''
+    ElMessage.success(`已安装 ${record.id}@${record.version}（${record.trustLevel} / ${record.sandbox} 沙箱）${tip}`)
     await refreshRuntime()
     // 导入即刷新桌面目录：新工具即时上桌面，无需手动 F5（契约校验已通过才会到这里）
     await refreshCatalog()
@@ -414,7 +438,7 @@ async function cleanupOrphans(): Promise<void> {
                   </div>
                   <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
                   <el-switch :model-value="tool.enabled" size="small" @change="(v: unknown) => toggleEnabled(tool, Boolean(v))" />
-                  <el-button size="small" text @click="editing === tool.id ? (editing = null) : startEdit(tool)">
+                  <el-button size="small" type="primary" text @click="editing === tool.id ? (editing = null) : startEdit(tool)">
                     {{ editing === tool.id ? '收起' : '编辑' }}
                   </el-button>
                 </div>
@@ -505,12 +529,14 @@ async function cleanupOrphans(): Promise<void> {
             <section class="settings-card">
               <div class="card-title">系统与数据</div>
               <div class="kv-line"><span>应用版本</span><strong>v{{ version }}</strong></div>
-              <div class="kv-line"><span>数据目录</span><el-button size="small" text @click="openDataDir">打开</el-button></div>
+              <div class="kv-line"><span>数据目录</span><el-button size="small" type="primary" text @click="openDataDir">打开</el-button></div>
               <div class="kv-line"><span>密钥管理</span><span class="hint">模型 Provider 密钥：Model Console；应用访问密钥：本页「工具与权限」</span></div>
               <div class="kv-line">
                 <span>备份</span>
-                <el-button size="small" @click="exportBackup">导出</el-button>
-                <el-button size="small" @click="importBackup">导入</el-button>
+                <div class="btn-group">
+                  <el-button size="small" type="primary" @click="exportBackup">导出</el-button>
+                  <el-button size="small" type="info" @click="importBackup">导入</el-button>
+                </div>
               </div>
             </section>
 
@@ -518,7 +544,7 @@ async function cleanupOrphans(): Promise<void> {
               <div class="card-title">运行时工具包（.sshktool）</div>
               <div class="kv-line">
                 <span>导入安装</span>
-                <el-button size="small" @click="pickRuntimePackage">选择 .sshktool 包</el-button>
+                <el-button size="small" type="primary" @click="pickRuntimePackage">选择 .sshktool 包</el-button>
               </div>
               <div v-for="pkg in runtimePackages" :key="pkg.id" class="kv-line">
                 <span>{{ pkg.id }}@{{ pkg.version }}</span>
@@ -531,7 +557,7 @@ async function cleanupOrphans(): Promise<void> {
               <div class="card-title" style="margin-top: 12px">信任的发布者（公钥）</div>
               <div class="kv-line">
                 <span>导入公钥</span>
-                <el-button size="small" @click="keyImportOpen = true">粘贴 PEM</el-button>
+                <el-button size="small" type="primary" @click="keyImportOpen = true">粘贴 PEM</el-button>
               </div>
               <div v-for="key in publicKeys" :key="key.keyId" class="kv-line">
                 <span>{{ key.label }}</span>

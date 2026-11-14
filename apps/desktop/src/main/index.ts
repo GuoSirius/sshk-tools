@@ -3,7 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
-import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createHash, createPublicKey } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
@@ -23,7 +23,7 @@ import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gatew
 import { setupServices, type AppServices } from './services'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
-import { installPackage, listInstalled, loadRuntimeManifests, readRenderer, uninstallPackage } from './runtime-installer'
+import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
 import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS } from './discovery'
@@ -38,6 +38,8 @@ const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let services: AppServices | null = null
+/** 退出中标志：关闭确认通过后由渲染层回调置位，放行 before-quit / close 链路 */
+let quitting = false
 /** 插件加载结果：单个插件失败不影响宿主与其它工具 */
 let pluginStatus: Record<string, ToolPluginStatus> = {}
 
@@ -76,8 +78,8 @@ function createWindow(): void {
   })
   mainWindow.on('closed', () => { mainWindow = null })
 
-  // 关闭二次确认（防误触退出）：dev 不拦截；确认后置 quitting 放行 before-quit 链路
-  let quitting = false
+  // 关闭二次确认（防误触退出）：dev 不拦截；确认后置 quitting 放行 before-quit 链路。
+  // 原实现用系统原生 dialog；现改为通知渲染层，使用与主题色匹配的 ElMessageBox 确认。
   app.on('before-quit', () => {
     quitting = true
     // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
@@ -86,20 +88,8 @@ function createWindow(): void {
   mainWindow.on('close', (event) => {
     if (quitting || isDev) return
     event.preventDefault()
-    void dialog.showMessageBox(mainWindow!, {
-      type: 'question',
-      message: '确定退出应用吗？',
-      detail: '退出后将关闭所有工具页面与后台任务。',
-      buttons: ['退出', '取消'],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-    }).then(({ response }) => {
-      if (response === 0) {
-        quitting = true
-        app.quit()
-      }
-    })
+    // 交给渲染层弹出主题色确认框；用户确认后渲染层回调 app:confirmClose 真正退出
+    mainWindow!.webContents.send(IPC_CHANNELS.appRequestClose)
   })
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -270,6 +260,12 @@ async function registerIpc(): Promise<void> {
     else wc.reload()
     return true
   })
+  // 渲染层确认关闭后回到主进程：置 quitting 并真正退出（close 链路见上）
+  ipcMain.handle(IPC_CHANNELS.appConfirmClose, () => {
+    quitting = true
+    app.quit()
+    return true
+  })
   // 开发环境随意开关；打包版必须持密钥（默认 sshk-tools@888，哈希存配置可更换）
   ipcMain.handle(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
     if (isDev) {
@@ -361,11 +357,25 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── 运行时工具包：.sshktool 导入 / 列表 / 卸载（用户经由文件选择器提供路径） ──
+  // 内置工具 id 集合：用于拦截「内建已分发又装同名外部包」的冲突（D-C）
+  const builtinToolIds = (): string[] => {
+    try {
+      const toolsDir = join(app.getAppPath(), 'tools')
+      return readdirSync(toolsDir).filter((name) => statSync(join(toolsDir, name)).isDirectory())
+    } catch {
+      return []
+    }
+  }
   const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: (cfg.get('app.runtime.publicKeys') ?? []) as never[] })
+  ipcMain.handle(IPC_CHANNELS.runtimePreview, (_event, zipPath: string) => {
+    const path = String(zipPath ?? '')
+    if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
+    return previewInstall(path, runtimeDeps(), { builtinIds: builtinToolIds() })
+  })
   ipcMain.handle(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
     const path = String(zipPath ?? '')
     if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
-    const result = installPackage(path, runtimeDeps(), { explicitlyTrusted })
+    const result = installPackage(path, runtimeDeps(), { explicitlyTrusted, builtinIds: builtinToolIds() })
     return { record: result.record, warnings: result.warnings }
   })
   ipcMain.handle(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))

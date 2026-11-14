@@ -63,6 +63,10 @@ interface Window {
       openDataDir(): Promise<void>
       reload(force?: boolean): Promise<boolean>
       toggleDevTools(key?: string): Promise<boolean>
+      /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
+      onRequestClose(callback: () => void): void
+      /** 渲染层确认关闭后调用：主进程置 quitting 并真正退出 */
+      confirmClose(): Promise<boolean>
     }
     update: {
       check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }>
@@ -143,6 +147,7 @@ interface Window {
       import(zipPath: string, passphrase?: string): Promise<{ counts: Record<string, number>; secretsRestored: number; secretsMessage: string }>
     }
     runtime: {
+      preview(zipPath: string): Promise<import('@sshk/shared').InstallPreview>
       install(zipPath: string, explicitlyTrusted?: boolean): Promise<{ record: import('@sshk/shared').InstalledPackageRecord; warnings: string[] }>
       list(): Promise<import('@sshk/shared').InstalledPackageRecord[]>
       uninstall(id: string): Promise<boolean>
@@ -153,6 +158,10 @@ interface Window {
     }
     accessKey: {
       set(key: string): Promise<import('@sshk/shared').ToolCatalogPayload>
+    }
+    /** 通用通道调用：工具（含运行时外部包）调用各自 main 注册的专属通道 */
+    ipc: {
+      invoke(channel: string, ...args: unknown[]): Promise<unknown>
     }
     edm: {
       api(action: string, data?: Record<string, unknown>): Promise<unknown>

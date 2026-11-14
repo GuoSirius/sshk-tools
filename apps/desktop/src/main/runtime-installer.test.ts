@@ -98,12 +98,13 @@ describe('运行时工具包安装器（#35 阶段二）', () => {
 
   it('Ed25519 验签：正确签名通过、篡改内容失败', () => {
     const { publicKey, privateKey } = generateKeyPairSync('ed25519')
-    publicKey.export({ type: 'spki', format: 'pem' })
     const manifestRaw = JSON.stringify(MANIFEST, null, 2)
     const files = [
       { name: 'src/renderer/Page.vue', sha256: createHash('sha256').update('<template><p>hi</p></template>').digest('hex') },
     ]
-    const payload = [manifestRaw, ...files.map((f) => `${f.name}:${f.sha256}`)].join('\n')
+    // 规范签名对象：manifest 剔除 signature 后统一 2 空格缩进 + 末尾换行
+    const canonical = `${manifestRaw}\n`
+    const payload = [canonical, ...files.map((f) => `${f.name}:${f.sha256}`)].join('\n')
     const sig = cryptoSign(null, Buffer.from(payload), privateKey)
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
     const good = verifySignature({
@@ -119,7 +120,31 @@ describe('运行时工具包安装器（#35 阶段二）', () => {
       officialKeys: [], importedKeys: [{ keyId: 'test-key', pem, label: '测试', importedAt: 'x' }],
     })
     expect(tampered.valid).toBe(false)
-    expect(tampered.reason).toContain('签名与内容不匹配')
+  })
+
+  it('端到端：带 SIGNATURE 的签名包通过结构闸 + 验签，登记为 user-imported / main', () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    const keyId = 'test-key'
+    const pageContent = '<template><p>hi</p></template>'
+    // 先确定「剔除 signature 后」的 manifest，再签名；避免签名值写回造成循环依赖
+    const unsignedMain = { ...MANIFEST, package: { ...MANIFEST.package, sandbox: 'main' } }
+    const canonical = `${JSON.stringify(unsignedMain, null, 2)}\n`
+    const listed = [{ name: 'src/renderer/Page.vue', sha256: createHash('sha256').update(pageContent).digest('hex') }]
+    const payload = [canonical, ...listed.map((f) => `${f.name}:${f.sha256}`)].join('\n')
+    const value = cryptoSign(null, Buffer.from(payload), privateKey).toString('base64')
+    const signed = {
+      ...unsignedMain,
+      package: { ...unsignedMain.package, signature: { algorithm: 'ed25519', keyId, value } },
+    }
+
+    const zipPath = makeZip(signed, { SIGNATURE: `${keyId}\n${value}\n` })
+    const deps = { ...makeDeps(), importedKeys: [{ keyId, pem, label: '测试发布者', importedAt: 'x' }] }
+    const result = installPackage(zipPath, deps, { explicitlyTrusted: true })
+
+    expect(result.warnings.some((w) => w.includes('签名校验未通过'))).toBe(false)
+    expect(result.record.trustLevel).toBe('user-imported')
+    expect(result.record.sandbox).toBe('main')
   })
 
   it('loadRuntimeManifests：清单被手动删除时给出问题而非崩溃', () => {

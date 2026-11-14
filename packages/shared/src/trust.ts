@@ -1,11 +1,25 @@
 /**
- * 运行时工具包信任模型（契约层，本轮不含实现）。
+ * 运行时工具包信任模型。
  *
  * 三重机制叠加、互不替代：
  *   TOFU 指纹     -> installed.json 的 sha256，回答「装完后有没有被换过」
  *   官方内置公钥   -> 回答「是不是官方发的」
  *   用户导入公钥   -> 回答「第三方发布者我认不认」
- * 签名对象 = manifest + 整包哈希；哈希白名单是本机 installed.json，不是全局白名单。
+ * 哈希白名单是本机 installed.json，不是全局白名单。
+ *
+ * ── 规范签名对象（唯一裁决方，签名侧与验签侧必须严格一致）──────────────────
+ *   canonicalManifestText(raw) = JSON.parse 后删除 package.signature，再 JSON.stringify(obj, null, 2) + '\n'
+ *   payload = canonicalManifestText + '\n' + 其余文件（排除 tool.manifest.json 自身与 SIGNATURE）
+ *             的 `name:sha256` 按 name 排序后的清单
+ *
+ *   为什么剔除 package.signature 且排除 manifest 自身哈希：
+ *     签名值最终写回 manifest.package.signature，若它参与签名对象就构成「签名覆盖签名自身」
+ *     的循环依赖，数学上永远验不过。manifest 已由 payload 第一行原文整体覆盖，再算一次哈希是冗余。
+ *
+ *   实现位置：
+ *     签名侧 scripts/lib/tool-package.mjs::buildSignaturePayload（sign-tool / check-signature 共用）
+ *     验签侧 apps/desktop/src/main/runtime-installer.ts::verifySignature
+ *   SIGNATURE 文件内容：两行 —— keyId / base64 签名值。
  */
 
 /** 宿主能力 API 版本；外部包 requiresHost.api 不满足则拒绝安装 */
@@ -16,10 +30,19 @@ export const TOOL_PACKAGE_SCHEMA_VERSION = 1
 export const TOOL_PACKAGE_EXT = '.sshktool'
 
 /**
- * 官方 Ed25519 公钥（PEM）。当前为空：官方签名体系上线时在此登记，支持多把并存与轮换。
- * keyId 用于匹配包内 signature.keyId；不把私钥、不把校验逻辑放进渲染层。
+ * 官方 Ed25519 公钥（PEM）。登记在此即 `official` 信任层级，接收方安装时无需手动导入公钥。
+ * 支持多把并存与轮换：新增一栏即可；keyId = 公钥 PEM 的 sha256（见 scripts/sign-tool.mjs）。
+ * 私钥绝不入库，仅存于环境变量 SSHK_OFFICIAL_SIGNING_KEY（PEM，pkcs8），由签名脚本本地读取。
  */
-export const OFFICIAL_PUBLIC_KEYS: readonly { keyId: string; pem: string; since: string }[] = []
+export const OFFICIAL_PUBLIC_KEYS: readonly { keyId: string; pem: string; since: string }[] = [
+  {
+    keyId: 'cb2d9e5e519e57321b3959846f0684b9',
+    pem: `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEANySr4JNYZxZdFEhE6vsUI0W+3WoIEwi8Lfkri/W0OUI=
+-----END PUBLIC KEY-----`,
+    since: '2026-11-14',
+  },
+]
 
 export type TrustLevel = 'official' | 'user-imported' | 'tofu' | 'unsigned'
 

@@ -279,3 +279,16 @@ export interface DirValidation {
   isNetworkDrive: boolean
   warnings: string[]
 }
+
+/**
+ * 运行时工具包安装前预览结果（写盘前裁决，供 UI 征求用户意见）。
+ * 定义在 shared 而非 apps/desktop：渲染层与预加载层都要用，分层只允许 apps → packages 单向依赖。
+ * - builtin-conflict：该 id 已作为内置工具随应用分发，禁止重复安装外部包
+ * - downgrade：新版本低于已装版本，需用户显式抉择
+ */
+export type InstallPreview =
+  | { status: 'fresh'; id: string; newVersion: string }
+  | { status: 'reinstall'; id: string; newVersion: string; installedVersion: string }
+  | { status: 'upgrade'; id: string; newVersion: string; installedVersion: string }
+  | { status: 'downgrade'; id: string; newVersion: string; installedVersion: string }
+  | { status: 'builtin-conflict'; id: string }

@@ -1,4 +1,9 @@
-import { createApp, h, ref, computed, onMounted, watch } from 'vue'
+import {
+  createApp, h, ref, reactive, computed, watch, watchEffect,
+  onMounted, onUnmounted, onBeforeUnmount, nextTick,
+  provide, inject, defineComponent, markRaw, shallowRef, shallowReactive,
+  toRef, toRefs, isRef, unref, triggerRef, customRef,
+} from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
@@ -12,8 +17,13 @@ import { installPlainApi } from './api-plain'
 installPlainApi()
 
 // 外部运行时包渲染层契约：产物不 import 任何模块（Blob URL 下裸导入无法解析），
-// 通过 window.SSHK 取 Vue 工具（h / ref / computed / onMounted / watch）
-;(window as unknown as { SSHK: Record<string, unknown> }).SSHK = { h, ref, computed, onMounted, watch }
+// 通过 window.SSHK 取 Vue 工具。尽量提供全量 API，确保零 import 渲染层最大可用性。
+;(window as unknown as { SSHK: Record<string, unknown> }).SSHK = {
+  h, ref, reactive, computed, watch, watchEffect,
+  onMounted, onUnmounted, onBeforeUnmount, nextTick,
+  provide, inject, defineComponent, markRaw, shallowRef, shallowReactive,
+  toRef, toRefs, isRef, unref, triggerRef, customRef,
+}
 
 import { router } from "./router"
 

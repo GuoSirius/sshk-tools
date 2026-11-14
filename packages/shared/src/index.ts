@@ -6,6 +6,7 @@ export * from './trust'
 export * from './pkg-validate'
 export * from './tool-catalog'
 export type {
+  InstallPreview,
   ThemeMode,
   Origin,
   EntityStatus,

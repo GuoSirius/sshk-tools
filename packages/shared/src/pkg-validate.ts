@@ -5,8 +5,8 @@ import type { ToolDescriptor, ToolPackageContract } from './types'
 /**
  * .sshktool 导入包校验（纯函数层，阶段一）。
  *
- * 阶段一：结构 / 契约 / Zip Slip / 白名单 —— 安装入口的第一道闸，安装前把畸形包拦下。
- * 阶段二（排期）：Ed25519 验签（node:crypto）、TOFU 指纹落库、utilityProcess 加载。
+ * 结构 / 契约 / Zip Slip / 白名单 —— 安装入口的第一道闸，安装前把畸形包拦下。
+ * Ed25519 验签与 TOFU 指纹落库在 apps/desktop/src/main/runtime-installer.ts 完成。
  * 宿主不猜：所有拒绝都给出具体原因，UI 原样展示给用户。
  */
 
@@ -16,6 +16,8 @@ const ALLOWED_EXTS = new Set([
   '.json', '.ts', '.tsx', '.js', '.mjs', '.cjs', '.vue', '.css', '.scss',
   '.svg', '.png', '.jpg', '.jpeg', '.webp', '.ico', '.md', '.py', '.txt',
 ])
+/** 允许的无扩展名文件：签名文件（两行 keyId / base64），带签名包必须能过结构闸 */
+const ALLOWED_EXACT_FILES = new Set(['SIGNATURE'])
 export const PACKAGE_FILE_LIMIT = 2000
 export const PACKAGE_SIZE_LIMIT = 50 * 1024 * 1024
 
@@ -45,8 +47,12 @@ export function assertAllowedFiles(files: PackageFileEntry[]): string[] {
   for (const file of files) {
     const slip = checkZipSlip(file.name)
     if (slip) { errors.push(slip); continue }
-    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-    if (!ALLOWED_EXTS.has(ext)) errors.push(`不允许的文件类型: ${file.name}`)
+    // 无扩展名文件（如 SIGNATURE）不能走 slice(-1)，否则会误取最后一个字符
+    const dot = file.name.lastIndexOf('.')
+    const ext = dot < 0 ? '' : file.name.slice(dot).toLowerCase()
+    if (!ALLOWED_EXACT_FILES.has(file.name) && !ALLOWED_EXTS.has(ext)) {
+      errors.push(`不允许的文件类型: ${file.name}`)
+    }
     if (file.size > PACKAGE_SIZE_LIMIT) errors.push(`单文件超 50MB: ${file.name}`)
     total += file.size
   }

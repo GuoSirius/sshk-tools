@@ -55,6 +55,16 @@ function measureMarquee(): void {
 }
 watch([currentTool, sidebarCollapsed], () => measureMarquee(), { immediate: true })
 onMounted(() => { void nextTick(measureMarquee) })
+
+// 关闭前确认：主进程在窗口关闭时通知渲染层，用主题色 ElMessageBox 替代原生系统 dialog
+function showCloseConfirm(): void {
+  ElMessageBox.confirm('退出后将关闭所有工具页面与后台任务，确定退出应用吗？', '退出确认', {
+    type: 'warning',
+    confirmButtonText: '退出',
+    cancelButtonText: '取消',
+  }).then(() => { void window.api.app.confirmClose() }).catch(() => { /* 用户取消，保持窗口 */ })
+}
+onMounted(() => { window.api.app.onRequestClose(showCloseConfirm) })
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
 // 渲染插件按清单动态加载，单个工具组件失败只影响它自己
 // 内置工具走构建期组件；运行时包走 Blob URL 动态 import（编译后 ESM 组件）
@@ -406,7 +416,7 @@ onMounted(async () => {
           />
         </template>
         <template v-else>
-          <component :is="toolView" v-if="toolView" :menu="activeMenu" />
+          <component :is="toolView" v-if="toolView" :menu="activeMenu" :tool-id="currentTool.id" />
           <template v-else>
             <div class="tool-page-head">
               <strong>{{ currentTool.name }}</strong>

@@ -1,0 +1,155 @@
+{
+  "id": "template-tool",
+  "name": "工具包开发模板（全能力示例·外部包）",
+  "description": "运行时外部包（.sshktool）的完整形态示例：sandbox=main + 全部 7 项宿主能力 + 完整 ipcAllowlist + 签名。零 import 渲染层（dist/page.js）与内置版完全同构。",
+  "category": "开发",
+  "tags": [
+    "示例",
+    "模板",
+    "外部包",
+    "全能力"
+  ],
+  "icon": "auto",
+  "entryRoute": "home",
+  "enabled": true,
+  "visibility": "managed",
+  "configLayout": "tabs",
+  "menus": [
+    {
+      "id": "home",
+      "label": "能力演示"
+    },
+    {
+      "id": "config",
+      "label": "工具配置"
+    }
+  ],
+  "plugin": {
+    "source": "external",
+    "renderer": "dist/page.js",
+    "main": "dist/main.js",
+    "channels": [
+      "template-tool:listProviders",
+      "template-tool:chat",
+      "template-tool:chatByProvider",
+      "template-tool:listModelsByProvider",
+      "template-tool:setSecret",
+      "template-tool:getSecret",
+      "template-tool:runOcr"
+    ]
+  },
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": [
+        "getToolSecret",
+        "setToolSecret",
+        "chat",
+        "listProviders",
+        "chatByProvider",
+        "listModelsByProvider",
+        "runLocalOcr"
+      ]
+    },
+    "sandbox": "main",
+    "ipcAllowlist": [
+      "llm:chat",
+      "llm:providers",
+      "llm:providerModels",
+      "config:get",
+      "config:set",
+      "os:clipboardWrite",
+      "os:pickFile"
+    ],
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "cb2d9e5e519e57321b3959846f0684b9",
+      "value": "dCNyAIfp9M/xJNBAWkiLaAcQXoHCkjXCnp4Z6Ov8Yfqd2ipcU1NlJTCPj/8/s/GFIEuCqbvlPH2AkuhKuJi1Dw=="
+    }
+  },
+  "dependsOn": [],
+  "configDeps": [],
+  "requiredGrant": "",
+  "configGroups": [
+    {
+      "id": "config-llm",
+      "label": "模型调用",
+      "fields": [
+        {
+          "key": "llm.defaultProviderId",
+          "label": "默认 Provider",
+          "type": "string",
+          "hint": "留空则运行时从应用级 Provider 列表选择"
+        },
+        {
+          "key": "llm.systemPrompt",
+          "label": "系统提示词",
+          "type": "string",
+          "hint": "调用 chat / chatByProvider 时注入"
+        },
+        {
+          "key": "llm.temperature",
+          "label": "温度",
+          "type": "number",
+          "min": 0,
+          "max": 2,
+          "hint": "0=确定性，2=发散"
+        }
+      ]
+    },
+    {
+      "id": "config-ocr",
+      "label": "本机 OCR",
+      "fields": [
+        {
+          "key": "ocr.command",
+          "label": "OCR 命令",
+          "type": "string",
+          "hint": "如 paddleocr 的可执行路径"
+        },
+        {
+          "key": "ocr.timeoutMs",
+          "label": "超时(ms)",
+          "type": "number",
+          "min": 1000,
+          "max": 60000,
+          "hint": "单次识别超时"
+        }
+      ]
+    },
+    {
+      "id": "config-path",
+      "label": "路径类（必须用 dir/file 类型）",
+      "fields": [
+        {
+          "key": "workspaceDir",
+          "label": "工作目录",
+          "type": "dir",
+          "hint": "选择+可改，禁止裸 string 手填"
+        },
+        {
+          "key": "lastImageFile",
+          "label": "最近图片",
+          "type": "file",
+          "hint": "OCR 输入图片"
+        }
+      ]
+    }
+  ],
+  "defaults": {
+    "enabled": true,
+    "requiredGrant": "",
+    "dependsOn": [],
+    "llm": {
+      "defaultProviderId": "",
+      "systemPrompt": "你是一个乐于助人的助手。",
+      "temperature": 0.7
+    },
+    "ocr": {
+      "command": "",
+      "timeoutMs": 30000
+    }
+  }
+}

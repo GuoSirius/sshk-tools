@@ -465,6 +465,8 @@ body {
   padding: 8px 0; border-bottom: 1px dashed var(--sshk-border); font-size: 13px;
 }
 .kv-line:last-child { border-bottom: 0; }
+/* 成组操作按钮（如备份 导出/导入）：同行右对齐，与「打开」链接右缘一致 */
+.btn-group { display: inline-flex; align-items: center; gap: 8px; }
 .inline-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
 .orphan-box { border-color: #ff9f43; }
 

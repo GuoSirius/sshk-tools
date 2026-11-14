@@ -36,6 +36,12 @@ const api = {
     reload: (force?: boolean): Promise<boolean> =>
       invoke(IPC_CHANNELS.appReload, Boolean(force)),
     toggleDevTools: (key?: string): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools, key),
+    /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
+    onRequestClose: (callback: () => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.appRequestClose, () => callback())
+    },
+    /** 渲染层确认关闭后调用：主进程置 quitting 并真正退出 */
+    confirmClose: (): Promise<boolean> => invoke(IPC_CHANNELS.appConfirmClose),
   },
   update: {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }> =>
@@ -145,6 +151,7 @@ const api = {
       invoke(IPC_CHANNELS.backupImport, zipPath, passphrase),
   },
   runtime: {
+    preview: (zipPath: string): Promise<unknown> => invoke(IPC_CHANNELS.runtimePreview, zipPath),
     install: (zipPath: string, explicitlyTrusted?: boolean): Promise<unknown> =>
       invoke(IPC_CHANNELS.runtimeInstall, zipPath, explicitlyTrusted),
     list: (): Promise<unknown[]> => invoke(IPC_CHANNELS.runtimeList),
@@ -157,6 +164,14 @@ const api = {
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
     set: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.accessKeySet, key),
+  },
+  /**
+   * 通用通道调用：供工具（含运行时外部包）调用各自 main 注册的专属通道。
+   * 通道是否允许由主进程在注册时裁决（外部包受 manifest 的 plugin.channels 约束），
+   * 渲染层走此处统一出口，入参同样经 toPlain 脱壳。
+   */
+  ipc: {
+    invoke: (channel: string, ...args: unknown[]): Promise<unknown> => invoke(channel, ...args),
   },
   edm: {
     /** action 白名单单通道：brands / tpl / frg / mail / share */

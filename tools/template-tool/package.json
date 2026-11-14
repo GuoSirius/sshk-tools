@@ -1,0 +1,27 @@
+{
+  "name": "@sshk/template-tool",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 工具包开发模板（内建版）：演示全部 7 项宿主能力与最高权限",
+  "exports": {
+    ".": "./src/index.ts",
+    "./main": "./src/main/index.ts",
+    "./renderer": "./src/renderer/TemplateToolPage.vue"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

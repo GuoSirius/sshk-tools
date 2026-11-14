@@ -10,6 +10,10 @@ export const IPC_CHANNELS = {
   appOpenDataDir: 'app:openDataDir',
   appReload: 'app:reload',
   appToggleDevTools: 'app:toggleDevTools',
+  /** 关闭前确认：主进程通知渲染层弹出主题色确认框（替代原生 dialog） */
+  appRequestClose: 'app:requestClose',
+  /** 渲染层确认关闭后回调：主进程置 quitting 并真正退出 */
+  appConfirmClose: 'app:confirmClose',
   backupExport: 'backup:export',
   backupImport: 'backup:import',
   backupRollback: 'backup:rollback',
@@ -59,6 +63,8 @@ export const IPC_CHANNELS = {
   accessKeySet: 'accessKey:set',
   /** 运行时工具包（#35 阶段二）：导入 / 列表 / 卸载 */
   runtimeInstall: 'runtime:install',
+  /** 安装前预览：内建冲突 / 升降级裁决（写盘前征求用户意见） */
+  runtimePreview: 'runtime:preview',
   runtimeList: 'runtime:list',
   runtimeUninstall: 'runtime:uninstall',
   runtimeReadRenderer: 'runtime:readRenderer',

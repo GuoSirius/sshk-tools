@@ -32,6 +32,12 @@ describe('.sshktool 导入包校验（阶段一）', () => {
     expect(errors.some((e) => e.includes('单文件超 50MB'))).toBe(true)
     expect(errors.some((e) => e.includes('文件数超上限'))).toBe(true)
     expect(assertAllowedFiles([])).toEqual(['包内没有任何文件'])
+    // SIGNATURE 无扩展名但必须放行（带签名包要能过结构闸）；其它无扩展名文件仍拒绝
+    expect(assertAllowedFiles([
+      { name: 'tool.manifest.json', size: 10 },
+      { name: 'SIGNATURE', size: 122 },
+    ])).toHaveLength(0)
+    expect(assertAllowedFiles([{ name: 'NOEXT', size: 1 }]).some((e) => e.includes('NOEXT'))).toBe(true)
   })
 
   it('契约校验：外部包必须带 package，main 必须带签名，通道必须已声明', () => {

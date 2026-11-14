@@ -11,6 +11,7 @@ import {
   validateToolPackage,
   type ImportedPublicKey,
   type InstalledPackageRecord,
+  type InstallPreview,
   type ToolDescriptor,
 } from '@sshk/shared'
 
@@ -33,8 +34,21 @@ export interface RuntimeDeps {
 const RUNTIME_DIR = 'runtime-tools'
 const PACKAGES_DIR = 'packages'
 const INSTALLED = 'installed.json'
-/** 包内签名文件名：两行 —— keyId、base64 签名；签名对象 = manifest 原文 + 文件哈希清单 */
+const MANIFEST_FILE = 'tool.manifest.json'
+/** 包内签名文件名：两行 —— keyId、base64 签名 */
 const SIGNATURE_FILE = 'SIGNATURE'
+
+/**
+ * 规范 manifest 文本：剔除 package.signature 后重新序列化。
+ * 签名值本身写在 manifest 里，若不剔除就构成「签名覆盖签名自身」的循环依赖；
+ * 口径与 scripts/lib/tool-package.mjs::canonicalManifestText 严格一致（见 trust.ts 规范）。
+ */
+function canonicalManifestText(raw: string): string {
+  const obj = JSON.parse(raw) as Record<string, unknown>
+  const pkg = obj.package as Record<string, unknown> | undefined
+  if (pkg) delete pkg.signature
+  return JSON.stringify(obj, null, 2) + '\n'
+}
 
 export function runtimeRoot(deps: RuntimeDeps): string {
   return join(deps.userDataDir, RUNTIME_DIR)
@@ -62,7 +76,12 @@ function writeInstalled(deps: RuntimeDeps, records: Record<string, InstalledPack
   renameSync(tmp, final)
 }
 
-/** Ed25519 验签（纯函数）：签名对象 = manifest 原文 + '\n' + 排序后的文件哈希清单 */
+/**
+ * Ed25519 验签（纯函数）。规范签名对象见 packages/shared/src/trust.ts：
+ *   payload = 规范 manifest 原文（剔除 package.signature）+ '\n'
+ *           + 其余文件（排除 manifest 自身与 SIGNATURE）的 name:sha256 排序清单
+ * manifest 由第一行原文整体覆盖，因此不参与哈希清单；否则签名值写回 manifest 会造成循环依赖。
+ */
 export function verifySignature(input: {
   manifestRaw: string
   files: { name: string; sha256: string }[]
@@ -73,17 +92,20 @@ export function verifySignature(input: {
   if (input.signature.algorithm !== 'ed25519') {
     return { valid: false, trusted: false, reason: `签名算法仅支持 ed25519：${input.signature.algorithm}` }
   }
-  const payload = [
-    input.manifestRaw,
-    ...input.files.slice().sort((a, b) => a.name.localeCompare(b.name)).map((f) => `${f.name}:${f.sha256}`),
-  ].join('\n')
   const allKeys = [
     ...input.officialKeys,
     ...input.importedKeys.map((k) => ({ keyId: k.keyId, pem: k.pem })),
   ]
   const key = allKeys.find((k) => k.keyId === input.signature.keyId)
-  if (!key) return { valid: false, trusted: false, reason: `未找到公钥 ${input.signature.keyId}（ neither 官方内置 nor 用户导入）` }
+  if (!key) return { valid: false, trusted: false, reason: `未找到公钥 ${input.signature.keyId}（neither 官方内置 nor 用户导入）` }
   try {
+    const covered = new Set([MANIFEST_FILE, SIGNATURE_FILE])
+    const listed = input.files
+      .filter((f) => !covered.has(f.name))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((f) => `${f.name}:${f.sha256}`)
+    const payload = [canonicalManifestText(input.manifestRaw), ...listed].join('\n')
     const valid = cryptoVerify(null, Buffer.from(payload, 'utf8'), key.pem, new Uint8Array(Buffer.from(input.signature.value, 'base64')))
     return { valid, trusted: valid, reason: valid ? undefined : '签名与内容不匹配（包被篡改或签名损坏）' }
   } catch (err) {
@@ -97,8 +119,43 @@ export interface InstallResult {
   warnings: string[]
 }
 
+/** 语义化版本比较：a>b 返回 1，a<b 返回 -1，相等返回 0（忽略预发布后缀） */
+function versionCompare(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d !== 0) return Math.sign(d)
+  }
+  return 0
+}
+
+// InstallPreview 定义在 @sshk/shared/types（分层约束：shared 不可反向依赖 apps/desktop），此处仅转发
+export type { InstallPreview }
+
+/**
+ * 安装前预览：不写盘，仅做冲突与升降级裁决，供 UI 在写盘前征求用户意见（D-C / D-D）。
+ * - builtin-conflict：该 id 已作为内置工具分发，禁止重复安装外部包
+ * - downgrade：新版本低于已装版本，需用户显式抉择
+ */
+export function previewInstall(zipPath: string, deps: RuntimeDeps, opts: { builtinIds?: string[] } = {}): InstallPreview {
+  const entries = unzipSync(readFileSync(zipPath))
+  const manifestEntry = Object.entries(entries).find(([n, data]) => n === 'tool.manifest.json' && data instanceof Uint8Array)
+  if (!manifestEntry) throw new Error('包内缺少 tool.manifest.json')
+  const manifest = JSON.parse(Buffer.from(manifestEntry[1] as Uint8Array).toString('utf8')) as ToolDescriptor
+  const id = manifest.id
+  if (opts.builtinIds?.includes(id)) return { status: 'builtin-conflict', id }
+  const installed = readInstalled(deps)[id]
+  const newVersion = manifest.package?.version ?? ''
+  if (!installed) return { status: 'fresh', id, newVersion }
+  const cmp = versionCompare(newVersion, installed.version)
+  if (cmp > 0) return { status: 'upgrade', id, newVersion, installedVersion: installed.version }
+  if (cmp < 0) return { status: 'downgrade', id, newVersion, installedVersion: installed.version }
+  return { status: 'reinstall', id, newVersion, installedVersion: installed.version }
+}
+
 /** 安装一个 .sshktool 包；任何一步失败抛错且不留半装状态（先解压到临时目录再原子改名） */
-export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { explicitlyTrusted?: boolean } = {}): InstallResult {
+export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { explicitlyTrusted?: boolean; builtinIds?: string[] } = {}): InstallResult {
   const warnings: string[] = []
   const zipBuf = readFileSync(zipPath)
   const packageSha = sha256(zipBuf)
@@ -117,7 +174,7 @@ export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { expli
   if (structErrors.length) throw new Error(`包结构不合规：\n- ${structErrors.slice(0, 8).join('\n- ')}`)
 
   // manifest + 契约校验
-  const manifestEntry = files.find((f) => f.name === 'tool.manifest.json')
+  const manifestEntry = files.find((f) => f.name === MANIFEST_FILE)
   if (!manifestEntry) throw new Error('包内缺少 tool.manifest.json')
   const manifestRaw = Buffer.from(manifestEntry.data).toString('utf8')
   let manifest: ToolDescriptor
@@ -130,6 +187,11 @@ export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { expli
   if (contractErrors.length) throw new Error(`契约校验失败：\n- ${contractErrors.join('\n- ')}`)
   const pkg = manifest.package!
 
+  // 内建/外部同 id 冲突（D-C）：已作为内置工具随应用分发的，完全禁止重复安装外部同名包
+  if (opts.builtinIds?.includes(manifest.id)) {
+    throw new Error(`工具「${manifest.id}」已作为内置工具随本应用分发，禁止重复安装同名外部包；如需替换请在「工具与权限」中先禁用内置版本`)
+  }
+
   // L2：签名（可选；main 必须签名——validateToolPackage 已卡）
   let trustLevel: InstalledPackageRecord['trustLevel'] = 'unsigned'
   let effectiveSandbox: 'main' | 'utility' = 'utility'
@@ -138,6 +200,7 @@ export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { expli
     const [keyId, value] = Buffer.from(sigEntry.data).toString('utf8').trim().split(/\r?\n/)
     const result = verifySignature({
       manifestRaw,
+      // 规范签名对象由 verifySignature 统一构造：排除 SIGNATURE 与 manifest 自身
       files: files.filter((f) => f.name !== SIGNATURE_FILE).map(({ name, sha256 }) => ({ name, sha256 })),
       signature: { keyId: keyId ?? pkg.signature.keyId, algorithm: 'ed25519', value: value ?? pkg.signature.value },
       officialKeys: OFFICIAL_PUBLIC_KEYS,
