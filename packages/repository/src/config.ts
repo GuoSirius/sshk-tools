@@ -138,6 +138,8 @@ export class ConfigService {
 export const DEFAULT_SETTINGS: Settings = {
   app: {
     themeMode: 'dark',
+    /** 开发者模式：默认关。开启后「工具与权限」显示全量工具（含隐藏/隐式）并开放配置与打包入口 */
+    developerMode: false,
     sidebarCollapsed: false,
     autoUpdate: true,
     updateChannel: 'stable',
@@ -153,8 +155,12 @@ export const DEFAULT_SETTINGS: Settings = {
     accessKeyHash: null,
     /** 运行时包信任的第三方公钥（PEM + 元数据） */
     runtimePublicKeys: [],
-    /** 打包版打开开发者工具的密钥哈希；默认 sshk-tools@888，可在配置文件改哈希更换 */
-    devtoolsKeyHash: "789e19acc1e441f867ab917c68c499eeea29f5cb776ce2c666de68d768d3d34c",
+    /**
+     * 打包版打开开发者工具的密钥哈希。默认 null：由主进程从 env SSHK_DEVTOOLS_KEY 派生
+     * （未设置时回落内置 sshk-tools@888），方便统一改密钥而不必改代码/配置文件。
+     * 仅当此处显式写了哈希时才覆盖 env（高级用法）。
+     */
+    devtoolsKeyHash: null,
     /** 分发白名单；null = 全部工具 */
     distribution: { includeTools: null },
     /** 工具元数据覆盖：app.toolOverrides.<id> = { name, description, category, icon } */

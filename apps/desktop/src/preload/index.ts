@@ -165,6 +165,20 @@ const api = {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
     set: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.accessKeySet, key),
   },
+  /** 开发者工具：仅源码开发环境可用；打包版 state().available=false，UI 会禁用入口 */
+  dev: {
+    state: (): Promise<{ available: boolean; repoRoot: string | null; reason: string }> =>
+      invoke(IPC_CHANNELS.devState),
+    manifestGet: (id: string): Promise<string> => invoke(IPC_CHANNELS.devManifestGet, id),
+    manifestSet: (id: string, raw: string): Promise<{ ok: boolean; output: string }> =>
+      invoke(IPC_CHANNELS.devManifestSet, id, raw),
+    verify: (): Promise<{ ok: boolean; output: string }> => invoke(IPC_CHANNELS.devVerify),
+    build: (): Promise<{ ok: boolean; output: string }> => invoke(IPC_CHANNELS.devBuild),
+    buildExternal: (id: string): Promise<{ ok: boolean; output: string }> =>
+      invoke(IPC_CHANNELS.devBuildExternal, id),
+    pack: (id: string, sign?: boolean): Promise<{ ok: boolean; output: string }> =>
+      invoke(IPC_CHANNELS.devPack, id, Boolean(sign)),
+  },
   /**
    * 通用通道调用：供工具（含运行时外部包）调用各自 main 注册的专属通道。
    * 通道是否允许由主进程在注册时裁决（外部包受 manifest 的 plugin.channels 约束），

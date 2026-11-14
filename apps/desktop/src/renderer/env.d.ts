@@ -159,6 +159,16 @@ interface Window {
     accessKey: {
       set(key: string): Promise<import('@sshk/shared').ToolCatalogPayload>
     }
+    /** 开发者工具：仅源码开发环境可用；state().available=false 时 UI 禁用入口 */
+    dev: {
+      state(): Promise<{ available: boolean; repoRoot: string | null; reason: string }>
+      manifestGet(id: string): Promise<string>
+      manifestSet(id: string, raw: string): Promise<{ ok: boolean; output: string }>
+      verify(): Promise<{ ok: boolean; output: string }>
+      build(): Promise<{ ok: boolean; output: string }>
+      buildExternal(id: string): Promise<{ ok: boolean; output: string }>
+      pack(id: string, sign?: boolean): Promise<{ ok: boolean; output: string }>
+    }
     /** 通用通道调用：工具（含运行时外部包）调用各自 main 注册的专属通道 */
     ipc: {
       invoke(channel: string, ...args: unknown[]): Promise<unknown>

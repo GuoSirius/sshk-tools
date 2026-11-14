@@ -1,4 +1,5 @@
 import { createHash, createPublicKey } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   EXTERNAL_DEFAULT_SANDBOX,
@@ -10,6 +11,12 @@ import {
 } from './trust'
 
 describe('运行时工具包信任契约', () => {
+  it('官方公钥以 official-keys.json 为唯一真相源（代码里不另写一份）', () => {
+    const raw = JSON.parse(readFileSync(new URL('./official-keys.json', import.meta.url), 'utf8')) as unknown[]
+    expect(Array.isArray(raw)).toBe(true)
+    expect(OFFICIAL_PUBLIC_KEYS).toEqual(raw)
+  })
+
   it('只有「签名有效 + 公钥可信 + 显式信任」才允许进主进程', () => {
     expect(canLoadInMain({ signatureValid: true, keyTrusted: true, explicitlyTrusted: true })).toBe(true)
     expect(canLoadInMain({ signatureValid: true, keyTrusted: true, explicitlyTrusted: false })).toBe(false)

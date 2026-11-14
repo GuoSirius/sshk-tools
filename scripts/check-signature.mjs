@@ -9,7 +9,7 @@
  * 校验项：
  *   1. 包内必须有合法 tool.manifest.json
  *   2. 外部包必须有 dist/page.js 与 dist/main.js（拒绝不可安装的空壳包）
- *   3. 有 SIGNATURE → 用 OFFICIAL_PUBLIC_KEYS 验签，必须通过；keyId 必须匹配
+ *   3. 有 SIGNATURE → 用 official-keys.json 中的公钥验签，必须通过；keyId 必须匹配
  *   4. sandbox=main 但无 SIGNATURE → 拒绝
  *   5. 未签名 utility 包 → 合法，跳过验签
  */
@@ -32,12 +32,16 @@ const { unzipSync } = req('fflate')
 const EXAMPLES = join(ROOT, 'examples')
 const REQUIRED_DIST = ['dist/page.js', 'dist/main.js']
 
+/** 公钥唯一真相源：official-keys.json（纯数据，不再正则解析 trust.ts 的模板字符串） */
+export const OFFICIAL_KEYS_FILE = join(ROOT, 'packages/shared/src/official-keys.json')
 function officialKeys() {
-  const src = readFileSync(join(ROOT, 'packages/shared/src/trust.ts'), 'utf8')
-  const re = /keyId:\s*'([^']+)'[\s\S]*?pem:\s*`([^`]+)`/g
-  const keys = []
-  for (const m of src.matchAll(re)) keys.push({ keyId: m[1], pem: m[2].replace(/\n\s*/g, '\n') })
-  if (!keys.length) throw new Error('解析 OFFICIAL_PUBLIC_KEYS 失败')
+  const keys = JSON.parse(readFileSync(OFFICIAL_KEYS_FILE, 'utf8'))
+  if (!Array.isArray(keys) || !keys.length) throw new Error('official-keys.json 为空或不是数组')
+  for (const key of keys) {
+    if (!/^[a-f0-9]{32}$/.test(key.keyId ?? '') || !String(key.pem ?? '').includes('BEGIN PUBLIC KEY')) {
+      throw new Error(`official-keys.json 条目不合法：${JSON.stringify(key)}`)
+    }
+  }
   return keys
 }
 
@@ -60,7 +64,7 @@ function check(file) {
   if (sigEntry) {
     const [keyId, value] = sigEntry.trim().split(/\r?\n/)
     const key = officialKeys().find((k) => k.keyId === keyId)
-    if (!key) errors.push(`SIGNATURE keyId ${keyId} 不在 OFFICIAL_PUBLIC_KEYS 中`)
+    if (!key) errors.push(`SIGNATURE keyId ${keyId} 不在 official-keys.json 中`)
     else {
       const files = names
         .filter((n) => n !== SIGNATURE_FILE && n !== MANIFEST_FILE)

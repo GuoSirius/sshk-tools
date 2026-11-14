@@ -7,6 +7,7 @@ import type { ThemeMode, ToolRuntimeState, InstallPreview } from '@sshk/shared'
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
 import ToolIcon from './ToolIcon.vue'
+import ToolManifestDialog from './ToolManifestDialog.vue'
 import { useToolCatalog } from '../composables/useToolCatalog'
 import type { InstalledPackageRecord } from '@sshk/shared'
 import { useTheme } from '../composables/useTheme'
@@ -73,8 +74,23 @@ const cfg = reactive({
   tray: true,
   ttlHours: 72,
   autoUpdate: true,
+  developerMode: false,
 })
 const saving = ref(false)
+
+// ── 开发者模式（D-A）：显示全量工具 + 开放配置/打包入口 ──
+const devState = ref<{ available: boolean; repoRoot: string | null; reason: string }>({
+  available: false, repoRoot: null, reason: '',
+})
+const manifestOpen = ref(false)
+const manifestToolId = ref('')
+function openManifest(tool: ToolRuntimeState): void {
+  manifestToolId.value = tool.id
+  manifestOpen.value = true
+}
+onMounted(() => {
+  void window.api.dev.state().then((s) => { devState.value = s }).catch(() => { /* 打包版不可用，保持默认 */ })
+})
 
 async function str(key: string, fallback: string): Promise<string> {
   const value = await window.api.config.get(key)
@@ -95,6 +111,7 @@ async function loadAppConfig(): Promise<void> {
   cfg.tray = await bool('app.tray', true)
   cfg.ttlHours = await num('app.share.ttlHours', 72)
   cfg.autoUpdate = await bool('app.autoUpdate', true)
+  cfg.developerMode = await bool('app.developerMode', false)
   version.value = await window.api.app.version().catch(() => '0.1.0')
 }
 onMounted(() => { void loadAppConfig() })
@@ -108,6 +125,7 @@ async function saveAppConfig(): Promise<void> {
       ['app.tray', cfg.tray],
       ['app.share.ttlHours', Number(cfg.ttlHours)],
       ['app.autoUpdate', cfg.autoUpdate],
+      ['app.developerMode', cfg.developerMode],
     ]
     for (const [key, value] of pairs) await window.api.config.set(key, value)
     ElMessage.success('应用配置已保存（产物目录变更需重启生效）')
@@ -269,8 +287,12 @@ function startEdit(tool: ToolRuntimeState): void {
   form.category = tool.categories.join('、')
   form.icon = tool.icon
 }
-/** 两类四态：权限列表只显示显式工具（managed/desktop）；隐式基座与配置隐藏的不出现 */
+/** 两类四态：正式模式只列显式可管理工具；开发者模式列全量（隐藏/隐式包也能配置维护） */
 const manageableTools = computed(() => payload.value.tools.filter((item) => item.manageable))
+const listedTools = computed(() => (cfg.developerMode ? payload.value.tools : manageableTools.value))
+function realVisibility(tool: ToolRuntimeState): string {
+  return `${tool.visible ? '可见' : '隐藏'} / ${tool.visibility}${tool.reason ? ` / ${tool.reason}` : ''}`
+}
 function otherTools(tool: ToolRuntimeState): ToolRuntimeState[] {
   return payload.value.tools.filter((item) => item.id !== tool.id)
 }
@@ -381,6 +403,10 @@ async function cleanupOrphans(): Promise<void> {
                 <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
                 <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
                 <el-form-item label="自动更新"><el-switch v-model="cfg.autoUpdate" /></el-form-item>
+                <el-form-item label="开发者模式">
+                  <el-switch v-model="cfg.developerMode" />
+                  <span class="hint" style="margin-left:8px">开启后显示全部工具（含隐藏/隐式）并开放配置与打包入口；需点「保存应用配置」生效</span>
+                </el-form-item>
                 <el-form-item label="分享有效期">
                   <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" size="small" />
                   <span class="hint" style="margin-left:8px">小时（token 到期即失效）</span>
@@ -428,8 +454,14 @@ async function cleanupOrphans(): Promise<void> {
             </section>
 
             <section class="settings-card">
-              <div class="card-title">工具管理（{{ manageableTools.length }}）</div>
-              <div v-for="tool in manageableTools" :key="tool.id" class="tool-manage-row">
+              <div class="card-title">
+                工具管理（{{ listedTools.length }}）
+                <span v-if="cfg.developerMode" class="hint"> · 开发者模式：全量显示（含隐藏/隐式）</span>
+              </div>
+              <div v-if="cfg.developerMode && !devState.available" class="warning-line">
+                配置 / 打包入口不可用：{{ devState.reason }}
+              </div>
+              <div v-for="tool in listedTools" :key="tool.id" class="tool-manage-row">
                 <div class="tool-manage-head">
                   <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="36" />
                   <div class="tool-manage-title">
@@ -437,7 +469,20 @@ async function cleanupOrphans(): Promise<void> {
                     <small>{{ tool.categories.join(' / ') }} · {{ tool.id }}</small>
                   </div>
                   <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
+                  <el-tag v-if="cfg.developerMode" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
+                  <el-tag v-if="cfg.developerMode && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
                   <el-switch :model-value="tool.enabled" size="small" @change="(v: unknown) => toggleEnabled(tool, Boolean(v))" />
+                  <el-button
+                    v-if="cfg.developerMode"
+                    size="small"
+                    type="success"
+                    text
+                    :disabled="!devState.available"
+                    :title="devState.reason"
+                    @click="openManifest(tool)"
+                  >
+                    配置
+                  </el-button>
                   <el-button size="small" type="primary" text @click="editing === tool.id ? (editing = null) : startEdit(tool)">
                     {{ editing === tool.id ? '收起' : '编辑' }}
                   </el-button>
@@ -597,4 +642,5 @@ async function cleanupOrphans(): Promise<void> {
       </div>
     </div>
   </el-drawer>
+  <ToolManifestDialog v-model="manifestOpen" :tool-id="manifestToolId" />
 </template>

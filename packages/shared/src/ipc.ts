@@ -10,9 +10,9 @@ export const IPC_CHANNELS = {
   appOpenDataDir: 'app:openDataDir',
   appReload: 'app:reload',
   appToggleDevTools: 'app:toggleDevTools',
-  /** 关闭前确认：主进程通知渲染层弹出主题色确认框（替代原生 dialog） */
+  /** 主进程 → 渲染层：窗口即将关闭，请弹出主题色确认框 */
   appRequestClose: 'app:requestClose',
-  /** 渲染层确认关闭后回调：主进程置 quitting 并真正退出 */
+  /** 渲染层 → 主进程：用户已确认退出，置 quitting 并真正退出 */
   appConfirmClose: 'app:confirmClose',
   backupExport: 'backup:export',
   backupImport: 'backup:import',
@@ -59,6 +59,14 @@ export const IPC_CHANNELS = {
   toolsSetOverrides: 'tools:setOverrides',
   toolsSetDistribution: 'tools:setDistribution',
   toolsCleanupOrphans: 'tools:cleanupOrphans',
+  /** 开发者模式（仅源码开发环境可用）：工具清单编辑 / 构建 / 导出 / 校验 */
+  devState: 'dev:state',
+  devManifestGet: 'dev:manifestGet',
+  devManifestSet: 'dev:manifestSet',
+  devVerify: 'dev:verify',
+  devBuild: 'dev:build',
+  devBuildExternal: 'dev:buildExternal',
+  devPack: 'dev:pack',
   /** 应用访问密钥（写入 safeStorage，明文永不下发） */
   accessKeySet: 'accessKey:set',
   /** 运行时工具包（#35 阶段二）：导入 / 列表 / 卸载 */

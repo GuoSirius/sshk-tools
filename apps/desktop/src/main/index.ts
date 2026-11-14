@@ -27,6 +27,7 @@ import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, re
 import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS } from './discovery'
+import { registerDevTools } from './dev-tools'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -79,7 +80,7 @@ function createWindow(): void {
   mainWindow.on('closed', () => { mainWindow = null })
 
   // 关闭二次确认（防误触退出）：dev 不拦截；确认后置 quitting 放行 before-quit 链路。
-  // 原实现用系统原生 dialog；现改为通知渲染层，使用与主题色匹配的 ElMessageBox 确认。
+  // 关闭动作通知渲染层，使用与主题色匹配的 ElMessageBox 确认（原生 dialog 与主题不搭）。
   app.on('before-quit', () => {
     quitting = true
     // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
@@ -232,8 +233,16 @@ function migrateLegacyVisionConfig(): void {
   cfg.set('tools.badge-studio.vision', vision)
 }
 
+/** D18：只有 env=1/true 才允许备份包加密携带 / 还原密钥（功能开关，非安全边界） */
+function secretMigrationEnabled(): boolean {
+  return ['1', 'true'].includes(String(process.env.SSHK_TOOLS_ALLOW_SECRET_MIGRATION ?? '').trim().toLowerCase())
+}
+
 async function registerIpc(): Promise<void> {
   const cfg = services!.config
+
+  // ── 开发者工具：仅源码开发环境注册（打包版自动禁用）──
+  registerDevTools()
 
   // ── 配置 ──
   ipcMain.handle(IPC_CHANNELS.configGet, (_event, key: string) => cfg.get(key) ?? null)
@@ -266,16 +275,17 @@ async function registerIpc(): Promise<void> {
     app.quit()
     return true
   })
-  // 开发环境随意开关；打包版必须持密钥（默认 sshk-tools@888，哈希存配置可更换）
+  // 开发环境随意开关；打包版密钥优先级：settings.json 显式哈希 > env SSHK_DEVTOOLS_KEY > 内置 sshk-tools@888
   ipcMain.handle(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
     if (isDev) {
       mainWindow?.webContents.toggleDevTools()
       return true
     }
+    const configured = String(cfg.get('app.devtoolsKeyHash') ?? '')
+    const envKey = String(process.env.SSHK_DEVTOOLS_KEY ?? '').trim() || 'sshk-tools@888'
+    const expectedHash = configured || createHash('sha256').update(envKey, 'utf8').digest('hex')
     const hash = createHash('sha256').update(String(key ?? ''), 'utf8').digest('hex')
-    if (hash !== String(cfg.get('app.devtoolsKeyHash') ?? '')) {
-      throw new Error('访问密钥不正确')
-    }
+    if (hash !== expectedHash) throw new Error('访问密钥不正确')
     mainWindow?.webContents.toggleDevTools()
     return true
   })
@@ -335,7 +345,7 @@ async function registerIpc(): Promise<void> {
       outZipPath: out,
       appVersion: app.getVersion(),
       secretsJson: services!.exportSecretsJson(),
-      migrationPassphrase: passphrase || undefined,
+      migrationPassphrase: secretMigrationEnabled() ? (passphrase || undefined) : undefined,
     })
     return { counts: manifest.counts, file: out }
   })
@@ -350,7 +360,7 @@ async function registerIpc(): Promise<void> {
       snapshotDir: join(services!.outputRoot, '.tmp', 'import', 'pre-import-backup'),
       dbDir,
       settingsPath: defaultConfigPath(app.getPath('userData')),
-      migrationPassphrase: passphrase || undefined,
+      migrationPassphrase: secretMigrationEnabled() ? (passphrase || undefined) : undefined,
     })
     if (result.secretsJson) services!.importSecretsJson(result.secretsJson)
     return { counts: result.manifest.counts, secretsRestored: result.secretsRestored, secretsMessage: result.secretsMessage }

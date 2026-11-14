@@ -1,6 +1,7 @@
-/** D18：检测到该环境变量才允许加密携带模型密钥，实现 100% 导入还原 */
-export const ENV_ALLOW_SECRET_MIGRATION = 'SSHK_TOOLS_ALLOW_SECRET_MIGRATION'
-
+/**
+ * D18 的开关是环境变量 SSHK_TOOLS_ALLOW_SECRET_MIGRATION（唯一真相源见 .env.example），
+ * 由主进程用字面量读取，以便 check-env 门禁双向校验；这里不再重复定义常量，避免僵尸声明。
+ */
 export const DEFAULT_THEME_MODE = 'dark'
 export const DEFAULT_BADGE_ATTR = 'data-edm-badge'
 export const DEFAULT_CLICKS_FIELD = 'clicks'
