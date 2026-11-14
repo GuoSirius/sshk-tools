@@ -13,6 +13,14 @@ import {
  * 富文本编辑器（R15 richtext）：直接用 wangEditor core 的 createEditor / createToolbar 接入，
  * 绕开 @wangeditor/editor-for-vue（其 latest 是 Vue2 包，与本项目的 Vue3 不兼容）。
  * v-model 走 modelValue / update:modelValue；只读态动态 disable。
+ *
+ * 全屏适配（修复「点全屏无反应 / 报错」）：
+ *  - wangEditor 的 fullScreen() 要求「toolbar 与 textarea 的父节点一致」，否则抛
+ *    "不能设置全屏，因为 toolbar DOM 父节点和 textarea DOM 父节点不一致"。
+ *    故 toolbar 与编辑器用【同一容器 selector】创建，二者父节点一致，全屏校验通过。
+ *  - wangEditor 给容器加 .w-e-full-screen-container（position:fixed 但无 z-index，且若祖先有
+ *    transform 会被局限）。故监听 fullScreen/unFullScreen，把容器临时挂到 body 并补 z-index，
+ *    确保真正铺满视口、不被应用外壳遮挡。
  */
 const props = withDefaults(
   defineProps<{ modelValue?: string; readonly?: boolean }>(),
@@ -21,8 +29,12 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const editorRef = shallowRef<IDomEditor>()
-const toolbarEl = ref<HTMLElement | null>(null)
-const editorEl = ref<HTMLElement | null>(null)
+const containerEl = ref<HTMLElement | null>(null)
+
+// 全屏时挂到 body 用的回挂信息
+let savedParent: HTMLElement | null = null
+let savedNext: Node | null = null
+let fullScreenOn = false
 
 const editorConfig: Partial<IEditorConfig> = {
   placeholder: '请输入内容…',
@@ -32,10 +44,32 @@ const editorConfig: Partial<IEditorConfig> = {
   },
 }
 
+// wangEditor 的 on/off 来自 emitter，用最小类型断言避免公共类型差异
+type EditorEvents = { on: (t: string, fn: () => void) => void; off: (t: string, fn: () => void) => void }
+
+function enterFullScreen(): void {
+  const el = containerEl.value
+  if (!el || fullScreenOn) return
+  fullScreenOn = true
+  savedParent = el.parentNode as HTMLElement
+  savedNext = el.nextSibling
+  document.body.appendChild(el)
+}
+function exitFullScreen(): void {
+  const el = containerEl.value
+  if (!el || !fullScreenOn || !savedParent) return
+  if (savedNext && savedNext.parentNode === savedParent) savedParent.insertBefore(el, savedNext)
+  else savedParent.appendChild(el)
+  savedParent = null
+  savedNext = null
+  fullScreenOn = false
+}
+
 onMounted(() => {
-  if (!editorEl.value || !toolbarEl.value) return
+  if (!containerEl.value) return
+  // toolbar 与编辑器共用同一容器 selector：二者父节点一致，fullScreen 校验通过
   const editor = createEditor({
-    selector: editorEl.value,
+    selector: containerEl.value,
     html: props.modelValue || '',
     config: editorConfig,
     mode: 'default',
@@ -43,10 +77,13 @@ onMounted(() => {
   editorRef.value = editor
   createToolbar({
     editor,
-    selector: toolbarEl.value,
+    selector: containerEl.value,
     config: {} as Partial<IToolbarConfig>,
     mode: 'default',
   })
+  const ev = editor as unknown as EditorEvents
+  ev.on('fullScreen', enterFullScreen)
+  ev.on('unFullScreen', exitFullScreen)
 })
 
 // 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环
@@ -69,32 +106,33 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  const ed = editorRef.value as unknown as EditorEvents | undefined
+  if (fullScreenOn) exitFullScreen()
+  ed?.off('fullScreen', enterFullScreen)
+  ed?.off('unFullScreen', exitFullScreen)
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
 </script>
 
 <template>
-  <div class="rich">
-    <div ref="toolbarEl" class="rich-toolbar" />
-    <div ref="editorEl" class="rich-editor" />
-  </div>
+  <div ref="containerEl" class="rich" />
 </template>
 
 <style scoped>
 .rich {
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
   border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.3));
   border-radius: 6px;
   background: var(--sshk-panel, #fff);
 }
-.rich-toolbar {
-  border-bottom: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.3));
-}
-.rich-editor {
-  min-height: 200px;
-}
+/* toolbar 在文本区之上（用 order 兜底，避免 wangEditor 插入顺序差异） */
+.rich :deep(.w-e-toolbar) { order: 0; }
+.rich :deep(.w-e-text-container) { order: 1; flex: 1; min-height: 200px; }
 
-/* 深色主题：覆写 wangEditor 的 --w-e-* 变量，使编辑器融入深色界面（变量从 .rich 向下级联到工具栏/编辑区） */
+/* 深色主题：覆写 wangEditor 的 --w-e-* 变量，使编辑器融入深色界面（变量从 .rich 向下级联） */
 :global(html.dark) .rich {
   border-color: #333;
   background: #181818;
@@ -112,5 +150,11 @@ onBeforeUnmount(() => {
   --w-e-modal-color: #d4d4d4;
   --w-e-modal-button-bg-color: #2a2a2a;
   --w-e-modal-button-border-color: #444;
+}
+
+/* 全屏：wangEditor 只给 position:fixed（无 z-index），补 z-index 并铺满视口背景 */
+.rich.w-e-full-screen-container {
+  z-index: 9999 !important;
+  background-color: var(--w-e-toolbar-bg-color);
 }
 </style>
