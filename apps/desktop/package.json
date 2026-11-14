@@ -1,7 +1,7 @@
 {
   "name": "@sshk/desktop",
   "productName": "sshk-tools",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "sshk-tools Electron 应用壳",
