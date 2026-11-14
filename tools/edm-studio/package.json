@@ -20,6 +20,8 @@
     "@sshk/ui-kit": "workspace:*",
     "@unocss/core": "latest",
     "@unocss/preset-wind3": "latest",
+    "@wangeditor/editor": "latest",
+    "@wangeditor/editor-for-vue": "latest",
     "ajv": "latest",
     "element-plus": "latest",
     "fflate": "latest",

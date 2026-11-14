@@ -4,6 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
 import { EmptyState } from '@sshk/ui-kit'
 import MonacoEditor from '../MonacoEditor.vue'
+import SampleForm from '../SampleForm.vue'
+import { applyDefaults, normalizeFields, validateModel, type FieldDef } from '../sample-schema'
 import { api } from '../shared'
 
 /**
@@ -227,6 +229,10 @@ const sampleText = ref('')
 const styleText = ref('')
 const previewHtml = ref('')
 const previewing = ref(false)
+/* R15：示例数据表单化 —— schema（版本 meta fields 优先，族 meta 兜底）+ 表单模型 + 表单|数据切换 */
+const sampleMode = ref<'form' | 'data'>('form')
+const sampleSchema = ref<FieldDef[]>([])
+const sampleObj = ref<Record<string, unknown>>({})
 const form = ref({
   name: '', code: '', description: '', logo: '', type: '',
   version: 1, changelog: '', policyB: '', policyW: '',
@@ -299,8 +305,47 @@ async function onNode(node: TreeNode): Promise<void> {
     sourceText.value = await read(node.data.sourcePath ?? '')
     sampleText.value = await read(node.data.samplePath ?? '')
     styleText.value = await read(`${node.data.path}/style.css`)
+    // R15：schema 取版本 meta fields，缺省回退族 meta fields；有 schema 默认表单模式
+    let parsedSample: Record<string, unknown> = {}
+    try {
+      parsedSample = (yaml.load(sampleText.value) as Record<string, unknown>) ?? {}
+    } catch {
+      parsedSample = {}
+    }
+    const famPath = node.data.path.split('/').slice(0, 3).join('/')
+    const fields = normalizeFields(metaRaw.value?.['fields'] ?? (await readFamilyFields(famPath)))
+    sampleSchema.value = fields
+    sampleObj.value = applyDefaults(fields, parsedSample)
+    sampleMode.value = fields.length ? 'form' : 'data'
     await renderPreview(node)
   }
+}
+
+/** 族级 meta.yaml 的 fields 段（版本未声明时兜底） */
+async function readFamilyFields(famPath: string): Promise<unknown> {
+  const txt = await read(`${famPath}/meta.yaml`)
+  try {
+    return ((yaml.load(txt) as Record<string, unknown>) ?? {})['fields']
+  } catch {
+    return undefined
+  }
+}
+
+/** 示例数据 表单↔数据 切换（R15） */
+function switchSampleMode(mode: 'form' | 'data'): void {
+  if (mode === sampleMode.value) return
+  if (mode === 'data') sampleText.value = yaml.dump(sampleObj.value, { lineWidth: -1 })
+  else {
+    try {
+      const parsed = (yaml.load(sampleText.value) as Record<string, unknown>) ?? {}
+      sampleObj.value = applyDefaults(sampleSchema.value, parsed)
+    } catch (err) {
+      ElMessage.error(`YAML 解析失败，请先修正语法：${(err as Error).message}`)
+      sampleMode.value = 'data'
+      return
+    }
+  }
+  sampleMode.value = mode
 }
 
 function syncFormToRaw(): Record<string, unknown> {
@@ -386,11 +431,21 @@ async function saveStyle(): Promise<void> {
 async function saveSample(): Promise<void> {
   const node = selected.value
   if (!node?.data.samplePath) return
-  try {
-    yaml.load(sampleText.value)
-  } catch (err) {
-    ElMessage.error(`YAML 语法错误：${(err as Error).message}`)
-    return
+  // R15：表单模式先全量校验（v5 §5.2 铁律：未通过阻止保存）
+  if (sampleMode.value === 'form') {
+    const errors = validateModel(sampleSchema.value, sampleObj.value)
+    if (Object.keys(errors).length > 0) {
+      ElMessage.error(`示例数据校验未通过（${Object.keys(errors).length} 处），请检查标红项`)
+      return
+    }
+    sampleText.value = yaml.dump(sampleObj.value, { lineWidth: -1 })
+  } else {
+    try {
+      yaml.load(sampleText.value)
+    } catch (err) {
+      ElMessage.error(`YAML 语法错误：${(err as Error).message}`)
+      return
+    }
   }
   try {
     await write(node.data.samplePath, sampleText.value)
@@ -765,10 +820,17 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
-              <el-tag size="small" type="info">表单渲染器下一版提供（R15），本版直接编辑 YAML</el-tag>
+              <el-radio-group v-model="sampleMode" size="small" :disabled="!sampleSchema.length" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data')">
+                <el-radio-button value="form">表单</el-radio-button>
+                <el-radio-button value="data">数据</el-radio-button>
+              </el-radio-group>
+              <el-tag v-if="!sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
               <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSample">保存</el-button>
             </div>
-            <MonacoEditor :model-value="sampleText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
+            <div v-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
+              <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
+            </div>
+            <MonacoEditor v-else :model-value="sampleText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
@@ -861,6 +923,7 @@ async function confirmSaveAs(): Promise<void> {
 .editor-toolbar { display: flex; align-items: center; gap: 10px; flex: none; padding-bottom: 6px; }
 .hint { font-size: 12px; opacity: .6; }
 .meta-form { overflow: auto; }
+.sample-wrap { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }
 .overview { display: flex; flex-direction: column; gap: 16px; overflow: auto; }
 .preview { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }
 

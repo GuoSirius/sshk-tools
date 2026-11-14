@@ -145,6 +145,7 @@ fields:
 ```
 
 - 控件类型：`input / textarea / richtext / radio / checkbox / select / select-multi / image / image-list / list`（动态行、嵌套 itemFields、分组折叠）；**image-list 支持 `max` 限定上传数量**（v4）。
+- **R15 已落地**（2026-11-15 效果版）：schema 归一化/默认值/校验纯函数层 `renderer/sample-schema.ts`（含单测）+ 递归渲染器 `renderer/SampleForm.vue`（嵌套 ≤3 层、校验标红、未通过阻止保存）；示例 tab `表单|数据` 切换，schema 取版本 meta `fields:` 优先、族 meta 兜底，无 schema 仅数据模式。当前 richtext 以多行文本兜底、image 以 URL 直填，wangEditor 与上传通道接入后替换（依赖 `@wangeditor/editor`、`@wangeditor/editor-for-vue` 已声明）。
 - 富文本：**wangEditor 最新版**（已拍板；输出 HTML，契合邮件场景；依赖进 edm-studio package.json，用户安装）。
 - **表单 ↔ 数据切换**（已拍板）：编辑区顶部 `表单 | 数据` 切换，「数据」即 schema 生成后的真实 sample.yaml，可查看/微调；无 `fields:` 的版本回退纯 YAML。
 
