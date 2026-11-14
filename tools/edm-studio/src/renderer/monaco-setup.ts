@@ -5,14 +5,17 @@
  * 渲染层只需 import 本模块并调用 setupMonaco()；组件用 @guolao/vue-monaco-editor 承载。
  */
 import * as monaco from 'monaco-editor'
+// monaco-editor@0.57 的 package.json exports 把 `./*` 映射到 `./esm/vs/*`，
+// 若写成 `monaco-editor/esm/vs/.../x.worker` 会被解析成 `./esm/vs/esm/vs/...`（路径翻倍）导致
+// rolldown 在 renderer 构建期无法解析。因此 worker 导入须去掉 `esm/vs/` 前缀。
 // @ts-ignore - Vite 注入 worker
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import editorWorker from 'monaco-editor/editor/editor.worker.js?worker'
 // @ts-ignore
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
+import jsonWorker from 'monaco-editor/language/json/json.worker.js?worker'
 // @ts-ignore
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
+import cssWorker from 'monaco-editor/language/css/css.worker.js?worker'
 // @ts-ignore
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
+import htmlWorker from 'monaco-editor/language/html/html.worker.js?worker'
 import * as monacoYaml from 'monaco-yaml'
 
 let initialized = false

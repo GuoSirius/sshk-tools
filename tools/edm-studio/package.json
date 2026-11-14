@@ -13,18 +13,24 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@guolao/vue-monaco-editor": "latest",
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@unocss/core": "latest",
     "@unocss/preset-wind3": "latest",
+    "ajv": "latest",
     "element-plus": "latest",
     "html-minifier-terser": "latest",
+    "js-yaml": "latest",
     "juice": "latest",
+    "monaco-editor": "latest",
+    "monaco-yaml": "latest",
     "nunjucks": "latest",
     "vue": "latest"
   },
   "devDependencies": {
+    "@types/js-yaml": "latest",
     "@types/nunjucks": "latest",
     "typescript": "6",
     "vitest": "latest"

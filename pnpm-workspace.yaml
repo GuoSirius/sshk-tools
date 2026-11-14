@@ -1,7 +1,7 @@
 packages:
-  - 'apps/*'
-  - 'packages/*'
-  - 'tools/*'
+  - "apps/*"
+  - "packages/*"
+  - "tools/*"
 
 # pnpm 12 默认不执行依赖的构建脚本；需要跑 install/postinstall 的依赖在此显式放行。
 # - electron: postinstall 下载运行时二进制，不放行则 electron/dist 为空，pnpm dev 起不来
@@ -9,6 +9,7 @@ packages:
 # - electron-winstaller: install 脚本 select-7z-arch.js 选择 7z 架构二进制（electron-builder 传递依赖）
 # 注意：allowBuilds 是 pnpm 12 的规范写法，与 onlyBuiltDependencies 不必同时存在。
 allowBuilds:
+  vue-demi: true
   electron: true
   esbuild: true
   electron-winstaller: true
