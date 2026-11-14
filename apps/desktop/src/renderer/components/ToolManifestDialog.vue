@@ -6,7 +6,7 @@ import { HOST_API_VERSION, IPC_CHANNELS, TOOL_PACKAGE_SCHEMA_VERSION } from '@ss
 /**
  * 开发者模式：工具清单（tool.manifest.json）可视化编辑 + 构建/打包动作。
  * 表单覆盖基础 / 菜单 / 插件 / 契约 / 高级五组；保存后写回源码文件并可立即跑 verify。
- * 仅在 app.developerMode 且主进程确认源码仓库可用时由设置抽屉打开。
+ * 由设置抽屉打开：源码 dev 运行始终可用；打包/安装版需 app.developerMode 且主进程确认源码仓库可用。
  */
 const props = defineProps<{ modelValue: boolean; toolId: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()

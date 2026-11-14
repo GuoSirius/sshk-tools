@@ -293,9 +293,11 @@ function startEdit(tool: ToolRuntimeState): void {
   form.category = tool.categories.join('、')
   form.icon = tool.icon
 }
-/** 两类四态：正式模式只列显式可管理工具；开发者模式列全量（隐藏/隐式包也能配置维护） */
+/** 开发功能总开关：源码 dev 运行始终开启（developerMode 不影响 dev）；打包/安装版由 developerMode 决定 */
+const devFeatures = computed(() => isDev || cfg.developerMode)
+/** 两类四态：正式模式只列显式可管理工具；开发功能开启时列全量（隐藏/隐式包也能配置维护） */
 const manageableTools = computed(() => payload.value.tools.filter((item) => item.manageable))
-const listedTools = computed(() => (cfg.developerMode ? payload.value.tools : manageableTools.value))
+const listedTools = computed(() => (devFeatures.value ? payload.value.tools : manageableTools.value))
 function realVisibility(tool: ToolRuntimeState): string {
   return `${tool.visible ? '可见' : '隐藏'} / ${tool.visibility}${tool.reason ? ` / ${tool.reason}` : ''}`
 }
@@ -411,7 +413,7 @@ async function cleanupOrphans(): Promise<void> {
                 <el-form-item label="自动更新"><el-switch v-model="cfg.autoUpdate" /></el-form-item>
                 <el-form-item label="开发者模式">
                   <el-switch v-model="cfg.developerMode" />
-                  <span class="hint" style="margin-left:8px">开启后显示全部工具（含隐藏/隐式）并开放配置与打包入口；需点「保存应用配置」生效</span>
+                  <span class="hint" style="margin-left:8px">仅作用于打包/安装版：开启后显示全部工具并开放配置入口。源码 dev 运行时开发功能始终开启，不受此开关影响</span>
                 </el-form-item>
                 <el-form-item label="分享有效期">
                   <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" size="small" />
@@ -462,9 +464,9 @@ async function cleanupOrphans(): Promise<void> {
             <section class="settings-card">
               <div class="card-title">
                 工具管理（{{ listedTools.length }}）
-                <span v-if="cfg.developerMode" class="hint"> · 开发者模式：全量显示（含隐藏/隐式）</span>
+                <span v-if="devFeatures" class="hint"> · {{ isDev ? '源码开发：' : '开发者模式：' }}全量显示（含隐藏/隐式）</span>
               </div>
-              <div v-if="cfg.developerMode && !devState.available" class="warning-line">
+              <div v-if="devFeatures && !devState.available" class="warning-line">
                 配置 / 打包入口不可用：{{ devState.reason }}
               </div>
               <div v-for="tool in listedTools" :key="tool.id" class="tool-manage-row">
@@ -475,11 +477,11 @@ async function cleanupOrphans(): Promise<void> {
                     <small>{{ tool.categories.join(' / ') }} · {{ tool.id }}</small>
                   </div>
                   <el-tag size="small" :type="tool.visible ? 'success' : 'info'">{{ tool.visible ? '可见' : (tool.reason ?? '隐藏') }}</el-tag>
-                  <el-tag v-if="cfg.developerMode" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
-                  <el-tag v-if="cfg.developerMode && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
+                  <el-tag v-if="devFeatures" size="small" type="warning" plain>真实：{{ realVisibility(tool) }}</el-tag>
+                  <el-tag v-if="devFeatures && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
                   <el-switch :model-value="tool.enabled" size="small" @change="(v: unknown) => toggleEnabled(tool, Boolean(v))" />
                   <el-button
-                    v-if="cfg.developerMode"
+                    v-if="devFeatures"
                     size="small"
                     type="success"
                     text
