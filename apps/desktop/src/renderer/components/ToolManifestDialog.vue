@@ -126,7 +126,8 @@ watch(() => [props.modelValue, props.toolId], ([open]) => {
 }, { immediate: true })
 
 function splitList(value: string): string[] {
-  return value.split(/[,，、\s]+/).map((s) => s.trim()).filter(Boolean)
+  // 只按逗号/顿号切分；空格是合法的标签字符（如「OCR 识别」），绝不作分隔符（台账 #21）
+  return value.split(/[,，、]+/).map((s) => s.trim()).filter(Boolean)
 }
 function parseJsonField(label: string, text: string): unknown {
   try { return JSON.parse(text) as unknown } catch (err) {
@@ -233,7 +234,7 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
             <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
             <el-form-item label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
             <el-form-item label="分类"><el-input v-model="form.category" placeholder="多个用顿号分隔" /></el-form-item>
-            <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔" /></el-form-item>
+            <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔；标签内可含空格，如 OCR 识别" /></el-form-item>
             <el-form-item label="图标"><el-input v-model="form.icon" placeholder="auto = assets/icon.svg" /></el-form-item>
             <el-form-item label="配置布局">
               <el-select v-model="form.configLayout" style="width: 100%">

@@ -10,6 +10,15 @@ directories:
   output: ../../dist
   buildResources: build
 
+# R11：内建工具系统内容随包发布。
+# edm-studio 的 builtin 资源位于 monorepo 的 <repo>/tools/edm-studio/assets/edm，
+# 需拷贝到安装包的 resources/edm-studio/assets/edm，与 ipc.resolveEdmRoot 的
+# process.resourcesPath/edm-studio/assets/edm 严格对应（from 相对 apps/desktop 上溯两级）。
+# 放在 extraResources 而非 files：资源位于 asar 之外的 resources 根，运行时用 resourcesPath 读取。
+extraResources:
+  - from: ../../tools/edm-studio/assets/edm
+    to: edm-studio/assets/edm
+
 # electron-vite 的产物目录是 out/，不是 dist/（dist 只放安装包）
 files:
   - out/**/*

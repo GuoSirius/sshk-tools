@@ -11,7 +11,7 @@
   "icon": "auto",
   "entryRoute": "home",
   "enabled": true,
-  "visibility": "managed",
+  "visibility": "implicit",
   "configLayout": "tabs",
   "menus": [
     {

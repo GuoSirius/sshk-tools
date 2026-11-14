@@ -2,8 +2,14 @@
   "id": "badge-studio",
   "name": "Badge Studio",
   "description": "上传点击统计与邮件 HTML，注入 badge 并生成海报长图；支持图片/截图识别为点击数据",
-  "category": ["邮件营销", "数据分析"],
-  "tags": ["OCR 识别", "海报生成"],
+  "category": [
+    "邮件营销",
+    "数据分析"
+  ],
+  "tags": [
+    "OCR 识别",
+    "海报生成"
+  ],
   "icon": "auto",
   "entryRoute": "generate",
   "enabled": true,
@@ -13,63 +19,239 @@
     "main": "src/main/index.ts",
     "renderer": "src/renderer/BadgeStudioPage.vue",
     "channels": [
-      "badge:generate", "badge:regenerate", "badge:parseDatasource", "badge:readHtml",
-      "badge:markBadges", "badge:savePosterPng", "badge:listPosters", "badge:deletePoster",
-      "badge:parseImage", "badge:setVisionKey", "badge:visionState"
+      "badge:generate",
+      "badge:regenerate",
+      "badge:parseDatasource",
+      "badge:readHtml",
+      "badge:markBadges",
+      "badge:savePosterPng",
+      "badge:listPosters",
+      "badge:deletePoster",
+      "badge:parseImage",
+      "badge:setVisionKey",
+      "badge:visionState"
     ]
   },
   "dependsOn": [],
   "configDeps": [],
   "requiredGrant": "",
   "menus": [
-    { "id": "generate", "label": "生成海报" },
-    { "id": "posters", "label": "海报列表" },
-    { "id": "config", "label": "工具配置" }
+    {
+      "id": "generate",
+      "label": "生成海报"
+    },
+    {
+      "id": "posters",
+      "label": "海报列表"
+    },
+    {
+      "id": "config",
+      "label": "工具配置"
+    }
   ],
   "configGroups": [
     {
       "id": "config-badge",
       "label": "角标",
       "fields": [
-        { "key": "badgeAttr", "label": "badge 属性", "type": "string", "hint": "注入到 HTML 的自定义属性名" },
-        { "key": "badgePositionText", "label": "文本链接默认位置", "type": "select", "options": [{"label":"左上","value":"top-left"},{"label":"上中","value":"top-center"},{"label":"右上","value":"top-right"},{"label":"左中","value":"left-center"},{"label":"居中","value":"center"},{"label":"右中","value":"right-center"},{"label":"左下","value":"bottom-left"},{"label":"下中","value":"bottom-center"},{"label":"右下","value":"bottom-right"}], "hint": "未手写 data-badge-position 的文本类 <a> 的角标位置" },
-        { "key": "badgePositionImage", "label": "图片链接默认位置", "type": "select", "options": [{"label":"左上","value":"top-left"},{"label":"上中","value":"top-center"},{"label":"右上","value":"top-right"},{"label":"左中","value":"left-center"},{"label":"居中","value":"center"},{"label":"右中","value":"right-center"},{"label":"左下","value":"bottom-left"},{"label":"下中","value":"bottom-center"},{"label":"右下","value":"bottom-right"}], "hint": "带 <img> 的 <a> 的角标位置；<a> 上手写的 data-badge-position 优先级最高" },
         {
-          "key": "clicksField", "label": "角标数值列", "type": "string",
+          "key": "badgeAttr",
+          "label": "badge 属性",
+          "type": "string",
+          "hint": "注入到 HTML 的自定义属性名"
+        },
+        {
+          "key": "badgePositionText",
+          "label": "文本链接默认位置",
+          "type": "select",
+          "options": [
+            {
+              "label": "左上",
+              "value": "top-left"
+            },
+            {
+              "label": "上中",
+              "value": "top-center"
+            },
+            {
+              "label": "右上",
+              "value": "top-right"
+            },
+            {
+              "label": "左中",
+              "value": "left-center"
+            },
+            {
+              "label": "居中",
+              "value": "center"
+            },
+            {
+              "label": "右中",
+              "value": "right-center"
+            },
+            {
+              "label": "左下",
+              "value": "bottom-left"
+            },
+            {
+              "label": "下中",
+              "value": "bottom-center"
+            },
+            {
+              "label": "右下",
+              "value": "bottom-right"
+            }
+          ],
+          "hint": "未手写 data-badge-position 的文本类 <a> 的角标位置"
+        },
+        {
+          "key": "badgePositionImage",
+          "label": "图片链接默认位置",
+          "type": "select",
+          "options": [
+            {
+              "label": "左上",
+              "value": "top-left"
+            },
+            {
+              "label": "上中",
+              "value": "top-center"
+            },
+            {
+              "label": "右上",
+              "value": "top-right"
+            },
+            {
+              "label": "左中",
+              "value": "left-center"
+            },
+            {
+              "label": "居中",
+              "value": "center"
+            },
+            {
+              "label": "右中",
+              "value": "right-center"
+            },
+            {
+              "label": "左下",
+              "value": "bottom-left"
+            },
+            {
+              "label": "下中",
+              "value": "bottom-center"
+            },
+            {
+              "label": "右下",
+              "value": "bottom-right"
+            }
+          ],
+          "hint": "带 <img> 的 <a> 的角标位置；<a> 上手写的 data-badge-position 优先级最高"
+        },
+        {
+          "key": "clicksField",
+          "label": "角标数值列",
+          "type": "string",
           "hint": "clicks / totalClicks，或表格里任意自定义数值列名"
         },
-        { "key": "posterWidth", "label": "海报宽度", "type": "number", "min": 320, "max": 1600 },
-        { "key": "scale", "label": "截图像素比", "type": "number", "min": 1, "max": 4 }
+        {
+          "key": "posterWidth",
+          "label": "海报宽度",
+          "type": "number",
+          "min": 320,
+          "max": 1600
+        },
+        {
+          "key": "scale",
+          "label": "截图像素比",
+          "type": "number",
+          "min": 1,
+          "max": 4
+        }
       ]
     },
     {
       "id": "config-url",
       "label": "URL 归一",
       "fields": [
-        { "key": "urlNorm.stripUtm", "label": "去 UTM 参数", "type": "boolean" },
-        { "key": "urlNorm.stripHash", "label": "去 hash", "type": "boolean" },
-        { "key": "urlNorm.stripTrailingSlash", "label": "去末尾斜杠", "type": "boolean" },
-        { "key": "urlNorm.sortQuery", "label": "查询参数排序", "type": "boolean" },
-        { "key": "urlNorm.lowercaseHost", "label": "域名小写", "type": "boolean" }
+        {
+          "key": "urlNorm.stripUtm",
+          "label": "去 UTM 参数",
+          "type": "boolean"
+        },
+        {
+          "key": "urlNorm.stripHash",
+          "label": "去 hash",
+          "type": "boolean"
+        },
+        {
+          "key": "urlNorm.stripTrailingSlash",
+          "label": "去末尾斜杠",
+          "type": "boolean"
+        },
+        {
+          "key": "urlNorm.sortQuery",
+          "label": "查询参数排序",
+          "type": "boolean"
+        },
+        {
+          "key": "urlNorm.lowercaseHost",
+          "label": "域名小写",
+          "type": "boolean"
+        }
       ]
     },
     {
       "id": "config-ocr",
       "label": "OCR 截图版式",
       "fields": [
-        { "key": "ocrLayout.linkNumberSameLine", "label": "链接与数字同行", "type": "boolean", "hint": "关掉表示 URL 行的下一行才是数字行" },
-        { "key": "ocrLayout.thousandsSeparator", "label": "数字含千分位", "type": "boolean", "hint": "如 1,234 会清洗成 1234" },
-        { "key": "ocrLayout.skipTotalRow", "label": "跳过合计行", "type": "boolean" },
-        { "key": "ocrLayout.skipKeywords", "label": "跳过关键字", "type": "string", "hint": "逗号分隔，命中即跳过该行" },
-        { "key": "ocrLayout.columnOrder", "label": "列顺序", "type": "string", "hint": "逗号分隔；除 url/clicks/totalClicks 外都作为自定义数值列，如 url,clicks,uv" }
+        {
+          "key": "ocrLayout.linkNumberSameLine",
+          "label": "链接与数字同行",
+          "type": "boolean",
+          "hint": "关掉表示 URL 行的下一行才是数字行"
+        },
+        {
+          "key": "ocrLayout.thousandsSeparator",
+          "label": "数字含千分位",
+          "type": "boolean",
+          "hint": "如 1,234 会清洗成 1234"
+        },
+        {
+          "key": "ocrLayout.skipTotalRow",
+          "label": "跳过合计行",
+          "type": "boolean"
+        },
+        {
+          "key": "ocrLayout.skipKeywords",
+          "label": "跳过关键字",
+          "type": "string",
+          "hint": "逗号分隔，命中即跳过该行"
+        },
+        {
+          "key": "ocrLayout.columnOrder",
+          "label": "列顺序",
+          "type": "string",
+          "hint": "逗号分隔；除 url/clicks/totalClicks 外都作为自定义数值列，如 url,clicks,uv"
+        }
       ]
     },
     {
       "id": "config-poster",
       "label": "海报",
       "fields": [
-        { "key": "commonHtmlDir", "label": "常用 HTML 目录", "type": "dir", "hint": "留空则不启用" },
-        { "key": "posterDir", "label": "海报产物目录", "type": "dir", "hint": "导出默认落盘目录；留空则每次手动选择" }
+        {
+          "key": "commonHtmlDir",
+          "label": "常用 HTML 目录",
+          "type": "dir",
+          "hint": "留空则不启用"
+        },
+        {
+          "key": "posterDir",
+          "label": "海报产物目录",
+          "type": "dir",
+          "hint": "导出默认落盘目录；留空则每次手动选择"
+        }
       ]
     }
   ],
@@ -79,12 +261,21 @@
     "dependsOn": [],
     "badgeAttr": "data-edm-badge",
     "badgePositionText": "top-right",
-      "badgePositionImage": "center",
-      "badgeStyle": { "background": "#e60012", "color": "#fff", "size": 18, "offsetY": -9, "offsetX": -11 },
+    "badgePositionImage": "center",
+    "badgeStyle": {
+      "background": "#e60012",
+      "color": "#fff",
+      "size": 18,
+      "offsetY": -9,
+      "offsetX": -11
+    },
     "clicksField": "clicks",
     "urlNorm": {
-      "stripUtm": true, "stripHash": true, "stripTrailingSlash": true,
-      "sortQuery": true, "lowercaseHost": true
+      "stripUtm": true,
+      "stripHash": true,
+      "stripTrailingSlash": true,
+      "sortQuery": true,
+      "lowercaseHost": true
     },
     "posterWidth": 680,
     "scale": 2,
@@ -105,5 +296,16 @@
       "skipKeywords": "合计,总计,小计,total,sum",
       "columnOrder": "url,clicks,totalClicks"
     }
+  },
+  "visibility": "desktop",
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": []
+    },
+    "sandbox": "utility",
+    "ipcAllowlist": []
   }
 }
