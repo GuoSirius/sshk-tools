@@ -51,8 +51,11 @@ for (const name of existsSync(toolsDir) ? readdirSync(toolsDir) : []) {
   if (pkg.signature && pkg.signature.algorithm !== 'ed25519') {
     errors.push(`${where}: 签名算法仅支持 ed25519`)
   }
-  // 只有签名有效 + 公钥可信 + 显式信任才允许 main；契约层先卡住「无签名却要 main」
-  if (pkg.sandbox === 'main' && !pkg.signature) {
+  // 只有签名有效 + 公钥可信 + 显式信任才允许 main；契约层先卡住「无签名却要 main」。
+  // 本规则约束的是【外部分发】清单；tools/ 内置源码清单的信任来自随应用构建（代码审查），
+  // 允许声明 package 契约作为开发模板（内外零差异），签名要求由运行时安装链
+  // （runtime-installer::verifySignature + check:signature）在分发侧执行。
+  if (pkg.sandbox === 'main' && !pkg.signature && manifest.plugin?.source !== 'builtin') {
     errors.push(`${where}: 申请 main 权限必须带签名（见信任决策矩阵）`)
   }
 }

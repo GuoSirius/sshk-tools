@@ -119,5 +119,31 @@
       "command": "",
       "timeoutMs": 30000
     }
+  },
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": [
+        "getToolSecret",
+        "setToolSecret",
+        "chat",
+        "listProviders",
+        "chatByProvider",
+        "listModelsByProvider",
+        "runLocalOcr"
+      ]
+    },
+    "sandbox": "main",
+    "ipcAllowlist": [
+      "llm:chat",
+      "llm:providers",
+      "llm:providerModels",
+      "config:get",
+      "config:set",
+      "os:clipboardWrite",
+      "os:pickFile"
+    ]
   }
 }
