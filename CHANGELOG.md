@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.1.0](https://github.com/GuoSirius/sshk-tools/compare/v1.0.0...v1.1.0) (2026-11-14)
+
+### ♻️ 代码重构 (Refactors)
+
+* **badge-studio:** 拆分为壳+pages+state，config key 动态注入 toolId ([8762da4](https://github.com/GuoSirius/sshk-tools/commit/8762da41902d303d81a60fae0f1b6d7b28c3879c))
+* **model-console:** 拆分为壳+pages+state，config key 动态注入 toolId ([81b17cc](https://github.com/GuoSirius/sshk-tools/commit/81b17cc1921229da96ebe38c85dfb264d49bf8a9))
+* **edm-studio:** 渲染层拆分 shell + 4 页面（品牌/模板/片段/邮件）+ state/shared ([e167dc2](https://github.com/GuoSirius/sshk-tools/commit/e167dc24fefe47aeb970cbe3adb6ed571b266070))
+* **template-tool:** 渲染层拆分 shell + pages/state 样板，toolId 全链路宿主注入 ([927821b](https://github.com/GuoSirius/sshk-tools/commit/927821bf1141becafbfe364a5feb15f83f9ba09a))
+
+### 🚀 新功能 (Features)
+
+* **main:** tools/ 源码优先于安装副本（清单合并+插件加载），附回归测试 ([2bae1de](https://github.com/GuoSirius/sshk-tools/commit/2bae1dee895e9aeaa0f00e125e135b532626f697))
+* **toolkit:** 内置模板工具补全 package 契约（内外零差异 + 最高权限演示） ([f19eb3b](https://github.com/GuoSirius/sshk-tools/commit/f19eb3b8138cc5de3af39cf1ded89466628c2c3d))
+* **toolkit:** 开发者模式配置/打包 UI、外部包构建链、公钥数据化与主题色退出确认 ([439b204](https://github.com/GuoSirius/sshk-tools/commit/439b20456790f60e0a00bfc890ce54da07f1559e))
+* **toolkit:** 模板工具与工具包分发签名链路彻底修复 ([23f58c0](https://github.com/GuoSirius/sshk-tools/commit/23f58c06f27e3f283cbeaebacbd27c629b2cdbdc))
+* **desktop:** 自动更新全生命周期状态推送与完整 UI 闭环 ([0287a69](https://github.com/GuoSirius/sshk-tools/commit/0287a69e565a06b819c3fb7422446c46fd764a65))
+
+### 🐛 缺陷修复 (Bug Fixes)
+
+* **release:** git() 在 stdio:inherit 下返回 null 致 .trim() 崩溃；回滚补齐 unstage ([ef633b2](https://github.com/GuoSirius/sshk-tools/commit/ef633b28f1538fe15d82edfd41a27215abab924c))
+* **desktop:** 内建渲染层优先不再误请求 readRenderer；目录刷新 catalog 缺失时兜底 refresh ([4d492ce](https://github.com/GuoSirius/sshk-tools/commit/4d492ced0c7fb5875ab1157a3e3eb467b9da193f))
+* **desktop:** 配置表单改清单后权限列表/桌面即时刷新 ([7250f28](https://github.com/GuoSirius/sshk-tools/commit/7250f2888b8c19c8e1240fd07fa41cccb9583cf0))
+* **ui:** 修正弹框居中选择器——flex 加在 .el-overlay-dialog 层（EP 中间层 fixed 铺满，加在 .el-overlay 不生效） ([ecec005](https://github.com/GuoSirius/sshk-tools/commit/ecec0059cb222ab758c8487dc31dbf04693f9c77))
+* **ui:** 弹框全局居中 + 视口百分比高度上限 + 底部按钮居中 ([7243532](https://github.com/GuoSirius/sshk-tools/commit/7243532e8b20a11c1a9148c330632fa6de03e482))
+* **ui:** 弹框滚动穿透全局禁止 + 底部按钮统一单行 + 权限列表 tag/权限拆行 ([3abeb3e](https://github.com/GuoSirius/sshk-tools/commit/3abeb3eae68b7bf1af3a41082e05f230e3673887))
+* **ui:** 权限列表行布局修复 + 工具配置弹框定高与样式重构 ([42f18e0](https://github.com/GuoSirius/sshk-tools/commit/42f18e04776d385e5d5918f01ffd1b6cb2ba3bb7))
+* **desktop:** dev 运行时开发功能不受 developerMode 影响 ([ac4bc1d](https://github.com/GuoSirius/sshk-tools/commit/ac4bc1d58f771aef4f4e9b639f6db004a2fb0c5c))
+* **desktop:** 配置入口静默禁用改显式反馈 + D18 迁移口令 UI + 需求台账制度化 ([177e413](https://github.com/GuoSirius/sshk-tools/commit/177e4133fc75d65eeea58dd83b67e9bddcdfd799))
+
+### 📚 文档 (Documentation)
+
+* **ledger:** §51.8 发布脚本 git() null 崩溃与回滚脏暂存修复 ([b993407](https://github.com/GuoSirius/sshk-tools/commit/b9934077f3519375a80b30ece209d660ad556582))
+* **ledger:** §51.7 dev/build 一致性铁律 + isDev 审计 + 源码优先落地 ([443b328](https://github.com/GuoSirius/sshk-tools/commit/443b3287fe32075b4e460cd2991d99ba8835ac9b))
+* **ledger:** §51.6 运行时误判与目录刷新兜底 ([c290936](https://github.com/GuoSirius/sshk-tools/commit/c290936c8420f6218e9a5829e1983189305ca171))
+* **ledger:** §51.5 工具渲染层目录约定 + Pinia 评估 + volar reactive 坑 ([bea2bc5](https://github.com/GuoSirius/sshk-tools/commit/bea2bc5e8e9e2c027787ebc07b3d75213c6186e2))
+* **ui:** 弹框高度策略红线入注释（禁止 height/min-height，默认自适应、上限 86vh）+ 清理 dev-output 重复样式 ([19060ec](https://github.com/GuoSirius/sshk-tools/commit/19060ec4047ce076c5c2f3d5c66da232e8256d65))
+* AGENTS.md 落档开发模式铁律（dev 运行全量功能不受任何变量控制） ([c468c50](https://github.com/GuoSirius/sshk-tools/commit/c468c5000d8bfb01deec1463ab389d51b66d6b18))
+
+### 🏠 其他 (Miscellaneous)
+
+* 落盘发版前验证期间产生的运行时改动（edm 可见性 + template-tool 示例包重建） ([be4630b](https://github.com/GuoSirius/sshk-tools/commit/be4630bce9d1172568508a84cbf37c50ad77b8f0))
+* **tools:** 落盘 dev 运行时改动（edm 可见性调整 + template-tool 示例包重建） ([8a357b2](https://github.com/GuoSirius/sshk-tools/commit/8a357b2ed41c58e68cb009780299d2b9cf3f1f2f))
+* 安装器/便携版命名区分，release 流程构建前清 dist，模型控制台对话气泡加头像 ([afce368](https://github.com/GuoSirius/sshk-tools/commit/afce3689178681ac26372b90d947f4c08a96f71d))
+
 ## [1.0.0](https://github.com/GuoSirius/sshk-tools/releases/tag/v1.0.0) (2026-11-14)
 
 ### 🐛 缺陷修复 (Bug Fixes)
@@ -125,48 +169,4 @@
 * add M3 foundation packages (repository, backup, ui-kit) with 37 tests ([6f05143](https://github.com/GuoSirius/sshk-tools/commit/6f05143142c2291a23a4eb9034650d606258f255))
 * add M2 release pipeline, install guide and autoUpdater wiring ([310149c](https://github.com/GuoSirius/sshk-tools/commit/310149cb8d5aaeda2617904176ca4ad7174c4016))
 * add M1 desktop shell with electron-vite HMR and brand assets ([0ebe993](https://github.com/GuoSirius/sshk-tools/commit/0ebe993f7c33affb8f1b5371a527e41d9ea13a91))
-
-## [1.1.0](https://github.com/GuoSirius/sshk-tools/compare/v1.0.0...v1.1.0) (2026-11-14)
-
-### ♻️ 代码重构 (Refactors)
-
-* **badge-studio:** 拆分为壳+pages+state，config key 动态注入 toolId ([8762da4](https://github.com/GuoSirius/sshk-tools/commit/8762da41902d303d81a60fae0f1b6d7b28c3879c))
-* **model-console:** 拆分为壳+pages+state，config key 动态注入 toolId ([81b17cc](https://github.com/GuoSirius/sshk-tools/commit/81b17cc1921229da96ebe38c85dfb264d49bf8a9))
-* **edm-studio:** 渲染层拆分 shell + 4 页面（品牌/模板/片段/邮件）+ state/shared ([e167dc2](https://github.com/GuoSirius/sshk-tools/commit/e167dc24fefe47aeb970cbe3adb6ed571b266070))
-* **template-tool:** 渲染层拆分 shell + pages/state 样板，toolId 全链路宿主注入 ([927821b](https://github.com/GuoSirius/sshk-tools/commit/927821bf1141becafbfe364a5feb15f83f9ba09a))
-
-### 🚀 新功能 (Features)
-
-* **main:** tools/ 源码优先于安装副本（清单合并+插件加载），附回归测试 ([2bae1de](https://github.com/GuoSirius/sshk-tools/commit/2bae1dee895e9aeaa0f00e125e135b532626f697))
-* **toolkit:** 内置模板工具补全 package 契约（内外零差异 + 最高权限演示） ([f19eb3b](https://github.com/GuoSirius/sshk-tools/commit/f19eb3b8138cc5de3af39cf1ded89466628c2c3d))
-* **toolkit:** 开发者模式配置/打包 UI、外部包构建链、公钥数据化与主题色退出确认 ([439b204](https://github.com/GuoSirius/sshk-tools/commit/439b20456790f60e0a00bfc890ce54da07f1559e))
-* **toolkit:** 模板工具与工具包分发签名链路彻底修复 ([23f58c0](https://github.com/GuoSirius/sshk-tools/commit/23f58c06f27e3f283cbeaebacbd27c629b2cdbdc))
-* **desktop:** 自动更新全生命周期状态推送与完整 UI 闭环 ([0287a69](https://github.com/GuoSirius/sshk-tools/commit/0287a69e565a06b819c3fb7422446c46fd764a65))
-
-### 🐛 缺陷修复 (Bug Fixes)
-
-* **release:** git() 在 stdio:inherit 下返回 null 致 .trim() 崩溃；回滚补齐 unstage ([ef633b2](https://github.com/GuoSirius/sshk-tools/commit/ef633b28f1538fe15d82edfd41a27215abab924c))
-* **desktop:** 内建渲染层优先不再误请求 readRenderer；目录刷新 catalog 缺失时兜底 refresh ([4d492ce](https://github.com/GuoSirius/sshk-tools/commit/4d492ced0c7fb5875ab1157a3e3eb467b9da193f))
-* **desktop:** 配置表单改清单后权限列表/桌面即时刷新 ([7250f28](https://github.com/GuoSirius/sshk-tools/commit/7250f2888b8c19c8e1240fd07fa41cccb9583cf0))
-* **ui:** 修正弹框居中选择器——flex 加在 .el-overlay-dialog 层（EP 中间层 fixed 铺满，加在 .el-overlay 不生效） ([ecec005](https://github.com/GuoSirius/sshk-tools/commit/ecec0059cb222ab758c8487dc31dbf04693f9c77))
-* **ui:** 弹框全局居中 + 视口百分比高度上限 + 底部按钮居中 ([7243532](https://github.com/GuoSirius/sshk-tools/commit/7243532e8b20a11c1a9148c330632fa6de03e482))
-* **ui:** 弹框滚动穿透全局禁止 + 底部按钮统一单行 + 权限列表 tag/权限拆行 ([3abeb3e](https://github.com/GuoSirius/sshk-tools/commit/3abeb3eae68b7bf1af3a41082e05f230e3673887))
-* **ui:** 权限列表行布局修复 + 工具配置弹框定高与样式重构 ([42f18e0](https://github.com/GuoSirius/sshk-tools/commit/42f18e04776d385e5d5918f01ffd1b6cb2ba3bb7))
-* **desktop:** dev 运行时开发功能不受 developerMode 影响 ([ac4bc1d](https://github.com/GuoSirius/sshk-tools/commit/ac4bc1d58f771aef4f4e9b639f6db004a2fb0c5c))
-* **desktop:** 配置入口静默禁用改显式反馈 + D18 迁移口令 UI + 需求台账制度化 ([177e413](https://github.com/GuoSirius/sshk-tools/commit/177e4133fc75d65eeea58dd83b67e9bddcdfd799))
-
-### 📚 文档 (Documentation)
-
-* **ledger:** §51.8 发布脚本 git() null 崩溃与回滚脏暂存修复 ([b993407](https://github.com/GuoSirius/sshk-tools/commit/b9934077f3519375a80b30ece209d660ad556582))
-* **ledger:** §51.7 dev/build 一致性铁律 + isDev 审计 + 源码优先落地 ([443b328](https://github.com/GuoSirius/sshk-tools/commit/443b3287fe32075b4e460cd2991d99ba8835ac9b))
-* **ledger:** §51.6 运行时误判与目录刷新兜底 ([c290936](https://github.com/GuoSirius/sshk-tools/commit/c290936c8420f6218e9a5829e1983189305ca171))
-* **ledger:** §51.5 工具渲染层目录约定 + Pinia 评估 + volar reactive 坑 ([bea2bc5](https://github.com/GuoSirius/sshk-tools/commit/bea2bc5e8e9e2c027787ebc07b3d75213c6186e2))
-* **ui:** 弹框高度策略红线入注释（禁止 height/min-height，默认自适应、上限 86vh）+ 清理 dev-output 重复样式 ([19060ec](https://github.com/GuoSirius/sshk-tools/commit/19060ec4047ce076c5c2f3d5c66da232e8256d65))
-* AGENTS.md 落档开发模式铁律（dev 运行全量功能不受任何变量控制） ([c468c50](https://github.com/GuoSirius/sshk-tools/commit/c468c5000d8bfb01deec1463ab389d51b66d6b18))
-
-### 🏠 其他 (Miscellaneous)
-
-* 落盘发版前验证期间产生的运行时改动（edm 可见性 + template-tool 示例包重建） ([be4630b](https://github.com/GuoSirius/sshk-tools/commit/be4630bce9d1172568508a84cbf37c50ad77b8f0))
-* **tools:** 落盘 dev 运行时改动（edm 可见性调整 + template-tool 示例包重建） ([8a357b2](https://github.com/GuoSirius/sshk-tools/commit/8a357b2ed41c58e68cb009780299d2b9cf3f1f2f))
-* 安装器/便携版命名区分，release 流程构建前清 dist，模型控制台对话气泡加头像 ([afce368](https://github.com/GuoSirius/sshk-tools/commit/afce3689178681ac26372b90d947f4c08a96f71d))
 

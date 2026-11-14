@@ -242,7 +242,9 @@ if (!DRY_RUN) {
     writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`)
   }
   const old = beforeState.get(clPath) ?? '# Changelog\n\n'
-  writeFileSync(clPath, `${String(old).replace(/^# Changelog\n\n?/, '# Changelog\n\n')}${entry}`)
+  // 新版本条目置顶（倒序）：保留头部，entry 在前、旧内容在后；原写法 old+entry 会追加到末尾导致顺序反
+  const oldBody = String(old).replace(/^# Changelog\n\n?/, '')
+  writeFileSync(clPath, `# Changelog\n\n${entry}${oldBody}`)
   ok('版本号与 changelog 已写入')
 } else {
   console.log(DIM(`  [dry-run] 将写入 ${changedFiles.join(' / ')}；CHANGELOG 顶部新增 ${next} 段`))
