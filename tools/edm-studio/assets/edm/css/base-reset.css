@@ -1,0 +1,3 @@
+/* 跨品牌公共重置样式（就近提升第5级，最顶层） */
+.edm-reset { box-sizing: border-box; margin: 0; padding: 0; }
+.edm-reset table { border-collapse: collapse; }

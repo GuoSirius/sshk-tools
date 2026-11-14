@@ -1,0 +1,8 @@
+code: banner
+name: 顶部横幅
+description: 邮件顶部品牌横幅片段
+type: header
+policy:
+  blacklist: []
+  whitelist: []
+tags: []
