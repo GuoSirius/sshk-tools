@@ -13,9 +13,17 @@ import {
   Star,
   Upload,
 } from '@element-plus/icons-vue'
-import { ToolPageLayout, ConfirmDialog } from '@sshk/ui-kit'
+import {
+  ToolPageLayout,
+  ConfirmDialog,
+  hostApiMissing,
+  callHostApi,
+  reloadHostWindow,
+  type HostApiSpec,
+} from '@sshk/ui-kit'
 import {
   DEFAULT_UPLOAD_CONFIG,
+  IPC_CHANNELS,
   newProfileId,
   uploadVendorMeta,
   type UploadCloudProfile,
@@ -35,8 +43,33 @@ import CloudProfileForm from './CloudProfileForm.vue'
  * 密钥单独走 safeStorage：列表只显示「已配置 / 未配置」，明文永不下发；
  * 用户主动点「查看」时才按 id 回显（N3），且明文绝不写进 settings.json。
  * 每个 profile 有独立「测试连接」（N4），可用未保存的表单值。
+ *
+ * N8：新增宿主能力一律走 @sshk/ui-kit 的 callHostApi —— Electron preload 只在窗口
+ * 创建时注入，dev 下界面 HMR 不会重放 preload，直接裸调会得到
+ * "window.api.upload.test is not a function"。这里做能力探测 + 通用通道兜底，
+ * 并在页面顶部显示「能力未就绪」横幅与一键重载窗口。
  */
 defineProps<{ menu?: string; toolId?: string }>()
+
+const TEST_SPEC: HostApiSpec = {
+  group: 'upload', method: 'test', channel: IPC_CHANNELS.uploadTest, label: '连接测试',
+}
+const SECRET_SPEC: HostApiSpec = {
+  group: 'upload', method: 'getSecret', channel: IPC_CHANNELS.uploadSecretGet, label: '密钥回显',
+}
+const HOST_SPECS: readonly HostApiSpec[] = [TEST_SPEC, SECRET_SPEC]
+const missingCaps = ref<string[]>([])
+
+function checkCaps(): void {
+  missingCaps.value = hostApiMissing(HOST_SPECS)
+}
+async function reloadWindow(): Promise<void> {
+  try {
+    await reloadHostWindow()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  }
+}
 
 type RowKind = 'remote' | 'cloud'
 interface ProfileRow {
@@ -108,7 +141,7 @@ function setSecretInput(id: string, value: string): void {
 /** N3：复用 llm:getApiKey 范式——用户主动点「查看」才按 id 取回明文并填入密码框 */
 async function revealSecret(id: string): Promise<void> {
   try {
-    const value = await window.api.upload.getSecret(id)
+    const value = await callHostApi<string>(SECRET_SPEC, id)
     secretInputs.value[id] = value
     if (value) ElMessage.success('已回显已存密钥，可点输入框眼睛查看或直接修改')
     else ElMessage.warning('该 profile 尚未保存密钥')
@@ -124,7 +157,7 @@ async function testProfile(type: RowKind, id: string): Promise<void> {
     const list = type === 'remote' ? cfg.value.remote.profiles : cfg.value.cloud.profiles
     const profile = list.find((p) => p.id === id)
     if (!profile) throw new Error('找不到该 profile')
-    const message = await window.api.upload.test({
+    const message = await callHostApi<string>(TEST_SPEC, {
       type,
       profile: { ...profile } as unknown as Record<string, unknown>,
       secret: secretInputs.value[id] || undefined,
@@ -303,6 +336,7 @@ async function selfTest(): Promise<void> {
 }
 
 onMounted(() => {
+  checkCaps()
   void load()
   window.api.upload.onProgress((p) => {
     progress.value = `${p.status === 'success' ? '✓' : p.status === 'failed' ? '✗' : '…'} ${p.name} ${p.percent}%${p.error ? ` — ${p.error}` : ''}`
@@ -320,6 +354,22 @@ onMounted(() => {
       <el-button size="small" :icon="Refresh" @click="load">重新载入</el-button>
       <el-button type="primary" size="small" :icon="Check" :loading="saving" @click="save">保存配置</el-button>
     </template>
+
+    <el-alert
+      v-if="missingCaps.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="cap-alert"
+      title="宿主能力尚未就绪"
+    >
+      <template #default>
+        <div class="cap-body">
+          <span>缺少：{{ missingCaps.join('、') }}。界面已更新，但当前窗口仍在使用启动时的旧桥接，请重载窗口重新载入宿主能力。</span>
+          <el-button size="small" type="warning" plain :icon="Refresh" @click="reloadWindow">重载窗口</el-button>
+        </div>
+      </template>
+    </el-alert>
 
     <div class="grid">
       <section class="panel">
@@ -437,6 +487,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.cap-alert { margin-bottom: 12px; }
+.cap-body { display: flex; align-items: center; justify-content: space-between; gap: 12px; line-height: 1.6; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
 .panel {
   border: 1px solid var(--sshk-border);
