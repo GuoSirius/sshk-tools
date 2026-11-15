@@ -8,7 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Download } from '@element-plus/icons-vue'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
-import type { ThemeMode, ToolMenu, ToolRuntimeState } from '@sshk/shared'
+import type { ThemeMode, ToolCatalogPayload, ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
 import { useUpdater } from './composables/useUpdater'
@@ -17,10 +17,11 @@ import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
 import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import ToolSettingsPage from './SettingsPage.vue'
+import CreateToolWizard from './components/CreateToolWizard.vue'
 import logoUrl from '../../build/icon.svg'
 
 const { mode, setMode } = useTheme()
-const { visibleTools: catalogTools, byId } = useToolCatalog()
+const { visibleTools: catalogTools, byId, accept: acceptCatalog, refresh: refreshCatalog } = useToolCatalog()
 // 路由即状态（vue-router）：桌面=/，工具页=/tool/:toolId/:menu?
 const route = useRoute()
 const router = useRouter()
@@ -208,7 +209,16 @@ function onMoreCommand(command: string): void {
   else if (command === 'tools') openSettings('tools')
   else if (command === 'system') openSettings('system')
   else if (command === 'about') openSettings('about')
+  else if (command === 'createTool') createToolOpen.value = true
   else openSettings('general')
+}
+
+/** N16 创建工具向导（仅 dev 显示入口）：创建成功后刷新目录让新工具立即可见 */
+const isDev = import.meta.env.DEV
+const createToolOpen = ref(false)
+function onToolCreated(catalog: unknown): void {
+  if (catalog) acceptCatalog(catalog as ToolCatalogPayload)
+  else void refreshCatalog()
 }
 
 // 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
@@ -326,6 +336,7 @@ onMounted(async () => {
           <el-dropdown-menu>
             <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
+            <el-dropdown-item v-if="isDev" command="createTool">创建工具（开发者）</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
             <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
             <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
@@ -468,6 +479,7 @@ onMounted(async () => {
       <span>就绪</span>
     </footer>
 
-    <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" />
+    <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" @create-tool="createToolOpen = true" />
+    <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
   </div>
 </template>

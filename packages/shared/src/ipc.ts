@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   devBuild: 'dev:build',
   devBuildExternal: 'dev:buildExternal',
   devPack: 'dev:pack',
+  devToolCreate: 'dev:toolCreate',
   /** 应用访问密钥（写入 safeStorage，明文永不下发） */
   accessKeySet: 'accessKey:set',
   /** 运行时工具包（#35 阶段二）：导入 / 列表 / 卸载 */

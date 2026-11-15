@@ -204,6 +204,9 @@ const api = {
       invoke(IPC_CHANNELS.devBuildExternal, id),
     pack: (id: string, sign?: boolean): Promise<{ ok: boolean; output: string }> =>
       invoke(IPC_CHANNELS.devPack, id, Boolean(sign)),
+    /** 仅 dev：按向导表单生成整套工具骨架（目录已存在会拒绝） */
+    create: (req: unknown): Promise<{ ok: boolean; output: string; catalog?: unknown }> =>
+      invoke(IPC_CHANNELS.devToolCreate, req),
   },
   /**
    * 通用通道调用：供工具（含运行时外部包）调用各自 main 注册的专属通道。

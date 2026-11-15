@@ -9,9 +9,11 @@
  */
 import { app, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { IPC_CHANNELS } from '@sshk/shared'
+import { buildSkeletonFiles } from '@sshk/shared'
+import type { CreateToolRequest } from '@sshk/shared'
 
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/
 const OUTPUT_LIMIT = 12000
@@ -119,6 +121,22 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
 
   ipcMain.handle(IPC_CHANNELS.devVerify, async () => run('pnpm', ['verify'], guard()))
   ipcMain.handle(IPC_CHANNELS.devBuild, async () => run('pnpm', ['build'], guard()))
+
+  // 创建工具（仅源码 dev）：表单 → 整套骨架文件落盘 tools/<id>/，目录已存在则拒绝（防覆盖）
+  ipcMain.handle(IPC_CHANNELS.devToolCreate, (_event, rawReq: unknown) => {
+    const repo = guard()
+    const req = rawReq as CreateToolRequest
+    const dir = join(repo, 'tools', assertId(req?.id))
+    if (existsSync(dir)) throw new Error(`目录已存在，请换一个工具 id：${dir}`)
+    const files = buildSkeletonFiles(req) // 内部做完整契约校验（id / 菜单 / 分组 / 配置页）
+    for (const file of files) {
+      const target = join(repo, file.path)
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, file.content, 'utf8')
+    }
+    const catalog = onManifestSaved ? onManifestSaved(join(dir, 'tool.manifest.json')) : undefined
+    return { ok: true, output: `已创建 ${files.length} 个文件：\n${files.map((f) => f.path).join('\n')}`, catalog }
+  })
 
   ipcMain.handle(IPC_CHANNELS.devBuildExternal, async (_event, rawId: unknown) => {
     const repo = guard()

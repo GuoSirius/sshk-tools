@@ -37,3 +37,6 @@ export type {
   TemplateSlot,
   DirValidation,
 } from './types'
+
+/** N16 创建工具向导：骨架生成纯函数（主进程落盘 / 渲染层预览共用同一份实现） */
+export * from './tool-skeleton'

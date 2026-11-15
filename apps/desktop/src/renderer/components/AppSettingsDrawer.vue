@@ -15,7 +15,7 @@ import { useTheme } from '../composables/useTheme'
 import { useUpdater } from '../composables/useUpdater'
 
 const props = defineProps<{ modelValue: boolean; group?: string }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
+const emit = defineEmits<{ 'update:modelValue': [boolean]; 'create-tool': [] }>()
 const { payload, accept, refresh: refreshCatalog } = useToolCatalog()
 const { mode, setMode } = useTheme()
 const { state: updaterState } = useUpdater()
@@ -537,6 +537,9 @@ async function cleanupOrphans(): Promise<void> {
               <div class="card-title">
                 工具管理（{{ listedTools.length }}）
                 <span v-if="devFeatures" class="hint"> · {{ isDev ? '源码开发：' : '开发者模式：' }}全量显示（含隐藏/隐式）</span>
+                <el-button v-if="isDev" size="small" type="primary" plain class="create-tool-btn" @click="emit('create-tool')">
+                  创建工具
+                </el-button>
               </div>
               <div v-if="devFeatures && !devState.available" class="warning-line">
                 配置 / 打包入口不可用：{{ devState.reason }}
