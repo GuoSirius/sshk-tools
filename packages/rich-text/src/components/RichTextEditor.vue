@@ -14,10 +14,26 @@ import type { RichTextImageRule, RichTextUploadHook } from '../types'
  * 共享富文本编辑器（从 edm-studio 迁入，R27 B3）。
  * F1：直接用 @wangeditor/editor 的 createEditor/createToolbar —— @wangeditor/editor-for-vue
  *     的 latest 是 Vue2 包，与本项目 Vue3 不兼容，禁止引入。
- * F2：fullScreen() 要求 toolbar 与 textarea 父节点一致，故二者用【同一容器 selector】创建；
- *     全屏时用 Vue Teleport 把整个容器挂到 body（框架级移动，不破坏虚拟树），
- *     绝不手写 appendChild 移出 Vue 虚拟树（曾致编辑器凭空消失）。
+ * F2：fullScreen() 要求 toolbar 与 textarea 父节点一致，故二者用【同一 selector】创建。
  * C2：图片上传通过 onUploadImage 回调由工具侧注入，本包不依赖 upload-core。
+ *
+ * N12 二次根治（依据 @wangeditor/core@1.1.19 实际实现，勿凭印象改）：
+ *   fullScreen()   → getTextarea(editor).$box.parent().addClass('w-e-full-screen-container')
+ *                    → emit('fullScreen')
+ *   unFullScreen() → setTimeout 200ms → 再取一次 $box.parent().removeClass(...)
+ *                    → emit('unFullScreen')
+ *   $box 就是 createEditor 传入的 selector 元素本身。也就是说：
+ *   ① 全屏 class 落在 selector 的【父节点】，不是我们自己这层；
+ *   ② 退出时它按【当时的】父子关系重新找节点，若期间把 selector 单独 Teleport 走，
+ *      class 会留在旧父节点上永远摘不掉，页面被一个空的 fixed 容器永久盖住。
+ *   前两版分别踩了「class 落点猜错」和「只移动 selector 层」两个坑。
+ *
+ * 本版做法：刻意加一层 .rich-inner 作为 selector，使 $box.parent() 恒等于 .rich。
+ *   - 全屏 class 与自有 .is-fullscreen 落在【同一个节点】，样式必定命中；
+ *   - Teleport 移动的是 .rich，class 随之一起走，父子关系不变；
+ *   - unFullScreen 延时里重新取 $box.parent() 仍是 .rich，能正确摘掉 class。
+ * 另外 wangEditor 自带 CSS 只有 position:fixed，没有 z-index 与不透明背景，
+ * 必须补上，否则左侧菜单 / 表单会从下面透出来。
  */
 const props = withDefaults(
   defineProps<{
@@ -33,16 +49,13 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const editorRef = shallowRef<IDomEditor>()
-const containerEl = ref<HTMLElement | null>(null)
-/**
- * 全屏层级（复核项 9）：wangEditor 的 fullScreen() 只给容器加
- * .w-e-full-screen-container（CSS 里 position:fixed 但**没有 z-index**），
- * 容器仍留在表单 / 侧栏的局部层叠上下文里，左侧菜单和同层表单会盖在它上面。
- * 这里监听 class 变化，全屏时用 Vue Teleport 把容器提升到 body 下
- * —— 框架级移动，不 appendChild、不破坏虚拟树，编辑器实例引用仍有效。
- */
+/** 传给 createEditor / createToolbar 的 selector：必须是 .rich 的直接子节点 */
+const editorBoxEl = ref<HTMLElement | null>(null)
+/** 全屏时 Teleport 到 body 的整块容器，也是 wangEditor 加 class 的节点 */
+const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
 let classObserver: MutationObserver | null = null
+let detachEvents: (() => void) | null = null
 
 interface UploadImageConf {
   customUpload: (file: File, insertFn: (url: string) => void) => Promise<void>
@@ -71,20 +84,35 @@ if (hook) {
 const toolbarConfig: Partial<IToolbarConfig> = hook ? {} : { excludeKeys: ['uploadImage', 'uploadVideo'] }
 
 onMounted(() => {
-  const el = containerEl.value
-  if (!el) return
+  const box = editorBoxEl.value
+  const rich = richEl.value
+  if (!box || !rich) return
   const editor = createEditor({
-    selector: el,
+    selector: box,
     html: props.modelValue || '',
     config: editorConfig,
     mode: 'default',
   })
   editorRef.value = editor
-  createToolbar({ editor, selector: el, config: toolbarConfig, mode: 'default' })
+  createToolbar({ editor, selector: box, config: toolbarConfig, mode: 'default' })
+
+  // 主链路：wangEditor 自带生命周期事件（core 内部 hoverbar 也监听这两个事件）。
+  // 退出时 unFullScreen 先移除 class 再 emit，200ms 延时已走完，无需额外等待。
+  const onEnter = (): void => { fullScreen.value = true }
+  const onLeave = (): void => { fullScreen.value = false }
+  editor.on('fullScreen', onEnter)
+  editor.on('unFullScreen', onLeave)
+  detachEvents = () => {
+    editor.off('fullScreen', onEnter)
+    editor.off('unFullScreen', onLeave)
+  }
+
+  // 兜底：只负责「补 true」，绝不改回 false —— 防止 class 变化与事件时序竞争导致抖动。
+  // 退出一律交给 unFullScreen 事件，避免 200ms 延时里被 observer 提前抢跑。
   classObserver = new MutationObserver(() => {
-    fullScreen.value = el.classList.contains('w-e-full-screen-container')
+    if (rich.classList.contains('w-e-full-screen-container')) fullScreen.value = true
   })
-  classObserver.observe(el, { attributes: true, attributeFilter: ['class'] })
+  classObserver.observe(rich, { attributes: true, attributeFilter: ['class'] })
 })
 
 // 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环
@@ -109,6 +137,8 @@ watch(
 onBeforeUnmount(() => {
   classObserver?.disconnect()
   classObserver = null
+  detachEvents?.()
+  detachEvents = null
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
@@ -116,7 +146,9 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body" :disabled="!fullScreen">
-    <div ref="containerEl" class="rich" />
+    <div ref="richEl" class="rich" :class="{ 'is-fullscreen': fullScreen }">
+      <div ref="editorBoxEl" class="rich-inner" />
+    </div>
   </Teleport>
 </template>
 
@@ -129,8 +161,14 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: var(--sshk-panel, #fff);
 }
-.rich :deep(.w-e-toolbar) { order: 0; }
-.rich :deep(.w-e-text-container) { order: 1; flex: 1; min-height: 200px; }
+.rich-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.rich-inner :deep(.w-e-toolbar) { order: 0; flex: 0 0 auto; }
+.rich-inner :deep(.w-e-text-container) { order: 1; flex: 1 1 auto; min-height: 200px; }
 
 :global(html.dark) .rich {
   border-color: #333;
@@ -151,17 +189,37 @@ onBeforeUnmount(() => {
   --w-e-modal-button-border-color: #444;
 }
 
-/* 全屏：容器经 Teleport 挂到 body 下，已脱离应用外壳的层叠上下文；
-   再补满屏定位 + 顶格 z-index，杜绝左侧菜单 / 同层表单浮在编辑器上方 */
-:global(.rich.w-e-full-screen-container) {
+/**
+ * 全屏（N12）：.rich 同时带自有 .is-fullscreen 与 wangEditor 的
+ * w-e-full-screen-container，Teleport 到 body 后脱离所有局部层叠上下文。
+ * 后者自带 CSS 只有 position:fixed 且背景透明，必须补 z-index 与不透明底色，
+ * 否则会出现「工具栏铺满但页面表单从下面透出来」。
+ */
+:global(.rich.is-fullscreen) {
   position: fixed !important;
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  min-height: 0 !important;
   margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
   z-index: 2147483647 !important;
-  background-color: var(--w-e-toolbar-bg-color, #fff);
-  border: 0;
-  border-radius: 0;
+  background-color: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
 }
+:global(.w-e-full-screen-container) {
+  z-index: 2147483647 !important;
+  background-color: #fff !important;
+}
+:global(html.dark .rich.is-fullscreen),
+:global(html.dark .w-e-full-screen-container) {
+  background-color: #181818 !important;
+}
+/* 全屏时编辑区撑满剩余高度，工具栏固定在顶部 */
+:global(.rich.is-fullscreen .rich-inner) { flex: 1 1 auto !important; min-height: 0 !important; }
+:global(.rich.is-fullscreen .w-e-text-container) { flex: 1 1 auto !important; min-height: 0 !important; }
+:global(.rich.is-fullscreen .w-e-toolbar) { flex: 0 0 auto !important; }
 </style>
