@@ -1,0 +1,27 @@
+{
+  "name": "@sshk/upload-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 应用级上传能力：本地/远程(ftp|sftp)/云存储 Provider 抽象、校验、并发与重试",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "ali-oss": "latest",
+    "basic-ftp": "latest",
+    "ssh2": "latest"
+  },
+  "devDependencies": {
+    "@types/ali-oss": "latest",
+    "@types/ssh2": "latest",
+    "typescript": "6",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

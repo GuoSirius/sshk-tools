@@ -1,0 +1,27 @@
+{
+  "name": "@sshk/rich-text",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 共享富文本编辑器：wangEditor 封装、全屏适配、图片上传钩子、Markdown 互转",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@wangeditor/editor": "latest",
+    "marked": "latest",
+    "turndown": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@types/turndown": "latest",
+    "typescript": "6",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

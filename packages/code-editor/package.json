@@ -1,0 +1,26 @@
+{
+  "name": "@sshk/code-editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 共享代码编辑器：Monaco 封装、语言注册中心、扩展名→语言映射",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@guolao/vue-monaco-editor": "latest",
+    "monaco-editor": "latest",
+    "monaco-yaml": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
