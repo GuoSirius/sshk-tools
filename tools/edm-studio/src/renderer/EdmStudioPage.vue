@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
-import CustomLibraryPage from './pages/CustomLibraryPage.vue'
+import ContentManagePage from './pages/ContentManagePage.vue'
 import MailsPage from './pages/MailsPage.vue'
-import SystemPage from './pages/SystemPage.vue'
 import { ensureLoaded } from './state'
 
 /**
@@ -11,14 +10,15 @@ import { ensureLoaded } from './state'
  * 只负责接收宿主 menu 并分发到 pages/ 下各页面，业务全部在子页面与 state/shared。
  * 目录约定：renderer/<Id>Page.vue 壳（宿主只发现这一个文件）、pages/ 每菜单一页、
  * state.ts 共享集合、shared.ts 类型与底层调用。
- * R18：品牌/模板/片段三菜单已收章为「自定义内容」（旧 id 兼容映射，R22b 起为左树形态）。
+ * R24：原「系统内容」「自定义内容」两菜单合并为「内容管理」单页（双顶层树：自定义在上 / 系统自带在下），
+ * 逻辑 100% 一致，仅 source（读写根与编辑门控）不同（详见 docs/.../EDM系统内容页改造与内容管理统一规划_v6.md §十一）。
  */
 const props = defineProps<{ menu?: string }>()
 
 const tab = computed(() => props.menu ?? 'mails')
 const pages: Record<string, unknown> = {
-  library: CustomLibraryPage, brands: CustomLibraryPage, templates: CustomLibraryPage, fragments: CustomLibraryPage,
-  mails: MailsPage, system: SystemPage,
+  content: ContentManagePage,
+  mails: MailsPage,
 }
 const active = computed(() => pages[tab.value] ?? MailsPage)
 

@@ -23,9 +23,12 @@ import { api } from '../shared'
  */
 type Cat = 'fragment' | 'template'
 type NodeKind = 'root' | 'brand' | 'category' | 'family' | 'version' | 'cssDir' | 'cssFile'
+/** R24：内容来源——决定读写根与编辑门控；系统自带=文件域(受 dev/developerMode 门控)，自定义=自定义文件根(恒可写) */
+type Source = 'system' | 'custom'
 
 interface NodeData {
   kind: NodeKind
+  source: Source
   /** 根相对路径（POSIX 分隔；根为 ''） */
   path: string
   label?: string
@@ -51,7 +54,7 @@ interface CssTab {
   content: string
   dirty: boolean
 }
-type Clipboard = { type: 'cssDir'; dirPath: string; files: string[] } | { type: 'cssFile'; file: string } | null
+type Clipboard = { type: 'cssDir'; dirPath: string; files: string[]; source: Source } | { type: 'cssFile'; file: string; source: Source } | null
 /** system:derive 返回的派生计数 */
 interface DeriveCounts {
   brands: number
@@ -61,8 +64,12 @@ interface DeriveCounts {
   templateVersions: number
 }
 
-const model = ref<{ topCss: string[]; brands: any[] }>({ topCss: [], brands: [] })
-const canEdit = ref(false)
+const sysModel = ref<{ topCss: string[]; brands: any[] }>({ topCss: [], brands: [] })
+const cusModel = ref<{ topCss: string[]; brands: any[] }>({ topCss: [], brands: [] })
+/** 系统自带可编辑门控（dev / 打包版 developerMode）；自定义恒可写 */
+const canEditSystem = ref(false)
+/** R24：编辑权 = 节点 source==='custom' 或系统门控通过；未选节点默认放开（按钮另有选中守卫） */
+const canEdit = computed<boolean>(() => !selected.value || selected.value.data.source === 'custom' || canEditSystem.value)
 const loading = ref(false)
 const selected = ref<TreeNode | null>(null)
 const clipboard = ref<Clipboard>(null)
@@ -83,33 +90,34 @@ function nodeIcon(kind: unknown): { path: string; color: string } {
   return NODE_ICON[key]
 }
 
-/* ── 树构造 ── */
-function cssDirNode(parentPath: string, files: string[], idPrefix: string): TreeNode {
+/* ── 树构造（R24：每个节点携带 source，决定读写根与编辑门控） ── */
+function cssDirNode(parentPath: string, files: string[], idPrefix: string, source: Source): TreeNode {
   const dirPath = parentPath ? `${parentPath}/css` : 'css'
   return {
     id: `${idPrefix}:css`,
     label: 'css',
     kind: 'cssDir',
-    data: { kind: 'cssDir', path: dirPath, cssFiles: [...files], label: 'css' },
+    data: { kind: 'cssDir', source, path: dirPath, cssFiles: [...files], label: 'css' },
     children: files.map((f) => ({
       id: `${idPrefix}:css:${f}`,
       label: f,
       kind: 'cssFile' as const,
-      data: { kind: 'cssFile' as const, path: `${dirPath}/${f}`, label: f },
+      data: { kind: 'cssFile' as const, source, path: `${dirPath}/${f}`, label: f },
     })),
   }
 }
 
-function versionNode(brand: string, cat: Cat, fam: string, v: any): TreeNode {
+function versionNode(brand: string, cat: Cat, fam: string, v: any, source: Source): TreeNode {
   const famPath = `${brand}/${cat}/${fam}`
   const verPath = v.dir ? `${famPath}/${v.dir}` : famPath
   const verCss = (v.css as string[]).filter((c) => c.startsWith('css/')).map((c) => c.slice(4))
   return {
-    id: `ver:${brand}:${cat}:${fam}:${v.dir || 'default'}`,
+    id: `ver:${source}:${brand}:${cat}:${fam}:${v.dir || 'default'}`,
     label: v.dir || 'default',
     kind: 'version',
     data: {
       kind: 'version',
+      source,
       path: verPath,
       brandCode: brand,
       cat,
@@ -119,62 +127,72 @@ function versionNode(brand: string, cat: Cat, fam: string, v: any): TreeNode {
       sourcePath: v.sourcePath,
       samplePath: `${verPath}/sample.yaml`,
     },
-    children: [cssDirNode(verPath, verCss, `ver:${brand}:${cat}:${fam}:${v.dir || 'default'}`)],
+    children: [cssDirNode(verPath, verCss, `ver:${source}:${brand}:${cat}:${fam}:${v.dir || 'default'}`, source)],
   }
 }
 
-function familyNode(brand: string, cat: Cat, f: any): TreeNode {
+function familyNode(brand: string, cat: Cat, f: any, source: Source): TreeNode {
   const famPath = `${brand}/${cat}/${f.code}`
-  const id = `fam:${brand}:${cat}:${f.code}`
+  const id = `fam:${source}:${brand}:${cat}:${f.code}`
   return {
     id,
     label: f.meta.name ? `${f.code}（${f.meta.name}）` : f.code,
     kind: 'family',
-    data: { kind: 'family', path: famPath, brandCode: brand, cat, familyCode: f.code, metaPath: `${famPath}/meta.yaml` },
+    data: { kind: 'family', source, path: famPath, brandCode: brand, cat, familyCode: f.code, metaPath: `${famPath}/meta.yaml` },
     children: [
-      cssDirNode(famPath, f.css ?? [], id),
-      ...((f.versions as any[]) ?? []).map((v) => versionNode(brand, cat, f.code, v)),
+      cssDirNode(famPath, f.css ?? [], id, source),
+      ...((f.versions as any[]) ?? []).map((v) => versionNode(brand, cat, f.code, v, source)),
     ],
   }
 }
 
-function brandNode(b: any): TreeNode {
-  const id = `brand:${b.code}`
+function brandNode(b: any, source: Source): TreeNode {
+  const id = `brand:${source}:${b.code}`
   const catNode = (cat: Cat, label: string, cssFiles: string[], families: any[], metaPath: string): TreeNode => {
-    const cid = `cat:${b.code}:${cat}`
+    const cid = `cat:${source}:${b.code}:${cat}`
     return {
       id: cid,
       label,
       kind: 'category',
-      data: { kind: 'category', path: `${b.code}/${cat}`, brandCode: b.code, cat, metaPath, label },
-      children: [cssDirNode(`${b.code}/${cat}`, cssFiles, cid), ...families.map((f) => familyNode(b.code, cat, f))],
+      data: { kind: 'category', source, path: `${b.code}/${cat}`, brandCode: b.code, cat, metaPath, label },
+      children: [cssDirNode(`${b.code}/${cat}`, cssFiles, cid, source), ...families.map((f) => familyNode(b.code, cat, f, source))],
     }
   }
   return {
     id,
     label: `${b.code}（${b.meta.name}）`,
     kind: 'brand',
-    data: { kind: 'brand', path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
+    data: { kind: 'brand', source, path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
-      cssDirNode(b.code, b.css ?? [], id),
+      cssDirNode(b.code, b.css ?? [], id, source),
       catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`),
       catNode('template', '模板', b.templateCss ?? [], b.templates ?? [], `${b.code}/template/meta.yaml`),
     ],
   }
 }
 
+/** R24 双顶层树：自定义（source=custom，上）/ 系统自带（source=system，下），下层结构不变 */
 const tree = computed<TreeNode[]>(() => [
   {
-    id: 'edm',
-    label: 'EDM',
+    id: 'custom',
+    label: '自定义',
     kind: 'root',
-    data: { kind: 'root', path: '', label: 'EDM' },
-    children: [cssDirNode('', model.value.topCss ?? [], 'edm'), ...model.value.brands.map((b) => brandNode(b))],
+    data: { kind: 'root', source: 'custom', path: '', label: '自定义' },
+    children: [cssDirNode('', cusModel.value.topCss ?? [], 'custom', 'custom'), ...cusModel.value.brands.map((b) => brandNode(b, 'custom'))],
+  },
+  {
+    id: 'system',
+    label: '系统自带',
+    kind: 'root',
+    data: { kind: 'root', source: 'system', path: '', label: '系统自带' },
+    children: [cssDirNode('', sysModel.value.topCss ?? [], 'system', 'system'), ...sysModel.value.brands.map((b) => brandNode(b, 'system'))],
   },
 ])
 
 const stats = computed(() => {
-  const brands = model.value.brands
+  const src: Source = selected.value?.data.source ?? 'system'
+  const m = src === 'custom' ? cusModel.value : sysModel.value
+  const brands = m.brands
   return {
     brands: brands.length,
     fragments: brands.reduce((n, b) => n + (b.fragments?.length ?? 0), 0),
@@ -182,12 +200,12 @@ const stats = computed(() => {
   }
 })
 
-/** 全部 css 目录（css 另存为目标下拉） */
-const allCssDirs = computed<{ path: string; label: string }[]>(() => {
-  const out: { path: string; label: string }[] = []
+/** 全部 css 目录（css 另存为目标下拉；携带 source 以便定位根） */
+const allCssDirs = computed<{ path: string; label: string; source: Source }[]>(() => {
+  const out: { path: string; label: string; source: Source }[] = []
   const walk = (nodes: TreeNode[]): void => {
     for (const n of nodes) {
-      if (n.kind === 'cssDir') out.push({ path: n.data.path, label: n.data.path })
+      if (n.kind === 'cssDir') out.push({ path: n.data.path, label: n.data.path, source: n.data.source })
       if (n.children) walk(n.children)
     }
   }
@@ -195,16 +213,16 @@ const allCssDirs = computed<{ path: string; label: string }[]>(() => {
   return out
 })
 
-/* ── 基础 IO ── */
-async function read(file: string): Promise<string> {
-  const r = (await api('system:readFile', { file })) as string | null
+/* ── 基础 IO（R24：按 source 路由到 content:*，系统根受门控、自定义根恒可写） ── */
+async function read(file: string, source: Source = 'system'): Promise<string> {
+  const r = (await api('content:readFile', { source, file })) as string | null
   return r ?? ''
 }
-async function existsIn(file: string): Promise<boolean> {
-  return ((await api('system:readFile', { file })) as string | null) !== null
+async function existsIn(file: string, source: Source = 'system'): Promise<boolean> {
+  return ((await api('content:readFile', { source, file })) as string | null) !== null
 }
-async function write(file: string, content: string): Promise<void> {
-  await api('system:writeFile', { file, content })
+async function write(file: string, content: string, source: Source = 'system'): Promise<void> {
+  await api('content:writeFile', { source, file, content })
 }
 function splitPath(p: string): string[] {
   return p.split(/[/\\]/)
@@ -215,6 +233,42 @@ function basename(p: string): string {
 function splitList(s: string | undefined): string[] {
   return (s ?? '').split(/[,，、]+/).map((x) => x.trim()).filter(Boolean)
 }
+/** 版本目录名 → 版本号（vN / 纯数字；否则 1） */
+function parseVersion(dir: string): number {
+  const m = /v?(\d+)/.exec(dir)
+  return m ? Number(m[1]) : 1
+}
+/** R24：取某族当前最大版本号 +1（基于内存树，已加载） */
+function nextVersionOf(famPath: string, source: Source): number {
+  const root = tree.value.find((r) => r.data.source === source)
+  let max = 0
+  const walk = (nodes: TreeNode[]): void => {
+    for (const n of nodes) {
+      if (n.kind === 'family' && n.data.path === famPath) {
+        for (const v of n.children ?? []) {
+          if (v.kind === 'version') {
+            const num = parseVersion(v.data.versionDir ?? '')
+            if (num > max) max = num
+          }
+        }
+      }
+      if (n.children) walk(n.children)
+    }
+  }
+  walk(root?.children ?? [])
+  return max + 1
+}
+/** 代码合法性（目录名）：字母数字下划线连字符 */
+function validCode(code: string): boolean {
+  return /^[\w-]+$/.test(code)
+}
+async function promptCodeAndName(title: string, codeHint: string, nameDefault: string): Promise<{ code: string; name: string } | null> {
+  const code = String((await ElMessageBox.prompt(codeHint, title, { inputValue: '' })).value ?? '').trim()
+  if (!code) return null
+  if (!validCode(code)) { ElMessage.error('代码仅限字母 / 数字 / 下划线 / 连字符'); return null }
+  const name = String((await ElMessageBox.prompt('名称', title, { inputValue: nameDefault || code })).value ?? '').trim() || code
+  return { code, name }
+}
 
 let treeRef: { setCurrentKey: (key: string) => void } | null = null
 function setTreeRef(el: unknown): void {
@@ -224,7 +278,12 @@ function setTreeRef(el: unknown): void {
 async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
-    model.value = (await api('system:load')) as typeof model.value
+    const [sys, cus] = (await Promise.all([
+      api('content:load', { source: 'system' }),
+      api('content:load', { source: 'custom' }),
+    ])) as [{ topCss: string[]; brands: any[] }, { topCss: string[]; brands: any[] }]
+    sysModel.value = sys
+    cusModel.value = cus
     const prevId = selected.value?.id
     await nextTick()
     if (prevId) treeRef?.setCurrentKey(prevId)
@@ -265,7 +324,8 @@ async function renderPreview(node: TreeNode): Promise<void> {
   if (node.kind !== 'version') return
   previewing.value = true
   try {
-    const res = (await api('system:render', {
+    const res = (await api('content:render', {
+      source: node.data.source,
       selector: {
         brandCode: node.data.brandCode, kind: node.data.cat, familyCode: node.data.familyCode, versionDir: node.data.versionDir,
       },
@@ -316,7 +376,7 @@ async function prefetchFamilyMetas(): Promise<void> {
     for (const n of nodes) {
       if (n.kind === 'family' && n.data.metaPath) {
         try {
-          out[n.data.path] = ((yaml.load(await read(n.data.metaPath)) as Record<string, unknown>) ?? {}) as FamilyMetaLite
+          out[n.data.path] = ((yaml.load(await read(n.data.metaPath, n.data.source)) as Record<string, unknown>) ?? {}) as FamilyMetaLite
         } catch { /* 忽略单族解析失败 */ }
       }
       if (n.children) await walk(n.children)
@@ -324,6 +384,12 @@ async function prefetchFamilyMetas(): Promise<void> {
   }
   await walk(tree.value)
   familyMetaCache.value = out
+}
+
+/** R24：按 source 定位品牌节点（双顶层树，根不再恒为 tree.value[0]） */
+function brandNodeOf(brandCode: string, source: Source): TreeNode | undefined {
+  const root = tree.value.find((r) => r.data.source === source)
+  return root?.children?.find((n) => n.kind === 'brand' && n.data.brandCode === brandCode)
 }
 
 function versionSelector(node: TreeNode): SysSelector {
@@ -343,7 +409,7 @@ const hostTemplateOptions = computed<{ id: string; label: string; slots: SlotDef
   const famPolicy = familyMetaCache.value[`${brand}/fragment/${node.data.familyCode}`]?.policy
   const policy = (metaRaw.value?.policy as Policy | undefined) ?? famPolicy
   const out: { id: string; label: string; slots: SlotDef[] }[] = []
-  const bNode = tree.value[0]?.children?.find((n) => n.kind === 'brand' && n.data.brandCode === brand)
+  const bNode = brandNodeOf(brand, node.data.source)
   const tplCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'template')
   for (const fam of tplCat?.children?.filter((n) => n.kind === 'family') ?? []) {
     const famCode = fam.data.familyCode ?? ''
@@ -372,7 +438,7 @@ const composeFragmentOptions = computed<{ id: string; label: string }[]>(() => {
   const dir = node.data.versionDir ?? ''
   const tplIds = [`tpl_sys_${brand}_${famCode}`, `tplv_sys_${brand}_${famCode}_${dir || 'default'}`]
   const out: { id: string; label: string }[] = []
-  const bNode = tree.value[0]?.children?.find((n) => n.kind === 'brand' && n.data.brandCode === brand)
+  const bNode = brandNodeOf(brand, node.data.source)
   const fragCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'fragment')
   for (const fam of fragCat?.children?.filter((n) => n.kind === 'family') ?? []) {
     if (!policyAllows(familyMetaCache.value[fam.data.path]?.policy, tplIds)) continue
@@ -424,7 +490,7 @@ async function renderComposePreview(): Promise<void> {
       repeat: p.repeat,
       data: p.data,
     }))
-    const res = (await api('system:render', { selector: templateSel, placements })) as { html: string }
+    const res = (await api('content:render', { source: selected.value?.data.source ?? 'system', selector: templateSel, placements })) as { html: string }
     previewHtml.value = res.html
   } catch (err) {
     ElMessage.warning(`组合预览失败：${(err as Error).message}`)
@@ -443,7 +509,7 @@ async function openPlacementData(item: PlacementItem): Promise<void> {
     const sel = JSON.parse(item.fragmentId) as SysSelector
     const famPath = `${sel.brandCode}/${sel.kind}/${sel.familyCode}`
     const verPath = sel.versionDir ? `${famPath}/${sel.versionDir}` : famPath
-    const verMeta = ((yaml.load(await read(`${verPath}/meta.yaml`)) as Record<string, unknown>) ?? {})
+    const verMeta = ((yaml.load(await read(`${verPath}/meta.yaml`, selected.value?.data.source ?? 'system')) as Record<string, unknown>) ?? {})
     fields = normalizeFields((verMeta['fields'] as unknown) ?? familyMetaCache.value[famPath]?.fields ?? [])
   } catch { /* 无 schema 走 YAML */ }
   const obj = { ...(item.data ?? {}) }
@@ -496,7 +562,7 @@ async function onNode(node: TreeNode): Promise<void> {
   styleText.value = ''
   previewHtml.value = ''
   if (node.data.metaPath) {
-    metaText.value = await read(node.data.metaPath)
+    metaText.value = await read(node.data.metaPath, node.data.source)
     try {
       metaRaw.value = (yaml.load(metaText.value) as Record<string, unknown>) ?? {}
       fillForm(metaRaw.value)
@@ -506,9 +572,9 @@ async function onNode(node: TreeNode): Promise<void> {
     }
   }
   if (node.kind === 'version') {
-    sourceText.value = await read(node.data.sourcePath ?? '')
-    sampleText.value = await read(node.data.samplePath ?? '')
-    styleText.value = await read(`${node.data.path}/style.css`)
+    sourceText.value = await read(node.data.sourcePath ?? '', node.data.source)
+    sampleText.value = await read(node.data.samplePath ?? '', node.data.source)
+    styleText.value = await read(`${node.data.path}/style.css`, node.data.source)
     // R15：schema 取版本 meta fields，缺省回退族 meta fields；有 schema 默认表单模式
     let parsedSample: Record<string, unknown> = {}
     try {
@@ -517,7 +583,7 @@ async function onNode(node: TreeNode): Promise<void> {
       parsedSample = {}
     }
     const famPath = node.data.path.split('/').slice(0, 3).join('/')
-    const fields = normalizeFields(metaRaw.value?.['fields'] ?? (await readFamilyFields(famPath)))
+    const fields = normalizeFields(metaRaw.value?.['fields'] ?? (await readFamilyFields(famPath, node.data.source)))
     sampleSchema.value = fields
     sampleObj.value = applyDefaults(fields, parsedSample)
     sampleMode.value = fields.length ? 'form' : 'data'
@@ -532,8 +598,8 @@ async function onNode(node: TreeNode): Promise<void> {
 }
 
 /** 族级 meta.yaml 的 fields 段（版本未声明时兜底） */
-async function readFamilyFields(famPath: string): Promise<unknown> {
-  const txt = await read(`${famPath}/meta.yaml`)
+async function readFamilyFields(famPath: string, source: Source): Promise<unknown> {
+  const txt = await read(`${famPath}/meta.yaml`, source)
   try {
     return ((yaml.load(txt) as Record<string, unknown>) ?? {})['fields']
   } catch {
@@ -741,23 +807,48 @@ async function closeCssTab(file: string): Promise<void> {
 /* ── 右键菜单（v5 分层） ── */
 type MenuItem = { key: string; label: string; danger?: boolean }
 const menu = ref<{ x: number; y: number; node: TreeNode } | null>(null)
+/** R24：节点可编辑 ⟺ source==='custom'（恒可写）或系统门控通过 */
+function nodeCanEdit(node: TreeNode): boolean {
+  return node.data.source === 'custom' || canEditSystem.value
+}
+/**
+ * R24 右键菜单——统一顺序：复制 → 粘贴 → 删除 → 重命名 → 另存为 → 新建。
+ * 复制/粘贴仅 css 支持；新建按节点类型挂对应项；编辑项仅在节点可编辑时出现（onContextMenu 已门控）。
+ */
 const menuItems = computed<MenuItem[]>(() => {
-  if (!canEdit.value || !menu.value) return []
-  const k = menu.value.node.kind
-  if (k === 'root') return [{ key: 'paste', label: '粘贴' }]
-  if (k === 'category') return [{ key: 'rename', label: '重命名' }, { key: 'remove', label: '删除', danger: true }, { key: 'paste', label: '粘贴' }]
-  if (k === 'brand' || k === 'family' || k === 'version')
-    return [{ key: 'saveAs', label: '另存为' }, { key: 'rename', label: '重命名' }, { key: 'remove', label: '删除', danger: true }, { key: 'paste', label: '粘贴' }]
-  if (k === 'cssDir')
-    return [
-      { key: 'saveAs', label: '另存为' }, { key: 'copy', label: '复制' }, { key: 'paste', label: '粘贴' },
-      { key: 'newFile', label: '新建文件' }, { key: 'rename', label: '重命名' }, { key: 'remove', label: '删除', danger: true },
-    ]
-  return [{ key: 'saveAs', label: '另存为' }, { key: 'copy', label: '复制' }, { key: 'rename', label: '重命名' }, { key: 'remove', label: '删除', danger: true }]
+  if (!menu.value) return []
+  const node = menu.value.node
+  const k = node.kind
+  const items: MenuItem[] = []
+  // 复制 / 粘贴（仅 css 目录、css 文件）
+  if (k === 'cssDir' || k === 'cssFile') items.push({ key: 'copy', label: '复制' })
+  if (k === 'cssDir') items.push({ key: 'paste', label: '粘贴' })
+  // 删除 / 重命名（除根外均可）
+  if (k !== 'root') items.push({ key: 'remove', label: '删除', danger: true })
+  if (k !== 'root') items.push({ key: 'rename', label: '重命名' })
+  // 另存为（实体 / css）
+  if (k === 'brand' || k === 'family' || k === 'version' || k === 'cssDir' || k === 'cssFile')
+    items.push({ key: 'saveAs', label: '另存为' })
+  // 新建（逐个对应：品牌→新建品牌、片段→新建片段族、模板→新建模板族；族额外加新建版本）
+  if (k === 'root') items.push({ key: 'newBrand', label: '新建品牌' })
+  if (k === 'brand') {
+    items.push({ key: 'newBrand', label: '新建品牌' })
+    items.push({ key: 'newFragmentFamily', label: '新建片段族' })
+    items.push({ key: 'newTemplateFamily', label: '新建模板族' })
+  }
+  if (k === 'category') {
+    items.push(node.data.cat === 'fragment' ? { key: 'newFragmentFamily', label: '新建片段族' } : { key: 'newTemplateFamily', label: '新建模板族' })
+  }
+  if (k === 'family') {
+    items.push({ key: 'newVersion', label: '新建版本' })
+    items.push(node.data.cat === 'fragment' ? { key: 'newFragmentFamily', label: '新建片段族（同级）' } : { key: 'newTemplateFamily', label: '新建模板族（同级）' })
+  }
+  if (k === 'cssDir') items.push({ key: 'newFile', label: '新建样式' })
+  return items
 })
 function onContextMenu(event: MouseEvent, node: TreeNode): void {
   event.preventDefault()
-  if (!canEdit.value) return
+  if (!nodeCanEdit(node)) return
   menu.value = { x: event.clientX, y: event.clientY, node }
 }
 function closeMenu(): void {
@@ -771,9 +862,9 @@ function onDocMouseDown(e: MouseEvent): void {
 onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDown)
   try {
-    canEdit.value = ((await api('system:canEdit')) as { canEdit: boolean }).canEdit
+    canEditSystem.value = ((await api('system:canEdit')) as { canEdit: boolean }).canEdit
   } catch {
-    canEdit.value = false
+    canEditSystem.value = false
   }
   await load()
 })
@@ -809,14 +900,14 @@ async function resolveConflict(dir: string, name: string): Promise<string | null
     return null
   }
 }
-async function pasteFileInto(dir: string, name: string, src: string): Promise<void> {
+async function pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<void> {
   let finalName = name
-  if (await existsIn(dir ? `${dir}/${name}` : name)) {
+  if (await existsIn(dir ? `${dir}/${name}` : name, dest)) {
     const resolved = await resolveConflict(dir, name)
     if (!resolved) return
     finalName = resolved
   }
-  await write(dir ? `${dir}/${finalName}` : finalName, await read(src))
+  await write(dir ? `${dir}/${finalName}` : finalName, await read(src, srcSource), dest)
 }
 
 async function onMenu(key: string): Promise<void> {
@@ -827,8 +918,8 @@ async function onMenu(key: string): Promise<void> {
     if (key === 'copy') {
       clipboard.value =
         node.kind === 'cssDir'
-          ? { type: 'cssDir', dirPath: node.data.path, files: node.data.cssFiles ?? [] }
-          : { type: 'cssFile', file: node.data.path }
+          ? { type: 'cssDir', dirPath: node.data.path, files: node.data.cssFiles ?? [], source: node.data.source }
+          : { type: 'cssFile', file: node.data.path, source: node.data.source }
       ElMessage.success('已复制')
       return
     }
@@ -838,26 +929,27 @@ async function onMenu(key: string): Promise<void> {
         return
       }
       const baseDir = node.kind === 'cssDir' ? node.data.path : node.data.path ? `${node.data.path}/css` : 'css'
+      const dest = node.data.source
       if (clipboard.value.type === 'cssFile') {
-        await pasteFileInto(baseDir, basename(clipboard.value.file), clipboard.value.file)
+        await pasteFileInto(baseDir, basename(clipboard.value.file), clipboard.value.file, dest, clipboard.value.source)
       } else {
-        for (const f of clipboard.value.files) await pasteFileInto(baseDir, f, `${clipboard.value.dirPath}/${f}`)
+        for (const f of clipboard.value.files) await pasteFileInto(baseDir, f, `${clipboard.value.dirPath}/${f}`, dest, clipboard.value.source)
       }
       ElMessage.success('已粘贴')
       await load(true)
       return
     }
     if (key === 'newFile') {
-      let name = String((await ElMessageBox.prompt('css 文件名（可省略 .css 后缀）', '新建文件', { inputValue: '' })).value ?? '').trim()
+      let name = String((await ElMessageBox.prompt('css 文件名（可省略 .css 后缀）', '新建样式', { inputValue: '' })).value ?? '').trim()
       if (!name) return
       if (!name.endsWith('.css')) name += '.css'
       let finalName = name
-      if (await existsIn(`${node.data.path}/${name}`)) {
+      if (await existsIn(`${node.data.path}/${name}`, node.data.source)) {
         const resolved = await resolveConflict(node.data.path, name)
         if (!resolved) return
         finalName = resolved
       }
-      await write(`${node.data.path}/${finalName}`, '')
+      await write(`${node.data.path}/${finalName}`, '', node.data.source)
       ElMessage.success('已创建')
       await load(true)
       return
@@ -868,7 +960,7 @@ async function onMenu(key: string): Promise<void> {
         (await ElMessageBox.prompt(`新名称${tip}`, '重命名', { inputValue: basename(node.data.path) })).value ?? '',
       ).trim()
       if (!newName || newName === basename(node.data.path)) return
-      await api('system:rename', { file: node.data.path, newName })
+      await api('content:rename', { source: node.data.source, file: node.data.path, newName })
       ElMessage.success('已重命名')
       if (selected.value?.data.path === node.data.path) selected.value = null
       await load(true)
@@ -876,12 +968,50 @@ async function onMenu(key: string): Promise<void> {
     }
     if (key === 'remove') {
       await ElMessageBox.confirm(`确定删除「${node.label}」？此操作不可恢复。`, '危险操作', { type: 'error', confirmButtonText: '删除', cancelButtonText: '取消' })
-      await api('system:remove', { file: node.data.path })
+      await api('content:remove', { source: node.data.source, file: node.data.path })
       ElMessage.success('已删除')
       if (selected.value?.data.path.startsWith(node.data.path)) selected.value = null
       dropTabsUnder(node.data.path)
       await load(true)
       return
+    }
+    /* ── R24 新建动作（写入节点所属 source 根） ── */
+    if (key === 'newBrand') {
+      const src = node.data.source
+      const got = await promptCodeAndName('新建品牌', '品牌代码（目录名，英文）', '')
+      if (!got) return
+      if (await existsIn(`${got.code}/meta.yaml`, src)) { ElMessage.error(`品牌「${got.code}」已存在`); return }
+      await write(`${got.code}/meta.yaml`, yaml.dump({ code: got.code, name: got.name }, { lineWidth: -1 }), src)
+      ElMessage.success('已创建品牌'); await load(true); return
+    }
+    if (key === 'newFragmentFamily' || key === 'newTemplateFamily') {
+      const src = node.data.source
+      const cat: Cat = key === 'newFragmentFamily' ? 'fragment' : 'template'
+      const brandCode = node.data.brandCode ?? ''
+      if (!brandCode) { ElMessage.error('无法确定所属品牌'); return }
+      const got = await promptCodeAndName('新建族', '族代码（目录名，英文）', '')
+      if (!got) return
+      const parent = `${brandCode}/${cat}`
+      if (await existsIn(`${parent}/${got.code}/meta.yaml`, src)) { ElMessage.error(`族「${got.code}」已存在`); return }
+      const meta: Record<string, unknown> = { code: got.code, name: got.name }
+      if (cat === 'fragment') meta.type = 'product'
+      else meta.slots = []
+      await write(`${parent}/${got.code}/meta.yaml`, yaml.dump(meta, { lineWidth: -1 }), src)
+      ElMessage.success('已创建族'); await load(true); return
+    }
+    if (key === 'newVersion') {
+      const src = node.data.source
+      const { brandCode, cat, familyCode } = node.data
+      if (!brandCode || !cat || !familyCode) { ElMessage.error('无法确定所属族'); return }
+      const famPath = `${brandCode}/${cat}/${familyCode}`
+      const dirInput = String((await ElMessageBox.prompt('版本目录名（如 v2，留空自动递增）', '新建版本', { inputValue: '' })).value ?? '').trim()
+      const finalDir = dirInput || `v${nextVersionOf(famPath, src)}`
+      if (!validCode(finalDir)) { ElMessage.error('版本目录名仅限字母 / 数字 / 下划线 / 连字符'); return }
+      if (await existsIn(`${famPath}/${finalDir}/meta.yaml`, src)) { ElMessage.error(`版本「${finalDir}」已存在`); return }
+      await write(`${famPath}/${finalDir}/meta.yaml`, yaml.dump({ version: parseVersion(finalDir) }, { lineWidth: -1 }), src)
+      await write(`${famPath}/${finalDir}/source.njk`, '', src)
+      await write(`${famPath}/${finalDir}/sample.yaml`, '', src)
+      ElMessage.success('已创建版本'); await load(true); return
     }
     if (key === 'saveAs') void openSaveAs(node)
   } catch (err) {
@@ -890,23 +1020,24 @@ async function onMenu(key: string): Promise<void> {
   }
 }
 
-/* ── 另存为弹框（R14 简化版：一屏） ── */
-const saveAsState = ref<{ visible: boolean; node: TreeNode | null; name: string; code: string; target: string; origin: 'system' | 'custom'; raw: Record<string, unknown> }>({
+/* ── 另存为弹框（R24：origin = 目标根 source；系统根受 dev 门控） ── */
+const saveAsState = ref<{ visible: boolean; node: TreeNode | null; name: string; code: string; target: string; origin: Source; raw: Record<string, unknown> }>({
   visible: false, node: null, name: '', code: '', target: '', origin: 'system', raw: {},
 })
 const saveAsIsEntity = computed(() => ['brand', 'family', 'version'].includes(saveAsState.value.node?.kind ?? ''))
 const saveAsIsCssFile = computed(() => saveAsState.value.node?.kind === 'cssFile')
-/** 另存为目标位置（按类型过滤：片段→片段类目/族，模板→模板类目/族），#5 */
+/** 另存为目标位置（按类型过滤：片段→片段类目/族，模板→模板类目/族；仅列目标根，避免跨根错位），#5 */
 const saveAsTargetOptions = computed<{ path: string; label: string }[]>(() => {
   const node = saveAsState.value.node
   if (!node || (node.kind !== 'family' && node.kind !== 'version')) return []
   const wantCat = node.data.cat
+  const wantSource = saveAsState.value.origin
   const out: { path: string; label: string }[] = []
   const walk = (nodes: TreeNode[]): void => {
     for (const n of nodes) {
-      if (node.kind === 'family' && n.kind === 'category' && n.data.cat === wantCat)
+      if (node.kind === 'family' && n.kind === 'category' && n.data.cat === wantCat && n.data.source === wantSource)
         out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.label}` })
-      if (node.kind === 'version' && n.kind === 'family' && n.data.cat === wantCat)
+      if (node.kind === 'version' && n.kind === 'family' && n.data.cat === wantCat && n.data.source === wantSource)
         out.push({ path: n.data.path, label: `${n.data.brandCode} / ${n.label}` })
       if (n.children) walk(n.children)
     }
@@ -918,30 +1049,38 @@ async function openSaveAs(node: TreeNode): Promise<void> {
   let raw: Record<string, unknown> = {}
   if (node.data.metaPath) {
     try {
-      raw = (yaml.load(await read(node.data.metaPath)) as Record<string, unknown>) ?? {}
+      raw = (yaml.load(await read(node.data.metaPath, node.data.source)) as Record<string, unknown>) ?? {}
     } catch {
       raw = {}
     }
   }
   const isEntity = ['brand', 'family', 'version'].includes(node.kind)
-  saveAsState.value = { visible: true, node, name: `${basename(node.data.path)}-copy`, code: '', target: '', origin: 'system', raw }
-  // 默认目标落点：实体按类型过滤后的首个候选；css 取首个 css 目录（#1/#5）
+  // 默认目标根=同源（同根副本），用户可切到另一根
+  const origin: Source = node.data.source
+  saveAsState.value = { visible: true, node, name: `${basename(node.data.path)}-copy`, code: '', target: '', origin, raw }
+  // 默认目标落点：实体按类型过滤后的首个候选（目标根内）；css 取目标根首个 css 目录（#1/#5）
   const opts = saveAsTargetOptions.value
   saveAsState.value.target = isEntity
     ? (opts[0]?.path ?? splitPath(node.data.path).slice(0, node.kind === 'version' ? 3 : 2).join('/'))
-    : (allCssDirs.value[0]?.path ?? '')
+    : (allCssDirs.value.find((d) => d.source === origin)?.path ?? '')
 }
 async function confirmSaveAs(): Promise<void> {
-  const { node, name, code, target, raw } = saveAsState.value
+  const { node, name, code, target, raw, origin } = saveAsState.value
   if (!node) return
+  const fromSource = node.data.source
   const cleanName = name.trim()
   if (!cleanName) {
     ElMessage.warning('名称必填')
     return
   }
+  // 写入系统根必须 dev / developerMode 门控通过
+  if (origin === 'system' && !canEditSystem.value) {
+    ElMessage.error('系统内容只读：写入系统根需开启开发者模式（dev）')
+    return
+  }
   try {
-    // 自定义内容库派生（R21）：brand/family/version → NeDB 自定义副本（文件域不动，system:derive）
-    if (saveAsState.value.origin === 'custom') {
+    // system→custom：派生（重写 custom-edm 文件根，文件为真相源；详见 ipc system:derive）
+    if (fromSource === 'system' && origin === 'custom') {
       const res = await api<DeriveCounts>('system:derive', {
         kind: node.kind, name: cleanName,
         brandCode: node.data.brandCode ?? '', cat: node.data.cat ?? '',
@@ -960,42 +1099,43 @@ async function confirmSaveAs(): Promise<void> {
       await load(true)
       return
     }
+    // 其余（同根副本 / 自定义→系统）：源 root 读、目标 root 写，逐文件拷贝
     if (node.kind === 'brand') {
       const newCode = (code.trim() || cleanName).trim()
-      if (await existsIn(`${newCode}/meta.yaml`)) {
+      if (await existsIn(`${newCode}/meta.yaml`, origin)) {
         ElMessage.error(`品牌「${newCode}」已存在`)
         return
       }
-      await write(`${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }))
+      await write(`${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }), origin)
     } else if (node.kind === 'family') {
       const newCode = (code.trim() || cleanName).trim()
       const parent = saveAsState.value.target || splitPath(node.data.path).slice(0, 2).join('/')
-      if (await existsIn(`${parent}/${newCode}/meta.yaml`)) {
+      if (await existsIn(`${parent}/${newCode}/meta.yaml`, origin)) {
         ElMessage.error(`同层已存在「${newCode}」`)
         return
       }
-      await write(`${parent}/${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }))
+      await write(`${parent}/${newCode}/meta.yaml`, yaml.dump({ ...raw, code: newCode, name: cleanName }, { lineWidth: -1 }), origin)
     } else if (node.kind === 'version') {
       const famPath = saveAsState.value.target || splitPath(node.data.path).slice(0, 3).join('/')
       const dst = `${famPath}/${cleanName}`
-      if (await existsIn(`${dst}/meta.yaml`)) {
+      if (await existsIn(`${dst}/meta.yaml`, origin)) {
         ElMessage.error(`版本目录「${cleanName}」已存在`)
         return
       }
-      await write(`${dst}/meta.yaml`, await read(`${node.data.path}/meta.yaml`))
-      const sample = await read(node.data.samplePath ?? '')
-      if (sample !== '') await write(`${dst}/sample.yaml`, sample)
+      await write(`${dst}/meta.yaml`, await read(`${node.data.path}/meta.yaml`, fromSource), origin)
+      const sample = await read(node.data.samplePath ?? '', fromSource)
+      if (sample !== '') await write(`${dst}/sample.yaml`, sample, origin)
       const srcBase = basename(node.data.sourcePath ?? '')
-      if (srcBase) await write(`${dst}/${srcBase}`, await read(node.data.sourcePath ?? ''))
+      if (srcBase) await write(`${dst}/${srcBase}`, await read(node.data.sourcePath ?? '', fromSource), origin)
       const cssChild = node.children?.find((c) => c.kind === 'cssDir')
-      for (const f of cssChild?.data.cssFiles ?? []) await write(`${dst}/css/${f}`, await read(`${node.data.path}/css/${f}`))
+      for (const f of cssChild?.data.cssFiles ?? []) await write(`${dst}/css/${f}`, await read(`${node.data.path}/css/${f}`, fromSource), origin)
     } else if (node.kind === 'cssDir') {
       // css 目录另存为 = 目录下文件整体复制到目标 css 目录（目录名恒为 css，不建子目录）
-      for (const f of node.data.cssFiles ?? []) await pasteFileInto(target, f, `${node.data.path}/${f}`)
+      for (const f of node.data.cssFiles ?? []) await pasteFileInto(target, f, `${node.data.path}/${f}`, origin, fromSource)
     } else {
       // css 文件另存为 = 目标 css 目录 + 新文件名
       const fileName = cleanName.endsWith('.css') ? cleanName : `${cleanName}.css`
-      await pasteFileInto(target, fileName, node.data.path)
+      await pasteFileInto(target, fileName, node.data.path, origin, fromSource)
     }
     saveAsState.value.visible = false
     ElMessage.success('另存为完成')
@@ -1011,7 +1151,7 @@ async function confirmSaveAs(): Promise<void> {
     <div class="head">
       <span class="title">
         <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="NODE_ICON.root.path" /></svg>
-        系统内容
+        内容管理
       </span>
       <div class="head-actions">
         <el-tag :type="canEdit ? 'success' : 'info'" size="small">{{ canEdit ? '可编辑' : '只读' }}</el-tag>
@@ -1025,7 +1165,6 @@ async function confirmSaveAs(): Promise<void> {
           :ref="setTreeRef"
           :data="tree"
           node-key="id"
-          default-expand-all
           highlight-current
           :expand-on-click-node="false"
           @node-click="(data: TreeNode) => onNode(data)"
@@ -1067,12 +1206,12 @@ async function confirmSaveAs(): Promise<void> {
         <el-empty v-else-if="!selected" description="选择左侧节点查看 / 编辑" :image-size="80" class="detail-empty" />
         <!-- EDM 根概览 -->
         <div v-else-if="selected.kind === 'root'" class="overview">
-          <el-descriptions title="EDM 概览" :column="3" border>
+          <el-descriptions :title="`${selected.data.label} 概览`" :column="3" border>
             <el-descriptions-item label="品牌">{{ stats.brands }}</el-descriptions-item>
             <el-descriptions-item label="片段族">{{ stats.fragments }}</el-descriptions-item>
             <el-descriptions-item label="模板族">{{ stats.templates }}</el-descriptions-item>
           </el-descriptions>
-          <EmptyState :description="canEdit ? '根节点右键可粘贴 css 目录 / 文件' : '只读模式：浏览与预览'" />
+          <EmptyState :description="canEdit ? '根节点右键可新建品牌 / 编辑内容' : '只读模式：浏览与预览'" />
         </div>
         <!-- css 目录：仅展开折叠入口 -->
         <el-empty v-else-if="selected.kind === 'cssDir'" description="点具体 css 文件进行编辑（多 tab 互相参照）；右键可复制 / 粘贴 / 新建文件 / 另存为" :image-size="80" />
@@ -1173,12 +1312,12 @@ async function confirmSaveAs(): Promise<void> {
           </el-form-item>
           <el-form-item label="保存目标">
             <el-radio-group v-model="saveAsState.origin">
-              <el-radio value="system">系统内容（文件域新副本）</el-radio>
-              <el-radio value="custom">自定义内容库（NeDB 可编辑副本）</el-radio>
+              <el-radio value="system">系统自带（文件域）</el-radio>
+              <el-radio value="custom">自定义（文件域）</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="saveAsState.origin === 'custom'" label="携带内容">
-            <span class="hint">派生为自定义副本：html/css 就近链内联 + 元数据/示例/policy 一并带入，可在邮件编辑器直接使用</span>
+          <el-form-item v-if="saveAsState.origin === 'custom' && saveAsState.node?.data.source === 'system'" label="携带内容">
+            <span class="hint">派生为自定义副本：整棵内容（meta/源码/示例/css）写入自定义文件根，可在邮件编辑器直接使用</span>
           </el-form-item>
           <el-form-item v-if="saveAsState.node?.kind === 'version'" label="携带内容">
             <span class="hint">版本内全部文件 + 版本级 css 目录（品牌/族级 css 与元数据不跟）</span>
@@ -1187,13 +1326,13 @@ async function confirmSaveAs(): Promise<void> {
         <template v-else>
           <el-form-item label="来源">
             <el-radio-group v-model="saveAsState.origin">
-              <el-radio value="system">系统内容</el-radio>
-              <el-radio value="custom" disabled>自定义内容库（下一版开放）</el-radio>
+              <el-radio value="system">系统自带</el-radio>
+              <el-radio value="custom">自定义</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="目标 css 目录">
             <el-select v-model="saveAsState.target" filterable style="width: 100%">
-              <el-option v-for="d in allCssDirs" :key="d.path" :value="d.path" :label="d.label" />
+              <el-option v-for="d in allCssDirs.filter((x) => x.source === saveAsState.origin)" :key="d.path" :value="d.path" :label="d.label" />
             </el-select>
           </el-form-item>
           <el-form-item v-if="saveAsIsCssFile" label="新文件名"><el-input v-model="saveAsState.name" /></el-form-item>

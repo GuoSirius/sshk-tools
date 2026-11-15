@@ -2,18 +2,11 @@ import { app } from 'electron'
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
+import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, now } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
-import { seedSystemContent, versionNumberOf } from './edm-seed.js'
-import type {
-  FragmentFamilyNode,
-  FragmentVersionMeta,
-  TemplateFamilyNode,
-  TemplateVersionMeta,
-  VersionNode,
-} from '../core/edm-types.js'
-import { collectSystemCssContent } from '../core/system-css.js'
+import { seedSystemContent, seedCustomContent, versionNumberOf } from './edm-seed.js'
 import {
   edmOutputRel,
   readOutput,
@@ -51,6 +44,8 @@ const ACTIONS = new Set([
   'system:load', 'system:render', 'system:readFile',
   'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
   'system:derive',
+  'content:load', 'content:render', 'content:readFile',
+  'content:writeFile', 'content:rename', 'content:remove',
 ])
 
 /** 系统内容文件允许的扩展名（白名单防误写垃圾文件；css 文件名随意） */
@@ -96,6 +91,10 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   seedSystemContent(repo, resolveEdmRoot()).catch((err: unknown) =>
     console.warn('[edm] 系统内容播种失败：', err instanceof Error ? err.message : err),
   )
+  // R24 自定义根薄索引：扫描 custom-edm 文件根 → 同步 NeDB origin=custom（文件为真相源，邮件编辑器零改动）
+  seedCustomContent(repo, resolveContentRoot('custom')).catch((err: unknown) =>
+    console.warn('[edm] 自定义内容索引失败：', err instanceof Error ? err.message : err),
+  )
 
   // ── 系统内容编辑门控（R12）：dev 全权；打包版需 developerMode。main 端校验为安全边界 ──
   function systemEditable(): boolean {
@@ -105,12 +104,20 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   function assertSystemEditable(): void {
     if (!systemEditable()) throw new Error('系统内容在当前模式下只读（打包版需开启开发者模式）')
   }
-  /** 限制在 edm 根内（越权即拒）；返回绝对路径 */
-  function confine(file: string): string {
-    const root = resolveEdmRoot()
+  /** 限制在指定根内（越权即拒）；返回绝对路径 */
+  function confine(root: string, file: string): string {
     const abs = path.resolve(root, file)
     if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('越权路径')
     return abs
+  }
+  /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（按部署形态，不与系统根同位置） */
+  function resolveContentRoot(source: string): string {
+    if (source === 'custom') {
+      if (app.isPackaged) return path.join(app.getPath('userData'), 'edm-custom')
+      // 外置安装（dev）：与系统根（tools/edm-studio/assets/edm）同级 → assets/edm-custom
+      return path.resolve(resolveEdmRoot(), '../edm-custom')
+    }
+    return resolveEdmRoot()
   }
   /** 相对路径规范化（POSIX 分隔，渲染层统一用 /） */
   function relOf(file: string): string {
@@ -525,21 +532,23 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         return { canEdit: systemEditable() }
       case 'system:writeFile': {
         assertSystemEditable()
+        const root = resolveEdmRoot()
         const file = str(data, 'file')
         if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new Error(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`)
-        const abs = confine(file)
+        const abs = confine(root, file)
         await fs.mkdir(path.dirname(abs), { recursive: true })
         await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')
         return true
       }
       case 'system:rename': {
         assertSystemEditable()
+        const root = resolveEdmRoot()
         const file = str(data, 'file')
         const newName = str(data, 'newName').trim()
         if (!newName || /[/\\]|\.\./.test(newName)) throw new Error('新名称非法（不得含路径分隔符）')
-        const abs = confine(file)
+        const abs = confine(root, file)
         const dst = path.join(path.dirname(abs), newName)
-        if (dst !== abs && !dst.startsWith(resolveEdmRoot() + path.sep)) throw new Error('越权路径')
+        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new Error('越权路径')
         let exists = false
         try {
           await fs.access(dst)
@@ -553,8 +562,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
       }
       case 'system:remove': {
         assertSystemEditable()
-        const abs = confine(str(data, 'file'))
-        if (abs === resolveEdmRoot()) throw new Error('不能删除 EDM 根目录')
+        const root = resolveEdmRoot()
+        const abs = confine(root, str(data, 'file'))
+        if (abs === root) throw new Error('不能删除 EDM 根目录')
         let exists = false
         try {
           await fs.access(abs)
@@ -565,10 +575,94 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (exists) await fs.rm(abs, { recursive: true, force: true })
         return true
       }
-      // ── 自定义内容库派生（R21）：assets 系统内容 → NeDB 自定义可编辑副本（origin='custom'，ULID 主键） ──
-      // kind: brand=派生品牌下全部族+版本（挂同一品牌，不建重复品牌实体）；family=族+全部版本；
-      //       version=族壳+单版本副本。目标品牌取另存落点首段（跨品牌派生），缺省回落源品牌。
+      // ── R24 content:*：按 source 路由到系统 / 自定义文件根（自定义恒可写；系统根受 dev 门控） ──
+      case 'content:load': {
+        const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
+        return await loadEdmModel(root)
+      }
+      case 'content:readFile': {
+        const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
+        const file = str(data, 'file')
+        const abs = path.resolve(root, file)
+        if (!abs.startsWith(root)) throw new Error('越权读取内容文件')
+        try {
+          return await fs.readFile(abs, 'utf8')
+        } catch {
+          return null
+        }
+      }
+      case 'content:writeFile': {
+        const source = str(data, 'source') === 'custom' ? 'custom' : 'system'
+        if (source === 'system') assertSystemEditable()
+        const root = resolveContentRoot(source)
+        const file = str(data, 'file')
+        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new Error(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`)
+        const abs = confine(root, file)
+        await fs.mkdir(path.dirname(abs), { recursive: true })
+        await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')
+        return true
+      }
+      case 'content:rename': {
+        const source = str(data, 'source') === 'custom' ? 'custom' : 'system'
+        if (source === 'system') assertSystemEditable()
+        const root = resolveContentRoot(source)
+        const file = str(data, 'file')
+        const newName = str(data, 'newName').trim()
+        if (!newName || /[/\\]|\.\./.test(newName)) throw new Error('新名称非法（不得含路径分隔符）')
+        const abs = confine(root, file)
+        const dst = path.join(path.dirname(abs), newName)
+        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new Error('越权路径')
+        let exists = false
+        try {
+          await fs.access(dst)
+          exists = true
+        } catch {
+          /* 不存在即目标可用 */
+        }
+        if (exists) throw new Error(`「${newName}」已存在，请先处理同名冲突`)
+        await fs.rename(abs, dst)
+        return path.resolve(root, dst).split(path.sep).join('/')
+      }
+      case 'content:remove': {
+        const source = str(data, 'source') === 'custom' ? 'custom' : 'system'
+        if (source === 'system') assertSystemEditable()
+        const root = resolveContentRoot(source)
+        const abs = confine(root, str(data, 'file'))
+        if (abs === root) throw new Error('不能删除内容根目录')
+        let exists = false
+        try {
+          await fs.access(abs)
+          exists = true
+        } catch {
+          /* 不存在即视为已删除（幂等，#7） */
+        }
+        if (exists) await fs.rm(abs, { recursive: true, force: true })
+        return true
+      }
+      case 'content:render': {
+        const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
+        const sel = obj(data, 'selector') as unknown as SystemSelector
+        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
+        const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
+        if (raw.length === 0) return await renderSystemPreview(root, sel)
+        return await renderSystemCompose(
+          root,
+          sel,
+          raw.map((p) => ({
+            selector: p['selector'] as unknown as SystemSelector,
+            slot: String(p['slot'] ?? ''),
+            order: typeof p['order'] === 'number' ? p['order'] : undefined,
+            repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
+            data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
+          })),
+        )
+      }
+      // ── R24 system:derive：系统内容 → 自定义文件根（custom-edm）整棵拷贝，文件为真相源 ──
+      // kind: brand=品牌下全部族+版本；family=单族+版本；version=单版本。
+      // 目标品牌代码取 name（brand 级）/ target 首段（family/version 级，缺省回落源品牌）。
       case 'system:derive': {
+        const source = 'system'
+        const targetSource = 'custom'
         const kind = str(data, 'kind')
         const name = str(data, 'name').trim()
         const brandCode = str(data, 'brandCode')
@@ -577,115 +671,66 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         const versionDir = str(data, 'versionDir')
         const target = str(data, 'target')
         if (!name) throw new Error('名称必填')
-        const root = resolveEdmRoot()
+        const root = resolveContentRoot(source)
+        const customRoot = resolveContentRoot(targetSource)
         const model = await loadEdmModel(root)
         const srcBrand = model.brands.find((b) => b.code === brandCode)
         if (!srcBrand) throw new Error(`系统品牌「${brandCode}」不存在`)
         const counts = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0 }
-        const readFileOr = async (p: string): Promise<string> => {
+        const copyTree = async (srcRel: string, dstRel: string): Promise<void> => {
+          const srcAbs = path.resolve(root, srcRel)
+          let st: Awaited<ReturnType<typeof fs.stat>> | null = null
           try {
-            return await fs.readFile(p, 'utf8')
+            st = await fs.stat(srcAbs)
           } catch {
-            return ''
+            return
           }
+          if (st.isDirectory()) {
+            const entries = await fs.readdir(srcAbs)
+            for (const e of entries) await copyTree(`${srcRel}/${e}`, `${dstRel}/${e}`)
+          } else {
+            const dstAbs = path.resolve(customRoot, dstRel)
+            await fs.mkdir(path.dirname(dstAbs), { recursive: true })
+            await fs.copyFile(srcAbs, dstAbs)
+          }
+        }
+        const patchMeta = async (rel: string, patch: Record<string, unknown>): Promise<void> => {
+          const abs = path.resolve(customRoot, `${rel}/meta.yaml`)
+          let meta: Record<string, unknown> = {}
+          try {
+            meta = (yaml.load(await fs.readFile(abs, 'utf8')) as Record<string, unknown>) ?? {}
+          } catch {
+            /* 无 meta 则基于补丁新建 */
+          }
+          await fs.mkdir(path.dirname(abs), { recursive: true })
+          await fs.writeFile(abs, yaml.dump({ ...meta, ...patch }, { lineWidth: -1 }), 'utf8')
         }
         const targetBrandCode = (target.split('/')[0] ?? '').trim() || brandCode
-        const brandIdOf = async (code: string): Promise<string> => {
-          const brands = await repo.list<Brand>('brands', { archived: false })
-          const hit = brands.find((b) => b.code === code)
-          if (hit) return hit._id
-          counts.brands++
-          const meta = model.brands.find((b) => b.code === code)
-          return (await repo.insert<Brand>('brands', { code, name: meta?.meta.name ?? code, origin: 'custom' }))._id
-        }
-        const deriveFragmentFamily = async (
-          fam: FragmentFamilyNode,
-          bid: string,
-          only?: VersionNode<FragmentVersionMeta>,
-        ): Promise<void> => {
-          const frg = await repo.insert<Fragment>('fragments', {
-            brandId: bid, name, description: fam.meta.description,
-            type: fam.meta.type || 'product', origin: 'custom',
-          })
-          counts.fragments++
-          let latest: { id: string; version: number } | null = null
-          for (const v of only ? [only] : fam.versions) {
-            const n = versionNumberOf(v.dir, v.meta.version)
-            const policy = v.meta.policy ?? fam.meta.policy
-            const fv = await repo.insert<FragmentVersion>('fragmentVersions', {
-              fragmentId: frg._id, brandId: bid, version: n, label: `v${n}`, type: frg.type,
-              source: {
-                html: await readFileOr(v.sourcePath),
-                css: await collectSystemCssContent(root, { brandCode: srcBrand.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
-                cssMode: 'inline',
-              },
-              policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
-              dataSchema: fam.meta.dataSchema,
-              fields: v.meta.fields ?? fam.meta.fields ?? undefined,
-              sampleData: v.sample ?? undefined,
-              origin: 'custom',
-            })
-            counts.fragmentVersions++
-            if (!latest || n > latest.version) latest = { id: fv._id, version: n }
-          }
-          if (latest) await repo.update<Fragment>('fragments', frg._id, { latestVersionId: latest.id })
-        }
-        const deriveTemplateFamily = async (
-          fam: TemplateFamilyNode,
-          bid: string,
-          only?: VersionNode<TemplateVersionMeta>,
-        ): Promise<void> => {
-          const tpl = await repo.insert<Template>('templates', {
-            brandId: bid, name, description: fam.meta.description, origin: 'custom',
-          })
-          counts.templates++
-          let latest: { id: string; version: number } | null = null
-          for (const v of only ? [only] : fam.versions) {
-            const n = versionNumberOf(v.dir, v.meta.version)
-            const tv = await repo.insert<TemplateVersion>('templateVersions', {
-              templateId: tpl._id, brandId: bid, version: n, label: `v${n}`,
-              source: {
-                html: await readFileOr(v.sourcePath),
-                css: await collectSystemCssContent(root, { brandCode: srcBrand.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
-                cssMode: 'inline',
-              },
-              slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
-              dataSchema: fam.meta.dataSchema,
-              fields: v.meta.fields ?? undefined,
-              sampleData: v.sample ?? undefined,
-              origin: 'custom',
-            })
-            counts.templateVersions++
-            if (!latest || n > latest.version) latest = { id: tv._id, version: n }
-          }
-          if (latest) await repo.update<Template>('templates', tpl._id, { latestVersionId: latest.id })
-        }
-        const bid = await brandIdOf(targetBrandCode)
         if (kind === 'brand') {
-          for (const fam of srcBrand.fragments) await deriveFragmentFamily(fam, bid)
-          for (const fam of srcBrand.templates) await deriveTemplateFamily(fam, bid)
+          const dstBrand = name
+          await copyTree(`${brandCode}/fragment`, `${dstBrand}/fragment`)
+          await copyTree(`${brandCode}/template`, `${dstBrand}/template`)
+          await copyTree(`${brandCode}/css`, `${dstBrand}/css`)
+          await copyTree(`${brandCode}/meta.yaml`, `${dstBrand}/meta.yaml`)
+          await patchMeta(dstBrand, { code: dstBrand, name })
+          counts.brands++
         } else if (kind === 'family') {
-          if (cat === 'template') {
-            const fam = srcBrand.templates.find((f) => f.code === familyCode)
-            if (!fam) throw new Error(`系统模板族「${familyCode}」不存在`)
-            await deriveTemplateFamily(fam, bid)
-          } else {
-            const fam = srcBrand.fragments.find((f) => f.code === familyCode)
-            if (!fam) throw new Error(`系统片段族「${familyCode}」不存在`)
-            await deriveFragmentFamily(fam, bid)
-          }
+          const dstBrand = targetBrandCode
+          const fam = (cat === 'template' ? srcBrand.templates : srcBrand.fragments).find((f) => f.code === familyCode)
+          if (!fam) throw new Error(`系统${cat === 'template' ? '模板' : '片段'}族「${familyCode}」不存在`)
+          await copyTree(`${brandCode}/${cat}/${familyCode}`, `${dstBrand}/${cat}/${name}`)
+          await patchMeta(`${dstBrand}/${cat}/${name}`, { code: name, name })
+          if (cat === 'template') counts.templates++
+          else counts.fragments++
         } else if (kind === 'version') {
-          if (cat === 'template') {
-            const fam = srcBrand.templates.find((f) => f.code === familyCode)
-            const v = fam?.versions.find((x) => x.dir === versionDir)
-            if (!fam || !v) throw new Error(`系统模板版本「${familyCode}/${versionDir || 'default'}」不存在`)
-            await deriveTemplateFamily(fam, bid, v)
-          } else {
-            const fam = srcBrand.fragments.find((f) => f.code === familyCode)
-            const v = fam?.versions.find((x) => x.dir === versionDir)
-            if (!fam || !v) throw new Error(`系统片段版本「${familyCode}/${versionDir || 'default'}」不存在`)
-            await deriveFragmentFamily(fam, bid, v)
-          }
+          const dstBrand = targetBrandCode
+          const fam = (cat === 'template' ? srcBrand.templates : srcBrand.fragments).find((f) => f.code === familyCode)
+          const v = fam?.versions.find((x) => x.dir === versionDir)
+          if (!fam || !v) throw new Error(`系统${cat === 'template' ? '模板' : '片段'}版本「${familyCode}/${versionDir || 'default'}」不存在`)
+          await copyTree(`${brandCode}/${cat}/${familyCode}/${versionDir}`, `${dstBrand}/${cat}/${familyCode}/${name}`)
+          await patchMeta(`${dstBrand}/${cat}/${familyCode}/${name}`, { version: versionNumberOf(name, v.meta.version) })
+          if (cat === 'template') counts.templateVersions++
+          else counts.fragmentVersions++
         } else {
           throw new Error(`非法 kind: ${kind}`)
         }

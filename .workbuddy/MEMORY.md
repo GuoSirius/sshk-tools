@@ -35,6 +35,10 @@
 14. **volar 坑**：导入的 reactive 对象在模板被错误 ref 解包 → 跨模块共享可变对象一律用 `ref`；模板 `ref="xxx"` 字符串不算绑定被读取（TS6133），用 `:ref` 函数绑定。
 15. **提交输出勿接 head/tail 管道**：commit 输出被 head 截断会 SIGPIPE 打断提交（输出重定向 /dev/null 或不截断）；`.git/cph` 提交钩子内 verify 链会触发 install 把 lockfile 带脏——docs 批次提交后检查 lockfile 残留并单独补提交。
 16. **backup.test.ts Windows 抖动**：全量还原用例对 NeDB 临时文件 rename EPERM 敏感（并发构建时偶发 5s 超时），单跑即过，属环境抖动非代码问题。
+17. **Vue2/Vue3 依赖版本陷阱（同一坑，多个库都有）**：这些库的 npm `latest` 指向 **Vue2** 线，Vue3 项目必须钉对应大版本：
+   - `@wangeditor/editor-for-vue` 的 `latest`（1.0.2）peerDeps `vue: ^2.6.14` → 改用 `@wangeditor/editor`（core 5.x）的 `createEditor`/`createToolbar` 自行封装（见 `tools/edm-studio/src/renderer/RichTextEditor.vue`）。
+   - `vuedraggable` 的 `latest`（2.24.3）是 **Vue2** 版 → Vue3 必须钉 `^4`（4.x 才是 Vue3 封装，用法 `<draggable v-model item-key="#item" :handle>` + `#item` 插槽）。
+   - 规则：声明依赖遇到「Vue2/Vue3 双线」的库，绝不能无脑写 `latest`，先确认本项目的 Vue 大版本再钉对应主版本号。
 
 ## 工具页规范（新工具/edm 必守）
 - 布局用 `ToolPageLayout` 三段式：head flex:none / body flex:1 唯一滚动 / foot flex:none。
