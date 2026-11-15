@@ -117,7 +117,7 @@ docs/
 | **D39** | **工具包自包含（推翻 D35 的宿主图标）** | 名称 / 描述 / 多分类 / 图标 / 菜单 / 配置项 / 默认配置 / 依赖 / 权限 / 插件入口**全部归工具包自己的 `tool.manifest.json` 与 `assets/icon.svg`**；宿主 `apps/desktop/src/renderer/assets/tools/` 已删除 |
 | **D40** | **构建期自动发现，零改动接入** | `import.meta.glob` 扫 `tools/*` 的清单 / 图标 / main / renderer；`electron.vite.config.ts` 与 `vitest.config.ts` 动态扫包生成 alias；新工具包放进 `tools/` 即构建可用 |
 | **D41** | **插件入口强契约** | `src/main/index.ts` 必须 `export default` 注册函数（或具名 `register`）；禁止「随便挑一个函数」，避免误挑 `parseDatasource` 导致 IPC 静默未注册 |
-| **D42** | **配置布局三选一 + 浏览器式刷新** | `configLayout: single / tabs / menu`，内置工具统一 `single`（一页卡片，去掉割裂的左侧二级菜单）；F5 / Ctrl(Cmd)+R 刷新，Ctrl+F5 / Ctrl(Cmd)+Shift+R 忽略缓存，「更多」下拉提供入口 |
+| **D42** | **配置形态两选一 + 浏览器式刷新** | `configLayout: single / menu`：形态 1 `single` = 单个「工具配置」菜单进去左右布局（现有工具全用此形态）；形态 2 `menu` = 「工具配置」展开二级菜单，每个二级菜单一个真实页面、页内复用左右布局，`configPages` 声明每页含多个分组（template-tool 为示例）。历史值 `tabs` 归一为 `single`。F5 / Ctrl(Cmd)+R 刷新，Ctrl+F5 / Ctrl(Cmd)+Shift+R 忽略缓存，「更多」下拉提供入口 |
 | **D43** | **多分类 / 标签** | `category: string \| string[]` + `tags[]` → 裁决层 `categories[]`；卡片 / 侧栏 / 搜索 / 设置覆盖全链路支持多个分类 |
 | **D44** | **Badge 图片数据源** | 图片 → 云端视觉模型或本机 OCR → `parseVisionResult()` → 标准 `StatRow[]` → 回填可校对 CSV；`llm-gateway` 支持 `image_url` 多模态；**视觉模型 API Key 只进 safeStorage，绝不写仓库** |
 | **D45** | **PaddleOCR 作为可插拔识别源** | 与云端模型共用「图片识别 provider → 标准结构」抽象；宿主 `runLocalOcr`（无 shell、超时、输出上限）+ 工具包 `scripts/paddleocr_adapter.py` 参考适配器；实际绑定待用户确认本机命令与截图版式 |
