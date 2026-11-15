@@ -189,6 +189,24 @@ const tree = computed<TreeNode[]>(() => [
   },
 ])
 
+/** R24 收尾：默认展开到「模板 / 片段」类目层——根 → 品牌 → 类目；族 / 版本 / css 目录保持折叠 */
+const defaultExpandedKeys = computed<string[]>(() => {
+  const keys: string[] = []
+  const walk = (nodes: TreeNode[]): void => {
+    for (const n of nodes) {
+      if (n.kind === 'root' || n.kind === 'brand' || n.kind === 'category') {
+        keys.push(n.id)
+        if (n.children) walk(n.children)
+      }
+    }
+  }
+  walk(tree.value)
+  return keys
+})
+/** el-tree 的 default-expanded-keys 仅在首次渲染生效；tree 恒返回两个根（空骨架也会渲染），
+ *  故等 content:load 数据就绪后再挂载树，否则数据到达后展开配置不会重新应用。 */
+const treeReady = ref(false)
+
 const stats = computed(() => {
   const src: Source = selected.value?.data.source ?? 'system'
   const m = src === 'custom' ? cusModel.value : sysModel.value
@@ -291,6 +309,7 @@ async function load(silent = false): Promise<void> {
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
+    treeReady.value = true
     loading.value = false
   }
 }
@@ -1162,10 +1181,11 @@ async function confirmSaveAs(): Promise<void> {
     <div class="body">
       <div class="tree-pane">
         <el-tree
-          v-if="tree.length"
+          v-if="treeReady && tree.length"
           :ref="setTreeRef"
           :data="tree"
           node-key="id"
+          :default-expanded-keys="defaultExpandedKeys"
           highlight-current
           :expand-on-click-node="false"
           @node-click="(data: TreeNode) => onNode(data)"
@@ -1178,7 +1198,7 @@ async function confirmSaveAs(): Promise<void> {
             </span>
           </template>
         </el-tree>
-        <EmptyState v-else description="暂无系统内容" />
+        <EmptyState v-else :description="loading ? '正在加载内容…' : '暂无系统内容'" />
       </div>
       <div class="detail-pane">
         <!-- css 文件多 tab 编辑（选中 css 文件时）：tab 条只做切换，编辑器单实例常驻（隐藏 pane 内挂载 Monaco 会失效） -->

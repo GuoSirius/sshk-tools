@@ -274,7 +274,9 @@ Email {
     └─ 品牌 → 片段/模板（类目）→ 族 → 版本 + css 目录
 ```
 - 下层结构（品牌 / 类目 / 族 / 版本 / css）保持现状，**不动**。
-- **默认全部折叠**（去掉 `default-expand-all`），由用户自行展开。
+- **默认展开到「模板 / 片段」类目层**（2026-11-15 收尾调整，废弃原「默认全部折叠」）：`default-expanded-keys` = 根 → 品牌 → 类目（css / 模板 / 片段）；**族 / 版本 / css 目录保持折叠**。
+  - 实现要点：`el-tree` 的 `default-expanded-keys` 仅首次渲染生效，而 `tree` 计算属性恒返回两个根（数据未到时空骨架也会挂载）。故增加 `treeReady` 标志，`content:load` 完成后（`finally`）才渲染树，否则数据到达后展开配置不会重新应用。
+  - 后续 `load()` 刷新时按 `node-key` 稳定保留用户手动折叠/展开状态；新建的品牌/类目节点由用户自行展开。
 - 每个 `TreeNode.data` 增加 `source: 'system' | 'custom'` 判别字段，驱动读写分支。
 - 自定义与系统自带**均为文件域、结构完全一致**，均显示 css 目录子树（外链 css + 内联 css，两者无异）。自定义根统一命名为 `custom-edm`。
 
@@ -329,7 +331,7 @@ Email {
    **邮件索引 = 薄索引**：文件为真相源，加载内容页（或启动）时扫描 `custom-edm` 根 → upsert 进 NeDB `origin=custom`；邮件编辑器 / 生成逻辑零改动。用户拍板「写文件 + 同步 DB」。
 
 ### 实施批次（落档确认后执行）
-- **批次 A**：菜单 / 文件重命名（`system→content`、`SystemPage→ContentManagePage`）+ 双顶层树骨架 + 全折叠 + `source` 字段。
+- **批次 A**：菜单 / 文件重命名（`system→content`、`SystemPage→ContentManagePage`）+ 双顶层树骨架 + 全折叠（**2026-11-15 收尾改为「默认展开到类目层」，见上方左树结构**）+ `source` 字段。
 - **批次 B**：统一详情页（按 `source` 分支读写）：新增 `resolveContentRoot(source)`（系统=edm 根 / 自定义=custom-edm 根，按 `app.isPackaged` 选位置）；`content:readFile/writeFile/rename/remove` 按 source 路由到对应根 + 根内越权保护；`system:derive` 改为写 custom-edm 文件根（系统→自定义派生）；加载时扫 custom-edm 根 upsert 进 NeDB `origin=custom`（薄索引，邮件编辑器零改动）。预览：自定义走 `system:render`（selector 指向 custom-edm 根）。
 - **批次 C**：右键菜单统一顺序 + 新增项（新建品牌 / 新建片段族 / 新建模板族 / 新建版本 / 新建样式）。
 - **批次 D**：删除 `CustomLibraryPage.vue`、清理 `EdmStudioPage` 映射、类型检查 + cph 门禁提交推送。
