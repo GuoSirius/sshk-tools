@@ -1041,26 +1041,27 @@ async function confirmSaveAs(): Promise<void> {
         <EmptyState v-else description="暂无系统内容" />
       </div>
       <div class="detail-pane">
-        <!-- css 文件多 tab 编辑（选中 css 文件时） -->
+        <!-- css 文件多 tab 编辑（选中 css 文件时）：tab 条只做切换，编辑器单实例常驻（隐藏 pane 内挂载 Monaco 会失效） -->
         <template v-if="selected?.kind === 'cssFile' && cssTabs.length">
           <div class="css-editor">
             <el-tabs v-model="activeCss" type="card" closable @tab-remove="closeCssTab(String($event))">
-              <el-tab-pane v-for="t in cssTabs" :key="t.file" :name="t.file" :label="`${basename(t.file)}${t.dirty ? ' ●' : ''}`">
-                <div class="editor-toolbar">
-                  <el-button size="small" type="primary" @click="saveCss(t)">保存</el-button>
-                  <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
-                  <span class="hint">外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</span>
-                </div>
-                <MonacoEditor
-                  v-if="activeTab?.file === t.file"
-                  :model-value="t.content"
-                  language="css"
-                  :read-only="!canEdit"
-                  height="calc(100% - 40px)"
-                  @update:model-value="(v: string) => onCssEdit(t.file, v)"
-                />
-              </el-tab-pane>
+              <el-tab-pane v-for="t in cssTabs" :key="t.file" :name="t.file" :label="`${basename(t.file)}${t.dirty ? ' ●' : ''}`" />
             </el-tabs>
+            <template v-if="activeTab">
+              <div class="editor-toolbar">
+                <el-button size="small" type="primary" @click="saveCss(activeTab!)">保存</el-button>
+                <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
+                <span class="hint">外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</span>
+              </div>
+              <MonacoEditor
+                :model-value="activeTab.content"
+                :path="activeTab.file"
+                language="css"
+                :read-only="!canEdit"
+                height="calc(100% - 80px)"
+                @update:model-value="(v: string) => onCssEdit(activeTab!.file, v)"
+              />
+            </template>
           </div>
         </template>
         <el-empty v-else-if="!selected" description="选择左侧节点查看 / 编辑" :image-size="80" class="detail-empty" />
@@ -1079,7 +1080,7 @@ async function confirmSaveAs(): Promise<void> {
         <el-tabs v-else class="detail-tabs">
           <el-tab-pane label="元数据">
             <div class="editor-toolbar">
-              <el-radio-group v-model="metaMode" size="small" @change="(m: unknown) => switchMetaMode(m as 'form' | 'data')">
+              <el-radio-group :model-value="metaMode" size="small" @change="(m: unknown) => switchMetaMode(m as 'form' | 'data')">
                 <el-radio-button value="form">表单</el-radio-button>
                 <el-radio-button value="data">数据</el-radio-button>
               </el-radio-group>
@@ -1098,11 +1099,11 @@ async function confirmSaveAs(): Promise<void> {
               <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
-            <MonacoEditor v-else :model-value="metaText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
+            <MonacoEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
-              <el-radio-group v-model="sampleMode" size="small" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data' | 'design')">
+              <el-radio-group :model-value="sampleMode" size="small" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data' | 'design')">
                 <el-radio-button value="design">设计</el-radio-button>
                 <el-radio-button value="form" :disabled="!sampleSchema.length">表单</el-radio-button>
                 <el-radio-button value="data">数据</el-radio-button>
@@ -1117,7 +1118,7 @@ async function confirmSaveAs(): Promise<void> {
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
               <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
             </div>
-            <MonacoEditor v-else :model-value="sampleText" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
+            <MonacoEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
@@ -1137,14 +1138,14 @@ async function confirmSaveAs(): Promise<void> {
               <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSource">保存</el-button>
               <span class="hint">内联 css 也可直接写在 njk 的 &lt;style&gt; 内</span>
             </div>
-            <MonacoEditor :model-value="sourceText" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
+            <MonacoEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式">
             <div class="editor-toolbar">
               <el-button size="small" type="primary" :disabled="!canEdit" @click="saveStyle">保存</el-button>
               <span class="hint">内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</span>
             </div>
-            <MonacoEditor :model-value="styleText" language="css" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
+            <MonacoEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
           </el-tab-pane>
         </el-tabs>
       </div>

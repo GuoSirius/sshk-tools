@@ -11,8 +11,10 @@ const props = withDefaults(
     /** yaml 模式下的 JSON Schema（实时校验 meta.yaml / sample.yaml） */
     schema?: object | null
     height?: string
+    /** model URI（多实例共存/切换时必须唯一，避免共享 model 导致内容错乱或编辑器失效） */
+    path?: string
   }>(),
-  { language: 'yaml', readOnly: false, schema: null, height: '320px' },
+  { language: 'yaml', readOnly: false, schema: null, height: '320px', path: '' },
 )
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
@@ -23,7 +25,11 @@ loader.config({ monaco })
 
 // njk 无原生语言，复用 html 高亮（nunjucks 标签 {{ }}/{% %} 由上游 nunjucks 编译期检测兜底）
 const monacoLang = computed(() => (props.language === 'njk' ? 'html' : props.language))
-const virtualPath = computed(() => `inmemory://model/${props.language === 'yaml' ? 'meta.yaml' : `source.${props.language}`}`)
+const virtualPath = computed(() =>
+  props.path
+    ? `inmemory://model/${props.path}`
+    : `inmemory://model/${props.language === 'yaml' ? 'meta.yaml' : `source.${props.language}`}`,
+)
 
 const options = computed(() => ({
   readOnly: props.readOnly,

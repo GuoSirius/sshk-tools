@@ -418,9 +418,9 @@ async function removeVersion(): Promise<void> {
               </div>
               <div class="src-stack">
                 <div class="src-label">html（njk）</div>
-                <MonacoEditor :model-value="sourceForm.html" language="njk" :read-only="!editable(selected)" height="38%" @update:model-value="(v: string) => (sourceForm.html = v)" />
+                <MonacoEditor :model-value="sourceForm.html" :path="`${selected.id}:html`" language="njk" :read-only="!editable(selected)" height="38%" @update:model-value="(v: string) => (sourceForm.html = v)" />
                 <div class="src-label">css</div>
-                <MonacoEditor :model-value="sourceForm.css" language="css" :read-only="!editable(selected)" height="30%" @update:model-value="(v: string) => (sourceForm.css = v)" />
+                <MonacoEditor :model-value="sourceForm.css" :path="`${selected.id}:css`" language="css" :read-only="!editable(selected)" height="30%" @update:model-value="(v: string) => (sourceForm.css = v)" />
               </div>
             </el-tab-pane>
             <el-tab-pane label="示例数据" name="sample">
@@ -428,7 +428,7 @@ async function removeVersion(): Promise<void> {
                 <el-button v-if="editable(selected)" size="small" type="primary" @click="saveVersion('sample')">保存</el-button>
                 <span class="hint">JSON；预览渲染时作为数据填充</span>
               </div>
-              <MonacoEditor :model-value="sampleText" language="json" :read-only="!editable(selected)" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
+              <MonacoEditor :model-value="sampleText" :path="`${selected.id}:sample`" language="json" :read-only="!editable(selected)" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
             </el-tab-pane>
             <el-tab-pane label="预览" name="preview">
               <div class="editor-toolbar">
