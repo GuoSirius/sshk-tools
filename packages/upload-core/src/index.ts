@@ -1,8 +1,24 @@
 /**
  * @sshk/upload-core — 应用级上传能力（R26）。
- * B0 骨架：仅建包与依赖，暂无导出。
- * B1 落地 types / UploadProvider / UploadService（校验、并发、重试），
+ * B1：types + UploadProvider 接口 + 校验/并发/重试骨架 + UploadService。
  * B4 / B5 分别落地 Local / Remote(ftp|sftp) / Cloud Provider。
- * 见《上传能力规划.md》《R26-R27协同开工方案.md》。
+ * main 进程持有 Service 实例，经 IPC upload:single / upload:batch 暴露；密钥不进渲染层。
  */
-export {}
+export type {
+  UploadBatchOptions,
+  UploadContext,
+  UploadFile,
+  UploadOverrides,
+  UploadProfile,
+  UploadProgress,
+  UploadProvider,
+  UploadResult,
+  UploadStatus,
+  UploadTargetType,
+  UploadValidation,
+} from './types'
+export { DEFAULT_VALIDATION, mergeValidation, validateFile } from './validation'
+export type { ValidationFailure, ValidationOutcome, ValidationSuccess } from './validation'
+export { mapWithConcurrency, withRetry } from './concurrency'
+export { UploadService } from './service'
+export type { UploadServiceOptions } from './service'
