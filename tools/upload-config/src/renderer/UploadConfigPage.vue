@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
+  ArrowDown,
   Check,
   Connection,
   Delete,
+  Edit,
   FolderOpened,
   Plus,
   Refresh,
+  Star,
   Upload,
 } from '@element-plus/icons-vue'
-import { ToolPageLayout } from '@sshk/ui-kit'
+import { ToolPageLayout, ConfirmDialog } from '@sshk/ui-kit'
 import {
   DEFAULT_UPLOAD_CONFIG,
   newProfileId,
@@ -24,25 +27,79 @@ import CloudProfileForm from './CloudProfileForm.vue'
 
 /**
  * T6 上传配置工具（应用级全局配置）。
- * 与工具级「只选 profile + 覆盖项」相对：这里维护连接信息本体，密钥单独走 safeStorage，
- * 列表只显示「已配置 / 未配置」，明文永不下发；用户主动点「查看」时才按 id 回显（N3），
- * 且明文绝不写进 settings.json。每个 profile 有独立「测试连接」（N4），可用未保存的表单值。
- * profile 表单拆成子组件：避免深层 v-for + v-model 让 vue-tsc 丢失作用域。
+ *
+ * N6：远程 + 云合并为一张统一列表，行头即「列表 + 操作列」，新增/编辑/删除/设为默认/测试
+ *     全部在列表内完成（对齐 model-console 的 Provider 管理范式），不再分两个卡片各自维护。
+ * N5：expandedKeys 是数组，展开 / 收起互不影响，可同时展开任意多个 profile。
+ *
+ * 密钥单独走 safeStorage：列表只显示「已配置 / 未配置」，明文永不下发；
+ * 用户主动点「查看」时才按 id 回显（N3），且明文绝不写进 settings.json。
+ * 每个 profile 有独立「测试连接」（N4），可用未保存的表单值。
  */
 defineProps<{ menu?: string; toolId?: string }>()
+
+type RowKind = 'remote' | 'cloud'
+interface ProfileRow {
+  key: string
+  kind: RowKind
+  id: string
+  name: string
+  detail: string
+  isDefault: boolean
+  remote?: UploadRemoteProfile
+  cloud?: UploadCloudProfile
+}
 
 const cfg = ref<UploadGlobalConfig>(structuredClone(DEFAULT_UPLOAD_CONFIG))
 const secretState = ref<Record<string, boolean>>({})
 const secretInputs = ref<Record<string, string>>({})
 const acceptText = ref('')
 const maxSizeMb = ref(0)
-const expanded = ref('')
+/** N5：可同时展开多个，切换某一条不影响其它条目 */
+const expandedKeys = ref<string[]>([])
+const filter = ref<'all' | 'remote' | 'cloud'>('all')
 const saving = ref(false)
 const testing = ref(false)
 const progress = ref('')
-/** N4：每个 profile 各自的测试状态与结果，互不覆盖 */
 const testingId = ref('')
 const testResults = ref<Record<string, string>>({})
+const removeOpen = ref(false)
+const removeTarget = ref<ProfileRow | null>(null)
+
+const rows = computed<ProfileRow[]>(() => [
+  ...cfg.value.remote.profiles.map((p): ProfileRow => ({
+    key: `remote:${p.id}`,
+    kind: 'remote',
+    id: p.id,
+    name: p.name,
+    detail: `${p.protocol.toUpperCase()} ${p.host}${p.port ? `:${p.port}` : ''}${p.remoteDir ? ` · ${p.remoteDir}` : ''}`,
+    isDefault: cfg.value.remote.defaultId === p.id,
+    remote: p,
+  })),
+  ...cfg.value.cloud.profiles.map((p): ProfileRow => ({
+    key: `cloud:${p.id}`,
+    kind: 'cloud',
+    id: p.id,
+    name: p.name,
+    detail: `${uploadVendorMeta(p.provider).label} · ${p.bucket}${p.region ? ` · ${p.region}` : ''}`,
+    isDefault: cfg.value.cloud.defaultId === p.id,
+    cloud: p,
+  })),
+])
+const visibleRows = computed(() =>
+  filter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === filter.value))
+
+function isOpen(key: string): boolean {
+  return expandedKeys.value.includes(key)
+}
+function toggle(key: string): void {
+  expandedKeys.value = isOpen(key)
+    ? expandedKeys.value.filter((k) => k !== key)
+    : [...expandedKeys.value, key]
+}
+function expand(key: string): void {
+  if (!isOpen(key)) expandedKeys.value = [...expandedKeys.value, key]
+}
 
 function setSecretInput(id: string, value: string): void {
   secretInputs.value[id] = value
@@ -61,7 +118,7 @@ async function revealSecret(id: string): Promise<void> {
 }
 
 /** N4：把当前表单值（含尚未保存的临时密钥）交给 main 做只读连通性探测 */
-async function testProfile(type: 'remote' | 'cloud', id: string): Promise<void> {
+async function testProfile(type: RowKind, id: string): Promise<void> {
   testingId.value = id
   try {
     const list = type === 'remote' ? cfg.value.remote.profiles : cfg.value.cloud.profiles
@@ -82,9 +139,6 @@ async function testProfile(type: 'remote' | 'cloud', id: string): Promise<void> 
     testingId.value = ''
   }
 }
-function toggle(key: string): void {
-  expanded.value = expanded.value === key ? '' : key
-}
 
 async function load(): Promise<void> {
   cfg.value = await window.api.upload.getConfig()
@@ -93,11 +147,19 @@ async function load(): Promise<void> {
   maxSizeMb.value = cfg.value.validation.maxSize > 0
     ? Math.round((cfg.value.validation.maxSize / 1024 / 1024) * 100) / 100
     : 0
+  // 清掉已删除 profile 的展开状态，其余保持展开（N5）
+  const keys = new Set(rows.value.map((r) => r.key))
+  expandedKeys.value = expandedKeys.value.filter((k) => keys.has(k))
 }
 
 async function pickLocalDir(): Promise<void> {
   const dir = await window.api.os.pickDir()
   if (dir) cfg.value.local.defaultDir = dir
+}
+
+function onAdd(command: string): void {
+  if (command === 'cloud') addCloud()
+  else addRemote()
 }
 
 function addRemote(): void {
@@ -108,7 +170,8 @@ function addRemote(): void {
   }
   cfg.value.remote.profiles.push(profile)
   if (!cfg.value.remote.defaultId) cfg.value.remote.defaultId = id
-  expanded.value = `remote:${id}`
+  filter.value = 'all'
+  expand(`remote:${id}`) // 新增即展开，且不收起其它已展开项
 }
 
 function addCloud(): void {
@@ -119,21 +182,43 @@ function addCloud(): void {
   }
   cfg.value.cloud.profiles.push(profile)
   if (!cfg.value.cloud.defaultId) cfg.value.cloud.defaultId = id
-  expanded.value = `cloud:${id}`
+  filter.value = 'all'
+  expand(`cloud:${id}`)
 }
 
-function removeRemote(item: UploadRemoteProfile): void {
-  cfg.value.remote.profiles = cfg.value.remote.profiles.filter((p) => p.id !== item.id)
-  if (cfg.value.remote.defaultId === item.id) {
-    cfg.value.remote.defaultId = cfg.value.remote.profiles[0]?.id ?? ''
-  }
+function setDefault(row: ProfileRow): void {
+  if (row.kind === 'remote') cfg.value.remote.defaultId = row.id
+  else cfg.value.cloud.defaultId = row.id
 }
 
-function removeCloud(item: UploadCloudProfile): void {
-  cfg.value.cloud.profiles = cfg.value.cloud.profiles.filter((p) => p.id !== item.id)
-  if (cfg.value.cloud.defaultId === item.id) {
-    cfg.value.cloud.defaultId = cfg.value.cloud.profiles[0]?.id ?? ''
+function askRemove(row: ProfileRow): void {
+  removeTarget.value = row
+  removeOpen.value = true
+}
+
+async function doRemove(): Promise<void> {
+  const row = removeTarget.value
+  removeOpen.value = false
+  removeTarget.value = null
+  if (!row) return
+  if (row.kind === 'remote') {
+    cfg.value.remote.profiles = cfg.value.remote.profiles.filter((p) => p.id !== row.id)
+    if (cfg.value.remote.defaultId === row.id) cfg.value.remote.defaultId = cfg.value.remote.profiles[0]?.id ?? ''
+  } else {
+    cfg.value.cloud.profiles = cfg.value.cloud.profiles.filter((p) => p.id !== row.id)
+    if (cfg.value.cloud.defaultId === row.id) cfg.value.cloud.defaultId = cfg.value.cloud.profiles[0]?.id ?? ''
   }
+  expandedKeys.value = expandedKeys.value.filter((k) => k !== row.key)
+  delete secretInputs.value[row.id]
+  delete testResults.value[row.id]
+  // 同步清掉 safeStorage 中该 profile 的密钥，避免孤儿密钥残留
+  try {
+    await window.api.upload.setSecret(row.id, '')
+    secretState.value = await window.api.upload.secretState()
+  } catch {
+    /* 清除失败不阻断 UI 删除 */
+  }
+  ElMessage.success(`已删除「${row.name}」，保存配置后生效`)
 }
 
 async function clearSecret(id: string): Promise<void> {
@@ -259,87 +344,89 @@ onMounted(() => {
         </el-form>
       </section>
 
-      <section class="panel">
+      <!-- N6 统一列表：远程与云合为一张表，行头即操作列，增删改 / 默认 / 测试全部就地完成 -->
+      <section class="panel panel-wide">
         <div class="panel-head">
-          <el-icon><Connection /></el-icon><span>远程 profile（FTP / SFTP）</span>
-          <el-button class="head-btn" size="small" :icon="Plus" @click="addRemote">新增</el-button>
-        </div>
-        <el-form label-width="120px" size="small">
-          <el-form-item label="默认 profile">
-            <el-select v-model="cfg.remote.defaultId" clearable placeholder="未设置时取列表第一个" style="width: 260px">
-              <el-option v-for="item in cfg.remote.profiles" :key="item.id" :label="`${item.name}（${item.protocol}）`" :value="item.id" />
-            </el-select>
-          </el-form-item>
-        </el-form>
-        <el-empty v-if="!cfg.remote.profiles.length" description="还没有远程 profile" :image-size="60" />
-        <div v-for="item in cfg.remote.profiles" :key="item.id" class="profile">
-          <div class="profile-head" @click="toggle(`remote:${item.id}`)">
-            <span class="item-title">{{ item.name }}</span>
-            <el-tag size="small" :type="item.protocol === 'sftp' ? 'warning' : 'primary'" effect="plain">{{ item.protocol.toUpperCase() }}</el-tag>
-            <el-tag size="small" :type="secretState[item.id] ? 'success' : 'info'" effect="plain">
-              {{ secretState[item.id] ? '密钥已配置' : '未配置密钥' }}
-            </el-tag>
-            <el-button class="head-btn" size="small" @click.stop="toggle(`remote:${item.id}`)">
-              {{ expanded === `remote:${item.id}` ? '收起' : '编辑' }}
+          <el-icon><Connection /></el-icon><span>上传通道（{{ rows.length }}）</span>
+          <el-radio-group v-model="filter" size="small" class="head-filter">
+            <el-radio-button value="all">全部</el-radio-button>
+            <el-radio-button value="remote">远程</el-radio-button>
+            <el-radio-button value="cloud">云</el-radio-button>
+          </el-radio-group>
+          <el-dropdown @command="(c: unknown) => onAdd(String(c ?? 'remote'))">
+            <el-button size="small" type="primary" :icon="Plus">
+              新增<el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </el-button>
-            <el-button size="small" :icon="Delete" @click.stop="removeRemote(item)" />
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="remote">远程（FTP / SFTP）</el-dropdown-item>
+                <el-dropdown-item command="cloud">云存储</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+
+        <el-empty v-if="!visibleRows.length" description="还没有上传通道，点右上角「新增」开始" :image-size="60" />
+
+        <div v-for="row in visibleRows" :key="row.key" class="profile" :class="{ 'is-open': isOpen(row.key) }">
+          <div class="profile-head">
+            <el-tag size="small" :type="row.kind === 'remote' ? 'warning' : 'primary'" effect="plain">
+              {{ row.kind === 'remote' ? '远程' : '云' }}
+            </el-tag>
+            <span class="item-title">{{ row.name }}</span>
+            <el-tag v-if="row.isDefault" size="small" type="success" effect="plain">默认</el-tag>
+            <span class="row-detail">{{ row.detail }}</span>
+            <el-tag size="small" :type="secretState[row.id] ? 'success' : 'info'" effect="plain">
+              {{ secretState[row.id] ? '密钥已配置' : '未配置密钥' }}
+            </el-tag>
+            <div class="row-ops">
+              <el-button size="small" :icon="Connection" :loading="testingId === row.id" @click="testProfile(row.kind, row.id)">测试</el-button>
+              <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
+              <el-button size="small" :icon="Edit" @click="toggle(row.key)">{{ isOpen(row.key) ? '收起' : '编辑' }}</el-button>
+              <el-button size="small" :icon="Delete" @click="askRemove(row)" />
+            </div>
           </div>
           <RemoteProfileForm
-            v-show="expanded === `remote:${item.id}`"
-            :profile="item"
-            :has-secret="Boolean(secretState[item.id])"
-            :secret-value="secretInputs[item.id] ?? ''"
-            :testing="testingId === item.id"
-            :test-result="testResults[item.id]"
+            v-if="row.kind === 'remote' && row.remote"
+            v-show="isOpen(row.key)"
+            :profile="row.remote"
+            :has-secret="Boolean(secretState[row.id])"
+            :secret-value="secretInputs[row.id] ?? ''"
+            :testing="testingId === row.id"
+            :test-result="testResults[row.id]"
             @update-secret="setSecretInput"
             @clear-secret="clearSecret"
             @reveal-secret="revealSecret"
             @test="(id: string) => testProfile('remote', id)"
           />
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <el-icon><Upload /></el-icon><span>云 profile（可同云多账号）</span>
-          <el-button class="head-btn" size="small" :icon="Plus" @click="addCloud">新增</el-button>
-        </div>
-        <el-form label-width="120px" size="small">
-          <el-form-item label="默认 profile">
-            <el-select v-model="cfg.cloud.defaultId" clearable placeholder="未设置时取列表第一个" style="width: 260px">
-              <el-option v-for="item in cfg.cloud.profiles" :key="item.id" :label="`${item.name}（${item.provider}）`" :value="item.id" />
-            </el-select>
-          </el-form-item>
-        </el-form>
-        <el-empty v-if="!cfg.cloud.profiles.length" description="还没有云 profile" :image-size="60" />
-        <div v-for="item in cfg.cloud.profiles" :key="item.id" class="profile">
-          <div class="profile-head" @click="toggle(`cloud:${item.id}`)">
-            <span class="item-title">{{ item.name }}</span>
-            <el-tag size="small" type="primary" effect="plain">{{ item.provider }}</el-tag>
-            <el-tag size="small" :type="secretState[item.id] ? 'success' : 'info'" effect="plain">
-              {{ secretState[item.id] ? '密钥已配置' : '未配置密钥' }}
-            </el-tag>
-            <el-button class="head-btn" size="small" @click.stop="toggle(`cloud:${item.id}`)">
-              {{ expanded === `cloud:${item.id}` ? '收起' : '编辑' }}
-            </el-button>
-            <el-button size="small" :icon="Delete" @click.stop="removeCloud(item)" />
-          </div>
           <CloudProfileForm
-            v-show="expanded === `cloud:${item.id}`"
-            :profile="item"
-            :has-secret="Boolean(secretState[item.id])"
-            :secret-value="secretInputs[item.id] ?? ''"
-            :testing="testingId === item.id"
-            :test-result="testResults[item.id]"
+            v-else-if="row.cloud"
+            v-show="isOpen(row.key)"
+            :profile="row.cloud"
+            :has-secret="Boolean(secretState[row.id])"
+            :secret-value="secretInputs[row.id] ?? ''"
+            :testing="testingId === row.id"
+            :test-result="testResults[row.id]"
             @update-secret="setSecretInput"
             @clear-secret="clearSecret"
             @reveal-secret="revealSecret"
             @test="(id: string) => testProfile('cloud', id)"
           />
         </div>
-        <div class="hint">7 家常见云厂商与 S3 兼容服务均已支持；地域 / Endpoint 可下拉预选也可直接手输。SDK 按需加载，未安装时会明确提示，不会静默失败。</div>
+        <div class="hint">
+          7 家常见云厂商与 S3 兼容服务均已支持；地域 / Endpoint 可下拉预选也可直接手输。
+          可同时展开多个通道逐项对照修改；删除通道需二次确认，保存配置后生效。
+        </div>
       </section>
     </div>
+
+    <ConfirmDialog
+      v-model:open="removeOpen"
+      title="删除上传通道"
+      :targets="removeTarget ? [removeTarget.name] : []"
+      confirm-text="删除"
+      @confirm="doRemove"
+    />
 
     <template #footer>
       <span class="muted">
@@ -357,15 +444,19 @@ onMounted(() => {
   padding: 14px 16px;
   background: var(--sshk-panel);
 }
+.panel-wide { grid-column: 1 / -1; }
 .panel-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 14px; }
-.head-btn { margin-left: auto; }
+.head-filter { margin-left: auto; }
 /* 输入框与按钮统一 size=small + 基线居中，避免「输入高 / 按钮矮」的错位（N2） */
 .path-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .path-row > :first-child { flex: 1; min-width: 0; }
 .path-row > :last-child { flex: none; }
 .profile { border: 1px dashed var(--sshk-border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
-.profile-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.item-title { font-weight: 600; }
+.profile.is-open { border-style: solid; border-color: var(--el-color-primary-light-5); }
+.profile-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item-title { font-weight: 600; flex: none; }
+.row-detail { font-size: 12px; opacity: .65; flex: 1 1 180px; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-ops { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .hint, .muted { font-size: 12px; opacity: .6; line-height: 1.5; }
 .hint { display: block; margin-top: 6px; }
 /* 开关 / 输入后紧跟说明文字：统一留 12px 间距（全项目 UI 铁律） */
