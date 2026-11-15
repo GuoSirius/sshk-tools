@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import SampleForm from './SampleForm.vue'
-import MonacoEditor from './MonacoEditor.vue'
+import { CodeEditor } from '@sshk/code-editor'
 import ComposeEditor from './ComposeEditor.vue'
 import type { FragmentOption, PlacementItem, SlotDef } from './ComposeEditor.vue'
 import { normalizeFields, type FieldDef } from './sample-schema'
@@ -260,7 +260,7 @@ function savePlacementData(): void {
             <span v-if="!templateSlots.length" class="hint">该模板未声明 slots 区块</span>
           </el-form-item>
           <el-form-item label="模板数据">
-            <MonacoEditor :model-value="mailDataText" language="json" height="160px" @update:model-value="(v: string) => (mailDataText = v)" />
+            <CodeEditor :model-value="mailDataText" language="json" height="160px" @update:model-value="(v: string) => (mailDataText = v)" />
             <div class="hint">模板级数据（片段未单独填数据时的回落，Q12）</div>
           </el-form-item>
         </el-form>
@@ -308,7 +308,7 @@ function savePlacementData(): void {
 
   <el-dialog v-model="placementData.open" title="片段数据" width="560px" append-to-body :close-on-click-modal="false">
     <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
-    <MonacoEditor v-else :model-value="placementData.yamlText" language="json" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
+    <CodeEditor v-else :model-value="placementData.yamlText" language="json" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
     <template #footer>
       <el-button @click="placementData.open = false">取消</el-button>
       <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { validateModel, type FieldDef } from './sample-schema'
-import RichTextEditor from './RichTextEditor.vue'
+import { RichTextEditor } from '@sshk/rich-text'
 import ImageField from './ImageField.vue'
 
 /**

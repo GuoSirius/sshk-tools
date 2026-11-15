@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
 import { EmptyState } from '@sshk/ui-kit'
-import MonacoEditor from '../MonacoEditor.vue'
+import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../SampleForm.vue'
 import FieldSchemaDesigner from '../FieldSchemaDesigner.vue'
 import ComposeEditor from '../ComposeEditor.vue'
@@ -1213,11 +1213,11 @@ async function confirmSaveAs(): Promise<void> {
                 <el-button size="small" type="primary" class="push-right" @click="saveCss(activeTab!)">保存</el-button>
                 <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
               </div>
-              <MonacoEditor
+              <CodeEditor
                 :model-value="activeTab.content"
                 :path="activeTab.file"
                 language="css"
-                :read-only="!canEdit"
+                :readonly="!canEdit"
                 height="calc(100% - 80px)"
                 @update:model-value="(v: string) => onCssEdit(activeTab!.file, v)"
               />
@@ -1259,7 +1259,7 @@ async function confirmSaveAs(): Promise<void> {
               <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
-            <MonacoEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
+            <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
@@ -1278,7 +1278,7 @@ async function confirmSaveAs(): Promise<void> {
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
               <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
             </div>
-            <MonacoEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
+            <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
@@ -1298,14 +1298,14 @@ async function confirmSaveAs(): Promise<void> {
               <span class="hint">内联 css 也可直接写在 njk 的 &lt;style&gt; 内</span>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
-            <MonacoEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
+            <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式">
             <div class="editor-toolbar">
               <span class="hint">内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</span>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>
             </div>
-            <MonacoEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
+            <CodeEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -1369,7 +1369,7 @@ async function confirmSaveAs(): Promise<void> {
     <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
     <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
       <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
-      <MonacoEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
+      <CodeEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
       <template #footer>
         <el-button @click="placementData.open = false">取消</el-button>
         <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>
