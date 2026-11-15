@@ -222,6 +222,8 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (data['source'] !== undefined) patch['source'] = obj(data, 'source') as unknown as TemplateVersion['source']
         if (data['label'] !== undefined) patch['label'] = str(data, 'label')
         if (data['sampleData'] !== undefined) patch['sampleData'] = obj(data, 'sampleData')
+        if (data['description'] !== undefined) patch['description'] = str(data, 'description') || undefined
+        if (data['fields'] !== undefined) patch['fields'] = Array.isArray(data['fields']) ? data['fields'] : undefined
         if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
         return repo.update<TemplateVersion>('templateVersions', id, patch)
       }
@@ -236,6 +238,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         const id = str(data, '_id')
         const meta = {
           brandId: str(data, 'brandId'), name: str(data, 'name'),
+          description: str(data, 'description') || undefined,
           type: str(data, 'type') || 'product', origin: 'custom' as const,
         }
         if (!meta.brandId || !meta.name) throw new Error('品牌与片段名称必填')
@@ -300,6 +303,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         if (data['label'] !== undefined) patch['label'] = str(data, 'label')
         if (data['policy'] !== undefined) patch['policy'] = obj(data, 'policy') as unknown as FragmentVersion['policy']
         if (data['sampleData'] !== undefined) patch['sampleData'] = obj(data, 'sampleData')
+        if (data['type'] !== undefined) patch['type'] = str(data, 'type') || 'product'
+        if (data['description'] !== undefined) patch['description'] = str(data, 'description') || undefined
+        if (data['fields'] !== undefined) patch['fields'] = Array.isArray(data['fields']) ? data['fields'] : undefined
         if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
         return repo.update<FragmentVersion>('fragmentVersions', id, patch)
       }
