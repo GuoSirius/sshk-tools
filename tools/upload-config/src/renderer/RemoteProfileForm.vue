@@ -43,7 +43,7 @@ const emit = defineEmits<{
           :placeholder="hasSecret ? '已配置，留空保持不变' : '加密存储，不回显'"
           @update:model-value="(v: unknown) => emit('updateSecret', profile.id, String(v ?? ''))"
         />
-        <el-button :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', profile.id)">清除</el-button>
+        <el-button size="small" :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', profile.id)">清除</el-button>
       </div>
     </el-form-item>
     <el-form-item label="远端位置"><el-input v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
@@ -56,7 +56,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.two { display: flex; gap: 8px; width: 100%; }
+.two { display: flex; align-items: center; gap: 8px; width: 100%; }
 .two > :first-child { flex: 1; min-width: 0; }
 .hint-inline { display: inline; margin-left: 12px; font-size: 12px; opacity: .6; }
 </style>

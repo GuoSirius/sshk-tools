@@ -197,7 +197,7 @@ onMounted(() => {
       <section class="panel">
         <div class="panel-head"><el-icon><FolderOpened /></el-icon><span>本地默认目录</span></div>
         <div class="path-row">
-          <el-input v-model="cfg.local.defaultDir" placeholder="留空则使用应用当前目录" />
+          <el-input v-model="cfg.local.defaultDir" size="small" placeholder="留空则使用应用当前目录" />
           <el-button size="small" :icon="FolderOpened" @click="pickLocalDir">选择目录</el-button>
         </div>
         <div class="hint">工具可在自己的「上传通道」配置里覆盖此目录；未覆盖时统一落到这里。</div>
@@ -308,7 +308,10 @@ onMounted(() => {
 }
 .panel-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 14px; }
 .head-btn { margin-left: auto; }
-.path-row { display: flex; gap: 8px; width: 100%; }
+/* 输入框与按钮统一 size=small + 基线居中，避免「输入高 / 按钮矮」的错位（N2） */
+.path-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.path-row > :first-child { flex: 1; min-width: 0; }
+.path-row > :last-child { flex: none; }
 .profile { border: 1px dashed var(--sshk-border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
 .profile-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .item-title { font-weight: 600; }
