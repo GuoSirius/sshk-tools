@@ -41,11 +41,11 @@ type Payload = Record<string, unknown>
 
 const ACTIONS = new Set([
   'brand:list', 'brand:save', 'brand:remove',
-  'tpl:list', 'tpl:save', 'tpl:remove',
-  'tplv:save', 'tplv:saveAsNew', 'tplv:get', 'tplv:list',
+  'tpl:list',   'tpl:save', 'tpl:remove',
+  'tplv:save', 'tplv:saveAsNew', 'tplv:get', 'tplv:list', 'tplv:update', 'tplv:remove',
   'frg:list', 'frg:save', 'frg:remove',
-  'frgv:save', 'frgv:saveAsNew', 'frgv:get', 'frgv:list',
-  'candidates:pick',
+  'frgv:save', 'frgv:saveAsNew', 'frgv:get', 'frgv:list', 'frgv:update', 'frgv:remove',
+  'candidates:pick', 'version:render',
   'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:preview', 'mail:readFinal', 'mail:export',
   'share:start', 'share:stop', 'share:status',
   'system:load', 'system:render', 'system:readFile',
@@ -214,6 +214,20 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         return repo.get<TemplateVersion>('templateVersions', str(data, '_id'))
       case 'tplv:list':
         return repo.list<TemplateVersion>('templateVersions', { archived: false })
+      // R22b 自定义内容库直编：custom 版本原地更新（版本不可变 D8 仅约束系统内容，自定义副本归用户所有）
+      case 'tplv:update': {
+        const id = str(data, '_id')
+        await assertMutable('templateVersions', id)
+        const patch: Record<string, unknown> = {}
+        if (data['source'] !== undefined) patch['source'] = obj(data, 'source') as unknown as TemplateVersion['source']
+        if (data['label'] !== undefined) patch['label'] = str(data, 'label')
+        if (data['sampleData'] !== undefined) patch['sampleData'] = obj(data, 'sampleData')
+        if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
+        return repo.update<TemplateVersion>('templateVersions', id, patch)
+      }
+      case 'tplv:remove':
+        await assertMutable('templateVersions', str(data, '_id'))
+        return repo.archive('templateVersions', str(data, '_id'))
 
       // ── 片段族 / 版本 ──
       case 'frg:list':
@@ -278,6 +292,40 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         return repo.get<FragmentVersion>('fragmentVersions', str(data, '_id'))
       case 'frgv:list':
         return repo.list<FragmentVersion>('fragmentVersions', { archived: false })
+      case 'frgv:update': {
+        const id = str(data, '_id')
+        await assertMutable('fragmentVersions', id)
+        const patch: Record<string, unknown> = {}
+        if (data['source'] !== undefined) patch['source'] = obj(data, 'source') as unknown as FragmentVersion['source']
+        if (data['label'] !== undefined) patch['label'] = str(data, 'label')
+        if (data['policy'] !== undefined) patch['policy'] = obj(data, 'policy') as unknown as FragmentVersion['policy']
+        if (data['sampleData'] !== undefined) patch['sampleData'] = obj(data, 'sampleData')
+        if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
+        return repo.update<FragmentVersion>('fragmentVersions', id, patch)
+      }
+      case 'frgv:remove':
+        await assertMutable('fragmentVersions', str(data, '_id'))
+        return repo.archive('fragmentVersions', str(data, '_id'))
+
+      // R22b 版本渲染预览（自定义库）：html+css 就近 inline，示例数据填充，单版本单渲
+      case 'version:render': {
+        const cat = str(data, 'cat') === 'template' ? 'template' : 'fragment'
+        const id = str(data, '_id')
+        const v = cat === 'template'
+          ? await repo.get<TemplateVersion>('templateVersions', id)
+          : await repo.get<FragmentVersion>('fragmentVersions', id)
+        if (!v) throw new Error('版本不存在')
+        const stages = await compose({
+          templateHtml: v.source.html,
+          templateCss: v.source.cssMode === 'inline' ? v.source.css : undefined,
+          placements: [],
+          data: (v.sampleData ?? {}) as Record<string, unknown>,
+          strict: false,
+          outputRoot: deps.outputRoot,
+          unoEnabled: true,
+        })
+        return { html: stages.assembled }
+      }
 
       // ── 候选片段（两道过滤下推 Repository，黑名单优先 §2.2） ──
       case 'candidates:pick': {

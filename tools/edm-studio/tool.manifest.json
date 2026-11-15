@@ -8,7 +8,7 @@
     "HTML 生成"
   ],
   "icon": "auto",
-  "entryRoute": "library",
+  "entryRoute": "mails",
   "enabled": true,
   "visibility": "desktop",
   "configLayout": "single",
@@ -28,16 +28,16 @@
   "requiredGrant": "",
   "menus": [
     {
-      "id": "library",
-      "label": "自定义内容库"
-    },
-    {
       "id": "mails",
       "label": "邮件管理"
     },
     {
       "id": "system",
       "label": "系统内容"
+    },
+    {
+      "id": "library",
+      "label": "自定义内容"
     },
     {
       "id": "config",
