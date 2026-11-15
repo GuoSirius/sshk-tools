@@ -399,9 +399,9 @@ async function removeVersion(): Promise<void> {
           <el-tabs v-model="versionTab" class="detail-tabs">
             <el-tab-pane label="元数据" name="meta">
               <div class="editor-toolbar">
-                <el-button v-if="editable(selected)" size="small" type="primary" @click="saveVersion('meta')">保存</el-button>
                 <el-button size="small" type="primary" plain :icon="CopyDocument" @click="copyAsNewFamily">复制为新族</el-button>
                 <el-button v-if="editable(selected)" size="small" type="danger" plain :icon="Delete" @click="removeVersion">删除版本</el-button>
+                <el-button v-if="editable(selected)" size="small" type="primary" class="push-right" @click="saveVersion('meta')">保存</el-button>
               </div>
               <el-form label-width="90px" size="small" class="meta-form">
                 <el-form-item label="标签"><el-input v-model="versionForm.label" :disabled="!editable(selected)" /></el-form-item>
@@ -413,8 +413,8 @@ async function removeVersion(): Promise<void> {
             </el-tab-pane>
             <el-tab-pane label="源码" name="source">
               <div class="editor-toolbar">
-                <el-button v-if="editable(selected)" size="small" type="primary" @click="saveVersion('source')">保存</el-button>
                 <span class="hint">html（njk）与 css（就近 inline，随版本存储）</span>
+                <el-button v-if="editable(selected)" size="small" type="primary" class="push-right" @click="saveVersion('source')">保存</el-button>
               </div>
               <div class="src-stack">
                 <div class="src-label">html（njk）</div>
@@ -425,15 +425,15 @@ async function removeVersion(): Promise<void> {
             </el-tab-pane>
             <el-tab-pane label="示例数据" name="sample">
               <div class="editor-toolbar">
-                <el-button v-if="editable(selected)" size="small" type="primary" @click="saveVersion('sample')">保存</el-button>
                 <span class="hint">JSON；预览渲染时作为数据填充</span>
+                <el-button v-if="editable(selected)" size="small" type="primary" class="push-right" @click="saveVersion('sample')">保存</el-button>
               </div>
               <MonacoEditor :model-value="sampleText" :path="`${selected.id}:sample`" language="json" :read-only="!editable(selected)" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
             </el-tab-pane>
             <el-tab-pane label="预览" name="preview">
               <div class="editor-toolbar">
-                <el-button size="small" type="success" plain :loading="rendering" @click="renderVersionPreview">渲染预览</el-button>
                 <span class="hint">html + css + 示例数据 → njk → juice → minify 单渲</span>
+                <el-button size="small" type="success" plain :loading="rendering" class="push-right" @click="renderVersionPreview">渲染预览</el-button>
               </div>
               <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
               <el-empty v-else description="点「渲染预览」查看单版本效果" :image-size="60" />
@@ -492,6 +492,8 @@ async function removeVersion(): Promise<void> {
 .detail-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; }
 .detail-tabs :deep(.el-tab-pane) { height: 100%; display: flex; flex-direction: column; }
 .editor-toolbar { display: flex; align-items: center; gap: 10px; flex: none; padding-bottom: 6px; }
+/* 保存/渲染预览类主按钮居右，描述与其他操作居左 */
+.editor-toolbar .push-right { margin-left: auto; }
 .hint { font-size: 12px; opacity: .6; }
 .meta-form { overflow: auto; flex: none; max-height: 40%; }
 .meta-form :deep(.el-form-item__label) { white-space: nowrap; }

@@ -1049,9 +1049,9 @@ async function confirmSaveAs(): Promise<void> {
             </el-tabs>
             <template v-if="activeTab">
               <div class="editor-toolbar">
-                <el-button size="small" type="primary" @click="saveCss(activeTab!)">保存</el-button>
-                <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
                 <span class="hint">外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</span>
+                <el-button size="small" type="primary" class="push-right" @click="saveCss(activeTab!)">保存</el-button>
+                <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
               </div>
               <MonacoEditor
                 :model-value="activeTab.content"
@@ -1084,7 +1084,7 @@ async function confirmSaveAs(): Promise<void> {
                 <el-radio-button value="form">表单</el-radio-button>
                 <el-radio-button value="data">数据</el-radio-button>
               </el-radio-group>
-              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveMeta">保存</el-button>
+              <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveMeta">保存</el-button>
             </div>
             <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="90px" class="meta-form">
               <el-form-item label="名称"><el-input v-model="form.name" :disabled="!canEdit" /></el-form-item>
@@ -1111,8 +1111,8 @@ async function confirmSaveAs(): Promise<void> {
               <el-tag v-if="sampleMode !== 'design' && !sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
               <el-tag v-else-if="sampleMode === 'design' && !sampleSchema.length" size="small" type="warning">尚无字段，点「新增字段」开始设计</el-tag>
               <span v-if="sampleMode === 'design'" class="hint">拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</span>
-              <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" @click="saveFields">保存字段定义</el-button>
-              <el-button v-else size="small" type="primary" :disabled="!canEdit" @click="saveSample">保存</el-button>
+              <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
+              <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
             </div>
             <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="sampleSchema" :readonly="!canEdit" />
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
@@ -1122,9 +1122,9 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
-              <el-button size="small" type="success" plain :loading="previewing" @click="renderComposePreview">刷新预览</el-button>
               <el-button size="small" type="primary" plain :disabled="!canEdit" @click="composeOpen = true">片段布局配置</el-button>
               <span class="hint">布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</span>
+              <el-button size="small" type="success" plain :loading="previewing" class="push-right" @click="renderComposePreview">刷新预览</el-button>
             </div>
             <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
             <el-empty
@@ -1135,15 +1135,15 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码">
             <div class="editor-toolbar">
-              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveSource">保存</el-button>
               <span class="hint">内联 css 也可直接写在 njk 的 &lt;style&gt; 内</span>
+              <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
             <MonacoEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式">
             <div class="editor-toolbar">
-              <el-button size="small" type="primary" :disabled="!canEdit" @click="saveStyle">保存</el-button>
               <span class="hint">内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</span>
+              <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>
             </div>
             <MonacoEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :read-only="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
           </el-tab-pane>
@@ -1274,6 +1274,8 @@ async function confirmSaveAs(): Promise<void> {
 .detail-tabs :deep(.el-tabs__content), .css-editor :deep(.el-tabs__content) { flex: 1; min-height: 0; }
 .detail-tabs :deep(.el-tab-pane), .css-editor :deep(.el-tab-pane) { height: 100%; display: flex; flex-direction: column; }
 .editor-toolbar { display: flex; align-items: center; gap: 10px; flex: none; padding-bottom: 6px; }
+/* 保存/刷新预览类主按钮居右，描述与其他操作居左 */
+.editor-toolbar .push-right { margin-left: auto; }
 /* EP radio-button 以 outline 画边框（不占布局，深色工具栏上被相邻元素覆盖出现左侧缺边）：
    改为真实 border + 独立圆角 chip，边框完整 */
 .editor-toolbar :deep(.el-radio-group) { gap: 6px; }

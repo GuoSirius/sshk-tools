@@ -286,8 +286,8 @@ function savePlacementData(): void {
       <!-- 右栏实时预览（步骤 3/4） -->
       <div v-if="step >= 3" class="right">
         <div class="pv-bar">
-          <el-button size="small" type="success" plain :loading="previewing" @click="refreshPreview">刷新预览</el-button>
           <span class="hint">草稿渲染（不落库）</span>
+          <el-button size="small" type="success" plain :loading="previewing" class="push-right" @click="refreshPreview">刷新预览</el-button>
         </div>
         <iframe v-if="previewHtml" class="pv" :srcdoc="previewHtml" />
         <el-empty v-else description="添加片段后自动预览" :image-size="70" />
@@ -323,6 +323,8 @@ function savePlacementData(): void {
 .layout-pane { height: 100%; overflow: auto; }
 .right { width: 40%; flex: none; display: flex; flex-direction: column; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; padding: 6px; min-width: 0; }
 .pv-bar { display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 6px; }
+/* 刷新预览居右，描述居左 */
+.pv-bar .push-right { margin-left: auto; }
 .pv { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }
 .hint { font-size: 12px; opacity: .6; }
 .slot-tag { margin-right: 6px; }
