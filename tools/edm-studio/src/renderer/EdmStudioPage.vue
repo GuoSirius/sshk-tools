@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { ToolPageLayout } from '@sshk/ui-kit'
+import { ToolPageLayout, provideToolId } from '@sshk/ui-kit'
 import ContentManagePage from './pages/ContentManagePage.vue'
 import MailsPage from './pages/MailsPage.vue'
 import { ensureLoaded } from './state'
@@ -13,7 +13,9 @@ import { ensureLoaded } from './state'
  * R24：原「系统内容」「自定义内容」两菜单合并为「内容管理」单页（双顶层树：自定义在上 / 系统自带在下），
  * 逻辑 100% 一致，仅 source（读写根与编辑门控）不同（详见 docs/.../EDM系统内容页改造与内容管理统一规划_v6.md §十一）。
  */
-const props = defineProps<{ menu?: string }>()
+const props = defineProps<{ menu?: string; toolId?: string }>()
+// toolId 唯一来源 = 宿主注入的 manifest.id；深层组件经 provide/inject 取用，杜绝字面量重复
+provideToolId(() => props.toolId ?? '')
 
 const tab = computed(() => props.menu ?? 'mails')
 const pages: Record<string, unknown> = {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { validateModel, type FieldDef } from './sample-schema'
-import { RichTextEditor } from '@sshk/rich-text'
+import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
+import { useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
-import { uploadImageFile } from './upload.js'
+import { createImageUploader } from './upload.js'
 
 /**
  * 示例数据表单渲染器（R15）：按 fields schema 渲染 10 类控件，实时校验标红。
@@ -25,6 +26,9 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: Record<string, unknown>): void }>()
 
 const errors = computed(() => validateModel(props.fields, props.modelValue))
+/** 上传钩子按宿主注入的 toolId 生成，与 ImageField 共用同一实现（C2 唯一注入点） */
+const toolId = useToolId()
+const uploader = computed<RichTextUploadHook>(() => createImageUploader(toolId.value))
 
 /** 分组分隔：group 与上一字段不同时插分隔条 */
 const rows = computed(() => {
@@ -111,7 +115,7 @@ function canNest(f: FieldDef): boolean {
             v-else-if="f.type === 'richtext'"
             :model-value="strVal(f.key)"
             :readonly="readonly"
-            :on-upload-image="uploadImageFile"
+            :on-upload-image="uploader"
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <!-- 单选 -->

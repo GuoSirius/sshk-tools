@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyDefaults, normalizeFields, validateModel } from './sample-schema'
+import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from './sample-schema'
 
 describe('normalizeFields', () => {
   it('丢弃缺 key / 未知 type 的项，归一化 options', () => {
@@ -100,5 +100,26 @@ describe('validateModel', () => {
     expect(validateModel(fields, { items: [{ name: 'a' }] })['items']).toBe('卡片至少 2 行')
     expect(validateModel(fields, { items: [{ name: 'a' }] })['items.0.name']).toBeUndefined()
     expect(validateModel(fields, { items: [] })['items']).toBe('卡片至少 2 行')
+  })
+})
+
+describe('parseYamlObject：空示例数据不再误报 YAML 错误（复核项 8）', () => {
+  it('空串 / 空白 / 纯注释 / null / 非字符串一律视为空模型', () => {
+    for (const text of ['', '   \n  ', '# 只有注释', 'null', '~', undefined, null, 42]) {
+      expect(parseYamlObject(text)).toEqual({})
+    }
+  })
+
+  it('合法键值映射正常解析', () => {
+    expect(parseYamlObject('title: 你好\nitems:\n  - a\n  - b\n')).toEqual({ title: '你好', items: ['a', 'b'] })
+  })
+
+  it('真正的语法错误仍然抛出，交调用方提示修正', () => {
+    expect(() => parseYamlObject('a: [1,\n')).toThrow()
+  })
+
+  it('顶层不是键值映射时给出明确原因，不包装成模糊的 YAML 问题', () => {
+    expect(() => parseYamlObject('- a\n- b\n')).toThrow('键值映射')
+    expect(() => parseYamlObject('just-a-string')).toThrow('键值映射')
   })
 })

@@ -7,6 +7,7 @@ settings:
 overrides:
   minimatch: ^11.0.1
   dompurify: '>=3.4.17'
+  fast-xml-parser: '>=5.12.0'
 
 importers:
 
@@ -2752,10 +2753,6 @@ packages:
 
   fast-xml-parser@5.12.1:
     resolution: {integrity: sha512-wR8dO/fx+z8C5exuem1e7BKOWvjsuzvjS/tvA/Xu3Z1zQqJGcXrPzXbcAiaMgp2KjreEROcTkmnnisrcmJ2hYQ==}
-    hasBin: true
-
-  fast-xml-parser@5.3.7:
-    resolution: {integrity: sha512-JzVLro9NQv92pOM/jTCR6mHlJh2FGwtomH8ZQjhFj/R29P2Fnj38OgPJVtcvYw6SuKClhgYuwUZf5b3rd8u2mA==}
     hasBin: true
 
   fdir@6.5.0:
@@ -6911,7 +6908,7 @@ snapshots:
       oauth-sign: 0.9.0
       performance-now: 2.1.0
       qs: 6.17.1
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
       tough-cookie: 4.1.4
       tunnel-agent: 0.6.0
 
@@ -7306,7 +7303,7 @@ snapshots:
 
   esdk-obs-nodejs@3.26.10(supports-color@7.2.0):
     dependencies:
-      fast-xml-parser: 5.3.7
+      fast-xml-parser: 5.12.1
       log4js: 6.9.1(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -7447,10 +7444,6 @@ snapshots:
       path-expression-matcher: 1.6.2
       strnum: 2.5.1
       xml-naming: 0.3.0
-
-  fast-xml-parser@5.3.7:
-    dependencies:
-      strnum: 2.5.1
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
@@ -8935,7 +8928,7 @@ snapshots:
 
   tunnel-agent@0.6.0:
     dependencies:
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   turndown@7.2.5:
     dependencies:

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { EmptyState, TimeText } from '@sshk/ui-kit'
+import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import {
@@ -22,6 +22,7 @@ const route = useRoute()
 const router = useRouter()
 const uploading = ref(false)
 const lastUpload = ref('')
+const toolId = useToolId()
 
 /** 页面内切视图：走路由（宿主菜单/高亮/URL 全同步），不再用 emit 补丁 */
 function navigateToGenerate(): void {
@@ -44,7 +45,7 @@ async function uploadArtifacts(): Promise<void> {
   uploading.value = true
   try {
     const results = await window.api.upload.batch(files.map((file) => ({
-      toolId: 'badge-studio',
+      toolId: toolId.value,
       name: file.split(/[\\/]/).pop() ?? file,
       size: 0,
       source: file,

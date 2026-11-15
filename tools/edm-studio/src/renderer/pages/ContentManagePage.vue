@@ -2,13 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
-import { EmptyState } from '@sshk/ui-kit'
+import { EmptyState, useToolId } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../SampleForm.vue'
 import FieldSchemaDesigner from '../FieldSchemaDesigner.vue'
 import ComposeEditor from '../ComposeEditor.vue'
 import type { PlacementItem, SlotDef } from '../ComposeEditor.vue'
-import { applyDefaults, normalizeFields, validateModel, type FieldDef } from '../sample-schema'
+import { applyDefaults, normalizeFields, parseYamlObject, validateModel, type FieldDef } from '../sample-schema'
 import { replaceFieldsInMeta } from '../meta-fields'
 import { api } from '../shared'
 import { uploadInlineImages } from '../upload.js'
@@ -207,6 +207,8 @@ const defaultExpandedKeys = computed<string[]>(() => {
 /** el-tree 的 default-expanded-keys 仅在首次渲染生效；tree 恒返回两个根（空骨架也会渲染），
  *  故等 content:load 数据就绪后再挂载树，否则数据到达后展开配置不会重新应用。 */
 const treeReady = ref(false)
+/** toolId 由宿主 :tool-id 注入，深层页面经 inject 取用，源码不硬编码 */
+const toolId = useToolId()
 
 const stats = computed(() => {
   const src: Source = selected.value?.data.source ?? 'system'
@@ -542,9 +544,9 @@ function savePlacementData(): void {
     data = { ...st.obj }
   } else {
     try {
-      data = (yaml.load(st.yamlText) as Record<string, unknown>) ?? {}
+      data = parseYamlObject(st.yamlText)
     } catch (err) {
-      ElMessage.error(`YAML 解析失败：${(err as Error).message}`)
+      ElMessage.error(`片段数据不是合法 YAML：${(err as Error).message}`)
       return
     }
   }
@@ -598,8 +600,9 @@ async function onNode(node: TreeNode): Promise<void> {
     // R15：schema 取版本 meta fields，缺省回退族 meta fields；有 schema 默认表单模式
     let parsedSample: Record<string, unknown> = {}
     try {
-      parsedSample = (yaml.load(sampleText.value) as Record<string, unknown>) ?? {}
+      parsedSample = parseYamlObject(sampleText.value)
     } catch {
+      // 空 / 非法 sample.yaml 都按空模型进入表单，不阻断编辑
       parsedSample = {}
     }
     const famPath = node.data.path.split('/').slice(0, 3).join('/')
@@ -631,16 +634,18 @@ async function readFamilyFields(famPath: string, source: Source): Promise<unknow
 function switchSampleMode(mode: 'form' | 'data' | 'design'): void {
   if (mode === sampleMode.value) return
   if (mode === 'design') { sampleMode.value = 'design'; return }
-  if (mode === 'data') sampleText.value = yaml.dump(sampleObj.value, { lineWidth: -1 })
+  if (mode === 'data') sampleText.value = yaml.dump(sampleObj.value ?? {}, { lineWidth: -1 })
   else {
+    // 复核项 8：空示例数据是合法初始状态，parseYamlObject 返回 {}，不再误报 YAML 问题
+    let parsed: Record<string, unknown>
     try {
-      const parsed = (yaml.load(sampleText.value) as Record<string, unknown>) ?? {}
-      sampleObj.value = applyDefaults(sampleSchema.value, parsed)
+      parsed = parseYamlObject(sampleText.value)
     } catch (err) {
-      ElMessage.error(`YAML 解析失败，请先修正语法：${(err as Error).message}`)
+      ElMessage.error(`示例数据不是合法 YAML：${(err as Error).message}`)
       sampleMode.value = 'data'
       return
     }
+    sampleObj.value = applyDefaults(sampleSchema.value, parsed)
   }
   sampleMode.value = mode
 }
@@ -669,14 +674,17 @@ function switchMetaMode(mode: 'form' | 'data'): void {
   if (mode === metaMode.value) return
   if (mode === 'data') metaText.value = yaml.dump(syncFormToRaw(), { lineWidth: -1 })
   else {
+    // 复核项 8：meta.yaml 为空时按空对象进入表单，不弹 YAML 错误
+    let parsed: Record<string, unknown>
     try {
-      metaRaw.value = (yaml.load(metaText.value) as Record<string, unknown>) ?? {}
-      fillForm(metaRaw.value)
-    } catch {
-      ElMessage.error('YAML 解析失败，请先修正语法')
+      parsed = parseYamlObject(metaText.value)
+    } catch (err) {
+      ElMessage.error(`元数据不是合法 YAML：${(err as Error).message}`)
       metaMode.value = 'data'
       return
     }
+    metaRaw.value = parsed
+    fillForm(parsed)
   }
   metaMode.value = mode
 }
@@ -689,7 +697,7 @@ async function saveMeta(): Promise<void> {
     if (metaMode.value === 'form') {
       out = yaml.dump(syncFormToRaw(), { lineWidth: -1 })
     } else {
-      yaml.load(metaText.value) // 语法校验，非法即抛
+      parseYamlObject(metaText.value) // 语法校验，非法即抛；空内容视为 {}
       out = metaText.value
     }
     await write(node.data.metaPath, out)
@@ -739,20 +747,20 @@ async function saveSample(): Promise<void> {
     sampleText.value = yaml.dump(sampleObj.value, { lineWidth: -1 })
   } else {
     try {
-      yaml.load(sampleText.value)
+      parseYamlObject(sampleText.value)
     } catch (err) {
-      ElMessage.error(`YAML 语法错误：${(err as Error).message}`)
+      ElMessage.error(`示例数据不是合法 YAML：${(err as Error).message}`)
       return
     }
   }
   try {
     // T8：把历史残留的内联 data: 图片上传为内容资源 URL，回写后再落盘 sample.yaml
     // （单张失败保留原内联图片，不阻断保存）
-    const uploaded = await uploadInlineImages(sampleText.value)
+    const uploaded = await uploadInlineImages(sampleText.value, toolId.value)
     if (uploaded !== sampleText.value) {
       sampleText.value = uploaded
       if (sampleMode.value === 'form') {
-        sampleObj.value = (yaml.load(uploaded) as Record<string, unknown>) ?? {}
+        sampleObj.value = parseYamlObject(uploaded)
       }
     }
     await write(node.data.samplePath, sampleText.value)

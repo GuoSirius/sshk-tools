@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { ToolPageLayout, ConfirmDialog } from '@sshk/ui-kit'
+import { ToolPageLayout, ConfirmDialog, provideToolId } from '@sshk/ui-kit'
 import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
 import {
@@ -20,6 +20,7 @@ import {
 const props = defineProps<{ menu?: string; toolId?: string }>()
 // toolId 单一来源 = manifest.id，经宿主目录裁决后以 prop 注入；源码不兜底硬编码
 toolId.value = props.toolId ?? ''
+provideToolId(() => props.toolId ?? '')
 
 const tab = computed(() => props.menu ?? 'generate')
 const pages: Record<string, unknown> = { generate: GeneratePage, posters: PostersPage }

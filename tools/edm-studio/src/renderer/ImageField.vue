@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
-import { uploadImageFile } from './upload.js'
+import { useToolId } from '@sshk/ui-kit'
+import { createImageUploader } from './upload.js'
 
 /**
  * 图片字段控件（R15 image / image-list）：支持「上传 + 预览 + URL 直填」。
@@ -17,6 +18,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
+const toolId = useToolId()
 
 function pick(): void {
   if (props.readonly || uploading.value) return
@@ -30,7 +32,7 @@ async function onFile(e: Event): Promise<void> {
   if (!file) return
   uploading.value = true
   try {
-    emit('update:modelValue', await uploadImageFile(file))
+    emit('update:modelValue', await createImageUploader(toolId.value)(file))
   } finally {
     uploading.value = false
   }
