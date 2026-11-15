@@ -28,6 +28,7 @@ import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
+import { UploadRuntime, type UploadRequest } from './upload'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -486,6 +487,21 @@ async function registerIpc(): Promise<void> {
       String(providerId ?? ''),
       typeof apiKey === 'string' && apiKey ? apiKey : undefined,
     ))
+
+  // ── R26 应用级上传（全局 profile + 工具覆盖；密钥只在主进程经 safeStorage 解析） ──
+  const uploads = new UploadRuntime({
+    services: services!,
+    onProgress: (p) => mainWindow?.webContents.send(IPC_CHANNELS.uploadProgress, p),
+  })
+  ipcMain.handle(IPC_CHANNELS.uploadSingle, (_event, req: UploadRequest) => uploads.single(req))
+  ipcMain.handle(IPC_CHANNELS.uploadBatch, (_event, reqs: UploadRequest[]) => uploads.batch(reqs))
+  ipcMain.handle(IPC_CHANNELS.uploadConfigGet, () => uploads.getConfig())
+  ipcMain.handle(IPC_CHANNELS.uploadConfigSet, (_event, raw: unknown) => uploads.setConfig(raw))
+  ipcMain.handle(IPC_CHANNELS.uploadProfiles, (_event, type?: 'remote' | 'cloud') =>
+    uploads.profiles(type === 'remote' || type === 'cloud' ? type : undefined))
+  ipcMain.handle(IPC_CHANNELS.uploadSecretSet, (_event, profileId: string, value: string) =>
+    uploads.setSecret(profileId, value))
+  ipcMain.handle(IPC_CHANNELS.uploadSecretState, () => uploads.secretState())
 
   // ── OS 能力（宿主提供） ──
   ipcMain.handle(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {

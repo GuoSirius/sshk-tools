@@ -18,6 +18,8 @@ export interface ToolConfigField {
   label: string
   type: ToolConfigFieldType
   options?: { label: string; value: string }[]
+  /** 动态选项源：从宿主能力实时拉取（如全局上传 profile 清单），避免 manifest 写死 */
+  optionsSource?: 'upload:remote' | 'upload:cloud' | 'upload:all'
   min?: number
   max?: number
   hint?: string

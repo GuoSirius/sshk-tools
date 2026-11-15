@@ -75,6 +75,9 @@ importers:
       '@sshk/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
+      '@sshk/upload-core':
+        specifier: workspace:*
+        version: link:../../packages/upload-core
       dayjs:
         specifier: latest
         version: 1.11.23
@@ -309,12 +312,15 @@ importers:
       '@element-plus/icons-vue':
         specifier: latest
         version: 2.3.2(vue@3.5.45(typescript@6.0.3))
-      '@guolao/vue-monaco-editor':
-        specifier: latest
-        version: 1.6.0(monaco-editor@0.57.0)(vue@3.5.45(typescript@6.0.3))
+      '@sshk/code-editor':
+        specifier: workspace:*
+        version: link:../../packages/code-editor
       '@sshk/repository':
         specifier: workspace:*
         version: link:../../packages/repository
+      '@sshk/rich-text':
+        specifier: workspace:*
+        version: link:../../packages/rich-text
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -327,9 +333,6 @@ importers:
       '@unocss/preset-wind3':
         specifier: latest
         version: 66.13.0
-      '@wangeditor/editor':
-        specifier: latest
-        version: 5.1.23
       ajv:
         specifier: latest
         version: 8.20.0
@@ -348,12 +351,6 @@ importers:
       juice:
         specifier: latest
         version: 12.2.3
-      monaco-editor:
-        specifier: latest
-        version: 0.57.0
-      monaco-yaml:
-        specifier: latest
-        version: 5.5.1(monaco-editor@0.57.0)
       nunjucks:
         specifier: latest
         version: 3.2.4
@@ -407,6 +404,28 @@ importers:
 
   tools/template-tool:
     dependencies:
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@sshk/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
+      element-plus:
+        specifier: latest
+        version: 2.14.8(vue@3.5.45(typescript@6.0.3))
+      vue:
+        specifier: latest
+        version: 3.5.45(typescript@6.0.3)
+    devDependencies:
+      typescript:
+        specifier: '6'
+        version: 6.0.3
+
+  tools/upload-config:
+    dependencies:
+      '@element-plus/icons-vue':
+        specifier: latest
+        version: 2.3.2(vue@3.5.45(typescript@6.0.3))
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared

@@ -1,0 +1,43 @@
+{
+  "id": "upload-config",
+  "name": "上传配置",
+  "description": "应用级上传能力：本地默认目录、远程(ftp/sftp) 多 profile、云多 profile、全局校验；密钥经 safeStorage 加密，不下发渲染层",
+  "category": "系统能力",
+  "tags": [
+    "上传",
+    "profile",
+    "安全存储"
+  ],
+  "icon": "auto",
+  "entryRoute": "profiles",
+  "enabled": true,
+  "visibility": "desktop",
+  "configLayout": "single",
+  "plugin": {
+    "source": "builtin",
+    "main": "",
+    "renderer": "src/renderer/UploadConfigPage.vue",
+    "channels": []
+  },
+  "dependsOn": [],
+  "configDeps": [],
+  "requiredGrant": "",
+  "menus": [
+    {
+      "id": "profiles",
+      "label": "上传配置"
+    }
+  ],
+  "configGroups": [],
+  "defaults": {},
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": {
+      "api": "^1.0",
+      "capabilities": []
+    },
+    "sandbox": "utility",
+    "ipcAllowlist": []
+  }
+}

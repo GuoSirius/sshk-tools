@@ -39,6 +39,16 @@ export const IPC_CHANNELS = {
   /** 应用级 Provider 共享：所有工具只读元信息（绝不含密钥），按 id 调用 */
   llmProviders: 'llm:providers',
   llmProviderModels: 'llm:providerModels',
+  /** R26 应用级上传能力：全局 profile 在 main 解析，密钥经 safeStorage，渲染层只拿元信息 */
+  uploadSingle: 'upload:single',
+  uploadBatch: 'upload:batch',
+  /** 主进程 → 渲染层：单文件 / 批量进度（沿用 update:state 推送范式） */
+  uploadProgress: 'upload:progress',
+  uploadConfigGet: 'upload:config:get',
+  uploadConfigSet: 'upload:config:set',
+  uploadProfiles: 'upload:profiles',
+  uploadSecretSet: 'upload:secret:set',
+  uploadSecretState: 'upload:secret:state',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

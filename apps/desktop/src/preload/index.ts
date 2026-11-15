@@ -82,6 +82,24 @@ const api = {
     providerModels: (providerId: string, apiKey?: string): Promise<string[]> =>
       invoke(IPC_CHANNELS.llmProviderModels, providerId, apiKey),
   },
+  /** R26 应用级上传：全局 profile / 密钥只在 main 解析，渲染层只传文件内容与工具级覆盖项 */
+  upload: {
+    single: (req: unknown): Promise<{ url: string; key?: string; name: string }> =>
+      invoke(IPC_CHANNELS.uploadSingle, req),
+    batch: (reqs: unknown[]): Promise<{ url: string; key?: string; name: string }[]> =>
+      invoke(IPC_CHANNELS.uploadBatch, reqs),
+    onProgress: (callback: (payload: unknown) => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.uploadProgress, (_event, payload) => callback(payload))
+    },
+    getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadConfigGet),
+    setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadConfigSet, cfg),
+    profiles: (type?: 'remote' | 'cloud'): Promise<unknown[]> =>
+      invoke(IPC_CHANNELS.uploadProfiles, type),
+    setSecret: (profileId: string, value: string): Promise<boolean> =>
+      invoke(IPC_CHANNELS.uploadSecretSet, profileId, value),
+    secretState: (): Promise<Record<string, boolean>> =>
+      invoke(IPC_CHANNELS.uploadSecretState),
+  },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
       invoke(IPC_CHANNELS.osPickFile, opts),

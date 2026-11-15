@@ -78,115 +78,63 @@
     },
     {
       "id": "config-upload",
-      "label": "本地上传",
+      "label": "上传通道",
       "fields": [
         {
-          "key": "upload.mode",
-          "label": "上传方式",
+          "key": "upload.targetType",
+          "label": "目标类型",
           "type": "select",
           "options": [
             { "value": "local", "label": "本地目录" },
-            { "value": "ftp", "label": "FTP" },
-            { "value": "sftp", "label": "SFTP" }
+            { "value": "remote", "label": "远程（FTP / SFTP）" },
+            { "value": "cloud", "label": "云存储" }
           ],
-          "hint": "生成产物推送到哪里"
+          "hint": "连接信息在「上传配置」工具里统一预设，这里只选目标"
         },
         {
-          "key": "upload.localDir",
-          "label": "本地目录",
-          "type": "dir",
-          "hint": "mode=本地目录时生效，生成文件落盘位置"
-        },
-        {
-          "key": "upload.host",
-          "label": "主机地址",
-          "type": "string",
-          "hint": "FTP/SFTP 主机，如 192.168.1.10"
-        },
-        {
-          "key": "upload.port",
-          "label": "端口",
-          "type": "number",
-          "min": 1,
-          "max": 65535,
-          "hint": "FTP 默认 21，SFTP 默认 22"
-        },
-        {
-          "key": "upload.username",
-          "label": "用户名",
-          "type": "string"
-        },
-        {
-          "key": "upload.password",
-          "label": "密码",
-          "type": "string",
-          "hint": "敏感信息，建议配合密钥托管"
-        },
-        {
-          "key": "upload.remoteDir",
-          "label": "远程目录",
-          "type": "string",
-          "hint": "FTP/SFTP 根目录，如 /edm/out"
-        },
-        {
-          "key": "upload.timeoutMs",
-          "label": "超时(ms)",
-          "type": "number",
-          "min": 1000,
-          "max": 60000,
-          "hint": "单次上传超时"
-        }
-      ]
-    },
-    {
-      "id": "config-cloud",
-      "label": "云配置",
-      "fields": [
-        {
-          "key": "cloud.provider",
-          "label": "云厂商",
+          "key": "upload.profileId",
+          "label": "全局配置",
           "type": "select",
-          "options": [
-            { "value": "aliyun-oss", "label": "阿里云 OSS" },
-            { "value": "tencent-cos", "label": "腾讯云 COS" },
-            { "value": "aws-s3", "label": "AWS S3" },
-            { "value": "qiniu", "label": "七牛 Kodo" }
-          ],
-          "hint": "生成产物发布的对象存储"
+          "optionsSource": "upload:all",
+          "hint": "留空则使用该类型的默认 profile；下拉来自应用级上传配置"
         },
         {
-          "key": "cloud.region",
-          "label": "地域",
+          "key": "upload.overrides.localDir",
+          "label": "本地目录覆盖",
+          "type": "dir",
+          "hint": "目标类型=本地目录时生效，留空沿用全局默认目录"
+        },
+        {
+          "key": "upload.overrides.remoteFolder",
+          "label": "远端位置覆盖",
           "type": "string",
-          "hint": "如 oss-cn-hangzhou / ap-guangzhou"
+          "hint": "如 /2026/campaign；远端服务器上的位置，不是本机目录"
         },
         {
-          "key": "cloud.endpoint",
-          "label": "Endpoint",
+          "key": "upload.overrides.bucket",
+          "label": "Bucket 覆盖",
           "type": "string",
-          "hint": "如 oss-cn-hangzhou.aliyuncs.com"
+          "hint": "云存储时可选覆盖"
         },
         {
-          "key": "cloud.bucket",
-          "label": "Bucket",
-          "type": "string"
-        },
-        {
-          "key": "cloud.accessKeyId",
-          "label": "AccessKey ID",
-          "type": "string"
-        },
-        {
-          "key": "cloud.accessKeySecret",
-          "label": "AccessKey Secret",
+          "key": "upload.overrides.prefix",
+          "label": "对象前缀",
           "type": "string",
-          "hint": "敏感信息，建议配合密钥托管"
+          "hint": "如 mail/，云存储对象 key 前缀"
         },
         {
-          "key": "cloud.baseUrl",
-          "label": "访问域名",
+          "key": "upload.validation.accept",
+          "label": "允许扩展名",
           "type": "string",
-          "hint": "CDN / 自定义访问域名，用于拼接产物 URL"
+          "hint": "逗号分隔，如 .png,.jpg；只能比全局更严，不能放宽"
+        },
+        {
+          "key": "upload.validation.maxSize",
+          "label": "大小上限(字节)",
+          "type": "number",
+          "min": 0,
+          "max": 104857600,
+          "hint": "0 = 沿用全局上限；工具只能设得更小"
         }
       ]
     }
@@ -205,6 +153,12 @@
       ],
       "defaultFileName": "edm.html",
       "openAfterGenerate": false
+    },
+    "upload": {
+      "targetType": "local",
+      "profileId": "",
+      "overrides": {},
+      "validation": {}
     }
   },
   "package": {

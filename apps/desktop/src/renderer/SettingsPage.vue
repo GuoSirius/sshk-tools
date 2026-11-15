@@ -16,6 +16,8 @@ const { byId } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
 const values = reactive<Record<string, unknown>>({})
 const depValues = reactive<Record<string, unknown>>({})
+/** 动态选项：manifest 标 optionsSource 的字段从宿主能力实时拉取（如全局上传 profile） */
+const dynamicOptions = reactive<Record<string, { label: string; value: string }[]>>({})
 const saving = ref(false)
 const activeTab = ref('')
 const layout = computed(() => props.layout ?? 'single')
@@ -62,6 +64,19 @@ async function load(): Promise<void> {
     // fallbackKey：值为空时展示生效值（如「默认 Provider」← 应用激活 Provider）
     if ((values[field.key] ?? '') === '' && field.fallbackKey) {
       values[field.key] = await window.api.config.get(field.fallbackKey)
+    }
+    if (field.optionsSource?.startsWith('upload:')) {
+      const kind = field.optionsSource === 'upload:remote' ? 'remote'
+        : field.optionsSource === 'upload:cloud' ? 'cloud' : undefined
+      try {
+        const list = await window.api.upload.profiles(kind)
+        dynamicOptions[field.key] = [
+          { label: '（跟随全局默认）', value: '' },
+          ...list.map((p) => ({ label: p.label, value: p.id })),
+        ]
+      } catch {
+        dynamicOptions[field.key] = [{ label: '（上传能力未就绪）', value: '' }]
+      }
     }
   }
   for (const dep of tool.value?.configDeps ?? []) {
@@ -153,8 +168,8 @@ watch(() => props.section, focusSection, { immediate: true })
                 {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
               </el-button>
             </div>
-            <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px">
-              <el-option v-for="opt in field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+            <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px" filterable clearable>
+              <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
             <el-input v-else v-model="values[field.key]" style="width: 260px" />
             <span v-if="field.hint" :class="['hint', { 'hint-inline': field.type === 'boolean' }]">{{ field.hint }}</span>

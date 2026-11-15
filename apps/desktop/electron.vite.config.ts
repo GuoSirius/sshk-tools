@@ -46,10 +46,18 @@ const preloadAlias: Alias[] = [
 // 构建期原生二进制（@oxc-parser 等）因此永远进不了包（mac universal 曾因此失败）。
 const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'electron-updater']
 
+/**
+ * ssh2 的 optional 原生加速模块 cpu-features 在打包环境没有编译产物（allowBuilds:false），
+ * 而 ssh2/lib/protocol/constants.js 用 try/catch 包裹 require('cpu-features')()，
+ * 属可选探测。用构建期 shim 替换包名，让 rolldown 不再静态解析缺失的 .node 文件，
+ * 运行时由 ssh2 自己回退纯 JS 探测（SFTP 能力不受影响）。
+ */
+const cpuFeaturesStub = fileURLToPath(new URL('./src/main/stubs/cpu-features.cjs', import.meta.url))
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
-    resolve: { alias: sshkAlias },
+    resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是

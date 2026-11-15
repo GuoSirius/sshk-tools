@@ -97,6 +97,17 @@ interface Window {
       /** 按 Provider id 查 /models；不落盘密钥 */
       providerModels(providerId: string, apiKey?: string): Promise<string[]>
     }
+    /** R26 应用级上传能力（全局 profile / safeStorage 密钥不下发） */
+    upload: {
+      single(req: { toolId?: string; name: string; size: number; mime?: string; source?: string; dataUrl?: string }): Promise<{ url: string; key?: string; name: string }>
+      batch(reqs: { toolId?: string; name: string; size: number; mime?: string; source?: string; dataUrl?: string }[]): Promise<{ url: string; key?: string; name: string }[]>
+      onProgress(callback: (payload: { name: string; percent: number; status: string; error?: string }) => void): void
+      getConfig(): Promise<import('@sshk/shared').UploadGlobalConfig>
+      setConfig(cfg: unknown): Promise<import('@sshk/shared').UploadGlobalConfig>
+      profiles(type?: 'remote' | 'cloud'): Promise<import('@sshk/shared').UploadProfileOption[]>
+      setSecret(profileId: string, value: string): Promise<boolean>
+      secretState(): Promise<Record<string, boolean>>
+    }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>
       pickDir(): Promise<string>

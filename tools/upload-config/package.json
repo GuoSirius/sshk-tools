@@ -1,0 +1,27 @@
+{
+  "name": "@sshk/upload-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 上传配置：本地默认目录、远程(ftp/sftp) 多 profile、云多 profile、全局校验与 safeStorage 密钥",
+  "exports": {
+    ".": "./src/index.ts",
+    "./renderer": "./src/renderer/UploadConfigPage.vue"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
