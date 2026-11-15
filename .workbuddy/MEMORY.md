@@ -69,3 +69,13 @@
 - 工具展示覆盖（改名等）存 settings `app.toolOverrides`，跨升级保留。
 - pnpm 配置（overrides 等）统一落 `pnpm-workspace.yaml`，不放 package.json。
 
+## 应用级共享能力（R26 上传 / R27 编辑器，2026-11-15 落地）
+- **分层**：`packages/upload-core` 是 main 进程能力包；`packages/code-editor` / `packages/rich-text` 是渲染层组件包，二者互不 import。富文本图片上传是唯一交汇点，收敛为 `RichTextUploadHook = (file: File) => Promise<string>` 回调，由工具侧注入（EDM `renderer/upload.ts`）。
+- **密钥红线**：全局配置 `app.upload.*` 存 settings.json（不含密钥），profile 密钥按 `app:tool:upload-config:<id>` 存 secrets.bin（safeStorage）；`upload:secret:state` 只回布尔，绝不回明文。
+- **校验语义**：`mergeValidation` = 扩展名取交集 / 大小取更小值；**工具未设限的字段必须是 `undefined`**，传空数组或 0 会变成「放宽」。纯函数在 `packages/shared/src/upload-config.ts`。
+- **configGroup 路径字段**：`check:contract` 要求含 dir/path/目录/路径/file/文件 的字段用 `dir`/`file` 类型；远端服务器位置不是本机目录 → 字段名改 `remoteFolder`（string），main 侧兼容 `remotePath`/`remoteFolder` 两键。
+- **构建期坑（rolldown）**：`ssh2` 的 optional 依赖 `cpu-features` 会静态 require 缺失的 `.node` 文件，导致 `apps/desktop build` 失败。已在 `electron.vite.config.ts` 把 `cpu-features` alias 到 `apps/desktop/src/main/stubs/cpu-features.cjs`（抛错函数），靠 ssh2 的 try/catch 回退纯 JS。新增 Node 侧依赖声明在 packages 层即可（会被内联进 main bundle），不要加到 `apps/desktop/package.json` 变成 external。
+- **新 workspace 包**：cph 门禁的 `pnpm -C apps/desktop build` 会触发 `verifyDepsBeforeRun` 自动建 `<包>/node_modules` 链接并同步 `pnpm-lock.yaml`；因此 `vue-tsc` 要放在 build 之后重跑，否则新包报「找不到模块」。这不是 AI 主动 install，符合用户规则 #1。
+- **vue-tsc 坑**：深层 `v-for` 嵌 `v-model` 会丢作用域（`Cannot find name 'item'`）/ 把 `reactive` 误判成 ref（`.value` 不存在）。解法：容器统一用 `ref`，把深层表单抽成子组件。
+- **R28 CSS**：用户否定「就近自动全收」为主机制。现为源码显式 `<link>` + 逻辑 URI（`@shared`/`@root`/`@system`/`@custom`/`./css`），禁 `..`，head 提前去重注入；无 link 时回退就近链兼容存量。实现在 `tools/edm-studio/src/core/css-refs.ts`。
+
