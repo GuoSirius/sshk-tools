@@ -165,8 +165,8 @@ function brandNode(b: any, source: Source): TreeNode {
     data: { kind: 'brand', source, path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
       cssDirNode(b.code, b.css ?? [], id, source),
-      catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`),
       catNode('template', '模板', b.templateCss ?? [], b.templates ?? [], `${b.code}/template/meta.yaml`),
+      catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`),
     ],
   }
 }
@@ -843,6 +843,7 @@ const menuItems = computed<MenuItem[]>(() => {
     items.push({ key: 'newVersion', label: '新建版本' })
     items.push(node.data.cat === 'fragment' ? { key: 'newFragmentFamily', label: '新建片段族（同级）' } : { key: 'newTemplateFamily', label: '新建模板族（同级）' })
   }
+  if (k === 'version') items.push({ key: 'newVersion', label: '新建版本（同级）' })
   if (k === 'cssDir') items.push({ key: 'newFile', label: '新建样式' })
   return items
 })
@@ -1122,13 +1123,13 @@ async function confirmSaveAs(): Promise<void> {
         ElMessage.error(`版本目录「${cleanName}」已存在`)
         return
       }
-      await write(`${dst}/meta.yaml`, await read(`${node.data.path}/meta.yaml`, fromSource), origin)
-      const sample = await read(node.data.samplePath ?? '', fromSource)
-      if (sample !== '') await write(`${dst}/sample.yaml`, sample, origin)
-      const srcBase = basename(node.data.sourcePath ?? '')
-      if (srcBase) await write(`${dst}/${srcBase}`, await read(node.data.sourcePath ?? '', fromSource), origin)
-      const cssChild = node.children?.find((c) => c.kind === 'cssDir')
-      for (const f of cssChild?.data.cssFiles ?? []) await write(`${dst}/css/${f}`, await read(`${node.data.path}/css/${f}`, fromSource), origin)
+      // 复用该版本的全部文件 + css 目录（递归列出，含 css/ 子目录与任意附加文件），到新位置后稍作修改即可成型
+      const files = (await api<string[]>('content:listDir', { source: fromSource, dir: node.data.path })) ?? []
+      for (const rel of files) {
+        const content = await read(`${node.data.path}/${rel}`, fromSource)
+        if (content === null) continue
+        await write(`${dst}/${rel}`, content, origin)
+      }
     } else if (node.kind === 'cssDir') {
       // css 目录另存为 = 目录下文件整体复制到目标 css 目录（目录名恒为 css，不建子目录）
       for (const f of node.data.cssFiles ?? []) await pasteFileInto(target, f, `${node.data.path}/${f}`, origin, fromSource)

@@ -45,7 +45,7 @@ const ACTIONS = new Set([
   'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
   'system:derive',
   'content:load', 'content:render', 'content:readFile',
-  'content:writeFile', 'content:rename', 'content:remove',
+  'content:writeFile', 'content:rename', 'content:remove', 'content:listDir',
 ])
 
 /** 系统内容文件允许的扩展名（白名单防误写垃圾文件；css 文件名随意） */
@@ -113,9 +113,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
   /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（按部署形态，不与系统根同位置） */
   function resolveContentRoot(source: string): string {
     if (source === 'custom') {
-      if (app.isPackaged) return path.join(app.getPath('userData'), 'edm-custom')
-      // 外置安装（dev）：与系统根（tools/edm-studio/assets/edm）同级 → assets/edm-custom
-      return path.resolve(resolveEdmRoot(), '../edm-custom')
+      if (app.isPackaged) return path.join(app.getPath('userData'), 'custom-edm')
+      // 外置安装（dev）：与系统根（tools/edm-studio/assets/edm）同级 → assets/custom-edm
+      return path.resolve(resolveEdmRoot(), '../custom-edm')
     }
     return resolveEdmRoot()
   }
@@ -638,6 +638,30 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         }
         if (exists) await fs.rm(abs, { recursive: true, force: true })
         return true
+      }
+      case 'content:listDir': {
+        const source = str(data, 'source') === 'custom' ? 'custom' : 'system'
+        if (source === 'system') assertSystemEditable()
+        const root = resolveContentRoot(source)
+        const dir = str(data, 'dir').replace(/[\\/]+/g, '/').replace(/^\/+|\/+$/g, '')
+        const abs = confine(root, dir)
+        type DirEnt = { name: string; isDirectory(): boolean; isFile(): boolean }
+        const out: string[] = []
+        const walk = async (rel: string): Promise<void> => {
+          let entries: DirEnt[]
+          try {
+            entries = await fs.readdir(path.resolve(abs, rel), { withFileTypes: true })
+          } catch {
+            return
+          }
+          for (const e of entries) {
+            const childRel = rel ? `${rel}/${e.name}` : e.name
+            if (e.isDirectory()) await walk(childRel)
+            else if (e.isFile()) out.push(childRel)
+          }
+        }
+        await walk('')
+        return out
       }
       case 'content:render': {
         const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
