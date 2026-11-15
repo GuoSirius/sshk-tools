@@ -124,6 +124,7 @@ docs/
 | **D46** | **密钥标识校验纯函数化** | `app:tool:<id>:<name>` 标识抽出 `secret-ids.ts` 并放宽为大小写/下划线/连字符；修掉驼峰 `visionApiKey` 被判非法导致 Badge 加载即报错，补 3 个回归单测 |
 | **D47** | **模型预设与真实模型列表下拉** | 常用 OpenAI 兼容端点（含 Agnes AI `/v1`）由 `model-console` manifest 自带，用户只填 Key；模型名 `el-select allow-create` + 「拉取模型列表」真实请求 `/models`；保存前可用临时 key 探测且不落盘；预设不含任何密钥 |
 | **D48** | **IDE 项目归属收口** | 三套 tsconfig 全 0 错误即证明代码无误；根 `tsconfig.json` 刻意排除 apps，让 `apps/desktop/tsconfig.json` 独占 `.vue`；显式 `types: ["node","vite/client"]`；新增 `electron` paths；去掉反向作用的 Volar takeover 设置；`cspell.json` 消除拼写波浪线；换电脑后须按架构文档 §7.3 重载窗口 / 切工作区 TS 版本 / 重启 TS Server |
+| **D49** | **创建工具向导 + 开发指南 + 清单表单化** | 骨架生成单一事实源 @sshk/shared/tool-skeleton（预览=落盘）；dev:toolCreate 主进程落盘（目录冲突拒绝）；双入口仅 dev 可见（更多下拉 + 设置抽屉）；清单编辑器 configGroups/configDeps/defaults/channels/dependsOn 全表单化 + JSON 预览 tab；指南 docs/02-architecture/工具开发指南.md |
 | **D49** | **依赖选型反转（强化）** | **推翻旧「优先不新增依赖」倾向**：设计方案时**优先使用成熟第三方 / npm 包，不造轮子**；图标、字体、日期、工具库等常见需求先查成熟包。`@element-plus/icons-vue` 与 **Font Awesome**（`@fortawesome/fontawesome-free`）已批准直接用；仅零依赖校验脚本 / icon 生成脚本等无合适包时自研（与 D30 同源，措辞强化） |
 | **D50** | **UI 视觉铁律** | **后续所有界面开发，能用图标处尽量用图标**（按钮 / 状态 / 操作列等）；界面须**美观大方、吸引用户、增强视觉体验**，不将就纯文字或裸箭头（`↓`/`▾` 等一律换图标库）。触发：自动更新按钮曾用 Unicode `↓` 被纠正 |
 
