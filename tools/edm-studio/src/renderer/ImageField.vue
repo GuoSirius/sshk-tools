@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
+import { uploadImageFile } from './upload.js'
 
 /**
- * 图片字段控件（R15 image / image-list）：支持「本地上传 + 预览 + URL 直填」。
- * - 上传：隐藏的 <input type=file> 触发 FileReader 读为 dataURL，回填 modelValue，可离线预览、随表单 JSON 持久化。
- * - 预览：el-image 缩略图 + 点击放大（preview-src-list）。
- * - URL 直填：上传通道（local/云）接入后，可改为真实上传并回填服务端 URL，本控件向后兼容。
+ * 图片字段控件（R15 image / image-list）：支持「上传 + 预览 + URL 直填」。
+ * B7/T7：本地文件不再转 dataURL 持久保存，改走应用级共享上传通道，
+ * 回填服务端 URL（local=file://、remote=可访问地址、cloud=对象 URL）。
+ * 上传未配置 / 失败时由 uploadImageFile 回退 dataURL，离线编辑不阻断。
  */
 const props = withDefaults(
   defineProps<{ modelValue?: string; readonly?: boolean }>(),
@@ -15,21 +16,24 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
 
 function pick(): void {
-  if (props.readonly) return
+  if (props.readonly || uploading.value) return
   fileInput.value?.click()
 }
 
-function onFile(e: Event): void {
+async function onFile(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = () => emit('update:modelValue', String(reader.result))
-    reader.readAsDataURL(file)
-  }
   input.value = '' // 重置，允许重复选同一文件
+  if (!file) return
+  uploading.value = true
+  try {
+    emit('update:modelValue', await uploadImageFile(file))
+  } finally {
+    uploading.value = false
+  }
 }
 </script>
 
@@ -43,7 +47,7 @@ function onFile(e: Event): void {
       :preview-src-list="[modelValue]"
       preview-teleported
     />
-    <el-button v-if="!readonly" size="small" :icon="Upload" @click="pick">上传</el-button>
+    <el-button v-if="!readonly" size="small" :icon="Upload" :loading="uploading" @click="pick">上传</el-button>
     <el-input
       :model-value="modelValue"
       placeholder="图片 URL，或点「上传」选本地图片"

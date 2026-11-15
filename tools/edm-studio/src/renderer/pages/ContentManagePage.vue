@@ -11,6 +11,7 @@ import type { PlacementItem, SlotDef } from '../ComposeEditor.vue'
 import { applyDefaults, normalizeFields, validateModel, type FieldDef } from '../sample-schema'
 import { replaceFieldsInMeta } from '../meta-fields'
 import { api } from '../shared'
+import { uploadInlineImages } from '../upload.js'
 
 /**
  * 系统内容页（R12–R14 效果版）：
@@ -745,6 +746,15 @@ async function saveSample(): Promise<void> {
     }
   }
   try {
+    // T8：把历史残留的内联 data: 图片上传为内容资源 URL，回写后再落盘 sample.yaml
+    // （单张失败保留原内联图片，不阻断保存）
+    const uploaded = await uploadInlineImages(sampleText.value)
+    if (uploaded !== sampleText.value) {
+      sampleText.value = uploaded
+      if (sampleMode.value === 'form') {
+        sampleObj.value = (yaml.load(uploaded) as Record<string, unknown>) ?? {}
+      }
+    }
     await write(node.data.samplePath, sampleText.value)
     ElMessage.success('示例数据已保存')
     await renderPreview(node)

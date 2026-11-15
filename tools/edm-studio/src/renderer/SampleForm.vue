@@ -3,13 +3,15 @@ import { computed } from 'vue'
 import { validateModel, type FieldDef } from './sample-schema'
 import { RichTextEditor } from '@sshk/rich-text'
 import ImageField from './ImageField.vue'
+import { uploadImageFile } from './upload.js'
 
 /**
  * 示例数据表单渲染器（R15）：按 fields schema 渲染 10 类控件，实时校验标红。
  * 递归：list 行内渲染子 SampleForm（depth 限 3 层防套娃）。
  * richtext 已接入 wangEditor（@wangeditor/editor core 直接驱动，绕开 editor-for-vue 的 Vue2 版本陷阱）。
- * image/image-list 已支持「本地上传 + 预览 + URL 直填」（ImageField）：当前上传走 dataURL 离线预览，
- * 待上传通道（local/云）接入后改为真实上传并回填服务端 URL，本控件向后兼容。
+ * image/image-list 已支持「上传 + 预览 + URL 直填」（ImageField）：B7 起走应用级上传通道并回填服务端 URL，
+ * 通道未配置 / 上传失败时回退 dataURL，离线编辑不阻断。
+ * richtext 的 onUploadImage 与 ImageField 共用工具侧同一个注入实现（C2 唯一注入点）。
  */
 const props = withDefaults(
   defineProps<{
@@ -109,6 +111,7 @@ function canNest(f: FieldDef): boolean {
             v-else-if="f.type === 'richtext'"
             :model-value="strVal(f.key)"
             :readonly="readonly"
+            :on-upload-image="uploadImageFile"
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <!-- 单选 -->
