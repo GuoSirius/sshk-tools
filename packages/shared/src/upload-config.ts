@@ -5,8 +5,9 @@
  * 但绝不能把 upload-core 的 Node 侧依赖（basic-ftp / ssh2 / ali-oss）拖进渲染 bundle。
  * 本文件不 import 任何 Node 模块，profile 里也**不含密钥**——密钥只存 safeStorage。
  */
+import { isUploadCloudVendor, type UploadCloudVendor } from './upload-vendors'
+
 export type UploadTargetType = 'local' | 'remote' | 'cloud'
-export type UploadCloudVendor = 'aliyun-oss' | 'tencent-cos' | 'aws-s3' | 'qiniu'
 
 /** 远程 profile：FTP / SFTP 合并，用 protocol 区分 */
 export interface UploadRemoteProfile {
@@ -21,7 +22,7 @@ export interface UploadRemoteProfile {
   baseUrl?: string
 }
 
-/** 云 profile：可同云多账号、不同云混排；首期仅 aliyun-oss 有 Provider 实现 */
+/** 云 profile：可同云多账号、不同云混排；厂商清单唯一事实源见 upload-vendors.ts */
 export interface UploadCloudProfile {
   id: string
   name: string
@@ -110,8 +111,7 @@ export function normalizeUploadConfig(raw: unknown): UploadGlobalConfig {
     return [{
       id: str(p['id']),
       name: str(p['name'], str(p['id'])),
-      provider: (provider === 'tencent-cos' || provider === 'aws-s3' || provider === 'qiniu'
-        ? provider : 'aliyun-oss') as UploadCloudVendor,
+      provider: isUploadCloudVendor(provider) ? provider : 'aliyun-oss',
       region: str(p['region']),
       endpoint: str(p['endpoint']),
       bucket: str(p['bucket']),

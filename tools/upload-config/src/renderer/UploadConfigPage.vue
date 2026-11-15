@@ -14,6 +14,7 @@ import { ToolPageLayout } from '@sshk/ui-kit'
 import {
   DEFAULT_UPLOAD_CONFIG,
   newProfileId,
+  uploadVendorMeta,
   type UploadCloudProfile,
   type UploadGlobalConfig,
   type UploadRemoteProfile,
@@ -24,7 +25,8 @@ import CloudProfileForm from './CloudProfileForm.vue'
 /**
  * T6 上传配置工具（应用级全局配置）。
  * 与工具级「只选 profile + 覆盖项」相对：这里维护连接信息本体，密钥单独走 safeStorage，
- * 页面只显示「已配置 / 未配置」，绝不回显或落明文到 settings.json。
+ * 列表只显示「已配置 / 未配置」，明文永不下发；用户主动点「查看」时才按 id 回显（N3），
+ * 且明文绝不写进 settings.json。每个 profile 有独立「测试连接」（N4），可用未保存的表单值。
  * profile 表单拆成子组件：避免深层 v-for + v-model 让 vue-tsc 丢失作用域。
  */
 defineProps<{ menu?: string; toolId?: string }>()
@@ -38,9 +40,47 @@ const expanded = ref('')
 const saving = ref(false)
 const testing = ref(false)
 const progress = ref('')
+/** N4：每个 profile 各自的测试状态与结果，互不覆盖 */
+const testingId = ref('')
+const testResults = ref<Record<string, string>>({})
 
 function setSecretInput(id: string, value: string): void {
   secretInputs.value[id] = value
+}
+
+/** N3：复用 llm:getApiKey 范式——用户主动点「查看」才按 id 取回明文并填入密码框 */
+async function revealSecret(id: string): Promise<void> {
+  try {
+    const value = await window.api.upload.getSecret(id)
+    secretInputs.value[id] = value
+    if (value) ElMessage.success('已回显已存密钥，可点输入框眼睛查看或直接修改')
+    else ElMessage.warning('该 profile 尚未保存密钥')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  }
+}
+
+/** N4：把当前表单值（含尚未保存的临时密钥）交给 main 做只读连通性探测 */
+async function testProfile(type: 'remote' | 'cloud', id: string): Promise<void> {
+  testingId.value = id
+  try {
+    const list = type === 'remote' ? cfg.value.remote.profiles : cfg.value.cloud.profiles
+    const profile = list.find((p) => p.id === id)
+    if (!profile) throw new Error('找不到该 profile')
+    const message = await window.api.upload.test({
+      type,
+      profile: { ...profile } as unknown as Record<string, unknown>,
+      secret: secretInputs.value[id] || undefined,
+    })
+    testResults.value[id] = `✓ ${message}`
+    ElMessage.success('连接测试通过')
+  } catch (err) {
+    const msg = (err as Error).message
+    testResults.value[id] = `✗ ${msg}`
+    ElMessage.error(msg)
+  } finally {
+    testingId.value = ''
+  }
 }
 function toggle(key: string): void {
   expanded.value = expanded.value === key ? '' : key
@@ -110,6 +150,9 @@ function invalid(): string | null {
   for (const p of cfg.value.cloud.profiles) {
     if (!p.id.trim() || !p.name.trim() || !p.bucket.trim() || !p.region.trim()) {
       return `云配置「${p.name}」的 ID / 名称 / 地域 / Bucket 不能为空`
+    }
+    if (uploadVendorMeta(p.provider).endpointRequired && !p.endpoint?.trim()) {
+      return `云配置「${p.name}」的 Endpoint 必填（见该厂商提示）`
     }
   }
   return null
@@ -185,7 +228,7 @@ onMounted(() => {
 <template>
   <ToolPageLayout
     title="上传配置"
-    description="应用级全局预设：一次配置，所有工具只选 profile 并覆盖少量非固定信息。密码 / AccessKey Secret 加密存储，不会写进配置文件，也不会回显。"
+    description="应用级全局预设：一次配置，所有工具只选 profile 并覆盖少量非固定信息。密码 / AccessKey Secret 加密存储，不写进配置文件；需要时点「查看」按需回显。"
   >
     <template #actions>
       <el-button size="small" :icon="Connection" :loading="testing" @click="selfTest">链路自检</el-button>
@@ -246,8 +289,12 @@ onMounted(() => {
             :profile="item"
             :has-secret="Boolean(secretState[item.id])"
             :secret-value="secretInputs[item.id] ?? ''"
+            :testing="testingId === item.id"
+            :test-result="testResults[item.id]"
             @update-secret="setSecretInput"
             @clear-secret="clearSecret"
+            @reveal-secret="revealSecret"
+            @test="(id: string) => testProfile('remote', id)"
           />
         </div>
       </section>
@@ -282,11 +329,15 @@ onMounted(() => {
             :profile="item"
             :has-secret="Boolean(secretState[item.id])"
             :secret-value="secretInputs[item.id] ?? ''"
+            :testing="testingId === item.id"
+            :test-result="testResults[item.id]"
             @update-secret="setSecretInput"
             @clear-secret="clearSecret"
+            @reveal-secret="revealSecret"
+            @test="(id: string) => testProfile('cloud', id)"
           />
         </div>
-        <div class="hint">首期仅 aliyun-oss 有 Provider 实现，其余厂商选中后上传会明确报错，不会静默失败。</div>
+        <div class="hint">7 家常见云厂商与 S3 兼容服务均已支持；地域 / Endpoint 可下拉预选也可直接手输。SDK 按需加载，未安装时会明确提示，不会静默失败。</div>
       </section>
     </div>
 

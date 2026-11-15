@@ -99,6 +99,12 @@ const api = {
       invoke(IPC_CHANNELS.uploadSecretSet, profileId, value),
     secretState: (): Promise<Record<string, boolean>> =>
       invoke(IPC_CHANNELS.uploadSecretState),
+    /** 用户主动点「查看」才按 id 取回明文，不随列表默认下发 */
+    getSecret: (profileId: string): Promise<string> =>
+      invoke(IPC_CHANNELS.uploadSecretGet, profileId),
+    /** 单个 profile 连通性自检；可带表单里尚未保存的临时密钥 */
+    test: (req: unknown): Promise<string> =>
+      invoke(IPC_CHANNELS.uploadTest, req),
   },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>

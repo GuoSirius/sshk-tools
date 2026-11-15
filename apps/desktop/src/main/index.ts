@@ -28,7 +28,7 @@ import { defaultConfigPath } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
-import { UploadRuntime, type UploadRequest } from './upload'
+import { UploadRuntime, type UploadRequest, type UploadTestRequest } from './upload'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -502,6 +502,9 @@ async function registerIpc(): Promise<void> {
   ipcMain.handle(IPC_CHANNELS.uploadSecretSet, (_event, profileId: string, value: string) =>
     uploads.setSecret(profileId, value))
   ipcMain.handle(IPC_CHANNELS.uploadSecretState, () => uploads.secretState())
+  // N3 / N4：按 id 主动查看密钥、按 profile 独立连通性自检（临时密钥不落盘）
+  ipcMain.handle(IPC_CHANNELS.uploadSecretGet, (_event, profileId: string) => uploads.getSecret(profileId))
+  ipcMain.handle(IPC_CHANNELS.uploadTest, (_event, req: UploadTestRequest) => uploads.test(req))
 
   // ── OS 能力（宿主提供） ──
   ipcMain.handle(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {

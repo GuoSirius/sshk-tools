@@ -96,4 +96,44 @@ export class RemoteUploadProvider implements UploadProvider {
       })
     })
   }
+
+  /** N4：每个 profile 独立测试——只连不写，验证主机 / 端口 / 用户名 / 口令 / 远端位置 */
+  async testConnection(): Promise<string> {
+    const p = this.profile
+    if (!p.host.trim()) throw new Error('主机不能为空')
+    if (!p.username.trim()) throw new Error('用户名不能为空')
+    if (!p.password) throw new Error('密码 / 口令未配置')
+    const dir = p.remoteDir?.trim() || '/'
+    if (p.protocol === 'ftp') {
+      const client = new FtpClient()
+      try {
+        await client.access({
+          host: p.host,
+          port: p.port ?? 21,
+          user: p.username,
+          password: p.password,
+          secure: false,
+        })
+        const list = await client.list(dir)
+        return `FTP 连通：${p.username}@${p.host}:${p.port ?? 21}，远端 ${dir} 可读（${list.length} 项）`
+      } finally {
+        client.close()
+      }
+    }
+    return await new Promise<string>((resolve, reject) => {
+      const conn = new SshClient()
+      conn.on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err) { conn.end(); reject(err); return }
+          sftp.readdir(dir, (e, list) => {
+            conn.end()
+            if (e) reject(e)
+            else resolve(`SFTP 连通：${p.username}@${p.host}:${p.port ?? 22}，远端 ${dir} 可读（${list?.length ?? 0} 项）`)
+          })
+        })
+      })
+      conn.on('error', reject)
+      conn.connect({ host: p.host, port: p.port ?? 22, username: p.username, password: p.password })
+    })
+  }
 }

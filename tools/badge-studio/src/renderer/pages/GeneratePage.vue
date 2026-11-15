@@ -360,7 +360,7 @@ function locateInHtml(term: string): void {
         <EmptyState v-else description="生成后在此预览 badge 副本" />
       </div>
     </div>
-    <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close>
+    <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close close-on-click-modal="false" close-on-press-escape="false">
       <CodeEditor :model-value="statsJson" language="json" height="420px" readonly />
     </el-dialog>
   </div>

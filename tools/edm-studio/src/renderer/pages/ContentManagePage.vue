@@ -1387,7 +1387,7 @@ async function confirmSaveAs(): Promise<void> {
     </el-dialog>
 
     <!-- 片段布局配置弹框（R22：宿主模板选择 + 组合编辑器收进弹框，预览页只留预览） -->
-    <el-dialog v-model="composeOpen" title="片段布局配置" width="720px" :close-on-click-modal="false">
+    <el-dialog v-model="composeOpen" title="片段布局配置" width="720px" close-on-click-modal="false" close-on-press-escape="false">
       <div v-if="selected?.data.cat === 'fragment'" class="editor-toolbar" style="padding-bottom: 10px">
         <span class="hint">宿主模板</span>
         <el-select

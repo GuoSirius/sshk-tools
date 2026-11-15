@@ -107,6 +107,8 @@ interface Window {
       profiles(type?: 'remote' | 'cloud'): Promise<import('@sshk/shared').UploadProfileOption[]>
       setSecret(profileId: string, value: string): Promise<boolean>
       secretState(): Promise<Record<string, boolean>>
+      getSecret(profileId: string): Promise<string>
+      test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<string>
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>

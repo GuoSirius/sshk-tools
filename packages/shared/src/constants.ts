@@ -23,6 +23,7 @@ export const TOOL_IDS = {
   edmStudio: 'edm-studio',
   badgeStudio: 'badge-studio',
   modelConsole: 'model-console',
+  uploadConfig: 'upload-config',
 } as const
 
 export const CONFIG_NAMESPACE = {

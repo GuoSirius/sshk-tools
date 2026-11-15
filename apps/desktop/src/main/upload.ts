@@ -13,11 +13,13 @@ import type {
   UploadValidation,
 } from '@sshk/upload-core'
 import {
+  TOOL_IDS,
   listUploadProfiles,
   normalizeUploadConfig,
   pickCloudProfile,
   pickRemoteProfile,
   resolveUploadTool,
+  uploadVendorMeta,
   type UploadGlobalConfig,
   type UploadProfileOption,
 } from '@sshk/shared'
@@ -26,11 +28,12 @@ import type { AppServices } from './services'
 /**
  * R26 应用级上传运行时（宿主 main 进程持有，工具经 IPC 只传文件与工具级覆盖项）。
  *
- * - 全局 profile 连接信息从 `app.upload` 读；密钥从 safeStorage 读，绝不下发渲染层。
+ * - 全局 profile 连接信息从 `app.upload` 读；密钥默认只留在 safeStorage；
+ *   仅当用户主动点「查看」时才按 id 下发（复用 llm:getApiKey 范式）。
  * - 每次调用重建 Service/Provider（成本极低），保证改配置后无需重启即生效。
  * - 校验：全局默认传给 Service，工具级 ctx.validation 由 mergeValidation 收紧（不能放宽）。
  */
-const SECRET_TOOL_ID = 'upload-config'
+const SECRET_TOOL_ID = TOOL_IDS.uploadConfig
 const DATA_URL_RE = /^data:[^;,]*;base64,([\s\S]+)$/
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
@@ -44,6 +47,14 @@ export interface UploadRequest {
   source?: string
   /** data URL（来自 <input type=file> / 富文本 File） */
   dataUrl?: string
+}
+
+export interface UploadTestRequest {
+  type: 'remote' | 'cloud'
+  /** 配置页当前表单值（可能尚未保存）；复用 normalizeUploadConfig 做容错清洗 */
+  profile: Record<string, unknown>
+  /** 表单里临时填的密钥，只用于本次探测，不落盘、不进配置 */
+  secret?: string
 }
 
 export interface UploadRuntimeOptions {
@@ -124,6 +135,7 @@ export class UploadRuntime {
       const accessKeySecret = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
       service.register(new CloudUploadProvider({
         provider: p.provider,
+        sdk: uploadVendorMeta(p.provider).sdk,
         region: p.region,
         endpoint: p.endpoint,
         bucket: p.bucket,
@@ -173,7 +185,7 @@ export class UploadRuntime {
     return true
   }
 
-  /** 只回「是否已配置」，绝不回明文 */
+  /** 列表只回「是否已配置」，绝不回明文 */
   secretState(): Record<string, boolean> {
     const cfg = this.globalConfig()
     const state: Record<string, boolean> = {}
@@ -181,5 +193,43 @@ export class UploadRuntime {
       state[p.id] = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
     }
     return state
+  }
+
+  /** N3：用户主动点「查看」时才按 id 回传明文（复用 llm:getApiKey 范式），不随列表下发 */
+  getSecret(profileId: string): string {
+    const id = String(profileId ?? '').trim()
+    if (!PROFILE_ID_RE.test(id)) throw new Error(`非法上传 profile ID：${id}`)
+    return this.opts.services.host.getToolSecret(SECRET_TOOL_ID, id)
+  }
+
+  /** N4：每个 remote / cloud profile 独立测试；密钥可用表单临时值，不落盘 */
+  async test(req: UploadTestRequest): Promise<string> {
+    const type = req?.type === 'cloud' ? 'cloud' : 'remote'
+    const raw: unknown = req?.profile
+    const obj = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+    const id = String(obj['id'] ?? '').trim()
+    const secret = typeof req?.secret === 'string' && req.secret
+      ? req.secret
+      : (id ? this.opts.services.host.getToolSecret(SECRET_TOOL_ID, id) : '')
+    // 复用归一化，既校验必填项，也把厂商 / 字段收敛到合法值
+    const cfg = normalizeUploadConfig({
+      remote: { profiles: type === 'remote' ? [obj] : [], defaultId: id },
+      cloud: { profiles: type === 'cloud' ? [obj] : [], defaultId: id },
+    })
+    if (type === 'remote') {
+      const p = pickRemoteProfile(cfg, id)
+      if (!p) throw new Error('远程配置不完整：名称 / ID / 主机不能为空')
+      return await new RemoteUploadProvider({
+        protocol: p.protocol, host: p.host, port: p.port, username: p.username,
+        password: secret, remoteDir: p.remoteDir, passive: p.passive, baseUrl: p.baseUrl,
+      }).testConnection()
+    }
+    const p = pickCloudProfile(cfg, id)
+    if (!p) throw new Error('云配置不完整：ID / Bucket 不能为空')
+    return await new CloudUploadProvider({
+      provider: p.provider, sdk: uploadVendorMeta(p.provider).sdk, region: p.region,
+      endpoint: p.endpoint, bucket: p.bucket, accessKeyId: p.accessKeyId,
+      accessKeySecret: secret, baseUrl: p.baseUrl,
+    }).testConnection()
   }
 }
