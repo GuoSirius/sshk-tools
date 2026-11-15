@@ -14,15 +14,18 @@ import { useToolCatalog } from './composables/useToolCatalog'
  *   右栏 = 连续表单区（独立滚动，分组间用分隔线而非卡片，内容少的组不再撑出空白）；
  *   底部 = 固定保存条（flex:none，不随表单滚动），带未保存提示。
  *
+ * 两种形态：
+ *   形态 1（layout=single，默认）：section 只做初始定位，左栏列出全部 configGroups；
+ *   形态 2（layout=menu）：section 是 configPages[].id，一个二级菜单 = 一个真实页面，
+ *     左栏只列该页声明的分组，页内继续复用同一套左右布局；切二级菜单即换页。
+ *
  * 注意：上传配置工具 manifest 没有 configGroups，走独立的 UploadConfigPage，不受本页影响。
- * layout / section props 保留以兼容宿主路由；section 现在只用于「初始定位到某个分组」，
- * 不再把右栏裁成单组，避免与左栏导航形成双重导航。
  */
 const props = defineProps<{
   toolId: string
   section?: string
-  /** 兼容宿主传参：single / tabs / menu 统一走左右布局 */
-  layout?: 'single' | 'tabs' | 'menu'
+  /** 兼容宿主传参：历史 tabs 由目录归一为 single */
+  layout?: 'single' | 'menu' | 'tabs'
 }>()
 const { byId } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
@@ -39,13 +42,26 @@ const DEPS_ID = '__deps__'
 let scrollLockUntil = 0
 
 const isDev = import.meta.env.DEV
+
+/** 形态 2 判定：menu 布局且清单声明了配置页 */
+const isMultiPage = computed(() => tool.value?.configLayout === 'menu' && (tool.value?.configPages.length ?? 0) > 0)
+/** 当前二级页：section 直接就是 configPages[].id；找不到时回退第一页（如刚点开父菜单 config） */
+const activePage = computed(() => (tool.value?.configPages ?? [])
+  .find((page) => page.id === props.section) ?? (tool.value?.configPages[0] ?? null))
+const activePageLabel = computed(() => activePage.value?.label ?? '')
+
 /** dev 下字段全量展示（AGENTS.md 铁律）；打包版隐藏 devOnly */
-const groups = computed(() => (tool.value?.configGroups ?? [])
+const allGroups = computed(() => (tool.value?.configGroups ?? [])
   .map((group) => ({
     ...group,
     fields: group.fields.filter((field) => !field.devOnly || isDev),
-  }))
-  .filter((group) => group.fields.length > 0))
+  })))
+/** 当前页可见分组：形态 2 只取该页声明的组；形态 1 取全部 */
+const groups = computed(() => {
+  if (!isMultiPage.value) return allGroups.value.filter((group) => group.fields.length > 0)
+  const ids = new Set(activePage.value?.groups ?? [])
+  return allGroups.value.filter((group) => ids.has(group.id) && group.fields.length > 0)
+})
 
 const hasExtras = computed(() => Boolean(tool.value?.configDeps?.length || tool.value?.warnings?.length))
 interface NavItem { id: string; label: string; count: number }
@@ -66,12 +82,17 @@ async function pickPath(field: ToolConfigField): Promise<void> {
 function pathFor(field: ToolConfigField): string {
   return `tools.${props.toolId}.${field.key}`
 }
-function allFields(): ToolConfigField[] {
+/** 载入值用全量字段（含 devOnly / 其它页），切页无需重新拉取 */
+function manifestFields(): ToolConfigField[] {
   return (tool.value?.configGroups ?? []).flatMap((group) => group.fields)
+}
+/** 保存 / 校验只作用于当前可见字段：形态 2 下仅保存本页，不碰其它页 */
+function currentFields(): ToolConfigField[] {
+  return groups.value.flatMap((group) => group.fields)
 }
 
 async function load(): Promise<void> {
-  for (const field of allFields()) {
+  for (const field of manifestFields()) {
     values[field.key] = await window.api.config.get(pathFor(field))
     // fallbackKey：值为空时展示生效值（如「默认 Provider」← 应用激活 Provider）
     if ((values[field.key] ?? '') === '' && field.fallbackKey) {
@@ -99,7 +120,10 @@ async function load(): Promise<void> {
 watch(() => tool.value?.id, () => {
   void load().then(() => {
     dirty.value = false
-    const target = props.section?.startsWith('config-') ? props.section : groups.value[0]?.id
+    // 形态 2：section 是 page id，不是分组 id —— 定位到该页第一组
+    const target = isMultiPage.value
+      ? groups.value[0]?.id
+      : (props.section?.startsWith('config-') ? props.section : groups.value[0]?.id)
     if (target) goto(target)
   })
 }, { immediate: true })
@@ -115,14 +139,14 @@ function display(value: unknown): string {
 
 async function save(): Promise<void> {
   // 必填拦截：manifest 标 required 的字段为空时不落盘
-  const missing = allFields().filter((field) => field.required && String(values[field.key] ?? '').trim() === '')
+  const missing = currentFields().filter((field) => field.required && String(values[field.key] ?? '').trim() === '')
   if (missing.length > 0) {
     ElMessage.error('必填项未填写：' + missing.map((field) => field.label).join('、'))
     return
   }
   saving.value = true
   try {
-    for (const field of allFields()) {
+    for (const field of currentFields()) {
       const raw = values[field.key]
       const value = field.type === 'number' ? Number(raw) : field.type === 'boolean' ? Boolean(raw) : String(raw ?? '')
       await window.api.config.set(pathFor(field), value)
@@ -160,9 +184,17 @@ function onBodyScroll(): void {
   }
   activeGroup.value = current
 }
-// 宿主二级菜单切换 section 时只做定位，不裁剪右栏
+// 形态 2：切二级菜单 = 换页，activePage 驱动 groups 重算，滚动回该页第一组
+// 形态 1：section 只做定位，不裁剪右栏
 watch(() => props.section, (section) => {
-  if (section?.startsWith('config-')) goto(section)
+  if (!isMultiPage.value) {
+    if (section?.startsWith('config-')) goto(section)
+    return
+  }
+  void nextTick(() => {
+    const target = groups.value[0]?.id
+    if (target) goto(target)
+  })
 })
 </script>
 
@@ -170,7 +202,7 @@ watch(() => props.section, (section) => {
   <ToolPageLayout class="settings-layout">
     <div class="split">
       <aside class="split-nav">
-        <div class="nav-title">配置分组</div>
+        <div class="nav-title">{{ isMultiPage ? (activePageLabel || '配置分组') : '配置分组' }}</div>
         <button
           v-for="item in navItems"
           :key="item.id"
@@ -238,7 +270,10 @@ watch(() => props.section, (section) => {
 
         <!-- 固定保存条：不随右栏表单滚动，长表单填到底也能一键保存 -->
         <div class="split-foot">
-          <span class="muted">配置落盘路径：tools.{{ toolId }}.*</span>
+          <span class="muted">
+            配置落盘路径：tools.{{ toolId }}.*
+            <template v-if="isMultiPage"> · 当前页「{{ activePageLabel }}」独立保存</template>
+          </span>
           <div class="foot-actions">
             <span v-if="dirty" class="dirty-tip"><el-icon><WarningFilled /></el-icon>有未保存修改</span>
             <el-button type="primary" size="small" :loading="saving" @click="save">

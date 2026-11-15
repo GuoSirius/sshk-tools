@@ -8,7 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Download } from '@element-plus/icons-vue'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
-import type { ThemeMode, ToolMenu } from '@sshk/shared'
+import type { ThemeMode, ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
 import { useUpdater } from './composables/useUpdater'
@@ -116,15 +116,22 @@ const visibleTools = computed(() => {
 })
 
 /**
- * configLayout=menu 时把配置分组挂成「工具配置」的二级菜单；
- * single（默认）/tabs 都不生成左侧二级菜单，消除双重导航的割裂感。
+ * 形态 2（configLayout=menu）：把配置页挂成「工具配置」的二级菜单，
+ * 每个二级菜单 id = configPages[].id（真实页面，页内可多分组）；
+ * 未声明 configPages 时回退到逐分组（兼容旧清单）。
+ * 形态 1（single）：不生成二级菜单，单个「工具配置」进去左右布局。
  */
+const configSubMenus = (tool: ToolRuntimeState): ToolMenu[] =>
+  tool.configPages.length
+    ? tool.configPages.map((page) => ({ id: page.id, label: page.label }))
+    : tool.configGroups.map((group) => ({ id: group.id, label: group.label }))
+
 const sidebarMenus = computed(() => {
   const tool = currentTool.value
   if (!tool) return []
   if (tool.configLayout !== 'menu') return tool.menus
   return tool.menus.map((menu) => menu.id === 'config'
-    ? { ...menu, children: tool.configGroups.map((group) => ({ id: group.id, label: group.label })) }
+    ? { ...menu, children: configSubMenus(tool) }
     : menu)
 })
 

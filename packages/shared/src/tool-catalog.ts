@@ -171,7 +171,8 @@ export function resolveToolCatalog(
       icon: ov.icon?.trim() || tool.icon,
       menus: tool.menus,
       entryRoute: tool.entryRoute,
-      configLayout: tool.configLayout ?? 'single',
+      // 两形态归一：历史 tabs 归并入 single，只有 menu 才启用二级配置页
+      configLayout: tool.configLayout === 'menu' ? 'menu' : 'single',
       enabled,
       visible: desktopLike && serviceable,
       manageable: desktopLike,
@@ -185,6 +186,7 @@ export function resolveToolCatalog(
       dependsOn,
       requiredGrant: requiredGrant || undefined,
       configGroups: tool.configGroups ?? [],
+      configPages: tool.configPages ?? [],
       configDeps: tool.configDeps ?? [],
     }
     return state

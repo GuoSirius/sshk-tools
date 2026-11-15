@@ -13,8 +13,9 @@ onMounted(() => { void loadConfig() })
 <template>
   <div>
     <el-alert type="success" :closable="false" show-icon style="margin-bottom:12px">
-      以下配置由本工具 manifest 的 <code>configGroups</code> 声明，宿主在「工具与权限」中自动生成表单。
-      开发者无需手填 JSON；发布态下用户编辑会持久化并在重导入时保留。
+      以下配置由本工具 manifest 的 <code>configGroups</code> 声明，宿主自动生成表单，开发者无需手填 JSON。
+      本工具是<b>形态 2 示例</b>：<code>configLayout: menu</code> + <code>configPages</code> 把 4 个分组拆成
+      「模型与调用」「路径与输出」两个二级页，每页含多个分组，页内仍用左右布局；其它工具用形态 1（单菜单 + 左右布局）。
     </el-alert>
     <el-button type="success" @click="loadConfig">读取本工具配置</el-button>
     <pre class="result">{{ config ? JSON.stringify(config, null, 2) : '读取中…' }}</pre>

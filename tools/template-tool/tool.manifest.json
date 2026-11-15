@@ -12,7 +12,7 @@
   "entryRoute": "home",
   "enabled": true,
   "visibility": "hidden",
-  "configLayout": "tabs",
+  "configLayout": "menu",
   "menus": [
     {
       "id": "home",
@@ -104,6 +104,41 @@
           "hint": "OCR 输入图片"
         }
       ]
+    },
+    {
+      "id": "config-output",
+      "label": "输出选项",
+      "fields": [
+        {
+          "key": "output.keepHtml",
+          "label": "保留 HTML 标签",
+          "type": "boolean",
+          "hint": "关闭则输出纯文本"
+        },
+        {
+          "key": "output.format",
+          "label": "默认导出格式",
+          "type": "select",
+          "options": [
+            { "label": "HTML", "value": "html" },
+            { "label": "Markdown", "value": "md" },
+            { "label": "纯文本", "value": "txt" }
+          ],
+          "hint": "演示 select 字段类型的表单自动生成"
+        }
+      ]
+    }
+  ],
+  "configPages": [
+    {
+      "id": "config-model",
+      "label": "模型与调用",
+      "groups": ["config-llm", "config-ocr"]
+    },
+    {
+      "id": "config-io",
+      "label": "路径与输出",
+      "groups": ["config-path", "config-output"]
     }
   ],
   "defaults": {
@@ -118,6 +153,10 @@
     "ocr": {
       "command": "",
       "timeoutMs": 30000
+    },
+    "output": {
+      "keepHtml": true,
+      "format": "html"
     }
   },
   "package": {

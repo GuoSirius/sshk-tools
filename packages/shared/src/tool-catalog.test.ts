@@ -22,6 +22,8 @@ function readManifest(id: string): ToolDescriptor {
 const edmManifest = readManifest('edm-studio')
 const badgeManifest = readManifest('badge-studio')
 const modelManifest = readManifest('model-console')
+// 形态 2 模板示例单独作夹具，不进 MANIFESTS（避免影响其它用例的 desktop 基准与数量断言）
+const templateManifest = readManifest('template-tool')
 // edm 的 visibility:hidden 是发布策略，裁决单测保持 desktop 基准
 const MANIFESTS = [edmManifest, badgeManifest, modelManifest]
 delete (edmManifest as { visibility?: string }).visibility
@@ -146,22 +148,46 @@ describe('工具插件清单（自包含 manifest）', () => {
     expect(result.orphans).toEqual(['removed-tool'])
   })
 
-  it('工具配置布局可用 single / tabs / menu，菜单布局由宿主生成二级项', () => {
+  it('工具配置只有两种形态：single 与 menu，历史 tabs 归一为 single', () => {
     const withMenu = MANIFESTS.map((tool) => tool.id === 'edm-studio'
       ? { ...tool, configLayout: 'menu' as const }
       : tool)
     const result = resolveToolCatalog(withMenu, baseInput())
     expect(result.tools.find((t) => t.id === 'edm-studio')?.configLayout).toBe('menu')
-    expect(result.tools.find((t) => t.id === 'badge-studio')?.configLayout).toBe(badgeManifest.configLayout ?? 'single')
+    expect(result.tools.find((t) => t.id === 'badge-studio')?.configLayout).toBe('single')
+
+    const legacy = [{ ...templateManifest, configLayout: 'tabs' as const }]
+    const legacyResult = resolveToolCatalog(legacy, baseInput())
+    expect(legacyResult.tools.find((t) => t.id === 'template-tool')?.configLayout).toBe('single')
   })
 
-  it('工具菜单只声明工具自有配置分组', () => {
+  it('形态 2：configPages 逐项透传，每个二级页引用存在的分组且至少两个分组', () => {
+    const result = resolveToolCatalog([...MANIFESTS, templateManifest], baseInput())
+    const template = result.tools.find((t) => t.id === 'template-tool')
+    expect(template?.configLayout).toBe('menu')
+    expect(template?.configPages.length).toBe(2)
+    const groupIds = new Set(template?.configGroups.map((g) => g.id) ?? [])
+    for (const page of template?.configPages ?? []) {
+      expect(page.id.startsWith('config-')).toBe(true)
+      expect(page.groups.length).toBeGreaterThanOrEqual(2)
+      for (const gid of page.groups) expect(groupIds.has(gid)).toBe(true)
+    }
+    // 所有分组都要被某个页覆盖，不能有配置页看不到的孤儿分组
+    const covered = new Set((template?.configPages ?? []).flatMap((p) => p.groups))
+    for (const gid of groupIds) expect(covered.has(gid)).toBe(true)
+    // 形态 1 工具不声明配置页，保持单菜单左右布局
+    expect(result.tools.find((t) => t.id === 'badge-studio')?.configPages).toEqual([])
+  })
+
+  it('工具菜单只声明工具自有配置分组或配置页', () => {
     const result = resolveToolCatalog(MANIFESTS, baseInput())
     for (const tool of result.tools) {
       const configMenu = tool.menus.find((menu) => menu.id === 'config')
       expect(configMenu?.label).toBe('工具配置')
       for (const child of configMenu?.children ?? []) {
-        expect(tool.configGroups.some((group) => group.id === child.id)).toBe(true)
+        const declared = tool.configGroups.some((group) => group.id === child.id)
+          || tool.configPages.some((page) => page.id === child.id)
+        expect(declared).toBe(true)
       }
     }
   })

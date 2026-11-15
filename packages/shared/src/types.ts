@@ -26,10 +26,22 @@ export interface ToolConfigField {
 }
 
 export interface ToolConfigGroup {
-  /** 与左侧二级菜单 id 对应，如 `config-render` */
+  /** 分组 id；形态 2 下由 configPages.groups 引用，形态 1 下可直接作为 section 定位值 */
   id: string
   label: string
   fields: ToolConfigField[]
+}
+
+/**
+ * 形态 2 的「配置页」：一个二级菜单 = 一个真实页面，页内可放多个 configGroup。
+ * id 即二级菜单 id，约定以 `config-` 开头（如 `config-model`），宿主据此识别为配置页。
+ * 仅当 configLayout='menu' 时生效；形态 1（single）无需声明。
+ */
+export interface ToolConfigPage {
+  id: string
+  label: string
+  /** 本页包含的分组 id（引用 configGroups[].id），可多个 */
+  groups: string[]
 }
 
 /** 软配置依赖：本工具会读取另一个工具的配置，仅提示不做硬禁用 */
@@ -151,10 +163,12 @@ export interface ToolDescriptor {
   /** 工具内左侧功能菜单（需求 8：所有菜单功能都在左侧） */
   menus: ToolMenu[]
   /**
-   * 工具配置布局（三选一，由工具包按复杂度决定）：
-   * single = 一页卡片（默认，简单配置）；tabs = 内容区分页；menu = 左侧子菜单逐页
+   * 工具配置形态（两种，由工具包按复杂度决定）：
+   * single = 单个「工具配置」菜单，进去左右布局（默认）；
+   * menu   = 「工具配置」展开二级菜单，每个二级菜单一个真实页面，页内复用左右布局。
+   * 历史值 tabs 已归并入 single，仅供旧清单读取兼容。
    */
-  configLayout?: 'single' | 'tabs' | 'menu'
+  configLayout?: 'single' | 'menu' | 'tabs'
   /** 插件入口声明（宿主按此清单加载） */
   plugin?: ToolPluginDescriptor
   /** 运行时包契约；构建期内置工具缺省，外部导入包必填 */
@@ -169,6 +183,8 @@ export interface ToolDescriptor {
   visibility?: 'implicit' | 'hidden' | 'managed' | 'desktop'
   /** 工具自有配置声明（左侧「工具配置」按此生成表单） */
   configGroups?: ToolConfigGroup[]
+  /** 形态 2 的配置页：把 configGroups 分成多个二级页，每页可含多组；仅 configLayout=menu 生效 */
+  configPages?: ToolConfigPage[]
   /** 软配置依赖（只读展示 + 缺失预警）；默认工具之间零依赖 */
   configDeps?: ToolConfigDependency[]
   /** 工具自带的默认配置，宿主启动时自动合并进 settings.json 默认值 */
@@ -210,7 +226,7 @@ export interface ToolRuntimeState {
   icon: string
   menus: ToolMenu[]
   entryRoute: string
-  configLayout: 'single' | 'tabs' | 'menu'
+  configLayout: 'single' | 'menu' | 'tabs'
   enabled: boolean
   /** 桌面可见（隐式基座与配置隐藏的工具恒 false） */
   visible: boolean
@@ -232,6 +248,7 @@ export interface ToolRuntimeState {
   dependsOn: string[]
   requiredGrant?: string
   configGroups: ToolConfigGroup[]
+  configPages: ToolConfigPage[]
   configDeps: ToolConfigDependency[]
 }
 
