@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Upload } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { CopyDocument, Upload } from '@element-plus/icons-vue'
 import { useToolId } from '@sshk/ui-kit'
 import { createImageUploader } from './upload.js'
 
@@ -37,6 +38,18 @@ async function onFile(e: Event): Promise<void> {
     uploading.value = false
   }
 }
+
+/** 复核项 4：URL 已自动回填，这里再给一键复制，彻底替代 oss-browser 手工复制链接 */
+async function copyUrl(): Promise<void> {
+  const url = String(props.modelValue ?? '').trim()
+  if (!url) { ElMessage.warning('还没有图片 URL'); return }
+  try {
+    await window.api.os.clipboardWrite(url)
+    ElMessage.success('图片 URL 已复制')
+  } catch (err) {
+    ElMessage.error(`复制失败：${(err as Error).message}`)
+  }
+}
 </script>
 
 <template>
@@ -56,6 +69,9 @@ async function onFile(e: Event): Promise<void> {
       :disabled="readonly"
       @update:model-value="(v: string) => emit('update:modelValue', v)"
     />
+    <el-tooltip content="复制图片 URL" placement="top">
+      <el-button size="small" :icon="CopyDocument" :disabled="!modelValue" @click="copyUrl" />
+    </el-tooltip>
     <input ref="fileInput" type="file" accept="image/*" hidden @change="onFile" />
   </div>
 </template>
