@@ -22,3 +22,5 @@ export type { ValidationFailure, ValidationOutcome, ValidationSuccess } from './
 export { mapWithConcurrency, withRetry } from './concurrency'
 export { UploadService } from './service'
 export type { UploadServiceOptions } from './service'
+export { LocalUploadProvider, RemoteUploadProvider, CloudUploadProvider } from './providers'
+export type { LocalProviderOptions, RemoteProfile, CloudProfile } from './providers'

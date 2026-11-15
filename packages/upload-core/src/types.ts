@@ -28,6 +28,8 @@ export interface UploadFile {
 
 /** 工具级可覆盖的非固定信息（连接信息仍在全局 profile 中） */
 export interface UploadOverrides {
+  /** 本地目录覆盖（targetType=local 时生效） */
+  localDir?: string
   remotePath?: string
   bucket?: string
   prefix?: string
