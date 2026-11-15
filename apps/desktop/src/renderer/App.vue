@@ -320,10 +320,10 @@ onMounted(async () => {
             <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
-            <el-dropdown-item command="about">关于</el-dropdown-item>
             <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
             <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
             <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
+            <el-dropdown-item command="about" divided>关于</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

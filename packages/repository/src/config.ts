@@ -138,10 +138,14 @@ export class ConfigService {
 export const DEFAULT_SETTINGS: Settings = {
   app: {
     themeMode: 'dark',
-    /** 开发者模式：默认关。开启后「工具与权限」显示全量工具（含隐藏/隐式）并开放配置与打包入口 */
+    /** 开发者模式：默认关。开启后「工具与权限」显示全量工具（含隐藏/隐式）并开放配置与打包入口；
+     *  打包版须通过「开发者工具」同款访问密钥校验才能开启（见 main/dev-access.ts） */
     developerMode: false,
     sidebarCollapsed: false,
     autoUpdate: true,
+    /** 复核项 10：下载更新后退出应用时是否自动安装。默认关，由用户显式开启；
+     *  关闭时仍可在「系统与数据 → 更新」点「立即安装」手动安装 */
+    autoInstallOnAppQuit: false,
     updateChannel: 'stable',
     locale: 'zh-CN',
     outputDir: null,

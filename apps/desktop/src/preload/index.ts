@@ -36,6 +36,8 @@ const api = {
     reload: (force?: boolean): Promise<boolean> =>
       invoke(IPC_CHANNELS.appReload, Boolean(force)),
     toggleDevTools: (key?: string): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools, key),
+    /** 只校验访问密钥、不打开 DevTools；开发者模式等敏感开关复用同套口令 */
+    verifyDevtoolsKey: (key: string): Promise<boolean> => invoke(IPC_CHANNELS.appVerifyDevtoolsKey, key),
     /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
     onRequestClose: (callback: () => void): void => {
       ipcRenderer.on(IPC_CHANNELS.appRequestClose, () => callback())

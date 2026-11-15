@@ -63,6 +63,7 @@ interface Window {
       openDataDir(): Promise<void>
       reload(force?: boolean): Promise<boolean>
       toggleDevTools(key?: string): Promise<boolean>
+      verifyDevtoolsKey(key: string): Promise<boolean>
       /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
       onRequestClose(callback: () => void): void
       /** 渲染层确认关闭后调用：主进程置 quitting 并真正退出 */

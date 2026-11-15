@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ACCESS_GRANT } from '@sshk/shared'
+import { ACCESS_GRANT, IPC_CHANNELS } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState, InstallPreview, ToolCatalogPayload } from '@sshk/shared'
+import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
 
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
@@ -74,9 +75,46 @@ const cfg = reactive({
   tray: true,
   ttlHours: 72,
   autoUpdate: true,
+  autoInstallOnAppQuit: false,
   developerMode: false,
 })
 const saving = ref(false)
+
+/** 复核项 10：打包版开启开发者模式须输入与「打开开发者工具」相同的访问密钥。
+ *  dev 运行下开发功能本就始终开启，无需口令；新增能力走共享探测，旧宿主窗口也能兜底。 */
+const DEV_KEY_SPEC: HostApiSpec = {
+  group: 'app',
+  method: 'verifyDevtoolsKey',
+  channel: IPC_CHANNELS.appVerifyDevtoolsKey,
+  label: '开发者模式口令校验',
+}
+async function onDeveloperModeChange(next: unknown): Promise<void> {
+  const wanted = Boolean(next)
+  if (!wanted || isDev) { cfg.developerMode = wanted; return }
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
+      '开发者模式',
+      {
+        inputPlaceholder: '访问密钥',
+        inputType: 'password',
+        confirmButtonText: '验证并开启',
+        cancelButtonText: '取消',
+        closeOnClickModal: false,
+        closeOnPressEscape: false,
+      },
+    )
+    await callHostApi<boolean>(DEV_KEY_SPEC, String(value ?? ''))
+    cfg.developerMode = true
+    ElMessage.success('验证通过，点「保存应用配置」后生效')
+  } catch (err) {
+    // 取消 / 口令错误：保持关闭，避免无条件越权开启
+    cfg.developerMode = false
+    if ((err as Error)?.message && !/cancel|close/i.test(String(err))) {
+      ElMessage.error((err as Error).message)
+    }
+  }
+}
 
 // ── 开发者模式（D-A）：显示全量工具 + 开放配置/打包入口 ──
 const devState = ref<{ available: boolean; repoRoot: string | null; reason: string }>({
@@ -121,6 +159,7 @@ async function loadAppConfig(): Promise<void> {
   cfg.tray = await bool('app.tray', true)
   cfg.ttlHours = await num('app.share.ttlHours', 72)
   cfg.autoUpdate = await bool('app.autoUpdate', true)
+  cfg.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   cfg.developerMode = await bool('app.developerMode', false)
   version.value = await window.api.app.version().catch(() => '0.1.0')
 }
@@ -135,6 +174,7 @@ async function saveAppConfig(): Promise<void> {
       ['app.tray', cfg.tray],
       ['app.share.ttlHours', Number(cfg.ttlHours)],
       ['app.autoUpdate', cfg.autoUpdate],
+      ['app.autoInstallOnAppQuit', cfg.autoInstallOnAppQuit],
       ['app.developerMode', cfg.developerMode],
     ]
     for (const [key, value] of pairs) await window.api.config.set(key, value)
@@ -417,9 +457,13 @@ async function cleanupOrphans(): Promise<void> {
                 <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
                 <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
                 <el-form-item label="自动更新"><el-switch v-model="cfg.autoUpdate" /></el-form-item>
+                <el-form-item label="自动安装更新">
+                  <el-switch v-model="cfg.autoInstallOnAppQuit" />
+                  <span class="hint" style="margin-left:8px">默认关：新版本仅在后台下载，由你在「系统与数据 → 更新」点「立即安装」；开启后退出应用时自动安装</span>
+                </el-form-item>
                 <el-form-item label="开发者模式">
-                  <el-switch v-model="cfg.developerMode" />
-                  <span class="hint" style="margin-left:8px">仅作用于打包/安装版：开启后显示全部工具并开放配置入口。源码 dev 运行时开发功能始终开启，不受此开关影响</span>
+                  <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
+                  <span class="hint" style="margin-left:8px">仅作用于打包/安装版：开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥。源码 dev 运行时开发功能始终开启，不受此开关影响</span>
                 </el-form-item>
                 <el-form-item label="分享有效期">
                   <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" size="small" />
@@ -447,7 +491,29 @@ async function cleanupOrphans(): Promise<void> {
                 <el-button size="small" type="primary" @click="saveKey">保存密钥</el-button>
                 <el-button size="small" @click="clearKey">清除</el-button>
               </div>
-              <div class="hint">密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。</div>
+              <div class="hint">
+                密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。
+              </div>
+              <div class="key-guide">
+                <div class="key-guide-title">它是什么、怎么用</div>
+                <ul>
+                  <li><b>不是账号密码</b>：不联网、不登录、不加密文件，只是本机的「显示门禁」，用来把内部工具在共用电脑上收起来。</li>
+                  <li><b>设置</b>：上方输入任意口令 →「保存密钥」。口令明文进系统凭据库，settings.json 只留摘要；忘了就直接重设一个。</li>
+                  <li><b>使用</b>：在下方「工具管理」把目标工具的「权限要求」选成「需访问密钥」；此后本机已配置密钥才显示该工具，点「清除」后这些工具立即从桌面隐藏。</li>
+                  <li><b>作用范围</b>：只控制工具可见性，不影响工具内部数据，也不阻止已打开的工具继续运行（重启后生效）。</li>
+                </ul>
+                <div class="key-guide-title">别和这几套口令搞混</div>
+                <table class="about-table">
+                  <thead><tr><th>口令 / 密钥</th><th>在哪设置</th><th>作用</th></tr></thead>
+                  <tbody>
+                    <tr><td>应用访问密钥（本页）</td><td>工具与权限 → 访问密钥与权限</td><td>解锁「需访问密钥」的工具，控制桌面可见性</td></tr>
+                    <tr><td>开发者工具口令</td><td>默认内置，可用 SSHK_DEVTOOLS_KEY 覆盖</td><td>打包版打开开发者工具 / 开启开发者模式</td></tr>
+                    <tr><td>FTP / SFTP 密码、AccessKey Secret</td><td>上传配置工具 → 对应 profile</td><td>连接远程 / 云厂商，按 profile 独立加密存储</td></tr>
+                    <tr><td>模型 Provider API Key</td><td>Model Console → Provider</td><td>调用大模型接口</td></tr>
+                    <tr><td>备份迁移口令</td><td>系统与数据 → 迁移口令</td><td>仅在备份导出 / 导入时加密迁移密钥</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </section>
 
             <section v-if="isDev" class="settings-card">
@@ -583,7 +649,7 @@ async function cleanupOrphans(): Promise<void> {
                 <el-button v-if="updaterState.phase === 'downloaded'" size="small" type="primary" @click="installUpdate">立即安装</el-button>
               </div>
               <div v-if="updaterState.phase === 'error'" class="warning-line">{{ updaterState.error }}</div>
-              <div class="hint">自动更新默认开启（见「常规」）；新版本后台下载，完成后点「立即安装」重启生效。</div>
+              <div class="hint">自动更新默认开启（见「常规」）；新版本后台下载，完成后点「立即安装」重启生效。若需在退出应用时自动安装，请在「常规 → 自动安装更新」开启（默认关闭）。</div>
             </section>
 
             <section class="settings-card">
@@ -664,3 +730,11 @@ async function cleanupOrphans(): Promise<void> {
   </el-drawer>
   <ToolManifestDialog v-model="manifestOpen" :tool-id="manifestToolId" @saved="onManifestSaved" />
 </template>
+
+<style scoped>
+.key-guide { margin-top: 12px; padding: 12px 14px; border-radius: 6px; background: var(--sshk-panel-soft, rgba(128, 128, 128, .07)); }
+.key-guide-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.key-guide ul { margin: 0 0 12px; padding-left: 18px; font-size: 12px; line-height: 1.8; color: var(--sshk-muted); }
+.key-guide li b { color: var(--sshk-text, inherit); }
+.key-guide .about-table { font-size: 12px; width: 100%; }
+</style>

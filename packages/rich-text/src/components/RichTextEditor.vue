@@ -15,7 +15,8 @@ import type { RichTextImageRule, RichTextUploadHook } from '../types'
  * F1：直接用 @wangeditor/editor 的 createEditor/createToolbar —— @wangeditor/editor-for-vue
  *     的 latest 是 Vue2 包，与本项目 Vue3 不兼容，禁止引入。
  * F2：fullScreen() 要求 toolbar 与 textarea 父节点一致，故二者用【同一容器 selector】创建；
- *     全屏容器只补 z-index，绝不 appendChild 把节点移出 Vue 虚拟树（曾致编辑器凭空消失）。
+ *     全屏时用 Vue Teleport 把整个容器挂到 body（框架级移动，不破坏虚拟树），
+ *     绝不手写 appendChild 移出 Vue 虚拟树（曾致编辑器凭空消失）。
  * C2：图片上传通过 onUploadImage 回调由工具侧注入，本包不依赖 upload-core。
  */
 const props = withDefaults(
@@ -33,6 +34,15 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const editorRef = shallowRef<IDomEditor>()
 const containerEl = ref<HTMLElement | null>(null)
+/**
+ * 全屏层级（复核项 9）：wangEditor 的 fullScreen() 只给容器加
+ * .w-e-full-screen-container（CSS 里 position:fixed 但**没有 z-index**），
+ * 容器仍留在表单 / 侧栏的局部层叠上下文里，左侧菜单和同层表单会盖在它上面。
+ * 这里监听 class 变化，全屏时用 Vue Teleport 把容器提升到 body 下
+ * —— 框架级移动，不 appendChild、不破坏虚拟树，编辑器实例引用仍有效。
+ */
+const fullScreen = ref(false)
+let classObserver: MutationObserver | null = null
 
 interface UploadImageConf {
   customUpload: (file: File, insertFn: (url: string) => void) => Promise<void>
@@ -61,15 +71,20 @@ if (hook) {
 const toolbarConfig: Partial<IToolbarConfig> = hook ? {} : { excludeKeys: ['uploadImage', 'uploadVideo'] }
 
 onMounted(() => {
-  if (!containerEl.value) return
+  const el = containerEl.value
+  if (!el) return
   const editor = createEditor({
-    selector: containerEl.value,
+    selector: el,
     html: props.modelValue || '',
     config: editorConfig,
     mode: 'default',
   })
   editorRef.value = editor
-  createToolbar({ editor, selector: containerEl.value, config: toolbarConfig, mode: 'default' })
+  createToolbar({ editor, selector: el, config: toolbarConfig, mode: 'default' })
+  classObserver = new MutationObserver(() => {
+    fullScreen.value = el.classList.contains('w-e-full-screen-container')
+  })
+  classObserver.observe(el, { attributes: true, attributeFilter: ['class'] })
 })
 
 // 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环
@@ -92,13 +107,17 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  classObserver?.disconnect()
+  classObserver = null
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
 </script>
 
 <template>
-  <div ref="containerEl" class="rich" />
+  <Teleport to="body" :disabled="!fullScreen">
+    <div ref="containerEl" class="rich" />
+  </Teleport>
 </template>
 
 <style scoped>
@@ -132,9 +151,17 @@ onBeforeUnmount(() => {
   --w-e-modal-button-border-color: #444;
 }
 
-/* 全屏：wangEditor 只给 position:fixed（无 z-index），补 z-index 压过应用外壳 */
-.rich.w-e-full-screen-container {
-  z-index: 9999 !important;
-  background-color: var(--w-e-toolbar-bg-color);
+/* 全屏：容器经 Teleport 挂到 body 下，已脱离应用外壳的层叠上下文；
+   再补满屏定位 + 顶格 z-index，杜绝左侧菜单 / 同层表单浮在编辑器上方 */
+:global(.rich.w-e-full-screen-container) {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  z-index: 2147483647 !important;
+  background-color: var(--w-e-toolbar-bg-color, #fff);
+  border: 0;
+  border-radius: 0;
 }
 </style>

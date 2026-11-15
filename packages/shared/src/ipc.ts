@@ -10,6 +10,8 @@ export const IPC_CHANNELS = {
   appOpenDataDir: 'app:openDataDir',
   appReload: 'app:reload',
   appToggleDevTools: 'app:toggleDevTools',
+  /** 只校验访问密钥不打开 DevTools：供「开发者模式」等敏感开关复用同一套口令 */
+  appVerifyDevtoolsKey: 'app:verifyDevtoolsKey',
   /** 主进程 → 渲染层：窗口即将关闭，请弹出主题色确认框 */
   appRequestClose: 'app:requestClose',
   /** 渲染层 → 主进程：用户已确认退出，置 quitting 并真正退出 */

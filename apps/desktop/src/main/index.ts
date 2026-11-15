@@ -29,6 +29,7 @@ import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
 import { UploadRuntime, type UploadRequest, type UploadTestRequest } from './upload'
+import { devtoolsKeyMatches } from './dev-access'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -42,6 +43,12 @@ let tray: Tray | null = null
 let services: AppServices | null = null
 /** 退出中标志：关闭确认通过后由渲染层回调置位，放行 before-quit / close 链路 */
 let quitting = false
+/**
+ * 复核项 10：打包版开启「开发者模式」的会话内授权。
+ * 只由 app:verifyDevtoolsKey 校验通过后置位，重启即失效；config:set 写
+ * app.developerMode=true 时据此裁决，防止渲染层绕过设置页弹框直接提权。
+ */
+let devModeAuthorized = false
 /** 插件加载结果：单个插件失败不影响宿主与其它工具 */
 let pluginStatus: Record<string, ToolPluginStatus> = {}
 
@@ -255,6 +262,12 @@ async function registerIpc(): Promise<void> {
   // ── 配置 ──
   ipcMain.handle(IPC_CHANNELS.configGet, (_event, key: string) => cfg.get(key) ?? null)
   ipcMain.handle(IPC_CHANNELS.configSet, (_event, key: string, value: unknown) => {
+    // 打包版「关 → 开」开发者模式必须先在本会话通过访问密钥校验；
+    // 已是开启状态再保存、或关闭，都不需要口令，避免误伤正常配置保存。
+    if (key === 'app.developerMode' && value === true && !isDev &&
+        !Boolean(cfg.get('app.developerMode')) && !devModeAuthorized) {
+      throw new Error('开启开发者模式需要先通过访问密钥验证')
+    }
     cfg.set(key, value)
     return true
   })
@@ -262,6 +275,10 @@ async function registerIpc(): Promise<void> {
     if (namespace === 'app' && key === 'themeMode') {
       const mode = cfg.get('app.themeMode')
       nativeTheme.themeSource = mode === 'system' ? 'system' : mode === 'light' ? 'light' : 'dark'
+    }
+    // 开关改动即时生效，不必重启应用
+    if (namespace === 'app' && key === 'autoInstallOnAppQuit') {
+      autoUpdater.autoInstallOnAppQuit = Boolean(cfg.get('app.autoInstallOnAppQuit'))
     }
     mainWindow?.webContents.send(IPC_CHANNELS.configChanged, { namespace, key })
   })
@@ -289,12 +306,19 @@ async function registerIpc(): Promise<void> {
       mainWindow?.webContents.toggleDevTools()
       return true
     }
-    const configured = String(cfg.get('app.devtoolsKeyHash') ?? '')
-    const envKey = String(process.env.SSHK_DEVTOOLS_KEY ?? '').trim() || 'sshk-tools@888'
-    const expectedHash = configured || createHash('sha256').update(envKey, 'utf8').digest('hex')
-    const hash = createHash('sha256').update(String(key ?? ''), 'utf8').digest('hex')
-    if (hash !== expectedHash) throw new Error('访问密钥不正确')
+    if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
+      throw new Error('访问密钥不正确')
+    }
     mainWindow?.webContents.toggleDevTools()
+    return true
+  })
+  // 复核项 10：开发者模式等敏感开关只校验口令，不打开 DevTools；与上面共用同一实现
+  ipcMain.handle(IPC_CHANNELS.appVerifyDevtoolsKey, (_event, key?: string) => {
+    if (isDev) { devModeAuthorized = true; return true }
+    if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
+      throw new Error('访问密钥不正确')
+    }
+    devModeAuthorized = true
     return true
   })
 
@@ -617,7 +641,9 @@ function pushUpdate(patch: Partial<UpdateState>): void {
 /** 给 autoUpdater 挂全生命周期监听，把状态与进度实时推到渲染层 */
 function wireAutoUpdater(): void {
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  // 复核项 10：「下载更新后重启自动安装」默认关闭，由 app.autoInstallOnAppQuit 控制；
+  // 关闭时用户仍可在「系统与数据 → 更新」点「立即安装」手动安装。
+  autoUpdater.autoInstallOnAppQuit = Boolean(services?.config.get('app.autoInstallOnAppQuit'))
   autoUpdater.on('checking-for-update', () => {
     pushUpdate({ phase: 'checking', error: undefined })
   })
