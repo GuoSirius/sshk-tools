@@ -253,9 +253,51 @@
           "hint": "导出默认落盘目录；留空则每次手动选择"
         }
       ]
+    },
+    {
+      "id": "config-upload",
+      "label": "上传通道",
+      "fields": [
+        {
+          "key": "upload.targetType",
+          "label": "目标类型",
+          "type": "select",
+          "options": [
+            { "value": "local", "label": "本地目录" },
+            { "value": "remote", "label": "远程（FTP / SFTP）" },
+            { "value": "cloud", "label": "云存储" }
+          ],
+          "hint": "与 EDM Studio 共用应用级「上传配置」里的全局 profile"
+        },
+        {
+          "key": "upload.profileId",
+          "label": "全局配置",
+          "type": "select",
+          "optionsSource": "upload:all",
+          "hint": "留空则使用该类型的默认 profile"
+        },
+        {
+          "key": "upload.overrides.localDir",
+          "label": "本地目录覆盖",
+          "type": "dir",
+          "hint": "仅目标类型=本地目录时生效"
+        },
+        {
+          "key": "upload.overrides.prefix",
+          "label": "对象前缀",
+          "type": "string",
+          "hint": "云存储对象 key 前缀，如 badge/"
+        }
+      ]
     }
   ],
   "defaults": {
+    "upload": {
+      "targetType": "local",
+      "profileId": "",
+      "overrides": {},
+      "validation": {}
+    },
     "enabled": true,
     "requiredGrant": "",
     "dependsOn": [],

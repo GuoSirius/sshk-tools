@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { EmptyState, TimeText } from '@sshk/ui-kit'
 import { ElMessage } from 'element-plus'
+import { Upload } from '@element-plus/icons-vue'
 import {
   posters, listLoading, pagedPosters, currentPage, pageSize,
   onSelectionChange,
@@ -12,9 +14,15 @@ import {
  * Badge Studio——海报列表页：
  * 「编辑」把海报完整载入工作区并跳回生成页（回路完整）；
  * 状态/批量导出/删除在 ../state，壳 actions 槽的批量按钮同样消费单例。
+ *
+ * B8：第二个接入应用级上传能力的工具。选本地产物 → upload:batch，
+ * profile / 覆盖项 / 密钥全在 main 进程解析，本页零重复配置。
  */
 const route = useRoute()
 const router = useRouter()
+const uploading = ref(false)
+const lastUpload = ref('')
+
 /** 页面内切视图：走路由（宿主菜单/高亮/URL 全同步），不再用 emit 补丁 */
 function navigateToGenerate(): void {
   void router.push('/tool/' + String(route.params.toolId) + '/generate')
@@ -26,10 +34,37 @@ async function editPoster(row: PosterRecord): Promise<void> {
   await loadPosterIntoWorkspace(row)
   ElMessage.success('已载入「' + row.name + '」到工作区，改完点「生成海报」覆盖该海报')
 }
+
+async function uploadArtifacts(): Promise<void> {
+  const files = await window.api.os.pickFile({
+    multi: true,
+    filters: [{ name: '海报 / HTML 产物', extensions: ['png', 'jpg', 'html', 'htm'] }],
+  })
+  if (!files.length) return
+  uploading.value = true
+  try {
+    const results = await window.api.upload.batch(files.map((file) => ({
+      toolId: 'badge-studio',
+      name: file.split(/[\\/]/).pop() ?? file,
+      size: 0,
+      source: file,
+    })))
+    lastUpload.value = results.map((r) => r.url).join(' · ')
+    ElMessage.success(`已上传 ${results.length} 个产物文件`)
+  } catch (err) {
+    ElMessage.error(`上传失败：${(err as Error).message}`)
+  } finally {
+    uploading.value = false
+  }
+}
 </script>
 
 <template>
   <div class="panel poster-list-panel">
+    <div class="upload-bar">
+      <el-button size="small" :icon="Upload" :loading="uploading" @click="uploadArtifacts">上传产物文件</el-button>
+      <span class="muted" :title="lastUpload">{{ lastUpload ? `最近上传：${lastUpload}` : '复用应用级「上传配置」的全局 profile，本工具只覆盖少量非固定信息' }}</span>
+    </div>
     <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="index" label="#" width="46" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
@@ -72,6 +107,8 @@ async function editPoster(row: PosterRecord): Promise<void> {
 
 <style scoped>
 .poster-list-panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.upload-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.upload-bar .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-flex-wrap { flex: 1; min-height: 0; }
 .panel {
   border: 1px solid rgba(128, 128, 128, 0.25);

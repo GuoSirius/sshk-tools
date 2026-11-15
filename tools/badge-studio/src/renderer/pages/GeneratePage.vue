@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { EmptyState } from '@sshk/ui-kit'
+import { CodeEditor } from '@sshk/code-editor'
+import { Document } from '@element-plus/icons-vue'
 import {
   recentHtmls, clearRecent, htmlPath, useRecent, removeRecent,
   pastedHtml, pastedStats, parsePastedStats, pickImages,
@@ -15,6 +17,10 @@ import {
   statsWarnings, customMetricKeys, removeMetric, metricOf, setMetric,
   removeRow, syncCsvFromRows, newMetricKey, addMetric,
 } from '../state'
+
+/** E-T5：第二个工具零配置复用 @sshk/code-editor —— 统计表 JSON 只读视图 */
+const jsonViewOpen = ref(false)
+const statsJson = computed(() => JSON.stringify(statRows.value, null, 2))
 
 /**
  * Badge Studio——生成海报页：
@@ -131,6 +137,7 @@ function locateInHtml(term: string): void {
           <el-button size="small" @click="parsePastedStats">解析文本</el-button>
           <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
           <el-button size="small" @click="addRow">新增一行</el-button>
+          <el-button size="small" :icon="Document" :disabled="!hasStats" @click="jsonViewOpen = true">JSON 视图</el-button>
           <el-button size="small" text type="danger" :disabled="!hasStats" @click="clearRows">清空表格</el-button>
           <span class="muted">共 {{ statRows.length }} 行{{ statsFile ? ` · 来自 ${statsFile.split(/[\\/]/).pop()}` : '' }}</span>
         </div>
@@ -353,6 +360,9 @@ function locateInHtml(term: string): void {
         <EmptyState v-else description="生成后在此预览 badge 副本" />
       </div>
     </div>
+    <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close>
+      <CodeEditor :model-value="statsJson" language="json" height="420px" readonly />
+    </el-dialog>
   </div>
 </template>
 
