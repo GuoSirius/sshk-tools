@@ -66,10 +66,10 @@ describe('EDM css 汇集（数据契约补记 A/B）', () => {
     expect(Array.isArray(warnings)).toBe(true)
   })
 
-  it('injectCss：css 置于文档最前，空 css 不注入', () => {
+  it('injectCss：css 统一提前到 <head> 内，空 css 不注入', () => {
     expect(injectCss('<html></html>', '')).toBe('<html></html>')
-    const out = injectCss('<html></html>', '.a{color:red}')
-    expect(out.startsWith('<style>')).toBe(true)
-    expect(out).toContain('.a{color:red}')
+    const out = injectCss('<html><head><title>t</title></head><body>b</body></html>', '.a{color:red}')
+    expect(out).toContain('<head>\n<style>\n.a{color:red}')
+    expect(out.indexOf('.a{color:red}')).toBeLessThan(out.indexOf('<title>'))
   })
 })

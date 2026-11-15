@@ -668,7 +668,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         const sel = obj(data, 'selector') as unknown as SystemSelector
         if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
         const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
-        if (raw.length === 0) return await renderSystemPreview(root, sel)
+        // R28：显式 link 的 @shared / @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
+        const cssRoots = { systemRoot: resolveContentRoot('system'), customRoot: resolveContentRoot('custom') }
+        if (raw.length === 0) return await renderSystemPreview(root, sel, cssRoots)
         return await renderSystemCompose(
           root,
           sel,
@@ -679,6 +681,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
             repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
             data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
           })),
+          cssRoots,
         )
       }
       // ── R24 system:derive：系统内容 → 自定义文件根（custom-edm）整棵拷贝，文件为真相源 ──

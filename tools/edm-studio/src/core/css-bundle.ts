@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveSafe } from '@sshk/repository'
+import { injectCssIntoHead } from './css-refs.js'
 
 /**
  * EDM css 汇集（数据契约补记 A/B/C）：
@@ -92,8 +93,7 @@ export async function collectCss(input: CollectCssInput): Promise<CssBundle> {
   return { css: parts.join('\n\n'), warnings }
 }
 
-/** assembled 阶段注入：css 放最前的 <style>，juice 会把它内联到 style 属性 */
+/** assembled 阶段注入：<style> 统一提前到 <head> 内，juice 会把它内联到 style 属性（R28） */
 export function injectCss(html: string, css: string): string {
-  if (!css.trim()) return html
-  return `<style>\n${css}\n</style>\n${html}`
+  return injectCssIntoHead(html, css)
 }
