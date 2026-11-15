@@ -30,11 +30,16 @@ function typeLabel(f: FieldDef | undefined): string {
   return f ? LABEL[f.type] : ''
 }
 
-const fields = ref<FieldDef[]>(structuredClone(props.modelValue ?? []))
+/** structuredClone 无法克隆 Vue reactive 代理（DataCloneError），FieldDef 均为纯 JSON，用 JSON 深拷贝 */
+function deepClone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
+}
+
+const fields = ref<FieldDef[]>(deepClone(props.modelValue ?? []))
 const selected = ref<number>(-1)
 
 function emitChange(): void {
-  emit('update:modelValue', structuredClone(fields.value))
+  emit('update:modelValue', deepClone(fields.value))
 }
 
 function addField(): void {

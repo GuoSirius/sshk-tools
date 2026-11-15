@@ -287,6 +287,18 @@ const composeTemplate = ref('') // 片段预览：宿主模板（id = JSON selec
 const composeSlots = ref<SlotDef[]>([])
 const composePlacements = ref<PlacementItem[]>([])
 const familyMetaCache = ref<Record<string, FamilyMetaLite>>({})
+/* R22：布局配置收进弹框（预览页只留预览，避免 header 过多挤占 iframe） */
+const composeOpen = ref(false)
+const composeHostLabel = computed(() => {
+  const node = selected.value
+  if (!node) return ''
+  if (node.data.cat !== 'fragment') return node.label
+  return hostTemplateOptions.value.find((t) => t.id === composeTemplate.value)?.label ?? '未选（单渲本片段）'
+})
+function closeComposeDialog(): void {
+  composeOpen.value = false
+  void renderComposePreview()
+}
 
 /** D14 黑白名单（复刻 repository policyAllows）：匹配集合 = 模板族/版本播种 ID */
 function policyAllows(policy: Policy | undefined, ids: string[]): boolean {
@@ -1110,37 +1122,15 @@ async function confirmSaveAs(): Promise<void> {
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
               <el-button size="small" type="success" plain :loading="previewing" @click="renderComposePreview">刷新预览</el-button>
-              <template v-if="selected.data.cat === 'fragment'">
-                <span class="hint">宿主模板</span>
-                <el-select
-                  size="small"
-                  filterable
-                  style="width: 240px"
-                  :model-value="composeTemplate"
-                  placeholder="选择宿主模板（组合预览）"
-                  @update:model-value="(v: string) => { composeTemplate = v; onHostTemplateChange(v) }"
-                >
-                  <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
-                </el-select>
-              </template>
-              <span v-else class="hint">拖入片段布局，模板 css + 片段 css 就近合并看真实效果</span>
+              <el-button size="small" type="primary" plain :disabled="!canEdit" @click="composeOpen = true">片段布局配置</el-button>
+              <span class="hint">布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</span>
             </div>
-            <ComposeEditor
-              v-if="composeSlotDefs.length"
-              v-model="composePlacements"
-              :slots="composeSlotDefs"
-              :fragment-options="composeFragmentOptions"
-              :readonly="!canEdit"
-              class="compose-wrap"
-              @edit-data="openPlacementData"
-            />
             <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
             <el-empty
-              v-else-if="selected.data.cat === 'fragment' && !composeTemplate"
-              description="选择宿主模板并刷新预览 —— 片段 css 与模板 css 合并的组合效果（未选时上方「刷新预览」为本片段单渲）"
+              v-else
+              description="点「片段布局配置」选宿主模板与片段摆放；「刷新预览」为本版本单渲效果"
               :image-size="60"
             />
-            <el-empty v-else description="无预览" :image-size="60" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码">
             <div class="editor-toolbar">
@@ -1224,6 +1214,41 @@ async function confirmSaveAs(): Promise<void> {
         <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>
       </template>
     </el-dialog>
+
+    <!-- 片段布局配置弹框（R22：宿主模板选择 + 组合编辑器收进弹框，预览页只留预览） -->
+    <el-dialog v-model="composeOpen" title="片段布局配置" width="720px" :close-on-click-modal="false">
+      <div v-if="selected?.data.cat === 'fragment'" class="editor-toolbar" style="padding-bottom: 10px">
+        <span class="hint">宿主模板</span>
+        <el-select
+          size="small"
+          filterable
+          style="width: 300px"
+          :model-value="composeTemplate"
+          placeholder="选择宿主模板（组合预览）"
+          @update:model-value="(v: string) => { composeTemplate = v; onHostTemplateChange(v) }"
+        >
+          <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
+        </el-select>
+        <span class="hint">拖拽 = 区块内排序；次数 = 重复渲染</span>
+      </div>
+      <div v-else class="editor-toolbar" style="padding-bottom: 10px">
+        <span class="hint">拖入片段布局，模板 css + 片段 css 就近合并看真实效果</span>
+      </div>
+      <ComposeEditor
+        v-if="composeSlotDefs.length"
+        v-model="composePlacements"
+        :slots="composeSlotDefs"
+        :fragment-options="composeFragmentOptions"
+        :readonly="!canEdit"
+        class="compose-editor-dialog"
+        @edit-data="openPlacementData"
+      />
+      <el-empty v-else description="先选择宿主模板" :image-size="60" />
+      <template #footer>
+        <el-button @click="composeOpen = false">取消</el-button>
+        <el-button type="primary" @click="closeComposeDialog">完成并刷新预览</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1248,6 +1273,19 @@ async function confirmSaveAs(): Promise<void> {
 .detail-tabs :deep(.el-tabs__content), .css-editor :deep(.el-tabs__content) { flex: 1; min-height: 0; }
 .detail-tabs :deep(.el-tab-pane), .css-editor :deep(.el-tab-pane) { height: 100%; display: flex; flex-direction: column; }
 .editor-toolbar { display: flex; align-items: center; gap: 10px; flex: none; padding-bottom: 6px; }
+/* EP radio-button 以 outline 画边框（不占布局，深色工具栏上被相邻元素覆盖出现左侧缺边）：
+   改为真实 border + 独立圆角 chip，边框完整 */
+.editor-toolbar :deep(.el-radio-group) { gap: 6px; }
+.editor-toolbar :deep(.el-radio-button .el-radio-button__inner) {
+  outline: none;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  box-shadow: none;
+}
+.editor-toolbar :deep(.el-radio-button.is-active .el-radio-button__inner),
+.editor-toolbar :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  border-color: var(--el-color-primary) !important;
+}
 .hint { font-size: 12px; opacity: .6; }
 .meta-form { overflow: auto; }
 /* #2 表单 label 防换行：长 label（如「code（目录名）」）不再折行破坏行对齐 */
@@ -1256,7 +1294,7 @@ async function confirmSaveAs(): Promise<void> {
 .sample-wrap { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }
 .overview { display: flex; flex-direction: column; gap: 16px; overflow: auto; }
 .preview { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }
-.compose-wrap { flex: none; max-height: 45%; overflow: auto; padding-bottom: 6px; }
+.compose-editor-dialog { height: 46vh; overflow: auto; padding-bottom: 6px; }
 
 .ctx-menu { position: fixed; z-index: 3000; min-width: 130px; background: var(--el-bg-color-overlay, #fff); border: 1px solid rgba(128,128,128,.25); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 4px; }
 .ctx-item { padding: 6px 12px; font-size: 13px; border-radius: 4px; cursor: pointer; color: var(--el-text-color-primary); }

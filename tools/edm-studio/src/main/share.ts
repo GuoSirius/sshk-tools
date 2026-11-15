@@ -82,11 +82,18 @@ export class ShareServer {
   }
 
   async stop(): Promise<void> {
-    if (this.server) {
-      await new Promise<void>((resolve) => this.server!.close(() => resolve()))
-      this.server = null
-      this.token = ''
-    }
+    const srv = this.server
+    if (!srv) return
+    // keep-alive 长连接会让 close 回调一直不触发（表现为「停止分享」无反应）：
+    // 主动断开全部连接，并加 1.5s 兜底超时保证 resolve
+    srv.closeAllConnections?.()
+    await new Promise<void>((resolve) => {
+      srv.close(() => resolve())
+      const t = setTimeout(resolve, 1500)
+      srv.once('close', () => clearTimeout(t))
+    })
+    this.server = null
+    this.token = ''
   }
 
   /** 分享某邮件 final.html 的完整链接 */

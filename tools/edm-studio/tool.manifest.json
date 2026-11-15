@@ -8,7 +8,7 @@
     "HTML 生成"
   ],
   "icon": "auto",
-  "entryRoute": "mails",
+  "entryRoute": "library",
   "enabled": true,
   "visibility": "desktop",
   "configLayout": "single",
@@ -28,16 +28,8 @@
   "requiredGrant": "",
   "menus": [
     {
-      "id": "brands",
-      "label": "品牌管理"
-    },
-    {
-      "id": "templates",
-      "label": "模板管理"
-    },
-    {
-      "id": "fragments",
-      "label": "片段管理"
+      "id": "library",
+      "label": "自定义内容库"
     },
     {
       "id": "mails",
