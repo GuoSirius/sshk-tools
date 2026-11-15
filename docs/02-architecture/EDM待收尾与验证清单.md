@@ -23,7 +23,9 @@
 | V5 | **EDM 与邮件编辑器 / 生成串联** | 薄索引后 `origin=custom` 的模板 / 片段能否被邮件生成正确取用——未验证。 |
 | V6 | **R28 CSS 显式引用** | `<link>` + `@shared/@root/@system/@custom` 逻辑 URI、禁 `..`、head 提前去重、片段 repeat 不重复注入、无 link 存量资产回退就近链——7 项单测通过，未 dev 实跑。 |
 | V7 | **上传通道真实链路** | 本地目录自检（`tools/upload-config` 的自检按钮）、真实 FTP/SFTP 连接、阿里云 OSS、进度事件 UI、工具级 overrides 覆盖全局 profile、校验收紧（工具不能放宽）——均未连真实服务验证。 |
-| V8 | **共享编辑器运行期** | Monaco 多 tab 唯一 model URI / wangEditor 全屏 / 深色主题 / md↔html 单向互转；badge-studio 的 CodeEditor JSON 视图——构建通过，未 dev 实跑。 |
+| V8 | **共享编辑器运行期** | Monaco 多 tab 唯一 model URI / 深色主题 / md↔html 单向互转；badge-studio 的 CodeEditor JSON 视图——构建通过，未 dev 实跑。**全屏层级已按复核项 9 根治**（Teleport + 顶格 z-index，见富文本规划 §七），仍需实跑确认退出全屏后容器归位。 |
+| V10 | **本轮复核改动实跑** | 开发者模式口令弹框（打包版）、自动安装开关、上传配置能力自检横幅与一键重载、地域中文下拉、访问密钥说明对照表——静态门禁与构建通过，未 dev 实跑。 |
+| V11 | **N8 宿主能力兜底** | 旧窗口下点「测试连接」应走通用通道成功或给出可操作提示，不再出现 `is not a function`；重载窗口后横幅消失。 |
 | V9 | **T8 内联图片回写** | `saveSample()` 前 `uploadInlineImages()` 把 sample.yaml 里的 `data:` 图片批量上传并回写 URL——3 项单测通过，未 dev 实跑。 |
 
 ## 三、待复查 / 健壮性
@@ -32,7 +34,8 @@
 |---|---|---|
 | C2 | **依赖 / 漏洞复查** | dependabot 此前报 5 漏洞（dompurify 已修）；本轮新增 `basic-ftp` / `ssh2` / `ali-oss` / `marked` / `turndown`，尚未复查新漏洞。 |
 | C3 | **跨平台路径** | `splitPath` 已兼容 `/` 与 `\`，但自定义根在 packaged（userData）与 dev（assets）两套路径的实际读写边界建议补一轮冒烟。 |
-| C4 | **打包期 Node 依赖** | `basic-ftp`/`ssh2`/`ali-oss` 内联进 main bundle；`cpu-features` 用构建期 shim 替换，需确认打包后 SFTP 仍能回退纯 JS 探测。 |
+| C4 | **打包期 Node 依赖** | `basic-ftp`/`ssh2`/`ali-oss` 内联进 main bundle；`cpu-features` 用构建期 shim 替换，需确认打包后 SFTP 仍能回退纯 JS 探测。**编译可行性已调研并结论「维持 shim」**，见上传能力规划 §9.1。 |
+| C5 | **新增宿主能力的版本漂移** | Electron preload 是窗口启动快照，界面 HMR 会出现「新按钮 + 旧宿主」。已统一走 `@sshk/ui-kit` 的 `callHostApi()`（能力探测 → 通用通道 → 可操作提示 + 一键重载）；**后续所有新增 `window.api.*` 方法都必须走该入口**，不得裸调。 |
 | ~~C1~~ | ~~配置默认值与密钥持久化~~ | ✅ **已关闭**：全局配置走 `app.upload.*`（`normalizeUploadConfig` 容错归一化），密钥走 safeStorage（`upload:secret:set` / `upload:secret:state` 只回布尔），SFTP 被动模式等已在配置工具 UI 落地。 |
 
 ## 四、推进顺序（更新）
