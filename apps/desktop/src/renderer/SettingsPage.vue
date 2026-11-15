@@ -1,15 +1,27 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
 import type { ToolConfigField } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 
-// 工具级配置：只读写 tools.<toolId>.*，字段由工具包 manifest 的 configGroups 驱动
+/**
+ * 工具级配置：只读写 tools.<toolId>.*，字段由工具包 manifest 的 configGroups 驱动。
+ *
+ * N14 布局重构：由「一页多卡片」改为左右两栏——
+ *   左栏 = 全部分组导航（独立滚动，十几项也能从容排布）；
+ *   右栏 = 连续表单区（独立滚动，分组间用分隔线而非卡片，内容少的组不再撑出空白）；
+ *   底部 = 固定保存条（flex:none，不随表单滚动），带未保存提示。
+ *
+ * 注意：上传配置工具 manifest 没有 configGroups，走独立的 UploadConfigPage，不受本页影响。
+ * layout / section props 保留以兼容宿主路由；section 现在只用于「初始定位到某个分组」，
+ * 不再把右栏裁成单组，避免与左栏导航形成双重导航。
+ */
 const props = defineProps<{
   toolId: string
   section?: string
-  /** 由工具包 manifest.configLayout 决定：single / tabs / menu */
+  /** 兼容宿主传参：single / tabs / menu 统一走左右布局 */
   layout?: 'single' | 'tabs' | 'menu'
 }>()
 const { byId } = useToolCatalog()
@@ -19,30 +31,30 @@ const depValues = reactive<Record<string, unknown>>({})
 /** 动态选项：manifest 标 optionsSource 的字段从宿主能力实时拉取（如全局上传 profile） */
 const dynamicOptions = reactive<Record<string, { label: string; value: string }[]>>({})
 const saving = ref(false)
-const activeTab = ref('')
-const layout = computed(() => props.layout ?? 'single')
+const dirty = ref(false)
+const activeGroup = ref('')
+const bodyEl = ref<HTMLElement | null>(null)
+const DEPS_ID = '__deps__'
+/** 点击导航后短暂锁定滚动高亮，避免 smooth scroll 经过中间组时高亮乱跳 */
+let scrollLockUntil = 0
 
-/**
- * single = 一页全部卡片（内置工具默认）；
- * tabs  = 内容区分页；menu = 左侧子菜单逐页（由 App.vue 生成二级菜单）。
- * 保存始终针对 allFields()，切换布局不会漏存字段。
- */
 const isDev = import.meta.env.DEV
-const shownGroups = computed(() => {
-  const raw = (tool.value?.configGroups ?? []).map((group) => ({
+/** dev 下字段全量展示（AGENTS.md 铁律）；打包版隐藏 devOnly */
+const groups = computed(() => (tool.value?.configGroups ?? [])
+  .map((group) => ({
     ...group,
     fields: group.fields.filter((field) => !field.devOnly || isDev),
-  })).filter((group) => group.fields.length > 0)
-  const groups = raw
-  if (layout.value === 'tabs') {
-    return groups.filter((group) => group.id === activeTab.value)
-  }
-  if (layout.value === 'menu' && props.section?.startsWith('config-')) {
-    const hit = groups.filter((group) => group.id === props.section)
-    if (hit.length > 0) return hit
-  }
-  return groups
-})
+  }))
+  .filter((group) => group.fields.length > 0))
+
+const hasExtras = computed(() => Boolean(tool.value?.configDeps?.length || tool.value?.warnings?.length))
+interface NavItem { id: string; label: string; count: number }
+const navItems = computed<NavItem[]>(() => [
+  ...groups.value.map((group) => ({ id: group.id, label: group.label, count: group.fields.length })),
+  ...(hasExtras.value
+    ? [{ id: DEPS_ID, label: '配置依赖', count: (tool.value?.configDeps?.length ?? 0) + (tool.value?.warnings?.length ?? 0) }]
+    : []),
+])
 
 /** 路径类配置统一交互：选择 + 可手动修改（与产物目录一致） */
 async function pickPath(field: ToolConfigField): Promise<void> {
@@ -85,9 +97,15 @@ async function load(): Promise<void> {
 }
 // catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）
 watch(() => tool.value?.id, () => {
-  activeTab.value = tool.value?.configGroups[0]?.id ?? ''
-  void load()
+  void load().then(() => {
+    dirty.value = false
+    const target = props.section?.startsWith('config-') ? props.section : groups.value[0]?.id
+    if (target) goto(target)
+  })
 }, { immediate: true })
+
+// 任何字段变化都标记未保存；load() 完成后会重置，避免把回填误判成修改
+watch(values, () => { dirty.value = true }, { deep: true })
 
 function display(value: unknown): string {
   if (value === null || value === undefined) return '（未设置）'
@@ -97,9 +115,9 @@ function display(value: unknown): string {
 
 async function save(): Promise<void> {
   // 必填拦截：manifest 标 required 的字段为空时不落盘
-  const missing = allFields().filter((field) => field.required && String(values[field.key] ?? "").trim() === "")
+  const missing = allFields().filter((field) => field.required && String(values[field.key] ?? '').trim() === '')
   if (missing.length > 0) {
-    ElMessage.error("必填项未填写：" + missing.map((field) => field.label).join("、"))
+    ElMessage.error('必填项未填写：' + missing.map((field) => field.label).join('、'))
     return
   }
   saving.value = true
@@ -109,6 +127,7 @@ async function save(): Promise<void> {
       const value = field.type === 'number' ? Number(raw) : field.type === 'boolean' ? Boolean(raw) : String(raw ?? '')
       await window.api.config.set(pathFor(field), value)
     }
+    dirty.value = false
     ElMessage.success('工具配置已保存')
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -117,100 +136,210 @@ async function save(): Promise<void> {
   }
 }
 
-function focusSection(section?: string): void {
-  if (!section) return
-  void nextTick(() => {
-    document.querySelector(`[data-group="${section}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  })
+function scrollToGroup(id: string): void {
+  const container = bodyEl.value
+  if (!container) return
+  const target = container.querySelector<HTMLElement>(`[data-group="${id}"]`)
+  if (!target) return
+  const delta = target.getBoundingClientRect().top - container.getBoundingClientRect().top
+  container.scrollTo({ top: container.scrollTop + delta - 8, behavior: 'smooth' })
 }
-watch(() => props.section, focusSection, { immediate: true })
+function goto(id: string): void {
+  activeGroup.value = id
+  scrollLockUntil = Date.now() + 520
+  void nextTick(() => scrollToGroup(id))
+}
+function onBodyScroll(): void {
+  const container = bodyEl.value
+  if (!container || Date.now() < scrollLockUntil) return
+  const threshold = container.getBoundingClientRect().top + 28
+  let current = navItems.value[0]?.id ?? ''
+  for (const item of navItems.value) {
+    const el = container.querySelector<HTMLElement>(`[data-group="${item.id}"]`)
+    if (el && el.getBoundingClientRect().top <= threshold) current = item.id
+  }
+  activeGroup.value = current
+}
+// 宿主二级菜单切换 section 时只做定位，不裁剪右栏
+watch(() => props.section, (section) => {
+  if (section?.startsWith('config-')) goto(section)
+})
 </script>
 
 <template>
-  <ToolPageLayout
-    :title="`${tool?.name ?? '工具'} · 工具配置`"
-    description="仅管理本工具自己的配置；应用 / 系统级配置请从右上角「设置」进入"
-  >
-    <template #actions>
-      <el-button type="primary" size="small" :loading="saving" @click="save">保存工具配置</el-button>
-    </template>
+  <ToolPageLayout class="settings-layout">
+    <div class="split">
+      <aside class="split-nav">
+        <div class="nav-title">配置分组</div>
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          type="button"
+          class="nav-item"
+          :class="{ 'is-active': activeGroup === item.id }"
+          @click="goto(item.id)"
+        >
+          <el-icon class="nav-icon">
+            <Setting v-if="item.id !== DEPS_ID" />
+            <InfoFilled v-else />
+          </el-icon>
+          <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-count">{{ item.count }}</span>
+        </button>
+        <div v-if="!navItems.length" class="nav-empty">该工具暂无配置项</div>
+      </aside>
 
-    <el-tabs v-if="layout === 'tabs'" v-model="activeTab" class="config-tabs">
-      <el-tab-pane
-        v-for="group in tool?.configGroups ?? []"
-        :key="group.id"
-        :label="group.label"
-        :name="group.id"
-      />
-    </el-tabs>
+      <div class="split-main">
+        <div ref="bodyEl" class="split-body" @scroll.passive="onBodyScroll">
+          <section
+            v-for="group in groups"
+            :key="group.id"
+            class="panel"
+            :class="{ 'is-focused': section === group.id || activeGroup === group.id }"
+            :data-group="group.id"
+          >
+            <div class="panel-head"><el-icon><Setting /></el-icon>{{ group.label }}</div>
+            <el-form label-width="140px" size="small">
+              <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label">
+                <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
+                <el-input-number
+                  v-else-if="field.type === 'number'"
+                  v-model="values[field.key]"
+                  :min="field.min"
+                  :max="field.max"
+                />
+                <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row">
+                  <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
+                  <el-button size="small" @click="pickPath(field)">
+                    {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
+                  </el-button>
+                </div>
+                <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px" filterable clearable>
+                  <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+                <el-input v-else v-model="values[field.key]" style="width: 260px" />
+                <span v-if="field.hint" :class="['hint', { 'hint-inline': field.type === 'boolean' }]">{{ field.hint }}</span>
+              </el-form-item>
+            </el-form>
+          </section>
 
-    <div class="settings-grid">
-      <section
-        v-for="group in shownGroups"
-        :key="group.id"
-        class="panel"
-        :class="{ 'is-focused': section === group.id }"
-        :data-group="group.id"
-      >
-        <div class="panel-head"><span class="dot" />{{ group.label }}</div>
-        <el-form label-width="140px" size="small">
-          <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label">
-            <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
-            <el-input-number
-              v-else-if="field.type === 'number'"
-              v-model="values[field.key]"
-              :min="field.min"
-              :max="field.max"
-            />
-            <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row">
-              <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
-              <el-button size="small" @click="pickPath(field)">
-                {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
-              </el-button>
+          <section v-if="hasExtras" class="panel" :data-group="DEPS_ID">
+            <div class="panel-head"><el-icon><InfoFilled /></el-icon>配置依赖</div>
+            <div v-for="dep in tool?.configDeps ?? []" :key="`${dep.toolId}.${dep.key}`" class="kv">
+              <span>{{ byId.get(dep.toolId)?.name ?? dep.toolId }} · {{ dep.label }}</span>
+              <code>{{ display(depValues[`${dep.toolId}.${dep.key}`]) }}</code>
             </div>
-            <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px" filterable clearable>
-              <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <el-input v-else v-model="values[field.key]" style="width: 260px" />
-            <span v-if="field.hint" :class="['hint', { 'hint-inline': field.type === 'boolean' }]">{{ field.hint }}</span>
-          </el-form-item>
-        </el-form>
-      </section>
+            <div v-for="(warning, i) in tool?.warnings ?? []" :key="i" class="warning-line">{{ warning }}</div>
+            <div class="hint" style="margin-top: 8px">依赖配置只读，由所属工具管理；禁用 / 删除工具请在「设置 → 工具与权限」中操作</div>
+          </section>
 
-      <section v-if="tool?.configDeps?.length || tool?.warnings?.length" class="panel">
-        <div class="panel-head"><span class="dot" />配置依赖</div>
-        <div v-for="dep in tool?.configDeps ?? []" :key="`${dep.toolId}.${dep.key}`" class="kv">
-          <span>{{ byId.get(dep.toolId)?.name ?? dep.toolId }} · {{ dep.label }}</span>
-          <code>{{ display(depValues[`${dep.toolId}.${dep.key}`]) }}</code>
+          <div v-if="!groups.length && !hasExtras" class="empty-inline">该工具暂无可编辑配置</div>
         </div>
-        <div v-for="(warning, i) in tool?.warnings ?? []" :key="i" class="warning-line">{{ warning }}</div>
-        <div class="hint" style="margin-top: 8px">依赖配置只读，由所属工具管理；禁用 / 删除工具请在「设置 → 工具与权限」中操作</div>
-      </section>
+
+        <!-- 固定保存条：不随右栏表单滚动，长表单填到底也能一键保存 -->
+        <div class="split-foot">
+          <span class="muted">配置落盘路径：tools.{{ toolId }}.*</span>
+          <div class="foot-actions">
+            <span v-if="dirty" class="dirty-tip"><el-icon><WarningFilled /></el-icon>有未保存修改</span>
+            <el-button type="primary" size="small" :loading="saving" @click="save">
+              <el-icon><Check /></el-icon>保存工具配置
+            </el-button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <template #footer>
-      <span class="muted">配置落盘路径：tools.{{ toolId }}.* · 工具元数据与可见性由主进程统一裁决</span>
+      <span class="muted">工具元数据与可见性由主进程统一裁决 · 应用 / 系统级配置请从右上角「设置」进入</span>
     </template>
   </ToolPageLayout>
 </template>
 
 <style scoped>
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+/* ToolPageLayout 的中段改为不滚动，滚动交给左右两栏各自承担 */
+:deep(.tool-page-body) { overflow: hidden; }
+
+.split {
+  display: flex;
   gap: 12px;
+  height: 100%;
+  min-height: 0;
 }
-.panel {
+.split-nav {
+  flex: none;
+  width: 224px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
   border: 1px solid var(--sshk-border);
   border-radius: 10px;
-  padding: 14px 16px;
   background: var(--sshk-panel);
-  transition: border-color .2s ease, box-shadow .2s ease;
 }
-.panel.is-focused {
-  border-color: var(--sshk-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sshk-accent) 14%, transparent);
+.nav-title {
+  padding: 4px 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: .6;
+  letter-spacing: .04em;
 }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+.nav-item:hover { background: color-mix(in srgb, var(--sshk-accent) 8%, transparent); }
+.nav-item.is-active {
+  background: color-mix(in srgb, var(--sshk-accent) 16%, transparent);
+  color: var(--sshk-accent);
+  font-weight: 600;
+}
+.nav-icon { flex: none; font-size: 15px; }
+.nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-count {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--sshk-accent) 12%, transparent);
+  font-size: 11px;
+  text-align: center;
+}
+.nav-empty, .empty-inline { font-size: 13px; opacity: .55; padding: 12px 8px; }
+
+.split-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.split-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+/* 右栏用分隔线分区，不用卡片：内容少的分组不会再被撑成空盒子 */
+.panel {
+  padding: 4px 0 18px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--sshk-border);
+  scroll-margin-top: 8px;
+}
+.panel:last-child { border-bottom: 0; }
+.panel.is-focused .panel-head { color: var(--sshk-accent); }
 .panel-head {
   display: flex;
   align-items: center;
@@ -218,16 +347,9 @@ watch(() => props.section, focusSection, { immediate: true })
   font-weight: 600;
   margin-bottom: 14px;
 }
-.dot {
-  width: 6px;
-  height: 14px;
-  border-radius: 3px;
-  background: var(--sshk-accent);
-}
 .hint, .muted { font-size: 12px; opacity: .6; line-height: 1.5; }
 .hint { display: block; }
-/* 开关后接说明文字需与控件保持间距（2026-11-15 用户反馈，全项目铁律）；
-   输入框 / 下拉等控件的 hint 在控件下方，需与控件左对齐（此处不加 margin-left） */
+/* 开关后接说明文字需与控件保持间距（2026-11-15 用户反馈，全项目铁律） */
 .hint-inline { display: inline; margin-left: 12px; }
 .kv {
   display: flex;
@@ -240,9 +362,23 @@ watch(() => props.section, focusSection, { immediate: true })
 }
 .kv code { font-size: 12px; opacity: .75; word-break: break-all; }
 .warning-line { font-size: 12px; color: #ffb35c; padding: 6px 0; }
-.path-row {
+.path-row { display: flex; gap: 8px; width: 100%; }
+
+.split-foot {
+  flex: none;
   display: flex;
-  gap: 8px;
-  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px 2px;
+  border-top: 1px solid var(--sshk-border);
+}
+.foot-actions { display: flex; align-items: center; gap: 12px; }
+.dirty-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #ffb35c;
 }
 </style>
