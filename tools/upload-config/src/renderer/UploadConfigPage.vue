@@ -157,12 +157,19 @@ async function testProfile(type: RowKind, id: string): Promise<void> {
     const list = type === 'remote' ? cfg.value.remote.profiles : cfg.value.cloud.profiles
     const profile = list.find((p) => p.id === id)
     if (!profile) throw new Error('找不到该 profile')
-    const message = await callHostApi<string>(TEST_SPEC, {
+    const res = await callHostApi<{ ok: boolean; message: string }>(TEST_SPEC, {
       type,
       profile: { ...profile } as unknown as Record<string, unknown>,
       secret: secretInputs.value[id] || undefined,
     })
-    testResults.value[id] = `✓ ${message}`
+    // N11：校验失败 / 连不上是预期内结果，页面展示即可，不再抛异常污染主进程控制台
+    if (!res?.ok) {
+      const msg = res?.message || '连接测试未通过'
+      testResults.value[id] = `✗ ${msg}`
+      ElMessage.warning(msg)
+      return
+    }
+    testResults.value[id] = `✓ ${res.message}`
     ElMessage.success('连接测试通过')
   } catch (err) {
     const msg = (err as Error).message

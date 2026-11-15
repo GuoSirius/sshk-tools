@@ -109,7 +109,8 @@ interface Window {
       setSecret(profileId: string, value: string): Promise<boolean>
       secretState(): Promise<Record<string, boolean>>
       getSecret(profileId: string): Promise<string>
-      test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<string>
+      /** N11：返回结构化结果，校验失败不 reject，避免主进程控制台刷堆栈 */
+      test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<{ ok: boolean; message: string }>
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>

@@ -202,8 +202,21 @@ export class UploadRuntime {
     return this.opts.services.host.getToolSecret(SECRET_TOOL_ID, id)
   }
 
-  /** N4：每个 remote / cloud profile 独立测试；密钥可用表单临时值，不落盘 */
-  async test(req: UploadTestRequest): Promise<string> {
+  /**
+   * N4 / N11：每个 remote / cloud profile 独立测试；密钥可用表单临时值，不落盘。
+   * 一律返回结构化结果，绝不 reject —— 校验不通过 / 连不上是**预期内用户输入结果**，
+   * 若抛给 ipcMain.handle，Electron 会往主进程终端打印
+   * "Error occurred in handler for 'upload:test'" 堆栈，污染控制台。
+   */
+  async test(req: UploadTestRequest): Promise<{ ok: boolean; message: string }> {
+    try {
+      return { ok: true, message: await this.probe(req) }
+    } catch (err) {
+      return { ok: false, message: (err as Error).message || String(err) }
+    }
+  }
+
+  private async probe(req: UploadTestRequest): Promise<string> {
     const type = req?.type === 'cloud' ? 'cloud' : 'remote'
     const raw: unknown = req?.profile
     const obj = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
