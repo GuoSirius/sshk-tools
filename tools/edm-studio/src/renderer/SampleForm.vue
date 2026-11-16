@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { validateModel, type FieldDef } from './sample-schema'
 import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
+import { CodeEditor } from '@sshk/code-editor'
 import { useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
 import { createImageUploader } from './upload.js'
+import { llmApi, type LlmProviderLite } from './shared'
+import { generateSample, polishRichText, type ChatMessage } from './ai-copy'
 
 /**
  * 示例数据表单渲染器（R15）：按 fields schema 渲染 10 类控件，实时校验标红。
@@ -13,6 +17,7 @@ import { createImageUploader } from './upload.js'
  * image/image-list 已支持「上传 + 预览 + URL 直填」（ImageField）：B7 起走应用级上传通道并回填服务端 URL，
  * 通道未配置 / 上传失败时回退 dataURL，离线编辑不阻断。
  * richtext 的 onUploadImage 与 ImageField 共用工具侧同一个注入实现（C2 唯一注入点）。
+ * D-Q2 AI 文案助手：顶层「AI 填充」（schema→示例数据，diff 预览后写入）+ richtext「AI 润色」（只改文字）。
  */
 const props = withDefaults(
   defineProps<{
@@ -85,10 +90,102 @@ function removeImage(key: string, index: number): void {
 function canNest(f: FieldDef): boolean {
   return (props.depth ?? 0) < 2 && (f.itemFields?.length ?? 0) > 0
 }
+
+// ── D-Q2 AI 文案助手：无 Provider 降级 + diff 预览（接受 / 放弃） ──
+const aiLoading = ref(false)
+const noProvider = ref(true)
+let provider: LlmProviderLite | null = null
+async function ensureProvider(): Promise<boolean> {
+  try {
+    const list = await llmApi().providers()
+    provider = list.find((p) => p.enabled) ?? null
+  } catch {
+    provider = null
+  }
+  noProvider.value = !provider
+  return Boolean(provider)
+}
+onMounted(() => { void ensureProvider() })
+
+async function chat(messages: ChatMessage[]): Promise<string> {
+  if (!provider) throw new Error('请先在「模型控制台」配置并启用模型 Provider')
+  const res = await llmApi().chat(provider, messages)
+  return res.content
+}
+
+/** AI 填充：schema → 示例数据 → diff 预览（接受 / 放弃） */
+const aiPreview = ref<{ open: boolean; prev: string; next: Record<string, unknown> }>({ open: false, prev: '', next: {} })
+async function aiFill(): Promise<void> {
+  if (props.readonly || props.depth !== 0) return
+  if (!(await ensureProvider())) {
+    ElMessage.warning('未配置可用模型 Provider：请先在「模型控制台」配置并启用')
+    return
+  }
+  aiLoading.value = true
+  try {
+    const next = await generateSample(props.fields, chat)
+    aiPreview.value = { open: true, prev: JSON.stringify(props.modelValue, null, 2), next }
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    aiLoading.value = false
+  }
+}
+function acceptAiFill(): void {
+  emit('update:modelValue', { ...props.modelValue, ...aiPreview.value.next })
+  aiPreview.value.open = false
+  ElMessage.success('AI 示例数据已写入')
+}
+
+/** AI 润色：richtext 字段旧/新并排预览，接受才写回 */
+const polish = ref<{ open: boolean; key: string; label: string; before: string; after: string }>({
+  open: false, key: '', label: '', before: '', after: '',
+})
+async function aiPolish(f: FieldDef): Promise<void> {
+  if (props.readonly) return
+  const before = strVal(f.key)
+  if (!before.trim()) {
+    ElMessage.warning('该字段还没有内容，先填一些文字再润色')
+    return
+  }
+  if (!(await ensureProvider())) {
+    ElMessage.warning('未配置可用模型 Provider：请先在「模型控制台」配置并启用')
+    return
+  }
+  aiLoading.value = true
+  try {
+    const after = await polishRichText(before, chat)
+    polish.value = { open: true, key: f.key, label: f.label, before, after }
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    aiLoading.value = false
+  }
+}
+function acceptPolish(): void {
+  set(polish.value.key, polish.value.after)
+  polish.value.open = false
+  ElMessage.success('润色结果已写回')
+}
 </script>
 
 <template>
   <div class="sample-form">
+    <!-- D-Q2 顶层工具行：AI 填充（仅顶层渲染，嵌套行不重复出现） -->
+    <div v-if="(depth ?? 0) === 0 && fields.length > 0" class="ai-bar">
+      <el-button
+        size="small"
+        type="primary"
+        plain
+        :loading="aiLoading"
+        :disabled="readonly"
+        :title="noProvider ? '未配置可用模型 Provider：请先在「模型控制台」配置并启用' : '按字段 schema 生成一版示例数据（预览确认后写入）'"
+        @click="aiFill"
+      >
+        AI 填充
+      </el-button>
+      <span class="ai-hint">{{ noProvider ? '需在「模型控制台」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</span>
+    </div>
     <template v-for="{ f, showGroup } in rows" :key="f.key">
       <div v-if="showGroup" class="group-divider"><span>{{ f.group }}</span></div>
       <div class="field-row" :class="{ 'has-error': rowErr(f) }">
@@ -118,6 +215,11 @@ function canNest(f: FieldDef): boolean {
             :on-upload-image="uploader"
             @update:model-value="(v: string) => set(f.key, v)"
           />
+          <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
+          <div v-if="f.type === 'richtext' && !readonly" class="ai-polish-row">
+            <el-button size="small" text type="primary" :loading="aiLoading" @click="aiPolish(f)">AI 润色</el-button>
+            <span class="ai-hint">保持标签结构与链接不变，仅改写文字；预览确认后才写回</span>
+          </div>
           <!-- 单选 -->
           <el-radio-group
             v-else-if="f.type === 'radio'"
@@ -209,6 +311,54 @@ function canNest(f: FieldDef): boolean {
         </div>
       </div>
     </template>
+
+    <!-- AI 填充 diff 预览：旧 / 新并排，接受才写入（放弃零改动） -->
+    <el-dialog
+      v-model="aiPreview.open"
+      title="AI 示例数据预览（接受才写入，放弃零改动）"
+      width="720px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <div class="diff-grid">
+        <div>
+          <div class="diff-cap">当前数据</div>
+          <CodeEditor :model-value="aiPreview.prev" language="json" height="240px" readonly />
+        </div>
+        <div>
+          <div class="diff-cap">AI 生成</div>
+          <CodeEditor :model-value="JSON.stringify(aiPreview.next, null, 2)" language="json" height="240px" readonly />
+        </div>
+      </div>
+      <template #footer>
+        <el-button size="small" @click="aiPreview.open = false">放弃</el-button>
+        <el-button size="small" type="primary" @click="acceptAiFill">接受并写入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 润色 diff 预览：旧 / 新并排，接受才写回 -->
+    <el-dialog
+      v-model="polish.open"
+      :title="`AI 润色预览 · ${polish.label}（接受才写回）`"
+      width="720px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <div class="diff-grid">
+        <div>
+          <div class="diff-cap">润色前</div>
+          <CodeEditor :model-value="polish.before" language="html" height="240px" readonly />
+        </div>
+        <div>
+          <div class="diff-cap">润色后</div>
+          <CodeEditor :model-value="polish.after" language="html" height="240px" readonly />
+        </div>
+      </div>
+      <template #footer>
+        <el-button size="small" @click="polish.open = false">放弃</el-button>
+        <el-button size="small" type="primary" @click="acceptPolish">接受并写回</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -228,4 +378,11 @@ function canNest(f: FieldDef): boolean {
 .list-row-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: .7; padding-bottom: 6px; }
 .error-text { font-size: 12px; color: var(--el-color-danger); }
 .hint { font-size: 12px; opacity: .6; }
+
+/* D-Q2 AI 文案助手 */
+.ai-bar { display: flex; align-items: center; gap: 10px; }
+.ai-hint { font-size: 12px; opacity: .6; }
+.ai-polish-row { display: flex; align-items: center; gap: 8px; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.diff-cap { font-size: 12px; opacity: .7; margin-bottom: 4px; }
 </style>

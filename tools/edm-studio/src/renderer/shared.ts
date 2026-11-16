@@ -17,9 +17,24 @@ interface SshkOsApi {
   shellOpen(target: string): Promise<unknown>
   pickSave(opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string>
 }
+interface SshkLlmApi {
+  providers(): Promise<LlmProviderLite[]>
+  chat(provider: unknown, messages: { role: 'system' | 'user' | 'assistant'; content: string }[], options?: { onDelta?: boolean }): Promise<{ content: string; model: string }>
+}
+/** D-Q2 AI 文案助手用的 Provider 只读视图（不含密钥） */
+export interface LlmProviderLite {
+  _id: string
+  name: string
+  kind: string
+  baseURL: string
+  model: string
+  enabled: boolean
+  hasApiKey: boolean
+}
 interface SshkApi {
   edm: { api(action: string, data?: Record<string, unknown>): Promise<unknown> }
   os: SshkOsApi
+  llm: SshkLlmApi
 }
 function sshkApi(): SshkApi {
   return (window as unknown as { api: SshkApi }).api
@@ -28,6 +43,8 @@ export const api = <T = unknown>(action: string, data?: Record<string, unknown>)
   sshkApi().edm.api(action, data) as Promise<T>
 /** os 通道（剪贴板 / 打开产物 / 导出另存为，MailsPage 用） */
 export const osApi = (): SshkOsApi => sshkApi().os
+/** llm 通道（D-Q2 AI 文案助手：应用级 Provider 清单 + 按能力调用 chat） */
+export const llmApi = (): SshkLlmApi => sshkApi().llm
 
 /** 系统内容（R8 播种，origin='system'）只读：编辑/删除不可用，派生走「另存为」 */
 export function isSystem(row: Named): boolean {
