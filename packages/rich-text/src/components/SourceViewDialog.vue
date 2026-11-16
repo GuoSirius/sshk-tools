@@ -78,6 +78,7 @@ function apply(): void {
 <template>
   <el-dialog
     :model-value="open"
+    class="source-view-dialog"
     title="查看源码"
     width="820px"
     top="6vh"
@@ -86,20 +87,29 @@ function apply(): void {
     append-to-body
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
-    <div class="src-tip">
-      存储形态 HTML（图片为 file:// 资源路径）。{{ readonly ? '只读内容，仅可查看与复制。' : '默认格式化展示；可直接修改，或格式化/压缩后「应用修改」写回编辑器。' }}
+    <div class="src-body">
+      <div class="src-tip">
+        存储形态 HTML（图片为 file:// 资源路径）。{{ readonly ? '只读内容，仅可查看与复制。' : '默认格式化展示；可直接修改，或格式化/压缩后「应用修改」写回编辑器。' }}
+      </div>
+      <div class="src-actions">
+        <el-button size="small" :loading="formatting" @click="doFormat">格式化</el-button>
+        <el-button size="small" @click="doCompact">压缩</el-button>
+      </div>
+      <!-- 与 badge-studio 同款：编辑器包在带标题的卡片面板中，高度跟随弹框剩余空间 -->
+      <div class="src-editor-panel">
+        <div class="src-panel-title">HTML 源码</div>
+        <div class="src-editor-wrap">
+          <CodeEditor
+            v-model="text"
+            language="html"
+            height="100%"
+            :readonly="readonly"
+            @update:model-value="markDirty"
+          />
+          <!-- 说明：编辑器高度由 .src-editor-wrap 绝对定位填满，见下方样式 -->
+        </div>
+      </div>
     </div>
-    <div class="src-actions">
-      <el-button size="small" :loading="formatting" @click="doFormat">格式化</el-button>
-      <el-button size="small" @click="doCompact">压缩</el-button>
-    </div>
-    <CodeEditor
-      v-model="text"
-      language="html"
-      height="min(52vh, 480px)"
-      :readonly="readonly"
-      @update:model-value="markDirty"
-    />
     <template #footer>
       <el-button @click="copy">复制源码</el-button>
       <el-button v-if="!readonly" type="primary" :disabled="!dirty" @click="apply">应用修改</el-button>
@@ -109,6 +119,24 @@ function apply(): void {
 </template>
 
 <style scoped>
+/* 与 badge-studio 同款呈现：body 固定高度 + flex 列，编辑器填满剩余空间、高度跟随弹框 */
+:global(.source-view-dialog) .el-dialog__body {
+  height: clamp(400px, 74vh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px 20px 16px !important;
+}
+.src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .src-tip { font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
 .src-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.src-editor-panel {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px; padding: 10px;
+}
+.src-panel-title { font-size: 12px; opacity: 0.7; margin-bottom: 8px; }
+/* Monaco 的 height:100% 在 flex 链里算不出具体高度会坍塌；用相对/绝对定位给它确定尺寸 */
+.src-editor-wrap { flex: 1 1 auto; min-height: 260px; position: relative; }
+.src-editor-wrap > :deep(.code-editor) { position: absolute; inset: 0; height: 100% !important; }
 </style>

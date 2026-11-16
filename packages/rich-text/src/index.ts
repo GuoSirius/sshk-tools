@@ -14,4 +14,6 @@ export type {
   RichTextImageSource,
   RichTextImageTarget,
   RichTextUploadHook,
+  RichTextUploadProgress,
+  RichTextUploadProgressHook,
 } from './types'

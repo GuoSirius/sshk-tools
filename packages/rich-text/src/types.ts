@@ -43,11 +43,26 @@ export interface RichTextImageItem {
   key?: string
 }
 
+/** 上传进度可观测点：Provider 无 byte 级上报，只有开始(0)/完成(100)；失败由 upload reject 表达 */
+export interface RichTextUploadProgress {
+  /** 0 或 100 */
+  percent: number
+  status: 'uploading' | 'success'
+}
+
+/** 上传进度回调（可选）：工具侧桥接在上传开始/完成时各调用一次 */
+export type RichTextUploadProgressHook = (p: RichTextUploadProgress) => void
+
 export interface RichTextImageLibrary {
   /** 列出可选图床来源（本地默认项 + 远程/云 profile），首次打开弹窗时调用一次 */
   sources(): Promise<RichTextImageSource[]>
-  /** 上传到指定来源，返回可插入的 URL */
-  upload(file: File, source: RichTextImageSource, target?: RichTextImageTarget): Promise<string>
+  /** 上传到指定来源，返回可插入的 URL；onProgress 可选，用于逐项进度展示 */
+  upload(
+    file: File,
+    source: RichTextImageSource,
+    target?: RichTextImageTarget,
+    onProgress?: RichTextUploadProgressHook,
+  ): Promise<string>
   /** 列出某来源已有图片（新在前由实现方保证）；limit 为期望一次拉取上限，实现方可按后端能力截断 */
   list(source: RichTextImageSource, target?: RichTextImageTarget, limit?: number): Promise<RichTextImageItem[]>
 }

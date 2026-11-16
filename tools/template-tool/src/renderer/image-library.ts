@@ -51,7 +51,8 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
           .map((p) => ({ id: p.id, type: p.targetType, label: p.label })),
       ]
     },
-    async upload(file, source, target) {
+    async upload(file, source, target, onProgress) {
+      onProgress?.({ percent: 0, status: 'uploading' })
       const dataUrl = await readAsDataUrl(file)
       const result = (await host.upload.single({
         ...requestOf(source, target ?? {}),
@@ -60,6 +61,7 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
         mime: file.type,
         dataUrl,
       })) as { url: string; key?: string; name: string }
+      onProgress?.({ percent: 100, status: 'success' })
       return result.url
     },
     async list(source, target, limit) {

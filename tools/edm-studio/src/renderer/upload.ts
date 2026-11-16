@@ -106,10 +106,17 @@ export function createImageLibrary(toolId: string): RichTextImageLibrary {
         ...profiles.map((p) => ({ id: p.id, type: p.targetType, label: p.label })),
       ]
     },
-    async upload(file, source, target) {
-      const dataUrl = await readAsDataUrl(file)
-      const result = await host.upload.single({ ...requestOf(source, target ?? {}), name: file.name, size: file.size, mime: file.type, dataUrl })
-      return result.url
+    async upload(file, source, target, onProgress) {
+      onProgress?.({ percent: 0, status: 'uploading' })
+      try {
+        const dataUrl = await readAsDataUrl(file)
+        const result = await host.upload.single({ ...requestOf(source, target ?? {}), name: file.name, size: file.size, mime: file.type, dataUrl })
+        onProgress?.({ percent: 100, status: 'success' })
+        return result.url
+      } catch (err) {
+        // 失败由 reject 表达，UI 据此标记该项并可重试/删除
+        throw err
+      }
     },
     async list(source, target, limit) {
       const items = (await host.upload.listImages({ ...requestOf(source, target ?? {}), limit })) as {

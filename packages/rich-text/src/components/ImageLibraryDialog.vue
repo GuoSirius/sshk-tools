@@ -30,6 +30,30 @@ interface PoolItem extends RichTextImageItem {
   scope: string
 }
 
+/** 上传任务：逐项跟踪进度/状态，失败可重试或删除；成功项同时并入 uploaded 与选择池 */
+interface UploadTask {
+  id: number
+  file: File
+  name: string
+  status: 'uploading' | 'success' | 'failed'
+  /** 0–100；Provider 无 byte 级上报时由 UI 爬升动画推进到 90，成功置 100，失败停在当时值 */
+  percent: number
+  error?: string
+  url?: string
+  /** 本地预览 objectURL（web-uploader 风格缩略图），卸载/删除时 revoke */
+  previewUrl?: string
+  size: number
+  scope: string
+  source: RichTextImageSource
+  target: RichTextImageTarget
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 /**
  * 选择池键：url 唯一标识一张图。不同源/桶的对象 URL 本身就不同，无需把 scope 拼进 key；
  * 这样上传选中后切到图库（同 url）仍保持选中，切目录/源亦然，且计数不重复。
@@ -66,6 +90,23 @@ const uploading = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
 /** 本次上传的图片（未插入前可删除）；图库页也会合并展示 */
 const uploaded = ref<PoolItem[]>([])
+/** 上传任务队列（含进行中/成功/失败），用于总体与单项进度、失败重试/删除 */
+const uploadTasks = ref<UploadTask[]>([])
+let uploadSeq = 0
+/** 进行中任务总数（总体进度分母） */
+const uploadTotal = computed(() => uploadTasks.value.length)
+const uploadDone = computed(() => uploadTasks.value.filter((t) => t.status !== 'uploading').length)
+const uploadSucceeded = computed(() => uploadTasks.value.filter((t) => t.status === 'success').length)
+const uploadFailed = computed(() => uploadTasks.value.filter((t) => t.status === 'failed').length)
+/** 总体进度：已完成任务按 100% 计，进行中按其 percent 计 */
+const overallPercent = computed(() => {
+  const all = uploadTasks.value
+  if (all.length === 0) return 0
+  const sum = all.reduce((acc, t) => acc + (t.status === 'success' ? 100 : t.percent), 0)
+  return Math.min(100, Math.round(sum / all.length))
+})
+/** 有活动上传任务时显示总体进度条 */
+const uploadInProgress = computed(() => uploadTasks.value.some((t) => t.status === 'uploading'))
 /** 图库已列图片 */
 const items = ref<RichTextImageItem[]>([])
 const loadingList = ref(false)
@@ -202,6 +243,9 @@ watch(
     restored.value = false
     // 每次重新打开是新一轮会话：重置上传缓存与选择池
     uploaded.value = []
+    for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
+    uploadTasks.value = []
+    stopProgressTimer()
     pool.value = {}
     items.value = []
     keyword.value = ''
@@ -259,6 +303,8 @@ function close(): void {
 
 onBeforeUnmount(() => {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
+  stopProgressTimer()
+  for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
 })
 
 function esc(url: string): string {
@@ -289,27 +335,88 @@ async function uploadMore(): Promise<void> {
   pickFiles()
 }
 
+/** 进度爬升定时器：Provider 无 byte 级上报，上传中让百分比平滑推进到 90，完成由回调置 100 */
+let progressTimer: ReturnType<typeof setInterval> | null = null
+function ensureProgressTimer(): void {
+  if (progressTimer) return
+  progressTimer = setInterval(() => {
+    for (const t of uploadTasks.value) {
+      if (t.status === 'uploading' && t.percent < 90) t.percent = Math.min(90, t.percent + 3)
+    }
+  }, 220)
+}
+function stopProgressTimer(): void {
+  if (!progressTimer) return
+  clearInterval(progressTimer)
+  progressTimer = null
+}
+
+/** 执行一次上传任务：更新单项状态/进度，成功后并入 uploaded 与选择池；失败留给 UI 重试/删除 */
+async function runUpload(task: UploadTask): Promise<boolean> {
+  task.status = 'uploading'
+  task.percent = 0
+  task.error = undefined
+  ensureProgressTimer()
+  try {
+    const url = await props.library.upload(task.file, task.source, task.target, (p) => {
+      if (p.status === 'success') task.percent = 100
+    })
+    task.url = url
+    task.percent = 100
+    task.status = 'success'
+    const item: PoolItem = { url, key: task.name, name: task.name, origin: 'upload', scope: task.scope }
+    uploaded.value.push(item)
+    addToPool(item) // 上传即默认选中，可在预览里取消
+    return true
+  } catch (err) {
+    task.status = 'failed'
+    task.error = (err as Error).message || String(err)
+    return false
+  }
+}
+
 async function onFilesChosen(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
   const source = activeSource.value
   if (!source || files.length === 0) return
-  uploading.value = true
-  let ok = 0
+  const scope = currentScope.value
   for (const file of files) {
-    try {
-      const url = await props.library.upload(file, source, target.value)
-      const item: PoolItem = { url, key: file.name, name: file.name, origin: 'upload', scope: currentScope.value }
-      uploaded.value.push(item)
-      addToPool(item) // 上传即默认选中，可在预览里取消
-      ok += 1
-    } catch (err) {
-      ElMessage.error(`「${file.name}」上传失败：${(err as Error).message}`)
+    const task: UploadTask = {
+      id: ++uploadSeq, file, name: file.name, status: 'uploading', percent: 0,
+      size: file.size, previewUrl: URL.createObjectURL(file),
+      scope, source, target: { ...target.value },
     }
+    uploadTasks.value.push(task)
   }
+  uploading.value = true
+  const results = await Promise.all(uploadTasks.value.filter((t) => t.status === 'uploading').map((t) => runUpload(t)))
   uploading.value = false
+  stopProgressTimer()
+  const ok = results.filter(Boolean).length
+  const failed = results.length - ok
   if (ok > 0) ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
+  if (failed > 0) ElMessage.warning(`${failed} 张上传失败，可在上传列表中重试或删除`)
+}
+
+/** 重试单个失败任务（沿用原文件与来源/目录） */
+async function retryUpload(task: UploadTask): Promise<void> {
+  const ok = await runUpload(task)
+  if (!uploadInProgress.value) stopProgressTimer()
+  if (ok) ElMessage.success(`「${task.name}」已重新上传并选中`)
+  else ElMessage.error(`「${task.name}」重试失败：${task.error}`)
+}
+
+/** 删除单个任务：成功的同步从上传列表/选择池移除，失败的直接移出任务列表 */
+function removeUploadTask(task: UploadTask): void {
+  if (task.previewUrl) URL.revokeObjectURL(task.previewUrl)
+  uploadTasks.value = uploadTasks.value.filter((t) => t.id !== task.id)
+  if (task.status === 'success' && task.url) {
+    uploaded.value = uploaded.value.filter((i) => itemKey(i) !== task.url)
+    removePoolKey(task.url!)
+  }
+  if (!uploadInProgress.value) stopProgressTimer()
 }
 
 function removeUploaded(item: PoolItem): void {
@@ -373,7 +480,6 @@ function onPaneScroll(e: Event): void {
   <el-dialog
     :model-value="open"
     class="image-library-dialog"
-    title="图片库"
     width="820px"
     top="4vh"
     :close-on-click-modal="false"
@@ -381,43 +487,49 @@ function onPaneScroll(e: Event): void {
     append-to-body
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
+    <!-- 高频工具栏放 header：结构上脱离内容滚动区，滚动时始终可见 -->
+    <template #header>
+      <div class="lib-header">
+        <span class="lib-title">图片库</span>
+        <div class="lib-top">
+          <div class="lib-row lib-row-source">
+            <el-select v-model="sourceId" placeholder="选择图床来源（默认优先云）" class="source-select" :loading="loadingSources">
+              <el-option v-for="s in sources" :key="s.id" :value="s.id" :label="s.label" />
+            </el-select>
+            <el-radio-group v-model="tab" class="mode-tabs">
+              <el-radio-button value="upload">上传图片</el-radio-button>
+              <el-radio-button value="gallery">从图库选择</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="lib-row lib-row-target">
+            <el-input v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
+            <el-cascader
+              v-model="dirModel"
+              :options="dirTree"
+              :props="{ checkStrictly: true, emitPath: false, expandTrigger: 'hover' }"
+              filterable
+              clearable
+              class="dir-cascader"
+              :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
+            />
+            <el-input v-model="dirModel" clearable class="dir-manual" placeholder="或手输目录" />
+          </div>
+          <div class="lib-row lib-row-actions">
+            <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
+            <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
+            <el-button size="small" @click="selectAllVisible(true)">全选本页</el-button>
+            <el-button size="small" @click="selectAllVisible(false)">全不选</el-button>
+            <el-button size="small" @click="invertVisible">反选本页</el-button>
+            <el-button v-if="tab === 'gallery'" size="small" :loading="loadingList" @click="loadGallery">刷新</el-button>
+            <el-button v-else size="small" :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
+            <span class="lib-action-gap" />
+            <el-button size="small" @click="uploadMore">继续上传</el-button>
+            <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
+          </div>
+        </div>
+      </div>
+    </template>
     <input ref="uploadInput" type="file" accept="image/*" multiple class="hidden-input" @change="onFilesChosen" />
-    <div class="lib-top">
-      <div class="lib-row lib-row-source">
-        <el-select v-model="sourceId" placeholder="选择图床来源（默认优先云）" class="source-select" :loading="loadingSources">
-          <el-option v-for="s in sources" :key="s.id" :value="s.id" :label="s.label" />
-        </el-select>
-        <el-radio-group v-model="tab" class="mode-tabs">
-          <el-radio-button value="upload">上传图片</el-radio-button>
-          <el-radio-button value="gallery">从图库选择</el-radio-button>
-        </el-radio-group>
-      </div>
-      <div class="lib-row lib-row-target">
-        <el-input v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
-        <el-cascader
-          v-model="dirModel"
-          :options="dirTree"
-          :props="{ checkStrictly: true, emitPath: false, expandTrigger: 'hover' }"
-          filterable
-          clearable
-          class="dir-cascader"
-          :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
-        />
-        <el-input v-model="dirModel" clearable class="dir-manual" placeholder="或手输目录" />
-      </div>
-      <div class="lib-row lib-row-actions">
-        <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
-        <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
-        <el-button size="small" @click="selectAllVisible(true)">全选本页</el-button>
-        <el-button size="small" @click="selectAllVisible(false)">全不选</el-button>
-        <el-button size="small" @click="invertVisible">反选本页</el-button>
-        <el-button v-if="tab === 'gallery'" size="small" :loading="loadingList" @click="loadGallery">刷新</el-button>
-        <el-button v-else size="small" :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
-        <span class="lib-action-gap" />
-        <el-button size="small" @click="uploadMore">继续上传</el-button>
-        <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
-      </div>
-    </div>
 
     <!-- 跨 tab / 源 / 桶 / 目录的已选总清单：切走后仍能查看与移除任一项 -->
     <div v-if="poolCount" class="pool-summary">
@@ -428,7 +540,19 @@ function onPaneScroll(e: Event): void {
       </div>
       <div v-if="poolExpanded" class="pool-items">
         <div v-for="(item, k) in pool" :key="k" class="pool-item">
-          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="pool-thumb" loading="lazy" :preview-src-list="previewPoolUrls" :initial-index="poolList.findIndex((p) => itemKey(p) === k)" :preview-teleported="true" />
+          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="pool-thumb" loading="lazy" :preview-src-list="previewPoolUrls" :initial-index="poolList.findIndex((p) => itemKey(p) === k)" :preview-teleported="true">
+            <template #error>
+              <div class="img-fallback" title="图片加载失败">
+                <svg class="img-fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15.5 16 11 7 20" />
+                  <path d="M4 4 20 20" class="img-fallback-slash" />
+                </svg>
+                <span class="img-fallback-text">图片不可用</span>
+              </div>
+            </template>
+          </el-image>
           <div class="pool-meta">
             <div class="pool-name">{{ item.name || item.key || item.url }}</div>
             <div class="pool-scope">{{ scopeLabel(item.scope) }}</div>
@@ -439,6 +563,50 @@ function onPaneScroll(e: Event): void {
     </div>
 
     <div class="lib-pane" @scroll="onPaneScroll">
+      <!-- 上传总体进度：任务数 + 成功/失败 + 汇总进度条 -->
+      <div v-if="uploadTotal" class="upload-progress-bar">
+        <div class="up-summary">
+          <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
+          <el-button size="small" text @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
+        </div>
+        <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
+      </div>
+      <!-- 单项上传任务：web-uploader 风格文件行（缩略图 + 名称/大小 + 状态 + 进度条 + 操作） -->
+      <div v-if="tab === 'upload' && uploadTasks.length" class="upload-task-list">
+        <div v-for="task in uploadTasks" :key="task.id" class="wu-file-row" :class="'st-' + task.status">
+          <div class="wu-thumb">
+            <img v-if="task.previewUrl" :src="task.previewUrl" :alt="task.name" />
+            <span v-else class="wu-thumb-ph">图</span>
+            <span v-if="task.status === 'success'" class="wu-thumb-state ok">✓</span>
+            <span v-else-if="task.status === 'failed'" class="wu-thumb-state err">!</span>
+          </div>
+          <div class="wu-info">
+            <div class="wu-line1">
+              <span class="wu-name" :title="task.name">{{ task.name }}</span>
+              <span class="wu-size">{{ formatSize(task.size) }}</span>
+              <span class="wu-status" :class="'st-' + task.status">
+                {{ task.status === 'uploading' ? '上传中' : task.status === 'success' ? '上传成功' : '上传失败' }}
+              </span>
+            </div>
+            <el-progress
+              class="wu-progress"
+              :percentage="task.percent"
+              :status="task.status === 'failed' ? 'exception' : task.status === 'success' ? 'success' : undefined"
+              :stroke-width="4"
+              :show-text="false"
+            />
+            <div v-if="task.status === 'failed'" class="wu-error" :title="task.error">{{ task.error }}</div>
+          </div>
+          <div class="wu-actions">
+            <el-tooltip v-if="task.status === 'failed'" content="重试" placement="top">
+              <el-button size="small" type="primary" link @click="retryUpload(task)">重试</el-button>
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top">
+              <el-button size="small" type="danger" link @click="removeUploadTask(task)">删除</el-button>
+            </el-tooltip>
+          </div>
+        </div>
+      </div>
       <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
         <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
         <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
@@ -456,7 +624,17 @@ function onPaneScroll(e: Event): void {
             :preview-teleported="true"
             @click.stop
           >
-            <template #error><div class="img-err">裂图</div></template>
+            <template #error>
+              <div class="img-fallback" title="图片加载失败">
+                <svg class="img-fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15.5 16 11 7 20" />
+                  <path d="M4 4 20 20" class="img-fallback-slash" />
+                </svg>
+                <span class="img-fallback-text">图片不可用</span>
+              </div>
+            </template>
           </el-image>
           <div class="thumb-name">{{ item.name || item.key }}</div>
           <span v-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
@@ -478,14 +656,17 @@ function onPaneScroll(e: Event): void {
 </template>
 
 <style scoped>
-.lib-top { border-bottom: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); padding-bottom: 10px; margin-bottom: 10px; }
+/* 工具栏已移入 header：标题 + 三行高频操作区，结构上不随内容滚动 */
+.lib-header { padding-right: 28px; }
+.lib-title { display: block; font-size: 18px; font-weight: 600; line-height: 24px; margin-bottom: 12px; }
+.lib-top { border-bottom: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); padding-bottom: 10px; }
 .lib-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .lib-row:last-child { margin-bottom: 0; }
 .source-select { flex: 1 1 auto; }
 .mode-tabs { flex: 0 0 auto; }
 .bucket-input { flex: 0 0 220px; }
-.dir-cascader { flex: 1 1 auto; min-width: 0; }
-.dir-manual { flex: 0 0 150px; }
+.dir-cascader { flex: 0 1 240px; min-width: 0; }
+.dir-manual { flex: 1 1 auto; min-width: 0; }
 .search-input { flex: 0 0 150px; }
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }
@@ -502,11 +683,38 @@ function onPaneScroll(e: Event): void {
 }
 .drop-hint:hover { border-color: var(--el-color-primary); }
 .drop-hint.busy { opacity: 0.6; cursor: wait; }
-.pool-summary { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
-.pool-summary-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+/* 上传总体进度条 */
+.upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.up-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+/* 单项上传任务列表：web-uploader 风格文件行 */
+.upload-task-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.wu-file-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px; background: var(--el-fill-color-blank, rgba(128, 128, 128, 0.04));
+}
+.wu-thumb { position: relative; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 4px; overflow: hidden; background: rgba(128, 128, 128, 0.1); }
+.wu-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wu-thumb-ph { display: grid; place-items: center; width: 100%; height: 100%; font-size: 14px; opacity: 0.5; }
+.wu-thumb-state { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; display: grid; place-items: center; font-size: 11px; color: #fff; }
+.wu-thumb-state.ok { background: var(--el-color-success); }
+.wu-thumb-state.err { background: var(--el-color-danger); }
+.wu-info { flex: 1 1 auto; min-width: 0; }
+.wu-line1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.wu-name { flex: 1 1 auto; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wu-size { flex: 0 0 auto; font-size: 11px; opacity: 0.6; }
+.wu-status { flex: 0 0 auto; font-size: 11px; }
+.wu-status.st-uploading { color: var(--el-color-primary); }
+.wu-status.st-success { color: var(--el-color-success); }
+.wu-status.st-failed { color: var(--el-color-danger); }
+.wu-progress { width: 100%; }
+.wu-error { font-size: 11px; color: var(--el-color-danger); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wu-actions { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0; }
+.pool-summary { flex: 0 1 auto; min-height: 0; max-height: 38%; display: flex; flex-direction: column; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
+.pool-summary-head { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .pool-caret { opacity: 0.7; }
 .pool-summary-head > span:nth-child(2) { flex: 1 1 auto; }
-.pool-items { max-height: 150px; overflow-y: auto; border-top: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.2)); padding: 6px 10px; }
+.pool-items { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.2)); padding: 6px 10px; }
 .pool-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .pool-thumb { width: 42px; height: 34px; border-radius: 3px; flex: 0 0 auto; cursor: zoom-in; }
 .pool-meta { flex: 1 1 auto; min-width: 0; }
@@ -526,14 +734,43 @@ function onPaneScroll(e: Event): void {
 .thumb-cell.picked { border-color: var(--el-color-primary); background: rgba(64, 158, 255, 0.08); }
 .thumb-check { position: absolute; top: 6px; left: 6px; z-index: 2; background: rgba(255, 255, 255, 0.82); border-radius: 3px; }
 .thumb-img { width: 100%; height: 80px; border-radius: 4px; display: block; cursor: zoom-in; }
-.img-err { width: 100%; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 12px; opacity: 0.5; }
+/* 图片加载失败：统一柔和占位（替代 Element Plus 默认 FAILED 与生硬的「裂图」文案） */
+.img-fallback {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  color: var(--el-text-color-placeholder);
+  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.06) 0 6px, transparent 6px 12px);
+}
+.img-fallback-icon { width: 26px; height: 26px; opacity: 0.7; }
+.img-fallback-slash { opacity: 0.45; }
+.img-fallback-text { font-size: 11px; line-height: 1; }
+.pool-thumb .img-fallback-icon { width: 18px; height: 18px; }
+.pool-thumb .img-fallback-text { display: none; }
 .thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
 .thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
 .thumb-remove { margin-top: -4px; }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }
 .load-more { text-align: center; padding: 10px 0 2px; font-size: 12px; opacity: 0.6; }
 
-/* 弹框限高：工具栏/操作栏固定，只有图片网格区域滚动 */
-:global(.image-library-dialog) .el-dialog__body { max-height: calc(100vh - 190px) !important; overflow: hidden !important; padding: 16px 20px !important; }
-.lib-pane { max-height: calc(100vh - 310px); overflow-y: auto; padding-right: 4px; }
+/* 整个弹框（含 header 工具栏 + footer）占应用视口约 75%，body 用 flex 吃掉 header 之外的剩余 */
+:global(.image-library-dialog) {
+  height: 75vh;
+  min-height: 460px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+:global(.image-library-dialog) .el-dialog__header { flex: 0 0 auto; }
+:global(.image-library-dialog) .el-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 20px !important;
+}
+:global(.image-library-dialog) .el-dialog__footer { flex: 0 0 auto; }
+/* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
+.lib-pane { flex: 1 1 auto; min-height: 120px; padding-right: 4px; }
 </style>
