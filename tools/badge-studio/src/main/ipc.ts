@@ -24,9 +24,47 @@ import { ensureAdapterScript, withAdapterArgs } from './adapter.js'
 import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
+import { extractRemoteImageRefs, replaceRefs, type RemoteImageRef } from '../core/remote-images.js'
 import type { BadgeInjectConfig } from '../core/badge.js'
 
 const VISION_KEY_NAME = 'visionApiKey'
+
+// ── 外链图片内联（穿插⑦-6，EDM 验证清单 Q8 方案）：main 侧 Node fetch 无 CORS ──
+const INLINE_MAX_IMAGES = 60
+const INLINE_TIMEOUT_MS = 20_000
+const INLINE_MAX_BYTES = 10 * 1024 * 1024
+
+/** 下载单张外链图 → dataURL；失败抛错由调用方跳过（保留原 URL 不阻断生成） */
+async function fetchAsDataUrl(url: string): Promise<string> {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(INLINE_TIMEOUT_MS),
+    headers: { 'user-agent': 'Mozilla/5.0 sshk-tools (badge poster inline)' },
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const type = res.headers.get('content-type') ?? ''
+  if (!type.startsWith('image/')) throw new Error(`非图片类型 ${type}`)
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (buf.byteLength > INLINE_MAX_BYTES) throw new Error(`超过 10MB`)
+  return `data:${type.split(';')[0]};base64,${buf.toString('base64')}`
+}
+
+/** 产物 HTML 外链图片全量内联：预览 srcdoc / snapdom 截图 / 分享页三出口同时受益 */
+async function inlineRemoteImages(html: string): Promise<{ html: string; inlined: number }> {
+  const refs = extractRemoteImageRefs(html)
+  if (refs.length === 0) return { html, inlined: 0 }
+  // 按 URL 去重下载（同一张图多处引用只 fetch 一次）
+  const uniqueUrls = [...new Set(refs.map((r) => r.url))].slice(0, INLINE_MAX_IMAGES)
+  const results = await Promise.allSettled(uniqueUrls.map(async (url) => ({ url, dataUrl: await fetchAsDataUrl(url) })))
+  let out = html
+  let inlined = 0
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    const hit: RemoteImageRef[] = refs.filter((r) => r.url === result.value.url)
+    out = replaceRefs(out, hit, result.value.dataUrl)
+    inlined += hit.length
+  }
+  return { html: out, inlined }
+}
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -195,7 +233,10 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   ipc.handle(IPC_CHANNELS.badgeGenerate, wrap(async (input: GenerateInput) => {
     const posterId = input.posterId ?? entityId('pst')
     const { html: badged, matchCounts } = injectBadges(input.sourceHtml, input.stats, input.config)
-    const badgedRel = writeOutput(deps.outputRoot, posterOutputRel(posterId, 'badged'), badged)
+    // 穿插⑦-6：外链图片 main 侧下载内联转 dataURL（snapdom 截图内联像素被 CORS 拦 → 灰占位的根因）
+    const { html: finalHtml, inlined } = await inlineRemoteImages(badged)
+    if (inlined > 0) console.log(`[badge] 已内联外链图片 ${inlined} 张（${posterId}）`)
+    const badgedRel = writeOutput(deps.outputRoot, posterOutputRel(posterId, 'badged'), finalHtml)
 
     // 源 HTML 落 assets（可复现；原上传文件也不动）
     const srcRel = writeOutput(deps.outputRoot, `assets/uploads/${posterId}-source.html`, input.sourceHtml)
@@ -237,7 +278,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         lastGeneratedAt: now(),
       })
     }
-    return { posterId, badgedRel, html: badged, matchCounts }
+    return { posterId, badgedRel, html: finalHtml, matchCounts }
   }))
 
   // ④b 导出产物文件（badge 副本 + 海报长图）：目录来自用户选择，文件名取海报名
