@@ -91,10 +91,6 @@ function apply(): void {
       <div class="src-tip">
         存储形态 HTML（图片为 file:// 资源路径）。{{ readonly ? '只读内容，仅可查看与复制。' : '默认格式化展示；可直接修改，或格式化/压缩后「应用修改」写回编辑器。' }}
       </div>
-      <div class="src-actions">
-        <el-button size="small" :loading="formatting" @click="doFormat">格式化</el-button>
-        <el-button size="small" @click="doCompact">压缩</el-button>
-      </div>
       <!-- 与 badge-studio 同款：编辑器包在带标题的卡片面板中，高度跟随弹框剩余空间 -->
       <div class="src-editor-panel">
         <div class="src-panel-title">HTML 源码</div>
@@ -110,10 +106,18 @@ function apply(): void {
         </div>
       </div>
     </div>
-    <template #footer>
-      <el-button @click="copy">复制源码</el-button>
-      <el-button v-if="!readonly" type="primary" :disabled="!dirty" @click="apply">应用修改</el-button>
-      <el-button @click="close">关闭</el-button>
+    <template #footer">
+      <div class="src-footer">
+        <div class="src-footer-group">
+          <el-button size="small" :loading="formatting" :disabled="readonly" @click="doFormat">格式化</el-button>
+          <el-button size="small" :disabled="readonly" @click="doCompact">压缩</el-button>
+        </div>
+        <div class="src-footer-group">
+          <el-button @click="copy">复制源码</el-button>
+          <el-button v-if="!readonly" type="primary" :disabled="!dirty" @click="apply">应用修改</el-button>
+          <el-button @click="close">关闭</el-button>
+        </div>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -140,7 +144,8 @@ function apply(): void {
 :global(.source-view-dialog .el-dialog__footer) { flex: 0 0 auto; }
 .src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .src-tip { font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
-.src-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.src-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.src-footer-group { display: flex; align-items: center; gap: 8px; }
 .src-editor-panel {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25));
