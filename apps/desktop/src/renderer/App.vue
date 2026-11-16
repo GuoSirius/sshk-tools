@@ -211,7 +211,6 @@ function onMoreCommand(command: string): void {
   else if (command === 'system') openSettings('system')
   else if (command === 'about') openSettings('about')
   else if (command === 'createTool') createToolOpen.value = true
-  else if (command === 'verify') verifyGuideOpen.value = true
   else openSettings('general')
 }
 
@@ -361,6 +360,8 @@ onMounted(async () => {
         <template v-else-if="updater.phase === 'error'">更新出错</template>
         <template v-else-if="updater.phase === 'dev'">开发版</template>
       </el-button>
+      <!-- 验证引导：常用入口直接放顶栏（曾放「更多」下拉，走查频繁点击不方便） -->
+      <el-button v-if="canShowVerifyGuide" size="small" text @click="verifyGuideOpen = true">验证引导</el-button>
       <el-dropdown trigger="click" @command="onMoreCommand">
         <el-button size="small" text>更多<el-icon><ArrowDown /></el-icon></el-button>
         <template #dropdown>
@@ -368,7 +369,6 @@ onMounted(async () => {
             <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
             <el-dropdown-item v-if="isDev" command="createTool">创建工具（开发者）</el-dropdown-item>
-            <el-dropdown-item v-if="canShowVerifyGuide" command="verify">验证引导</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
             <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
             <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
