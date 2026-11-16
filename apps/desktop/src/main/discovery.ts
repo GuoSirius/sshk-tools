@@ -24,9 +24,17 @@ function toolIdOf(path: string): string {
   return path.replace(/\\/g, '/').match(/\/tools\/([^/]+)\//)?.[1] ?? ''
 }
 
+/** X5-A 构建裁剪：__SSHK_BUILTIN_TOOLS__ 由 electron.vite.config 注入（all=全量 / list=内建 id 名单） */
+const BUILTIN = __SSHK_BUILTIN_TOOLS__
+function builtinIncluded(id: string): boolean {
+  return BUILTIN.mode === 'all' || (BUILTIN.ids ?? []).includes(id)
+}
+
 export const MANIFESTS: ToolDescriptor[] = Object.entries(manifestModules).flatMap(([file, raw]) => {
   const manifest = raw as ToolDescriptor | null
   const dirId = toolIdOf(file)
+  // 构建裁剪掉的清单是 stub（default null）或直接不在名单：静默跳过，不进无效清单告警
+  if (!builtinIncluded(dirId)) return []
   if (!manifest?.id || manifest.id !== dirId) {
     console.warn(`[sshk] 跳过无效工具清单 ${file}（id 必须存在且与目录名一致）`)
     return []
@@ -38,7 +46,7 @@ export const MANIFESTS: ToolDescriptor[] = Object.entries(manifestModules).flatM
 export const MAIN_LOADERS: Record<string, () => Promise<unknown>> = {}
 for (const [file, loader] of Object.entries(mainModules)) {
   const id = toolIdOf(file)
-  if (id) MAIN_LOADERS[id] = loader as () => Promise<unknown>
+  if (id && builtinIncluded(id)) MAIN_LOADERS[id] = loader as () => Promise<unknown>
 }
 
 /**

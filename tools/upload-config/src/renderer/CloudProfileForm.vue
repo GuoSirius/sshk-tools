@@ -130,7 +130,7 @@ watch(() => props.profile.endpoint, (v) => {
       </el-form-item>
       <el-form-item label="AccessKey ID"><el-input v-model="profile.accessKeyId" /></el-form-item>
       <el-form-item label="访问域名"><el-input v-model="profile.baseUrl" placeholder="CDN 域名（可选）" /></el-form-item>
-      <el-form-item label="AccessKey Secret" class="full">
+      <el-form-item label="AccessKey Secret">
         <div class="combo">
           <el-input
             :model-value="secretValue"

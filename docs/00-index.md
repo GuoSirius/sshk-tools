@@ -41,7 +41,7 @@
 | **首次安装指引** | `05-release/2026-11-12-首次安装指引.md` | 已落 | Windows SmartScreen / macOS Gatekeeper / deb·rpm·AppImage 无签名安装说明 |
 | **依赖升级 SOP** | `05-release/依赖升级SOP.md` | 已落（A-T4） | 触发条件/升级步骤/verify+audit 必跑/breaking 处理/lockfile 单独提交/台账登记 |
 | **发布工作流** | `.github/workflows/release.yml` | 已落 | tag 触发三平台矩阵（win-x64 / mac-universal / linux-x64），`--publish never` + GH Release notes |
-| **打包配置** | `apps/desktop/electron-builder.yml` | 已接入 | NSIS 允许选择安装目录；图标已配置；签名位留注释 |
+| **打包配置** | `apps/desktop/electron-builder.config.cjs` | 已接入 | NSIS 允许选择安装目录；图标已配置；签名位留注释 |
 | **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
 | UI / 交互稿 | `03-design/` | 待建 | M1 产出 |
@@ -91,7 +91,7 @@ docs/
 | 校验脚本 | ✅ `check-latest` / `check-boundaries` / `verify-structure` / **generate-icons.py** |
 | CI | ✅ `.github/workflows/ci.yml`（`--frozen-lockfile` + `pnpm verify`） |
 | 本机钩子 | ✅ husky（`.husky/pre-commit` = `pnpm verify` + desktop build）；原 `.git/cph` 方案已废弃删除（A-Q1） |
-| **M1 应用壳** | ✅ `apps/desktop/`：main / preload / renderer、四层布局、三态换肤、3 个工具注册、UnoCSS、`electron.vite.config.ts`（三端热更新）、`electron-builder.yml` |
+| **M1 应用壳** | ✅ `apps/desktop/`：main / preload / renderer、四层布局、三态换肤、3 个工具注册、UnoCSS、`electron.vite.config.ts`（三端热更新）、`electron-builder.config.cjs` |
 | **图标资源** | ✅ 已生成并接入打包配置（纯标准库脚本，零依赖） |
 | TS 6 切换 | ✅ `typescript: "6"` → 6.0.3，lockfile 已同步 |
 | **M2 发布与更新** | ✅ `release.yml`（tag 触发三平台）、`05-release/首次安装指引.md`、autoUpdater IPC + 检查更新按钮 |

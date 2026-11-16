@@ -191,7 +191,7 @@ tools/edm-studio/assets/edm/                ← 系统内容根（随工具包�
 | R8 | 首次运行播种（catalog 或目录扫描）将系统内容注册进 NeDB 查询索引 | 初始化 | ✅ 已完成（`edm-seed.ts` 确定性 ID `<前缀>_sys_<code>`、逐实体存在即跳过幂等、激活即补种；系统实体只读守卫；3 单测） |
 | R9 | 编辑器选型集成：Monaco + monaco-yaml + js-yaml + nunjucks 检测，配 worker（不自研内核，D51） | 编辑器/依赖 | ✅ 已完成（batch4：依赖 `@guolao/vue-monaco-editor`/`monaco-editor`/`monaco-yaml`/`ajv`/`js-yaml`，worker 经 `?worker` 注入） |
 | R10 | 品牌隔离：模板片段候选仅限同品牌，黑白名单同品牌内细控（用户规则 #2） | 约束/策略 | ✅ 已完成（运行时 `policyAllows` 两道过滤 + UI 黑白名单编辑 + 系统实体只读标识/另存为派生） |
-| R11 | 内建工具 `assets/edm` 随包发布：electron-builder `extraResources` 或构建期 copy，确保打包后 `assets/edm` 在运行时目录（discovery.ts 当前仅 glob 清单+入口） | 打包/构建 | ✅ 已完成（electron-builder.yml `extraResources`：`tools/edm-studio/assets/edm` → `resources/edm-studio/assets/edm`，与 `resolveEdmRoot` packed 路径严格对应） |
+| R11 | 内建工具 `assets/edm` 随包发布：electron-builder `extraResources` 或构建期 copy，确保打包后 `assets/edm` 在运行时目录（discovery.ts 当前仅 glob 清单+入口） | 打包/构建 | ✅ 已完成（`electron-builder.config.cjs` extraResources：`tools/edm-studio/assets/edm` → `resources/edm-studio/assets/edm`，与 `resolveEdmRoot` packed 路径严格对应；X5-A 后按内建名单裁剪——edm-studio 未选时资源不随包） |
 
 ---
 

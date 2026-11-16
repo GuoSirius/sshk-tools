@@ -46,7 +46,7 @@ const emit = defineEmits<{
         <el-switch v-model="profile.passive" />
         <span class="hint-inline">仅 FTP 生效</span>
       </el-form-item>
-      <el-form-item label="密码 / 口令" class="full">
+      <el-form-item label="密码 / 口令">
         <div class="combo">
           <el-input
             :model-value="secretValue"

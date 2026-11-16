@@ -18,6 +18,9 @@ interface ImportMetaEnv {
   readonly MODE: string
 }
 
+/** X5-A 构建裁剪：electron.vite.config.ts 注入（all=全量 / list=内建工具 id 名单） */
+declare const __SSHK_BUILTIN_TOOLS__: { mode: 'all' | 'list'; ids: string[] | null }
+
 interface ImportMeta {
   readonly env: ImportMetaEnv
   glob<T = unknown>(

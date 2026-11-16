@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const desktop = join(root, 'apps/desktop')
-// 安装包产物落到仓库根 dist/（electron-builder.yml directories.output: ../../dist）
+// 安装包产物落到仓库根 dist/（electron-builder.config.cjs directories.output: ../../dist）
 const outDir = join(root, 'dist')
 const args = process.argv.slice(2)
 const fast = args.includes('--dir')

@@ -48,3 +48,6 @@ desktop.ini
 .workbuddy/memory/
 
 # 注意：pnpm-lock.yaml 必须提交，绝不加入忽略
+
+# X5-A 构建裁剪名单（electron.vite.config.ts 构建期写入，electron-builder.config.cjs 读取）
+apps/desktop/.build-selection.json

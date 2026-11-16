@@ -1,11 +1,12 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Alias } from 'vite'
+import type { Alias, Plugin } from 'vite'
+import { collectBuiltinToolInfo, resolveBuiltinSelectionFromEnv } from './src/main/builtin-selection'
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const pkg = (rel: string): string => fileURLToPath(new URL(`../../${rel}`, import.meta.url))
@@ -15,6 +16,52 @@ function gitCommit(): string {
   try { return execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim() } catch { return 'dev' }
 }
 const APP_COMMIT_DEFINE = { __APP_COMMIT__: JSON.stringify(gitCommit()) }
+
+/**
+ * X5-A 构建裁剪（用户 2026-11-16 拍板）：
+ * SSHK_BUILTIN_TOOLS=edm-studio,badge-studio → 只把这些工具打进安装包，
+ * 依赖闭包自动补齐（c 被 a 依赖则 c 搭进去）；不设置 / all / * = 全量（默认零变化）。
+ * 三路生效：① define 注入发现逻辑（清单/加载器/图标按名单过滤）；
+ * ② stub 插件把未选工具的全部模块替换为空导出（真实代码不进 bundle）；
+ * ③ 结果落盘 .build-selection.json，electron-builder.config.cjs 据此裁 extraResources。
+ */
+const BUILTIN = (() => {
+  const sel = resolveBuiltinSelectionFromEnv(process.env.SSHK_BUILTIN_TOOLS, collectBuiltinToolInfo(ROOT))
+  if (sel.mode === 'list') {
+    console.log(
+      `[sshk] 内建裁剪：${sel.ids?.join('、')}` +
+      (sel.pulledIn.length ? `（依赖闭包拉入：${sel.pulledIn.join('、')}）` : '') +
+      (sel.excluded.length ? `；排除：${sel.excluded.join('、')}` : ''),
+    )
+  }
+  // 落盘给 electron-builder（mode 也写：覆盖上一轮 list 模式残留）
+  writeFileSync(
+    fileURLToPath(new URL('./.build-selection.json', import.meta.url)),
+    JSON.stringify({ mode: sel.mode, ids: sel.ids, pulledIn: sel.pulledIn, excluded: sel.excluded }, null, 2),
+  )
+  return sel
+})()
+const BUILTIN_DEFINE = { __SSHK_BUILTIN_TOOLS__: JSON.stringify({ mode: BUILTIN.mode, ids: BUILTIN.ids }) }
+
+/** 未选工具的所有模块替换为空导出：eager 清单/图标/懒加载页面/主进程入口都不进 bundle */
+function builtinStubPlugin(excluded: readonly string[]): Plugin {
+  const set = new Set(excluded)
+  if (!set.size) return { name: 'sshk-builtin-stub' }
+  return {
+    name: 'sshk-builtin-stub',
+    enforce: 'pre',
+    load(id) {
+      const clean = (id.replace(/^\0/, '').split('?')[0] ?? '').replace(/\\/g, '/')
+      const hit = /\/tools\/([^/]+)\//.exec(clean)?.[1]
+      if (!hit || !set.has(hit)) return null
+      // 各类插件都会对 stub 内容再做一次解析，必须按类型给出合法载荷：
+      // .json → builtin:vite-json 自行 JSON.parse；.vue → SFC 解析要求至少一个 template/script
+      if (clean.endsWith('.json')) return 'null'
+      if (clean.endsWith('.vue')) return '<template><div /></template>'
+      return 'export default null'
+    },
+  }
+}
 
 /**
  * 构建期动态发现 workspace 包：扫描 packages/* 与 tools/* 的 package.json。
@@ -60,9 +107,9 @@ const cpuFeaturesStub = fileURLToPath(new URL('./src/main/stubs/cpu-features.cjs
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
+    plugins: [builtinStubPlugin(BUILTIN.excluded), externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
-    define: APP_COMMIT_DEFINE,
+    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE },
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是
@@ -96,8 +143,9 @@ export default defineConfig({
     root: fileURLToPath(new URL('.', import.meta.url)),
     // 局域网可访问（手机 / 其他设备调试分享页）；仅 dev 生效
     server: { host: true },
-    plugins: [vue(), UnoCSS()],
+    plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS()],
     resolve: { alias: sshkAlias },
+    define: BUILTIN_DEFINE,
     build: {
       rollupOptions: {
         input: fileURLToPath(new URL('./index.html', import.meta.url)),

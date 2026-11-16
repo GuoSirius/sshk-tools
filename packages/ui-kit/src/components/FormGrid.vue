@@ -48,8 +48,10 @@ withDefaults(defineProps<{ cols?: 2 | 3 }>(), { cols: 2 })
 .sshk-form-grid .el-form-item__content { column-gap: 8px; }
 /* FormHint inline 自带 12px margin（非栅格场景用），栅格内由 column-gap 统一管间距，避免叠加成 20px */
 .sshk-form-grid .sshk-form-hint.inline { margin-left: 0; }
-/* 输入框 + 按钮组合：等高居中 */
-.sshk-form-grid .combo { display: flex; align-items: center; gap: 8px; }
+/* 输入框 + 按钮组合：等高居中。
+   combo 自身必须伸展填满 content 行（EP content 是 flex 容器，flex 子项默认按内容收缩，
+   不补 flex:1 时内部输入框的 flex:1 只能填满一个收缩壳——按钮无法与上方输入框右缘对齐） */
+.sshk-form-grid .combo { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
 .sshk-form-grid .combo > .el-input,
 .sshk-form-grid .combo > .el-select { flex: 1; min-width: 0; }
 </style>

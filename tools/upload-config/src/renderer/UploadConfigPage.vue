@@ -436,12 +436,12 @@ onMounted(() => {
             <span class="item-title">{{ row.name }}</span>
             <el-tag v-if="row.isDefault" size="small" type="success" effect="plain">默认</el-tag>
             <span class="row-detail">{{ row.detail }}</span>
+            <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
             <el-tag size="small" :type="secretState[row.id] ? 'success' : 'info'" effect="plain">
               {{ secretState[row.id] ? '密钥已配置' : '未配置密钥' }}
             </el-tag>
             <div class="row-ops">
               <el-button size="small" :icon="Connection" :loading="testingId === row.id" @click="testProfile(row.kind, row.id)">测试</el-button>
-              <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
               <el-button size="small" :icon="Edit" @click="toggle(row.key)">{{ isOpen(row.key) ? '收起' : '编辑' }}</el-button>
               <el-button size="small" :icon="Delete" @click="askRemove(row)" />
             </div>

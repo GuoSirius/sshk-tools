@@ -16,16 +16,22 @@ function toolIdOf(path: string): string {
   return path.replace(/\\/g, '/').match(/\/tools\/([^/]+)\//)?.[1] ?? ''
 }
 
+/** X5-A 构建裁剪：与 main/discovery.ts 同一 define（all=全量 / list=内建 id 名单） */
+const BUILTIN = __SSHK_BUILTIN_TOOLS__
+function builtinIncluded(id: string): boolean {
+  return BUILTIN.mode === 'all' || (BUILTIN.ids ?? []).includes(id)
+}
+
 /** toolId -> 工具包自带图标 SVG 源码（无效 / 缺失时由 ToolIcon 回退系统默认） */
 export const TOOL_ICONS: Record<string, string> = {}
 for (const [file, url] of Object.entries(iconModules)) {
   const id = toolIdOf(file)
-  if (id && typeof url === 'string') TOOL_ICONS[id] = url
+  if (id && builtinIncluded(id) && typeof url === 'string') TOOL_ICONS[id] = url
 }
 
 /** toolId -> 工具页面异步加载器 */
 export const RENDERER_LOADERS: Record<string, () => Promise<unknown>> = {}
 for (const [file, loader] of Object.entries(rendererModules)) {
   const id = toolIdOf(file)
-  if (id && !RENDERER_LOADERS[id]) RENDERER_LOADERS[id] = loader as () => Promise<unknown>
+  if (id && builtinIncluded(id) && !RENDERER_LOADERS[id]) RENDERER_LOADERS[id] = loader as () => Promise<unknown>
 }
