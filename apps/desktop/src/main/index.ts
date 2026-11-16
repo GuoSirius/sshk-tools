@@ -24,6 +24,7 @@ import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
+import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
@@ -516,8 +517,37 @@ async function registerIpc(): Promise<void> {
         })
       : chat({ provider: p, apiKey, messages: messages as never })
     return call.then(
-      (res) => { logger.info('llm', `chat done ${Date.now() - started}ms`); return res },
-      (err) => { logger.error('llm', `chat failed：${(err as Error).message}`); throw err },
+      (res) => {
+        logger.info('llm', `chat done ${Date.now() - started}ms`)
+        // D-Q1 用量记录（console 调试）：流式无 usage 时按内容长度估算 completion tokens
+        recordUsage(services!.repository, {
+          providerId: p._id,
+          providerName: p.name,
+          model: res.model,
+          purpose: 'console',
+          streamed: Boolean(options?.onDelta) && res.streamed !== false,
+          contentLength: res.content.length,
+          promptTokens: res.usage?.promptTokens,
+          completionTokens: res.usage?.completionTokens,
+          durationMs: Date.now() - started,
+          ok: true,
+        })
+        return res
+      },
+      (err) => {
+        logger.error('llm', `chat failed：${(err as Error).message}`)
+        recordUsage(services!.repository, {
+          providerId: p._id,
+          providerName: p.name,
+          model: p.model,
+          purpose: 'console',
+          streamed: Boolean(options?.onDelta),
+          durationMs: Date.now() - started,
+          ok: false,
+          error: (err as Error).message,
+        })
+        throw err
+      },
     )
   })
   // 渲染层可临时带 apiKey 做「保存前探测」；不传则读 safeStorage 中已存的密钥。
@@ -668,6 +698,15 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.diagCollect, () => collectDiagnostics(services!, pluginStatus, buildCatalog()))
   handleOk(IPC_CHANNELS.diagExport, (_event, zipPath: string) =>
     exportDiagnosisZip(collectDiagnostics(services!, pluginStatus, buildCatalog()), String(zipPath ?? '')))
+
+  // ── D-Q1 模型用量日志：统计 / 清空 ──
+  handleOk(IPC_CHANNELS.usageStats, async (_event, since?: string | null) =>
+    collectUsageStats(services!.repository, typeof since === 'string' && since ? since : null))
+  handleOk(IPC_CHANNELS.usageClear, async (_event, keepDays?: number) => {
+    const removed = await clearUsage(services!.repository, Number(keepDays) || 0)
+    logger.info('usage', `用量明细已清理：${removed} 条（keepDays=${Number(keepDays) || 0}）`)
+    return { removed }
+  })
 
   // ── 插件：按构建期发现的清单逐个加载，任一失败只影响它自己 ──
   pluginStatus = await loadToolPlugins({

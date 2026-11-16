@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
 import ChatPage from './pages/ChatPage.vue'
 import ProvidersPage from './pages/ProvidersPage.vue'
+import UsagePage from './pages/UsagePage.vue'
 import { toolId, load, appendDelta } from './state'
 
 /**
@@ -17,7 +18,7 @@ const props = defineProps<{ menu?: string; toolId?: string }>()
 toolId.value = props.toolId ?? ''
 
 const tab = computed(() => props.menu ?? 'chat')
-const pages: Record<string, unknown> = { chat: ChatPage, providers: ProvidersPage }
+const pages: Record<string, unknown> = { chat: ChatPage, providers: ProvidersPage, usage: UsagePage }
 const active = computed(() => pages[tab.value] ?? ChatPage)
 
 onMounted(() => {

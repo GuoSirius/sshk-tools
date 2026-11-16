@@ -3,13 +3,14 @@ import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { now } from '@sshk/shared'
 import { entityId } from './id.js'
-import type { BaseEntity, CollectionName, FragmentVersion, TemplateVersion } from './entities.js'
-import { BACKUP_COLLECTIONS } from './entities.js'
+import type { BaseEntity, FragmentVersion, TemplateVersion } from './entities.js'
+import { BACKUP_COLLECTIONS, NON_BACKUP_COLLECTIONS } from './entities.js'
+import type { StorageCollection } from './entities.js'
 
 type AnyDoc = Record<string, unknown>
 
 /** 集合 → 实体 ID 前缀（数据契约 §1） */
-const ID_PREFIX: Record<CollectionName, string> = {
+const ID_PREFIX: Record<StorageCollection, string> = {
   brands: 'brd',
   templates: 'tpl',
   templateVersions: 'tplv',
@@ -17,6 +18,7 @@ const ID_PREFIX: Record<CollectionName, string> = {
   fragmentVersions: 'frgv',
   mails: 'mail',
   posters: 'pst',
+  usage: 'use',
 }
 
 /**
@@ -33,7 +35,7 @@ export class Repository {
     mkdirSync(this.dbDir, { recursive: true })
   }
 
-  private store(name: CollectionName): Datastore<AnyDoc> {
+  private store(name: StorageCollection): Datastore<AnyDoc> {
     let db = this.stores.get(name)
     if (!db) {
       db = new Datastore<AnyDoc>({
@@ -55,7 +57,7 @@ export class Repository {
   resumeWrites(): void { this.paused = false }
 
   async insert<T extends BaseEntity>(
-    name: CollectionName,
+    name: StorageCollection,
     doc: Omit<T, '_id' | 'createdAt' | 'updatedAt' | 'archived'> & Partial<Pick<T, '_id' | 'archived'>>,
   ): Promise<T> {
     this.assertWritable()
@@ -72,13 +74,13 @@ export class Repository {
     return (inserted ?? full) as unknown as T
   }
 
-  async get<T extends BaseEntity>(name: CollectionName, id: string): Promise<T | null> {
+  async get<T extends BaseEntity>(name: StorageCollection, id: string): Promise<T | null> {
     const doc = await this.store(name).findOneAsync({ _id: id })
     return (doc as unknown as T) ?? null
   }
 
   async list<T extends BaseEntity>(
-    name: CollectionName,
+    name: StorageCollection,
     query: AnyDoc = {},
     sort: Record<string, 1 | -1> = { updatedAt: -1 },
   ): Promise<T[]> {
@@ -86,12 +88,12 @@ export class Repository {
     return docs as unknown as T[]
   }
 
-  async count(name: CollectionName, query: AnyDoc = {}): Promise<number> {
+  async count(name: StorageCollection, query: AnyDoc = {}): Promise<number> {
     return this.store(name).countAsync(query)
   }
 
   /** 局部更新并刷新 updatedAt；返回更新后的完整实体 */
-  async update<T extends BaseEntity>(name: CollectionName, id: string, patch: Partial<T>): Promise<T | null> {
+  async update<T extends BaseEntity>(name: StorageCollection, id: string, patch: Partial<T>): Promise<T | null> {
     this.assertWritable()
     if (!id) throw new Error(`更新需要有效 _id（${name}）`)
     const merged = { ...patch, updatedAt: now() } as AnyDoc
@@ -102,18 +104,18 @@ export class Repository {
   }
 
   /** 软删除（数据契约 §1） */
-  async archive<T extends BaseEntity>(name: CollectionName, id: string): Promise<T | null> {
+  async archive<T extends BaseEntity>(name: StorageCollection, id: string): Promise<T | null> {
     return this.update<T>(name, id, { archived: true } as Partial<T>)
   }
 
   /** 硬删除（调用方须先确认无引用并二次确认） */
-  async remove(name: CollectionName, id: string): Promise<number> {
+  async remove(name: StorageCollection, id: string): Promise<number> {
     this.assertWritable()
     return this.store(name).removeAsync({ _id: id }, {})
   }
 
   /** 导入整集合（zip 导入用）：清空后批量写入 */
-  async replaceCollection(name: CollectionName, docs: BaseEntity[]): Promise<void> {
+  async replaceCollection(name: StorageCollection, docs: BaseEntity[]): Promise<void> {
     this.assertWritable()
     const db = this.store(name)
     await db.removeAsync({}, { multi: true })
@@ -121,7 +123,7 @@ export class Repository {
   }
 
   /** 导出整集合（zip 导出用） */
-  async exportCollection(name: CollectionName): Promise<BaseEntity[]> {
+  async exportCollection(name: StorageCollection): Promise<BaseEntity[]> {
     return (await this.store(name).findAsync({})) as unknown as BaseEntity[]
   }
 
@@ -135,16 +137,24 @@ export class Repository {
   /**
    * H6：只压缩超阈值（默认 10MB）的集合文件；返回实际压缩的集合名。
    * 与 compact() 的差别：只按需触发大文件，启动调度用（避免每日全量写盘）。
+   * 覆盖备份集合与非备份集合（usage 日志同样防膨胀）。
    */
   async compactIfBulky(maxBytes = 10 * 1024 * 1024): Promise<string[]> {
     const done: string[] = []
-    for (const name of BACKUP_COLLECTIONS) {
+    const all = [...BACKUP_COLLECTIONS, ...NON_BACKUP_COLLECTIONS] as const
+    for (const name of all) {
       const file = join(this.dbDir, `${name}.db`)
       if (!existsSync(file) || statSync(file).size <= maxBytes) continue
       await this.store(name).compactDatafileAsync()
       done.push(name)
     }
     return done
+  }
+
+  /** 按条件硬删除（usage 清理专用：按 createdAt 前缀比较，北京时间字符串有序） */
+  async removeWhere(name: StorageCollection, query: AnyDoc): Promise<number> {
+    this.assertWritable()
+    return this.store(name).removeAsync(query, { multi: true })
   }
 
   // ── 领域查询（数据契约 §2.2 / §2.3：候选片段两道过滤下推到 Repository） ──

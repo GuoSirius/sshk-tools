@@ -25,6 +25,7 @@ import {
 } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 import { isProviderId, toolSecretId } from './secret-ids'
+import { recordUsage } from './usage'
 
 export interface AppServices {
   config: ConfigService
@@ -216,14 +217,42 @@ export function setupServices(): AppServices {
         model: req.model,
         enabled: true,
       }
-      const result = await llmChat({
-        provider,
-        apiKey: req.apiKey,
-        messages: req.messages,
-        temperature: req.temperature,
-        maxTokens: req.maxTokens,
-      })
-      return result.content
+      const started = Date.now()
+      try {
+        const result = await llmChat({
+          provider,
+          apiKey: req.apiKey,
+          messages: req.messages,
+          temperature: req.temperature,
+          maxTokens: req.maxTokens,
+        })
+        // D-Q1 用量记录（vision）：badge 视觉识别等工具直连路径
+        recordUsage(repository, {
+          providerId: provider._id,
+          providerName: provider.name,
+          model: result.model,
+          purpose: 'vision',
+          streamed: false,
+          contentLength: result.content.length,
+          promptTokens: result.usage?.promptTokens,
+          completionTokens: result.usage?.completionTokens,
+          durationMs: Date.now() - started,
+          ok: true,
+        })
+        return result.content
+      } catch (err) {
+        recordUsage(repository, {
+          providerId: provider._id,
+          providerName: provider.name,
+          model: req.model,
+          purpose: 'vision',
+          streamed: false,
+          durationMs: Date.now() - started,
+          ok: false,
+          error: (err as Error).message,
+        })
+        throw err
+      }
     },
     listProviders: (): LlmProviderInfo[] => readProviders().map((p) => ({
       _id: p._id,
@@ -237,14 +266,42 @@ export function setupServices(): AppServices {
     })),
     chatByProvider: async (req) => {
       const provider = findProvider(req.providerId)
-      const result = await llmChat({
-        provider: req.model ? { ...provider, model: req.model } : provider,
-        apiKey: currentSecrets()[provider._id] ?? '',
-        messages: req.messages,
-        temperature: req.temperature,
-        maxTokens: req.maxTokens,
-      })
-      return result.content
+      const started = Date.now()
+      try {
+        const result = await llmChat({
+          provider: req.model ? { ...provider, model: req.model } : provider,
+          apiKey: currentSecrets()[provider._id] ?? '',
+          messages: req.messages,
+          temperature: req.temperature,
+          maxTokens: req.maxTokens,
+        })
+        // D-Q1 用量记录（tool）：工具经宿主能力调用模型
+        recordUsage(repository, {
+          providerId: provider._id,
+          providerName: provider.name,
+          model: result.model,
+          purpose: 'tool',
+          streamed: false,
+          contentLength: result.content.length,
+          promptTokens: result.usage?.promptTokens,
+          completionTokens: result.usage?.completionTokens,
+          durationMs: Date.now() - started,
+          ok: true,
+        })
+        return result.content
+      } catch (err) {
+        recordUsage(repository, {
+          providerId: provider._id,
+          providerName: provider.name,
+          model: req.model ?? provider.model,
+          purpose: 'tool',
+          streamed: false,
+          durationMs: Date.now() - started,
+          ok: false,
+          error: (err as Error).message,
+        })
+        throw err
+      }
     },
     listModelsByProvider: (providerId, apiKey) => llmListModels(
       findProvider(providerId),

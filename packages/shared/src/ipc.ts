@@ -125,6 +125,9 @@ export const IPC_CHANNELS = {
   /** N1 一键诊断：采集（预览，只含布尔/名称/计数）+ 导出 zip（report.md + logs/） */
   diagCollect: 'diag:collect',
   diagExport: 'diag:export',
+  /** D-Q1 模型用量日志：统计（分组+最近明细）/ 清空 */
+  usageStats: 'usage:stats',
+  usageClear: 'usage:clear',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

@@ -168,3 +168,26 @@ export const BACKUP_COLLECTIONS = [
 ] as const
 
 export type CollectionName = (typeof BACKUP_COLLECTIONS)[number]
+
+/**
+ * 非备份集合（D-Q1 用量日志）：运行时元数据，不随备份 zip 导出（备份契约不变）。
+ * 与 BACKUP_COLLECTIONS 共用同一 NeDB 存储层与 compact 调度。
+ */
+export const NON_BACKUP_COLLECTIONS = ['usage'] as const
+
+export type StorageCollection = CollectionName | (typeof NON_BACKUP_COLLECTIONS)[number]
+
+/** 模型调用用量记录（D-Q1）：只记元数据，绝不记 messages 内容 */
+export interface UsageRec extends BaseEntity {
+  providerId: string
+  providerName: string
+  model: string
+  /** console = 对话调试 / tool = 工具调用 / vision = 视觉识别 */
+  purpose: string
+  streamed: boolean
+  promptTokens?: number
+  completionTokens?: number
+  durationMs: number
+  ok: boolean
+  error?: string
+}

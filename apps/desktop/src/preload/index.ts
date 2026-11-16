@@ -188,6 +188,13 @@ const api = {
     /** N1 导出诊断 zip（report.md + 近 3 天日志），路径必须来自 pickSave */
     save: (outPath: string): Promise<{ file: string; logs: number }> => invoke(IPC_CHANNELS.diagExport, outPath),
   },
+  usage: {
+    /** D-Q1 用量统计（分组汇总 + 最近 200 条明细）；since 为北京时间 ISO 前缀或 null=全部 */
+    stats: (since?: string | null): Promise<import('@sshk/shared').UsageStatsPayload> =>
+      invoke(IPC_CHANNELS.usageStats, since ?? null),
+    /** 清空用量明细；keepDays=0 全清，否则只删早于 N 天的记录 */
+    clear: (keepDays?: number): Promise<{ removed: number }> => invoke(IPC_CHANNELS.usageClear, keepDays ?? 0),
+  },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
     list: (): Promise<unknown> => invoke(IPC_CHANNELS.toolsList),

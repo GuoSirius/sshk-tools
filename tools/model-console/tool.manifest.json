@@ -29,6 +29,11 @@
       "label": "对话调试"
     },
     {
+      "id": "usage",
+      "label": "用量统计",
+      "icon": "M4 20h16M6 20V10M11 20V4M16 20v-7M21 20V8"
+    },
+    {
       "id": "config",
       "label": "工具配置"
     }

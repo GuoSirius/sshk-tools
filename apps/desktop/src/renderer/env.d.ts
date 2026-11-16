@@ -162,6 +162,10 @@ interface Window {
       collect(): Promise<import('@sshk/shared').DiagnosisData>
       save(outPath: string): Promise<{ file: string; logs: number }>
     }
+    usage: {
+      stats(since?: string | null): Promise<import('@sshk/shared').UsageStatsPayload>
+      clear(keepDays?: number): Promise<{ removed: number }>
+    }
     tools: {
       list(): Promise<import('@sshk/shared').ToolCatalogPayload>
       setEnabled(id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload>

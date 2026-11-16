@@ -361,3 +361,42 @@ export interface DiagnosisData {
     recentErrors: string[]
   }
 }
+
+/** D-Q1 模型用量记录（只记元数据，绝不记 messages 内容；跨 IPC 下发渲染层用） */
+export interface UsageRow {
+  _id: string
+  createdAt: string
+  providerId: string
+  providerName: string
+  model: string
+  /** console = 对话调试 / tool = 工具调用 / vision = 视觉识别 */
+  purpose: string
+  streamed: boolean
+  promptTokens?: number
+  completionTokens?: number
+  durationMs: number
+  ok: boolean
+  error?: string
+}
+
+/** D-Q1 分组汇总行（按 provider+model） */
+export interface UsageGroup {
+  providerId: string
+  providerName: string
+  model: string
+  calls: number
+  okCalls: number
+  failCalls: number
+  promptTokens: number
+  completionTokens: number
+  totalMs: number
+}
+
+/** D-Q1 用量页 payload：分组汇总 + 最近明细 */
+export interface UsageStatsPayload {
+  since: string | null
+  groups: UsageGroup[]
+  totalCalls: number
+  /** 最近明细（上限 200 条，时间倒序） */
+  records: UsageRow[]
+}

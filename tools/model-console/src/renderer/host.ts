@@ -16,4 +16,9 @@ export const host = createSafeHost({
     providers: C.llmProviders,
     providerModels: C.llmProviderModels,
   },
+  usage: {
+    stats: C.usageStats,
+    clear: C.usageClear,
+  },
+  os: { pickSave: C.osPickSave, writeText: C.osWriteText },
 })
