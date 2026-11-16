@@ -86,7 +86,7 @@
           "type": "select",
           "options": [
             { "value": "local", "label": "本地目录" },
-            { "value": "remote", "label": "远程（FTP / SFTP）" },
+            { "value": "remote", "label": "远程" },
             { "value": "cloud", "label": "云存储" }
           ],
           "hint": "连接信息在「上传配置」工具里统一预设，这里只选目标"

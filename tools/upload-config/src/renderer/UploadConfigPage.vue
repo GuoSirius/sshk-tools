@@ -419,7 +419,7 @@ onMounted(() => {
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="remote">远程（FTP / SFTP）</el-dropdown-item>
+                <el-dropdown-item command="remote">远程</el-dropdown-item>
                 <el-dropdown-item command="cloud">云存储</el-dropdown-item>
               </el-dropdown-menu>
             </template>

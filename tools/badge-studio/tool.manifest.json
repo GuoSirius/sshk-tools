@@ -292,7 +292,7 @@
           "type": "select",
           "options": [
             { "value": "local", "label": "本地目录" },
-            { "value": "remote", "label": "远程（FTP / SFTP）" },
+            { "value": "remote", "label": "远程" },
             { "value": "cloud", "label": "云存储" }
           ],
           "hint": "与 EDM Studio 共用应用级「上传配置」里的全局 profile"
