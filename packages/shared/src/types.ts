@@ -11,6 +11,8 @@ export interface ToolConfigField {
   required?: boolean
   /** 仅开发环境展示（协助调试的配置项，发布版隐藏但保留其值） */
   devOnly?: boolean
+  /** 独占整行（plans/01 F2 全局表单规范）：长控件/路径类/大组件声明后渲染层不再凑列 */
+  full?: boolean
   /** 值为空时展示该配置键的当前值（如 defaultProviderId ← app.llm.activeProviderId） */
   fallbackKey?: string
   /** 相对 `tools.<toolId>` 的点路径，如 `render.strict` */

@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
-import { ToolPageLayout } from '@sshk/ui-kit'
+import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
 import type { ToolConfigField } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 
@@ -231,27 +231,35 @@ watch(() => props.section, (section) => {
             :data-group="group.id"
           >
             <div class="panel-head"><el-icon><Setting /></el-icon>{{ group.label }}</div>
-            <el-form label-width="140px" size="small">
-              <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label">
-                <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
-                <el-input-number
-                  v-else-if="field.type === 'number'"
-                  v-model="values[field.key]"
-                  :min="field.min"
-                  :max="field.max"
-                />
-                <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row">
-                  <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
-                  <el-button size="small" @click="pickPath(field)">
-                    {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
-                  </el-button>
-                </div>
-                <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" style="width: 220px" filterable clearable>
-                  <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-                <el-input v-else v-model="values[field.key]" style="width: 260px" />
-                <span v-if="field.hint" :class="['hint', { 'hint-inline': field.type === 'boolean' }]">{{ field.hint }}</span>
-              </el-form-item>
+            <!-- plans/01 全局表单规范：2 列栅格 + 等宽控件 + dir/file 与 full 标记独占整行 -->
+            <el-form size="small" label-position="top">
+              <FormGrid>
+                <el-form-item
+                  v-for="field in group.fields"
+                  :key="field.key"
+                  :label="field.label"
+                  :class="{ full: field.full || field.type === 'dir' || field.type === 'file' }"
+                >
+                  <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
+                  <el-input-number
+                    v-else-if="field.type === 'number'"
+                    v-model="values[field.key]"
+                    :min="field.min"
+                    :max="field.max"
+                  />
+                  <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">
+                    <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
+                    <el-button size="small" @click="pickPath(field)">
+                      {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
+                    </el-button>
+                  </div>
+                  <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" filterable clearable>
+                    <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+                  </el-select>
+                  <el-input v-else v-model="values[field.key]" />
+                  <FormHint v-if="field.hint" :inline="field.type === 'boolean'">{{ field.hint }}</FormHint>
+                </el-form-item>
+              </FormGrid>
             </el-form>
           </section>
 
@@ -384,8 +392,6 @@ watch(() => props.section, (section) => {
 }
 .hint, .muted { font-size: 12px; opacity: .6; line-height: 1.5; }
 .hint { display: block; }
-/* 开关后接说明文字需与控件保持间距（2026-11-15 用户反馈，全项目铁律） */
-.hint-inline { display: inline; margin-left: 12px; }
 .kv {
   display: flex;
   align-items: center;

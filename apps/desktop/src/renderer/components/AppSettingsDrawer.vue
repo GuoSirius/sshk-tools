@@ -3,7 +3,7 @@ import {computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT, IPC_CHANNELS } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState, InstallPreview, ToolCatalogPayload } from '@sshk/shared'
-import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
+import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
@@ -439,36 +439,42 @@ async function cleanupOrphans(): Promise<void> {
           <template v-if="activeGroup === 'general'">
             <section class="settings-card">
               <div class="card-title">常规</div>
-              <el-form label-width="120px" size="small">
-                <el-form-item label="主题模式">
-                  <el-select :model-value="mode" style="width: 200px" @change="onTheme">
-                    <el-option label="暗黑" value="dark" />
-                    <el-option label="亮色" value="light" />
-                    <el-option label="跟随系统" value="system" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="产物目录">
-                  <div style="display:flex; gap:8px; width:100%">
-                    <el-input v-model="cfg.outputDir" placeholder="留空 = 默认 userData/sshk-data" />
-                    <el-button @click="pickDir">选择</el-button>
-                  </div>
-                  <div class="hint">变更需重启应用生效；本机路径不会进入备份包</div>
-                </el-form-item>
-                <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
-                <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
-                <el-form-item label="自动更新"><el-switch v-model="cfg.autoUpdate" /></el-form-item>
-                <el-form-item label="自动安装更新">
-                  <el-switch v-model="cfg.autoInstallOnAppQuit" />
-                  <span class="hint" style="margin-left:8px">默认关：新版本仅在后台下载，由你在「系统与数据 → 更新」点「立即安装」；开启后退出应用时自动安装</span>
-                </el-form-item>
-                <el-form-item label="开发者模式">
-                  <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
-                  <span class="hint" style="margin-left:8px">仅作用于打包/安装版：开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥。源码 dev 运行时开发功能始终开启，不受此开关影响</span>
-                </el-form-item>
-                <el-form-item label="分享有效期">
-                  <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" size="small" />
-                  <span class="hint" style="margin-left:8px">小时（token 到期即失效）</span>
-                </el-form-item>
+              <!-- plans/01 全局表单规范样板：2 列栅格 + 等宽控件 + hint 一句话 + 长解释问号弹出 -->
+              <el-form size="small" label-position="top">
+                <FormGrid>
+                  <el-form-item label="主题模式">
+                    <el-select :model-value="mode" @change="onTheme">
+                      <el-option label="暗黑" value="dark" />
+                      <el-option label="亮色" value="light" />
+                      <el-option label="跟随系统" value="system" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="分享有效期">
+                    <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" />
+                    <FormHint inline>小时（到期即失效）</FormHint>
+                  </el-form-item>
+                  <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
+                  <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
+                  <el-form-item label="自动更新">
+                    <el-switch v-model="cfg.autoUpdate" />
+                    <FormHint inline detail="新版本仅在后台下载，完成后点「立即安装」重启生效">默认开</FormHint>
+                  </el-form-item>
+                  <el-form-item label="自动安装更新">
+                    <el-switch v-model="cfg.autoInstallOnAppQuit" />
+                    <FormHint inline detail="默认关：新版本仅在后台下载，可在「系统与数据 → 更新」点「立即安装」；开启后退出应用时自动安装">默认关；开启后退出即自动安装</FormHint>
+                  </el-form-item>
+                  <el-form-item label="开发者模式">
+                    <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
+                    <FormHint inline detail="开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥；源码 dev 运行时开发功能始终开启，不受此开关影响">仅打包版生效；源码 dev 恒开</FormHint>
+                  </el-form-item>
+                  <el-form-item class="full" label="产物目录">
+                    <div class="combo">
+                      <el-input v-model="cfg.outputDir" placeholder="留空 = 默认 userData/sshk-data" />
+                      <el-button @click="pickDir">选择</el-button>
+                    </div>
+                    <FormHint>变更需重启生效；路径不进备份包</FormHint>
+                  </el-form-item>
+                </FormGrid>
               </el-form>
               <div class="card-actions">
                 <el-button type="primary" size="small" :loading="saving" @click="saveAppConfig">保存应用配置</el-button>
@@ -563,32 +569,35 @@ async function cleanupOrphans(): Promise<void> {
                 </div>
                 <div v-for="(warning, i) in tool.warnings" :key="i" class="warning-line">{{ warning }}</div>
                 <div v-if="editing === tool.id" class="tool-manage-body">
-                  <el-form label-width="90px" size="small">
-                    <el-form-item label="显示名称"><el-input v-model="form.name" /></el-form-item>
-                    <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-                    <el-form-item label="分类 / 标签">
-                      <el-input v-model="form.category" />
-                      <div class="hint">多个分类用逗号 / 顿号 / 分号分隔，例如：邮件营销、数据分析</div>
-                    </el-form-item>
-                    <el-form-item v-if="isDev" label="图标">
-                      <el-select v-model="form.icon" filterable allow-create default-first-option style="width: 100%">
-                        <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                      </el-select>
-                      <div class="hint">auto = 工具包自带 assets/icon.svg；也可直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标</div>
-                    </el-form-item>
-                    <el-form-item v-if="isDev" label="硬依赖">
-                      <el-select
-                        :model-value="tool.dependsOn"
-                        multiple
-                        clearable
-                        placeholder="默认零依赖（禁用其它工具不影响本工具）"
-                        style="width: 100%"
-                        @change="(v: unknown) => setDependencies(tool, Array.isArray(v) ? v.map(String) : [])"
-                      >
-                        <el-option v-for="other in otherTools(tool)" :key="other.id" :label="other.name" :value="other.id" />
-                      </el-select>
-                      <div class="hint">依赖工具不可见时，本工具一并隐藏；清空即恢复零依赖隔离</div>
-                    </el-form-item>
+                  <el-form size="small" label-position="top">
+                    <FormGrid>
+                      <el-form-item label="显示名称"><el-input v-model="form.name" /></el-form-item>
+                      <el-form-item label="分类 / 标签">
+                        <el-input v-model="form.category" />
+                        <FormHint>逗号 / 顿号分隔；标签内可含空格</FormHint>
+                      </el-form-item>
+                      <el-form-item class="full" label="描述">
+                        <el-input v-model="form.description" type="textarea" :rows="2" />
+                      </el-form-item>
+                      <el-form-item v-if="isDev" class="full" label="图标">
+                        <el-select v-model="form.icon" filterable allow-create default-first-option>
+                          <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                        </el-select>
+                        <FormHint detail="auto = 工具包自带 assets/icon.svg；也可直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标">auto=工具包自带；可填 URL / data:image</FormHint>
+                      </el-form-item>
+                      <el-form-item v-if="isDev" class="full" label="硬依赖">
+                        <el-select
+                          :model-value="tool.dependsOn"
+                          multiple
+                          clearable
+                          placeholder="默认零依赖（禁用其它工具不影响本工具）"
+                          @change="(v: unknown) => setDependencies(tool, Array.isArray(v) ? v.map(String) : [])"
+                        >
+                          <el-option v-for="other in otherTools(tool)" :key="other.id" :label="other.name" :value="other.id" />
+                        </el-select>
+                        <FormHint detail="依赖工具不可见时本工具一并隐藏；清空即恢复零依赖隔离">依赖工具隐藏时本工具一并隐藏</FormHint>
+                      </el-form-item>
+                    </FormGrid>
                   </el-form>
                   <div class="card-actions">
                     <el-button size="small" type="primary" @click="saveOverrides(tool.id)">保存展示信息</el-button>
