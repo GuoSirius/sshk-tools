@@ -35,10 +35,10 @@ for (const layer of ['packages', 'tools']) {
 }
 
 // 沙箱 preload：只能 require electron，任何裸包 require 都会 module not found。
-// @sshk/shared 的 index 会带 dayjs（time.ts），preload 只需 IPC 通道常量——
-// 把 shared 映射到纯常量文件，产物零外部依赖、单一真相源不变。
+// @sshk/shared 的 index 会带 dayjs（time.ts），preload 只需 IPC 通道常量 + IpcResult 判别
+//（H1 解包）——映射到纯常量聚合文件，产物零外部依赖、单一真相源不变。
 const preloadAlias: Alias[] = [
-  { find: /^@sshk\/shared$/, replacement: pkg('packages/shared/src/ipc.ts') },
+  { find: /^@sshk\/shared$/, replacement: pkg('packages/shared/src/preload-shared.ts') },
 ]
 
 // 运行时依赖保持 dependencies（语义正确），但主进程要内联打进产物：

@@ -1,5 +1,5 @@
 import Datastore from '@seald-io/nedb'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { now } from '@sshk/shared'
 import { entityId } from './id.js'
@@ -36,7 +36,12 @@ export class Repository {
   private store(name: CollectionName): Datastore<AnyDoc> {
     let db = this.stores.get(name)
     if (!db) {
-      db = new Datastore<AnyDoc>({ filename: join(this.dbDir, `${name}.db`), autoload: true })
+      db = new Datastore<AnyDoc>({
+        filename: join(this.dbDir, `${name}.db`),
+        autoload: true,
+        // H6：损坏记录占比超过 10% 时显式告警（默认值同为 10%，此处显式声明防版本漂移）
+        corruptAlertThreshold: 0.1,
+      })
       this.stores.set(name, db)
     }
     return db
@@ -125,6 +130,21 @@ export class Repository {
     for (const db of this.stores.values()) {
       await db.compactDatafileAsync()
     }
+  }
+
+  /**
+   * H6：只压缩超阈值（默认 10MB）的集合文件；返回实际压缩的集合名。
+   * 与 compact() 的差别：只按需触发大文件，启动调度用（避免每日全量写盘）。
+   */
+  async compactIfBulky(maxBytes = 10 * 1024 * 1024): Promise<string[]> {
+    const done: string[] = []
+    for (const name of BACKUP_COLLECTIONS) {
+      const file = join(this.dbDir, `${name}.db`)
+      if (!existsSync(file) || statSync(file).size <= maxBytes) continue
+      await this.store(name).compactDatafileAsync()
+      done.push(name)
+    }
+    return done
   }
 
   // ── 领域查询（数据契约 §2.2 / §2.3：候选片段两道过滤下推到 Repository） ──

@@ -7,7 +7,9 @@ import {
   type ToolPluginStatus,
 } from '@sshk/shared'
 import type { Repository } from '@sshk/repository'
+import { AppError } from '@sshk/shared'
 import { MAIN_LOADERS, MANIFESTS } from './discovery'
+import { wrapIpcHandler } from './ipc-wrap'
 import { readInstalled, runtimeRoot } from './runtime-installer.js'
 import type { UtilityInstance } from './utility-host.js'
 
@@ -66,26 +68,26 @@ const ALLOWED_HOST_METHODS = new Set<keyof ToolHostCapabilities>([
   'runLocalOcr',
 ])
 
-/** 给插件的 ipcMain 代理：每次调用都校验工具当前是否可用 */
+/** 给插件的 ipcMain 代理：每次调用都校验工具当前是否可用；handler 统一 IpcResult 包装（H1 永不 reject） */
 function guardedIpcMain(ipcMain: IpcMain, toolId: string, isActive: (id: string) => boolean): IpcMain {
   const guard = {
     handle: (channel: string, handler: (...args: never[]) => unknown) =>
-      ipcMain.handle(channel, async (...args: unknown[]) => {
+      ipcMain.handle(channel, wrapIpcHandler(channel, async (...args: unknown[]) => {
         if (!isActive(toolId)) {
-          throw new Error(`工具「${toolId}」当前不可用（已禁用 / 缺依赖 / 缺权限 / 插件未加载）`)
+          throw new AppError(`工具「${toolId}」当前不可用（已禁用 / 缺依赖 / 缺权限 / 插件未加载）`, 'permission')
         }
         return (handler as (...a: unknown[]) => unknown)(...args)
-      }),
+      })),
   }
   return guard as unknown as IpcMain
 }
 
-/** 插件加载失败时注册明确拒绝 handler，避免 Electron 的 "No handler registered" */
+/** 插件加载失败时注册明确拒绝 handler（结构化 IpcResult，不 reject），避免 Electron 的 "No handler registered" */
 function rejectAll(ipcMain: IpcMain, tool: ToolDescriptor, message: string): void {
   for (const channel of tool.plugin?.channels ?? []) {
     try {
       ipcMain.removeHandler(channel)
-      ipcMain.handle(channel, () => { throw new Error(message) })
+      ipcMain.handle(channel, wrapIpcHandler(channel, () => { throw new AppError(message, 'permission') }))
     } catch (err) {
       console.warn(`[sshk] 工具 ${tool.id} 通道 ${channel} 拒绝 handler 注册失败：`, err)
     }
@@ -138,12 +140,12 @@ async function forkRuntime(
       }
       try {
         host.ipcMain.removeHandler(channel)
-        host.ipcMain.handle(channel, async (...args: unknown[]) => {
+        host.ipcMain.handle(channel, wrapIpcHandler(channel, async (...args: unknown[]) => {
           if (!host.isActive(tool.id)) {
-            throw new Error(`工具「${tool.id}」当前不可用（已禁用 / 缺依赖 / 缺权限 / 插件未加载）`)
+            throw new AppError(`工具「${tool.id}」当前不可用（已禁用 / 缺依赖 / 缺权限 / 插件未加载）`, 'permission')
           }
           return instance.call(channel, args)
-        })
+        }))
       } catch (err) {
         console.warn(`[sshk] 工具 ${tool.id} 通道 ${channel} 转发 handler 注册失败：`, err)
       }

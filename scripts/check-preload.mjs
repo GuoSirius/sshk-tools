@@ -21,7 +21,7 @@ const directInvokes = [...text.matchAll(/ipcRenderer\.invoke\s*\(/g)]
 if (directInvokes.length !== 1) {
   errors.push(`ipcRenderer.invoke 应只出现 1 次（在统一包装内），实际 ${directInvokes.length} 次`)
 }
-const wrapper = text.match(/const invoke\s*=\s*\([\s\S]{0,300}?\n\s*ipcRenderer\.invoke\([^\n]*\)/)
+const wrapper = text.match(/const invoke\s*=\s*async\s*\([\s\S]{0,400}?ipcRenderer\.invoke\s*\([^\n]*\)/)
 if (!wrapper) {
   errors.push('未找到统一的 invoke 包装函数')
 } else if (!/toPlain/.test(wrapper[0])) {

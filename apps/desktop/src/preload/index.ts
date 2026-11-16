@@ -1,17 +1,27 @@
 // 源码为 ESM/TS，electron-vite 构建为 out/preload/index.cjs（CommonJS）。
 // sandbox: true 下 preload 只能由 require 加载，因此产物固定 CJS 且只做白名单桥接。
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { IPC_CHANNELS, isIpcResult } from '@sshk/shared'
 import { toPlain } from './plain'
 
 /**
  * 所有 IPC 入参统一在边界脱壳：Vue 的 ref/reactive Proxy 无法被结构化克隆。
  * 放在唯一出口，渲染层与各工具包（含后期外部工具）都无需自己 toRaw。
  * 注册类监听（ipcRenderer.on）不经过这里，回调函数保持原样。
+ *
+ * H1 统一 IPC 失败契约：主进程 handleOk 包装的结果（__ipc 标记）在这里统一解包——
+ * ok 直接取 data（渲染层零感知）；!ok 抛 Error(message)，渲染层既有 try/catch 不变。
+ * 未标记的历史返回值原样透传，兼容渐进迁移。
  */
 // 返回值类型由各方法自身的标注与 renderer/env.d.ts 约束，这里只统一处理入参。
-const invoke = (channel: string, ...args: unknown[]): Promise<any> =>
-  ipcRenderer.invoke(channel, ...args.map(toPlain))
+const invoke = async (channel: string, ...args: unknown[]): Promise<any> => {
+  const result = await ipcRenderer.invoke(channel, ...args.map(toPlain))
+  if (isIpcResult(result)) {
+    if (result.ok) return result.data
+    throw new Error(result.message)
+  }
+  return result
+}
 
 const api = {
   config: {

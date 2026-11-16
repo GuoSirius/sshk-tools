@@ -21,6 +21,7 @@ import {
 } from '@sshk/shared'
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
+import { handleOk } from './ipc-wrap'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
@@ -93,6 +94,8 @@ function createWindow(): void {
     quitting = true
     // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
     killUtilityTools()
+    // H6：退出兜底压缩（fire-and-forget；NeDB compact 原子替换，中断安全）
+    void compactDatabase('quit')
   })
   mainWindow.on('close', (event) => {
     if (quitting || isDev) return
@@ -249,6 +252,20 @@ function secretMigrationEnabled(): boolean {
   return ['1', 'true'].includes(String(process.env.SSHK_TOOLS_ALLOW_SECRET_MIGRATION ?? '').trim().toLowerCase())
 }
 
+/** H6 NeDB 防膨胀：超阈集合按需压缩 + 全量压缩；失败只告警，绝不影响使用 */
+async function compactDatabase(reason: 'daily' | 'startup' | 'quit'): Promise<void> {
+  const repo = services?.repository
+  if (!repo) return
+  const started = Date.now()
+  try {
+    const bulky = await repo.compactIfBulky()
+    await repo.compact()
+    console.log(`[sshk] NeDB 压缩完成（${reason}${bulky.length > 0 ? ` · 超阈集合：${bulky.join('、')}` : ''} · ${Date.now() - started}ms）`)
+  } catch (err) {
+    console.warn(`[sshk] NeDB 压缩失败（${reason}，不影响使用）：`, err)
+  }
+}
+
 async function registerIpc(): Promise<void> {
   const cfg = services!.config
 
@@ -260,8 +277,8 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── 配置 ──
-  ipcMain.handle(IPC_CHANNELS.configGet, (_event, key: string) => cfg.get(key) ?? null)
-  ipcMain.handle(IPC_CHANNELS.configSet, (_event, key: string, value: unknown) => {
+  handleOk(IPC_CHANNELS.configGet, (_event, key: string) => cfg.get(key) ?? null)
+  handleOk(IPC_CHANNELS.configSet, (_event, key: string, value: unknown) => {
     // 打包版「关 → 开」开发者模式必须先在本会话通过访问密钥校验；
     // 已是开启状态再保存、或关闭，都不需要口令，避免误伤正常配置保存。
     if (key === 'app.developerMode' && value === true && !isDev &&
@@ -285,9 +302,9 @@ async function registerIpc(): Promise<void> {
   const themeMode = cfg.get('app.themeMode')
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
 
-  ipcMain.handle(IPC_CHANNELS.appVersion, () => app.getVersion())
-  ipcMain.handle(IPC_CHANNELS.appOpenDataDir, () => shell.openPath(app.getPath('userData')))
-  ipcMain.handle(IPC_CHANNELS.appReload, (_event, force?: boolean) => {
+  handleOk(IPC_CHANNELS.appVersion, () => app.getVersion())
+  handleOk(IPC_CHANNELS.appOpenDataDir, () => shell.openPath(app.getPath('userData')))
+  handleOk(IPC_CHANNELS.appReload, (_event, force?: boolean) => {
     const wc = mainWindow?.webContents
     if (!wc) return false
     if (force) wc.reloadIgnoringCache()
@@ -295,13 +312,13 @@ async function registerIpc(): Promise<void> {
     return true
   })
   // 渲染层确认关闭后回到主进程：置 quitting 并真正退出（close 链路见上）
-  ipcMain.handle(IPC_CHANNELS.appConfirmClose, () => {
+  handleOk(IPC_CHANNELS.appConfirmClose, () => {
     quitting = true
     app.quit()
     return true
   })
   // 开发环境随意开关；打包版密钥优先级：settings.json 显式哈希 > env SSHK_DEVTOOLS_KEY > 内置 sshk-tools@888
-  ipcMain.handle(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
+  handleOk(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
     if (isDev) {
       mainWindow?.webContents.toggleDevTools()
       return true
@@ -313,7 +330,7 @@ async function registerIpc(): Promise<void> {
     return true
   })
   // 复核项 10：开发者模式等敏感开关只校验口令，不打开 DevTools；与上面共用同一实现
-  ipcMain.handle(IPC_CHANNELS.appVerifyDevtoolsKey, (_event, key?: string) => {
+  handleOk(IPC_CHANNELS.appVerifyDevtoolsKey, (_event, key?: string) => {
     if (isDev) { devModeAuthorized = true; return true }
     if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
       throw new Error('访问密钥不正确')
@@ -323,19 +340,19 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── 工具目录（启用 / 权限 / 依赖 / 分发 / 元数据覆盖） ──
-  ipcMain.handle(IPC_CHANNELS.toolsList, () => buildCatalog())
-  ipcMain.handle(IPC_CHANNELS.toolsSetEnabled, (_event, id: string, enabled: boolean) => {
+  handleOk(IPC_CHANNELS.toolsList, () => buildCatalog())
+  handleOk(IPC_CHANNELS.toolsSetEnabled, (_event, id: string, enabled: boolean) => {
     assertKnownTool(id)
     cfg.set(`tools.${id}.enabled`, Boolean(enabled))
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.toolsSetGrant, (_event, id: string, grant: string) => {
+  handleOk(IPC_CHANNELS.toolsSetGrant, (_event, id: string, grant: string) => {
     assertKnownTool(id)
     if (grant && grant !== ACCESS_GRANT) throw new Error(`未知权限要求: ${grant}`)
     cfg.set(`tools.${id}.requiredGrant`, grant || '')
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.toolsSetDependencies, (_event, id: string, raw: unknown) => {
+  handleOk(IPC_CHANNELS.toolsSetDependencies, (_event, id: string, raw: unknown) => {
     assertKnownTool(id)
     if (!Array.isArray(raw)) throw new Error('依赖必须是工具 id 数组')
     const ids = Array.from(new Set(raw.filter((dep): dep is string =>
@@ -343,31 +360,31 @@ async function registerIpc(): Promise<void> {
     cfg.set(`tools.${id}.dependsOn`, ids)
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.toolsSetOverrides, (_event, id: string, raw: unknown) => {
+  handleOk(IPC_CHANNELS.toolsSetOverrides, (_event, id: string, raw: unknown) => {
     assertKnownTool(id)
     const all = readRecord<ToolOverrides>('app.toolOverrides')
     all[id] = pickOverrides(raw)
     cfg.set('app.toolOverrides', all)
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.toolsSetDistribution, (_event, raw: unknown) => {
+  handleOk(IPC_CHANNELS.toolsSetDistribution, (_event, raw: unknown) => {
     const ids = Array.isArray(raw)
       ? raw.filter((id): id is string => typeof id === 'string' && allManifests().some((t) => t.id === id))
       : null
     cfg.set('app.distribution.includeTools', ids)
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.toolsCleanupOrphans, () => {
+  handleOk(IPC_CHANNELS.toolsCleanupOrphans, () => {
     for (const id of buildCatalog().orphans) cfg.remove(`tools.${id}`)
     return buildCatalog()
   })
-  ipcMain.handle(IPC_CHANNELS.accessKeySet, (_event, key: string) => {
+  handleOk(IPC_CHANNELS.accessKeySet, (_event, key: string) => {
     services!.setAccessKey(String(key ?? ''))
     return buildCatalog()
   })
 
   // ── 备份：settings + NeDB + 产物 → zip；导入含快照回滚 ──
-  ipcMain.handle(IPC_CHANNELS.backupExport, async (_event, zipPath: string, passphrase?: string) => {
+  handleOk(IPC_CHANNELS.backupExport, async (_event, zipPath: string, passphrase?: string) => {
     const out = String(zipPath ?? '')
     if (!out) throw new Error('缺少导出路径')
     const manifest = await exportBackup({
@@ -381,7 +398,7 @@ async function registerIpc(): Promise<void> {
     })
     return { counts: manifest.counts, file: out }
   })
-  ipcMain.handle(IPC_CHANNELS.backupImport, async (_event, zipPath: string, passphrase?: string) => {
+  handleOk(IPC_CHANNELS.backupImport, async (_event, zipPath: string, passphrase?: string) => {
     const file = String(zipPath ?? '')
     if (!file) throw new Error('缺少导入文件')
     const dbDir = services!.dbDir
@@ -409,24 +426,24 @@ async function registerIpc(): Promise<void> {
     }
   }
   const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: (cfg.get('app.runtime.publicKeys') ?? []) as never[] })
-  ipcMain.handle(IPC_CHANNELS.runtimePreview, (_event, zipPath: string) => {
+  handleOk(IPC_CHANNELS.runtimePreview, (_event, zipPath: string) => {
     const path = String(zipPath ?? '')
     if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
     return previewInstall(path, runtimeDeps(), { builtinIds: builtinToolIds() })
   })
-  ipcMain.handle(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
+  handleOk(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
     const path = String(zipPath ?? '')
     if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
     const result = installPackage(path, runtimeDeps(), { explicitlyTrusted, builtinIds: builtinToolIds() })
     return { record: result.record, warnings: result.warnings }
   })
-  ipcMain.handle(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))
-  ipcMain.handle(IPC_CHANNELS.runtimeUninstall, (_event, id: string) => uninstallPackage(String(id ?? ''), runtimeDeps()))
-  ipcMain.handle(IPC_CHANNELS.runtimeReadRenderer, (_event, id: string) => readRenderer(String(id ?? ''), runtimeDeps()))
+  handleOk(IPC_CHANNELS.runtimeList, () => listInstalled(runtimeDeps()))
+  handleOk(IPC_CHANNELS.runtimeUninstall, (_event, id: string) => uninstallPackage(String(id ?? ''), runtimeDeps()))
+  handleOk(IPC_CHANNELS.runtimeReadRenderer, (_event, id: string) => readRenderer(String(id ?? ''), runtimeDeps()))
   // ── 运行时公钥管理：导入（PEM 校验 + 指纹 keyId）/ 列表 / 撤销 ──
   const keyFingerprint = (pem: string) => createHash('sha256').update(pem.trim()).digest('hex').slice(0, 12)
-  ipcMain.handle(IPC_CHANNELS.runtimeKeysList, () => cfg.get('app.runtime.publicKeys') ?? [])
-  ipcMain.handle(IPC_CHANNELS.runtimeKeysImport, (_event, label: string, pem: string) => {
+  handleOk(IPC_CHANNELS.runtimeKeysList, () => cfg.get('app.runtime.publicKeys') ?? [])
+  handleOk(IPC_CHANNELS.runtimeKeysImport, (_event, label: string, pem: string) => {
     const clean = String(pem ?? '').trim()
     if (!clean.startsWith('-----BEGIN')) throw new Error('不是有效的 PEM 公钥')
     try { createPublicKey(clean) } catch { throw new Error('PEM 公钥解析失败，请检查内容') }
@@ -436,7 +453,7 @@ async function registerIpc(): Promise<void> {
     cfg.set('app.runtime.publicKeys', [...keys, entry])
     return entry
   })
-  ipcMain.handle(IPC_CHANNELS.runtimeKeysRevoke, (_event, keyId: string) => {
+  handleOk(IPC_CHANNELS.runtimeKeysRevoke, (_event, keyId: string) => {
     const keys = (cfg.get('app.runtime.publicKeys') ?? []) as { keyId: string }[]
     cfg.set('app.runtime.publicKeys', keys.filter((k) => k.keyId !== String(keyId ?? '')))
     return true
@@ -449,7 +466,7 @@ async function registerIpc(): Promise<void> {
   // ── 更新 ──
   // autoUpdater 全生命周期状态：检查 → 发现 → 下载进度 → 完成 → 失败，统一推给渲染层。
   // 渲染层据此展示状态指示、进度条与「立即安装」提示，告别一次性 toast。
-  ipcMain.handle(IPC_CHANNELS.updateCheck, async () => {
+  handleOk(IPC_CHANNELS.updateCheck, async () => {
     if (isDev) { pushUpdate({ phase: 'dev' }); return { dev: true } }
     try {
       const result = await autoUpdater.checkForUpdates()
@@ -460,17 +477,17 @@ async function registerIpc(): Promise<void> {
       return { error: (err as Error).message }
     }
   })
-  ipcMain.handle(IPC_CHANNELS.updateDownload, async () => {
+  handleOk(IPC_CHANNELS.updateDownload, async () => {
     if (isDev) return false
     await autoUpdater.downloadUpdate()
     return true
   })
-  ipcMain.handle(IPC_CHANNELS.updateQuitAndInstall, () => {
+  handleOk(IPC_CHANNELS.updateQuitAndInstall, () => {
     autoUpdater.quitAndInstall()
   })
 
   // ── LLM（宿主能力：工具可依赖，应用不依赖工具） ──
-  ipcMain.handle(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean }) => {
+  handleOk(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean }) => {
     const p = readProvider(_event, provider)
     const apiKey = services!.getApiKey(p._id)
     if (options?.onDelta && mainWindow) {
@@ -485,28 +502,28 @@ async function registerIpc(): Promise<void> {
   })
   // 渲染层可临时带 apiKey 做「保存前探测」；不传则读 safeStorage 中已存的密钥。
   // 临时 key 只在这一次 IPC 里使用，不落盘、不进配置。
-  ipcMain.handle(IPC_CHANNELS.llmListModels, (_event, provider: LlmProvider, apiKey?: string) =>
+  handleOk(IPC_CHANNELS.llmListModels, (_event, provider: LlmProvider, apiKey?: string) =>
     listModels(
       readProvider(_event, provider),
       typeof apiKey === 'string' && apiKey ? apiKey : services!.getApiKey(provider?._id ?? ''),
     ))
-  ipcMain.handle(IPC_CHANNELS.llmHealthCheck, (_event, provider: LlmProvider, apiKey?: string) =>
+  handleOk(IPC_CHANNELS.llmHealthCheck, (_event, provider: LlmProvider, apiKey?: string) =>
     healthCheck(
       readProvider(_event, provider),
       typeof apiKey === 'string' && apiKey ? apiKey : services!.getApiKey(provider?._id ?? ''),
     ))
-  ipcMain.handle(IPC_CHANNELS.llmSetApiKey, (_event, providerId: string, apiKey: string) => {
+  handleOk(IPC_CHANNELS.llmSetApiKey, (_event, providerId: string, apiKey: string) => {
     services!.setApiKey(providerId, String(apiKey ?? ''))
     return true
   })
   // 编辑时按需查看已存密钥：用户主动点击才下发，绝不随列表默认下发
-  ipcMain.handle(IPC_CHANNELS.llmGetApiKey, async (_event, providerId: string) => {
+  handleOk(IPC_CHANNELS.llmGetApiKey, async (_event, providerId: string) => {
     await services!.ensureSecrets()
     return services!.getApiKey(String(providerId ?? ''))
   })
   // 应用级 Provider 共享：所有工具列同一份清单、按 id 复用密钥，禁止各自重复配置
-  ipcMain.handle(IPC_CHANNELS.llmProviders, () => services!.host.listProviders())
-  ipcMain.handle(IPC_CHANNELS.llmProviderModels, (_event, providerId: string, apiKey?: string) =>
+  handleOk(IPC_CHANNELS.llmProviders, () => services!.host.listProviders())
+  handleOk(IPC_CHANNELS.llmProviderModels, (_event, providerId: string, apiKey?: string) =>
     services!.host.listModelsByProvider(
       String(providerId ?? ''),
       typeof apiKey === 'string' && apiKey ? apiKey : undefined,
@@ -517,21 +534,21 @@ async function registerIpc(): Promise<void> {
     services: services!,
     onProgress: (p) => mainWindow?.webContents.send(IPC_CHANNELS.uploadProgress, p),
   })
-  ipcMain.handle(IPC_CHANNELS.uploadSingle, (_event, req: UploadRequest) => uploads.single(req))
-  ipcMain.handle(IPC_CHANNELS.uploadBatch, (_event, reqs: UploadRequest[]) => uploads.batch(reqs))
-  ipcMain.handle(IPC_CHANNELS.uploadConfigGet, () => uploads.getConfig())
-  ipcMain.handle(IPC_CHANNELS.uploadConfigSet, (_event, raw: unknown) => uploads.setConfig(raw))
-  ipcMain.handle(IPC_CHANNELS.uploadProfiles, (_event, type?: 'remote' | 'cloud') =>
+  handleOk(IPC_CHANNELS.uploadSingle, (_event, req: UploadRequest) => uploads.single(req))
+  handleOk(IPC_CHANNELS.uploadBatch, (_event, reqs: UploadRequest[]) => uploads.batch(reqs))
+  handleOk(IPC_CHANNELS.uploadConfigGet, () => uploads.getConfig())
+  handleOk(IPC_CHANNELS.uploadConfigSet, (_event, raw: unknown) => uploads.setConfig(raw))
+  handleOk(IPC_CHANNELS.uploadProfiles, (_event, type?: 'remote' | 'cloud') =>
     uploads.profiles(type === 'remote' || type === 'cloud' ? type : undefined))
-  ipcMain.handle(IPC_CHANNELS.uploadSecretSet, (_event, profileId: string, value: string) =>
+  handleOk(IPC_CHANNELS.uploadSecretSet, (_event, profileId: string, value: string) =>
     uploads.setSecret(profileId, value))
-  ipcMain.handle(IPC_CHANNELS.uploadSecretState, () => uploads.secretState())
+  handleOk(IPC_CHANNELS.uploadSecretState, () => uploads.secretState())
   // N3 / N4：按 id 主动查看密钥、按 profile 独立连通性自检（临时密钥不落盘）
-  ipcMain.handle(IPC_CHANNELS.uploadSecretGet, (_event, profileId: string) => uploads.getSecret(profileId))
-  ipcMain.handle(IPC_CHANNELS.uploadTest, (_event, req: UploadTestRequest) => uploads.test(req))
+  handleOk(IPC_CHANNELS.uploadSecretGet, (_event, profileId: string) => uploads.getSecret(profileId))
+  handleOk(IPC_CHANNELS.uploadTest, (_event, req: UploadTestRequest) => uploads.test(req))
 
   // ── OS 能力（宿主提供） ──
-  ipcMain.handle(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {
+  handleOk(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(win!, {
       properties: opts?.multi ? ['openFile', 'multiSelections'] : ['openFile'],
@@ -539,7 +556,7 @@ async function registerIpc(): Promise<void> {
     })
     return result.canceled ? [] : result.filePaths
   })
-  ipcMain.handle(IPC_CHANNELS.osPickSave, async (_event, opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }) => {
+  handleOk(IPC_CHANNELS.osPickSave, async (_event, opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     // defaultPath 优先作为"目录/起始路径"，与 fileName 组合成默认完整路径；仅给 fileName 时退回原行为
     const base = opts?.defaultPath
@@ -552,7 +569,7 @@ async function registerIpc(): Promise<void> {
     return result.canceled ? '' : (result.filePath ?? '')
   })
   // 图片应用内预览：仅图片扩展名 + 10MB 上限，返回 data URI
-  ipcMain.handle(IPC_CHANNELS.osReadDataUri, (_event, file: string) => {
+  handleOk(IPC_CHANNELS.osReadDataUri, (_event, file: string) => {
     const target = String(file ?? '')
     if (!/\.(png|jpe?g|webp|gif|bmp)$/i.test(target)) throw new Error('仅支持图片文件预览')
     const buf = readFileSync(target)
@@ -565,22 +582,22 @@ async function registerIpc(): Promise<void> {
     return 'data:' + mime + ';base64,' + buf.toString('base64')
   })
   // 文本写盘：路径必须来自用户经保存对话框选择（导出 HTML 等）
-  ipcMain.handle(IPC_CHANNELS.osWriteText, (_event, path: string, content: string) => {
+  handleOk(IPC_CHANNELS.osWriteText, (_event, path: string, content: string) => {
     const target = String(path || '')
     if (!target) throw new Error('缺少写入路径')
     writeFileSync(target, String(content ?? ''), 'utf8')
     return true
   })
-  ipcMain.handle(IPC_CHANNELS.osPickDir, async (_event) => {
+  handleOk(IPC_CHANNELS.osPickDir, async (_event) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? '' : (result.filePaths[0] ?? '')
   })
-  ipcMain.handle(IPC_CHANNELS.osClipboardWrite, (_event, text: string) => {
+  handleOk(IPC_CHANNELS.osClipboardWrite, (_event, text: string) => {
     clipboard.writeText(String(text ?? ''))
     return true
   })
-  ipcMain.handle(IPC_CHANNELS.osShellOpen, async (_event, target: string) => {
+  handleOk(IPC_CHANNELS.osShellOpen, async (_event, target: string) => {
     const t = String(target ?? '')
     if (/^https?:\/\//i.test(t)) return void shell.openExternal(t)
     if (await shell.openPath(t)) throw new Error(`拒绝打开: ${t}`)
@@ -686,6 +703,14 @@ void app.whenReady().then(async () => {
   seedDefaultProviders()
   migrateLegacyVisionConfig()
   await registerIpc()
+  // H6 NeDB 防膨胀：每日首次启动全量压缩一次；超阈(>10MB)文件无论何时启动都压缩
+  const today = now().slice(0, 10)
+  if (services.config.get('app.lastCompactAt') !== today) {
+    services.config.set('app.lastCompactAt', today)
+    void compactDatabase('daily')
+  } else {
+    void compactDatabase('startup')
+  }
   // 应用内自绘标题栏与工具栏，去掉系统默认菜单（File/Edit/View/Window）
   Menu.setApplicationMenu(null)
   createTray()

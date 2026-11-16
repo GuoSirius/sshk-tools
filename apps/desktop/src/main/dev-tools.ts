@@ -7,11 +7,12 @@
  *  - 外部命令均为固定字符串 + 数组参数，不把用户输入拼进 shell
  *  - manifest 写回前做最小契约校验，并用 tmp + rename 原子落盘
  */
-import { app, ipcMain } from 'electron'
+import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { IPC_CHANNELS } from '@sshk/shared'
+import { handleOk } from './ipc-wrap'
 import { buildSkeletonFiles } from '@sshk/shared'
 import type { CreateToolRequest } from '@sshk/shared'
 
@@ -98,14 +99,14 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
     return root
   }
 
-  ipcMain.handle(IPC_CHANNELS.devState, () => state)
+  handleOk(IPC_CHANNELS.devState, () => state)
 
-  ipcMain.handle(IPC_CHANNELS.devManifestGet, (_event, rawId: unknown) => {
+  handleOk(IPC_CHANNELS.devManifestGet, (_event, rawId: unknown) => {
     const repo = guard()
     return readFileSync(manifestPath(repo, assertId(rawId)), 'utf8')
   })
 
-  ipcMain.handle(IPC_CHANNELS.devManifestSet, (_event, rawId: unknown, raw: unknown) => {
+  handleOk(IPC_CHANNELS.devManifestSet, (_event, rawId: unknown, raw: unknown) => {
     const repo = guard()
     const id = assertId(rawId)
     const file = manifestPath(repo, id)
@@ -119,11 +120,11 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
     return { ok: true, output: `已写入 ${file}`, catalog }
   })
 
-  ipcMain.handle(IPC_CHANNELS.devVerify, async () => run('pnpm', ['verify'], guard()))
-  ipcMain.handle(IPC_CHANNELS.devBuild, async () => run('pnpm', ['build'], guard()))
+  handleOk(IPC_CHANNELS.devVerify, async () => run('pnpm', ['verify'], guard()))
+  handleOk(IPC_CHANNELS.devBuild, async () => run('pnpm', ['build'], guard()))
 
   // 创建工具（仅源码 dev）：表单 → 整套骨架文件落盘 tools/<id>/，目录已存在则拒绝（防覆盖）
-  ipcMain.handle(IPC_CHANNELS.devToolCreate, (_event, rawReq: unknown) => {
+  handleOk(IPC_CHANNELS.devToolCreate, (_event, rawReq: unknown) => {
     const repo = guard()
     const req = rawReq as CreateToolRequest
     const dir = join(repo, 'tools', assertId(req?.id))
@@ -138,12 +139,12 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
     return { ok: true, output: `已创建 ${files.length} 个文件：\n${files.map((f) => f.path).join('\n')}`, catalog }
   })
 
-  ipcMain.handle(IPC_CHANNELS.devBuildExternal, async (_event, rawId: unknown) => {
+  handleOk(IPC_CHANNELS.devBuildExternal, async (_event, rawId: unknown) => {
     const repo = guard()
     return run('node', ['scripts/build-external.mjs', assertId(rawId)], repo)
   })
 
-  ipcMain.handle(IPC_CHANNELS.devPack, async (_event, rawId: unknown, sign: unknown) => {
+  handleOk(IPC_CHANNELS.devPack, async (_event, rawId: unknown, sign: unknown) => {
     const repo = guard()
     const id = assertId(rawId)
     const parts: string[] = []
