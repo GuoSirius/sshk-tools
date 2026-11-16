@@ -39,6 +39,13 @@ describe('云厂商目录（地域中文名 / 真实 ID 分离）', () => {
     const ali = uploadVendorMeta('aliyun-oss')
     expect(ali.regions.find((r) => r.value === 'oss-cn-hangzhou')?.label).toBe('华东 1（杭州）')
     expect(ali.regions.find((r) => r.value === 'oss-cn-hongkong')?.label).toBe('中国香港')
+    expect(ali.regions.find((r) => r.value === 'oss-cn-qingdao')?.label).toBe('华北 1（青岛）')
+    // 官方编号：华南 1=深圳、华南 2=河源、华南 3=广州（2026-11-16 修正原错标）
+    expect(ali.regions.find((r) => r.value === 'oss-cn-shenzhen')?.label).toBe('华南 1（深圳）')
+    expect(ali.regions.find((r) => r.value === 'oss-cn-guangzhou')?.label).toBe('华南 3（广州）')
+    // 地域与 Endpoint 清单一一对应
+    expect(ali.endpoints.find((e) => e.value === 'oss-cn-qingdao.aliyuncs.com')).toBeTruthy()
+    expect(ali.regions.length).toBe(ali.endpoints.length)
     const tx = uploadVendorMeta('tencent-cos')
     expect(tx.regions.find((r) => r.value === 'ap-guangzhou')?.label).toBe('广州')
     expect(uploadVendorMeta('aws-s3').regions.some((r) => r.value === 'auto')).toBe(true)
@@ -49,5 +56,20 @@ describe('云厂商目录（地域中文名 / 真实 ID 分离）', () => {
     expect(uploadVendorMeta('not-exist').id).toBe('aliyun-oss')
     expect(isUploadCloudVendor('qiniu')).toBe(true)
     expect(isUploadCloudVendor('qiniu-cloud')).toBe(false)
+  })
+
+  it('镜像型厂商的地域与 Endpoint 清单一一对应（2026-11-16 全量补全后回归）', () => {
+    for (const id of ['aliyun-oss', 'tencent-cos', 'huawei-obs', 'baidu-bos', 'qiniu'] as const) {
+      const meta = uploadVendorMeta(id)
+      expect(meta.regions.length, id).toBe(meta.endpoints.length)
+    }
+    // 华为云 ap-southeast-1 官方为香港、新加坡是 ap-southeast-3（原错标纠正）
+    const hw = uploadVendorMeta('huawei-obs')
+    expect(hw.regions.find((r) => r.value === 'ap-southeast-1')?.label).toContain('香港')
+    expect(hw.regions.find((r) => r.value === 'ap-southeast-3')?.label).toContain('新加坡')
+    // 腾讯云补全的海外地域
+    const tx = uploadVendorMeta('tencent-cos')
+    expect(tx.regions.find((r) => r.value === 'ap-tokyo')?.label).toBe('东京')
+    expect(tx.endpoints.find((e) => e.value === 'cos.ap-tokyo.myqcloud.com')).toBeTruthy()
   })
 })

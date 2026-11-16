@@ -68,7 +68,7 @@ watch(() => props.profile.endpoint, (v) => {
 </script>
 
 <template>
-  <el-form label-width="100px" size="small">
+  <el-form label-width="auto" size="small">
     <FormGrid>
       <el-form-item label="名称"><el-input v-model="profile.name" /></el-form-item>
       <el-form-item label="ID">
@@ -159,7 +159,7 @@ watch(() => props.profile.endpoint, (v) => {
 </template>
 
 <style scoped>
-.hint-inline { display: inline; margin-left: 12px; font-size: 12px; opacity: .6; }
+.hint-inline { display: inline; font-size: 12px; opacity: .6; }
 .hint-block { width: 100%; font-size: 12px; opacity: .6; line-height: 1.5; margin-top: 2px; }
 .choice { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .choice-name { font-weight: 500; }

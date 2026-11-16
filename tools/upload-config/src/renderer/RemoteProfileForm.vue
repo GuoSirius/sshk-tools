@@ -20,7 +20,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <el-form label-width="100px" size="small">
+  <el-form label-width="auto" size="small">
     <FormGrid>
       <el-form-item label="名称"><el-input v-model="profile.name" /></el-form-item>
       <el-form-item label="ID">
@@ -75,7 +75,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.hint-inline { display: inline; margin-left: 12px; font-size: 12px; opacity: .6; }
+.hint-inline { display: inline; font-size: 12px; opacity: .6; }
 .test-result { margin-left: 0; font-size: 12px; color: var(--el-color-success); }
 .test-result.is-error { color: var(--el-color-danger); }
 </style>

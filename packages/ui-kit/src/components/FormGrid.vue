@@ -36,6 +36,16 @@ withDefaults(defineProps<{ cols?: 2 | 3 }>(), { cols: 2 })
   width: 100%;
 }
 .sshk-form-grid .el-form-item { margin-bottom: 14px; }
+/* label 与控件顶部对齐 + 禁止换行：
+   ① 行内 hint（如 ID 提示）撑高行时，防止 label 文字相对输入框垂直漂移；
+   ② 100~120px 栏宽下「主机 / 端口」这类长 label 换行会拉乱行节奏 */
+.sshk-form-grid .el-form-item { align-items: flex-start; }
+.sshk-form-grid .el-form-item__label { white-space: nowrap; }
+/* tip 对齐统一方案（用户 2026-11-16）：列间隙只在同一行内生效——
+   同线元素（switch/按钮旁的提示）留 8px 边距；输入框 100% 宽导致提示
+   换行到下方时落在行首、无间隙，与输入框精确左对齐。两种场景一次覆盖。
+   因此提示 span 自身不要再写 margin-left。 */
+.sshk-form-grid .el-form-item__content { column-gap: 8px; }
 /* 输入框 + 按钮组合：等高居中 */
 .sshk-form-grid .combo { display: flex; align-items: center; gap: 8px; }
 .sshk-form-grid .combo > .el-input,

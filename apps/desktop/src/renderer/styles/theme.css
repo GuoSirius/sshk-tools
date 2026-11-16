@@ -47,18 +47,26 @@ html.dark {
   padding: 8px 15px;
   font-size: 14px;
 }
-.el-input-number--small { line-height: 30px; }
-.el-input-number--small .el-input-number__increase,
-.el-input-number--small .el-input-number__decrease {
+/* 数字输入框：加减按钮撑满全高、左右对称同底色（EP 的 + 钮默认透明底，
+   暗色主题下只剩边框，看着像缺失/错位；用户反馈 2026-11-16） */
+.el-input-number--small { width: 150px; line-height: 30px; }
+.el-input-number .el-input-number__increase,
+.el-input-number .el-input-number__decrease {
+  top: 1px;
+  bottom: 1px;
+  height: auto;
   width: 32px;
   font-size: 14px;
 }
+.el-input-number .el-input-number__increase {
+  background: var(--el-fill-color-light);
+}
 
 /* ── small 拉平的配套修正（与 32px 控件同排的次级元素） ── */
-/* tag：small 20px → 默认档 24px，避免与 32px 控件同排突兀 */
+/* tag：与 32px 控件等高（用户两轮反馈 24px 仍不匹配） */
 .el-tag--small {
-  height: 24px;
-  padding: 0 9px;
+  height: 32px;
+  padding: 0 12px;
   --el-icon-size: 14px;
 }
 /* 分页：small 页码 24px → 32px，与同排的每页条数选择器等高 */
