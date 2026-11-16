@@ -62,6 +62,22 @@ const signBeforePack = ref(true)
 
 const { payload: catalogPayload } = useToolCatalog()
 const toolIdOptions = computed(() => catalogPayload.value.tools.map((tool) => tool.id))
+const categoryOptions = computed(() => {
+  const set = new Set<string>()
+  for (const tool of catalogPayload.value.tools) for (const c of tool.categories) set.add(c)
+  return [...set]
+})
+/** 分类：历史建议下拉 + 自由手输（多分类仍用顿号分隔，逐项从建议里选或手打） */
+function queryCategories(query: string, cb: (items: { value: string }[]) => void): void {
+  const last = query.split('、').pop()?.trim().toLowerCase() ?? ''
+  cb(categoryOptions.value.filter((c) => !last || c.toLowerCase().includes(last)).map((value) => ({ value })))
+}
+/** 选中建议：替换最后一段并保留已输入的多分类（顿号分隔），末尾补顿号便于继续选 */
+function onCategorySelect(value: string): void {
+  const parts = form.category.split('、').map((s) => s.trim()).filter(Boolean)
+  parts.push(value)
+  form.category = [...new Set(parts)].join('、') + '、'
+}
 
 // ── N16 表单化：原 JSON 文本域（configGroups / configDeps / defaults / channels）全部结构化 ──
 const FIELD_TYPES: { label: string; value: ToolConfigFieldType }[] = [
@@ -379,7 +395,16 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
             </el-form-item>
             <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
             <el-form-item label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
-            <el-form-item label="分类"><el-input v-model="form.category" placeholder="多个用顿号分隔" /></el-form-item>
+            <el-form-item label="分类">
+              <el-autocomplete
+                v-model="form.category"
+                :fetch-suggestions="queryCategories"
+                @select="onCategorySelect"
+                style="width: 100%"
+                clearable
+                placeholder="选历史分类或直接输入；多个用顿号分隔"
+              />
+            </el-form-item>
             <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔；标签内可含空格，如 OCR 识别" /></el-form-item>
             <el-form-item label="图标"><el-input v-model="form.icon" placeholder="auto = assets/icon.svg" /></el-form-item>
             <el-form-item label="配置布局">

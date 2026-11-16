@@ -83,6 +83,11 @@ const categoryOptions = computed(() => {
   for (const tool of payload.value.tools) for (const c of tool.categories) set.add(c)
   return [...set]
 })
+/** 分类：下拉给历史建议 + 自由手输（下拉里没有也能直接输入，输入内容不丢） */
+function queryCategories(query: string, cb: (items: { value: string }[]) => void): void {
+  const q = query.trim().toLowerCase()
+  cb(categoryOptions.value.filter((c) => !q || c.toLowerCase().includes(q)).map((value) => ({ value })))
+}
 const groupOptions = computed(() => form.configGroups.map((group) => ({ label: `${group.label}（${group.id}）`, value: group.id })))
 
 function addMenu(): void { form.menus.push({ id: '', label: '' }) }
@@ -195,14 +200,17 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
     @update:model-value="emit('update:modelValue', Boolean($event))"
   >
     <div v-if="!createdOutput" class="wizard">
-      <div class="wizard-left">
-        <el-steps :active="step" align-center finish-status="success" class="steps">
-          <el-step title="基本信息" />
-          <el-step title="菜单与页面" />
-          <el-step title="能力与权限" />
-          <el-step title="配置项（可选）" />
-        </el-steps>
+      <!-- 顶部步骤条：固定，不随中间表单滚动 -->
+      <el-steps :active="step" align-center finish-status="success" class="steps wizard-head">
+        <el-step title="基本信息" />
+        <el-step title="菜单与页面" />
+        <el-step title="能力与权限" />
+        <el-step title="配置项（可选）" />
+      </el-steps>
 
+      <!-- 中间主体：左表单 / 右 JSON 各自独立滚动，互不影响 -->
+      <div class="wizard-body">
+      <div class="wizard-left">
         <!-- Step 1 基本信息 -->
         <el-form v-show="step === 0" label-width="92px" size="small" class="pane">
           <el-form-item label="工具 id" required>
@@ -211,9 +219,13 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
           <el-form-item label="名称" required><el-input v-model="form.name" placeholder="桌面上显示的工具名" /></el-form-item>
           <el-form-item label="描述" required><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
           <el-form-item label="分类">
-            <el-select v-model="form.category" style="width: 100%" filterable allow-create clearable placeholder="选择或输入新分类">
-              <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
-            </el-select>
+            <el-autocomplete
+              v-model="form.category"
+              :fetch-suggestions="queryCategories"
+              style="width: 100%"
+              clearable
+              placeholder="选择历史分类，或直接输入新分类"
+            />
           </el-form-item>
           <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔，如：示例, OCR 识别" /></el-form-item>
           <el-form-item label="可见性">
@@ -307,22 +319,24 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
         <div v-if="stepErrors.length" class="error-box">
           <div v-for="e in stepErrors" :key="e">⚠ {{ e }}</div>
         </div>
+      </div><!-- /wizard-left -->
 
-        <div class="wizard-actions">
-          <el-button size="small" :disabled="step === 0" @click="step--">上一步</el-button>
-          <el-button v-if="step < 3" size="small" type="primary" :disabled="nextDisabled" @click="step++">下一步</el-button>
-          <el-button v-else size="small" type="success" :loading="creating" :disabled="Boolean(preview.error)" @click="create">
-            确认创建
-          </el-button>
-          <el-button size="small" @click="close">取消</el-button>
-        </div>
-      </div>
-
-      <!-- 右栏：实时预览（与落盘共用同一份生成器） -->
+      <!-- 右栏：实时预览（与落盘共用同一份生成器），独立滚动 -->
       <div class="wizard-right">
         <div class="preview-title">tool.manifest.json 实时预览</div>
         <div v-if="preview.error" class="error-box">{{ preview.error }}</div>
         <pre v-else class="preview-json">{{ preview.manifest }}</pre>
+      </div>
+      </div><!-- /wizard-body -->
+
+      <!-- 底部操作栏：固定，按钮靠右 -->
+      <div class="wizard-actions wizard-foot">
+        <el-button size="small" @click="close">取消</el-button>
+        <el-button size="small" :disabled="step === 0" @click="step--">上一步</el-button>
+        <el-button v-if="step < 3" size="small" type="primary" :disabled="nextDisabled" @click="step++">下一步</el-button>
+        <el-button v-else size="small" type="success" :loading="creating" :disabled="Boolean(preview.error)" @click="create">
+          确认创建
+        </el-button>
       </div>
     </div>
 
@@ -338,19 +352,22 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
 </template>
 
 <style scoped>
-.wizard { display: flex; gap: 14px; min-height: 480px; }
-.wizard-left { flex: 1.2; min-width: 0; display: flex; flex-direction: column; }
-.wizard-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.steps { margin-bottom: 16px; }
-.pane { flex: 1; min-height: 0; }
+/* 整体固定高度：顶部步骤 + 底部按钮不随滚动，只有中间左右两栏各自滚动 */
+.wizard { display: flex; flex-direction: column; height: min(74vh, 700px); }
+.wizard-head { flex: none; padding: 4px 0 14px; }
+.wizard-body { flex: 1; min-height: 0; display: flex; gap: 14px; }
+.wizard-left { flex: 1.2; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 6px; }
+.wizard-right { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.pane { min-height: 0; }
 .row-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .field-row { flex-wrap: wrap; }
 .group-card { border: 1px dashed var(--sshk-border, #d0d0d0); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 .file-chip { font-size: 11px; opacity: .65; white-space: nowrap; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.7; margin-top: 6px; }
 .error-box { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(245, 108, 108, .08); color: #c45656; font-size: 12px; line-height: 1.8; }
-.wizard-actions { margin-top: 14px; display: flex; gap: 8px; }
-.preview-title { font-size: 12px; font-weight: 600; opacity: .65; margin-bottom: 6px; }
+.wizard-foot { flex: none; margin-top: 0; padding-top: 12px; border-top: 1px solid var(--sshk-border, #d0d0d0); }
+.wizard-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.preview-title { flex: none; font-size: 12px; font-weight: 600; opacity: .65; margin-bottom: 6px; }
 .preview-json { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: var(--sshk-panel-soft, rgba(128, 128, 128, .08)); font-size: 11px; line-height: 1.6; white-space: pre; }
 .created-list { max-height: 260px; width: 100%; text-align: left; }
 </style>
