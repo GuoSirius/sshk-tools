@@ -327,7 +327,7 @@ function locateInHtml(term: string): void {
           class="preview-frame"
           :style="{ width: posterWidth + 'px' }"
           :srcdoc="previewHtml"
-          sandbox="allow-same-origin"
+          sandbox="allow-same-origin allow-scripts"
         />
         <EmptyState v-else description="生成后在此预览 badge 副本" />
       </div>

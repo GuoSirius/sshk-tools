@@ -25,7 +25,8 @@
   "menus": [
     {
       "id": "profiles",
-      "label": "上传配置"
+      "label": "上传配置",
+      "icon": "M12 15V4M8 8l4-4 4 4M4 20h16"
     }
   ],
   "configGroups": [],

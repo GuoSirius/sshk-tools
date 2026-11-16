@@ -124,8 +124,8 @@ const visibleTools = computed(() => {
  */
 const configSubMenus = (tool: ToolRuntimeState): ToolMenu[] =>
   tool.configPages.length
-    ? tool.configPages.map((page) => ({ id: page.id, label: page.label }))
-    : tool.configGroups.map((group) => ({ id: group.id, label: group.label }))
+    ? tool.configPages.map((page) => ({ id: page.id, label: page.label, icon: page.icon }))
+    : tool.configGroups.map((group) => ({ id: group.id, label: group.label, icon: group.icon }))
 
 const sidebarMenus = computed(() => {
   const tool = currentTool.value

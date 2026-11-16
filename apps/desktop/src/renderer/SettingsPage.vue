@@ -3,7 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
-import type { ToolConfigField } from '@sshk/shared'
+import type { ToolConfigField, ToolConfigGroup } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 
 /**
@@ -64,6 +64,10 @@ const groups = computed(() => {
 })
 
 const hasExtras = computed(() => Boolean(tool.value?.configDeps?.length || tool.value?.warnings?.length))
+
+/** 开关项（3 列同行渲染）与其余字段分离（2026-11-16 用户反馈：文字与开关同行更紧凑） */
+const booleanFields = (group: ToolConfigGroup) => group.fields.filter((field) => field.type === 'boolean')
+const nonBooleanFields = (group: ToolConfigGroup) => group.fields.filter((field) => field.type !== 'boolean')
 interface NavItem { id: string; label: string; count: number }
 const navItems = computed<NavItem[]>(() => [
   ...groups.value.map((group) => ({ id: group.id, label: group.label, count: group.fields.length })),
@@ -231,18 +235,28 @@ watch(() => props.section, (section) => {
             :data-group="group.id"
           >
             <div class="panel-head"><el-icon><Setting /></el-icon>{{ group.label }}</div>
-            <!-- plans/01 全局表单规范：2 列栅格 + 等宽控件 + dir/file 与 full 标记独占整行 -->
+            <!-- plans/01 全局表单规范：开关项 3 列同行（文字与开关同排）；其余 2 列栅格 + dir/file/textarea/full 独占整行 -->
             <el-form size="small" label-position="top">
+              <FormGrid v-if="booleanFields(group).length" :cols="3">
+                <el-form-item v-for="field in booleanFields(group)" :key="field.key">
+                  <div class="switch-row">
+                    <span class="switch-label">
+                      {{ field.label }}
+                      <FormHint v-if="field.hint" :inline="true">{{ field.hint }}</FormHint>
+                    </span>
+                    <el-switch v-model="values[field.key]" />
+                  </div>
+                </el-form-item>
+              </FormGrid>
               <FormGrid>
                 <el-form-item
-                  v-for="field in group.fields"
+                  v-for="field in nonBooleanFields(group)"
                   :key="field.key"
                   :label="field.label"
                   :class="{ full: field.full || field.type === 'textarea' || field.type === 'dir' || field.type === 'file' }"
                 >
-                  <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
                   <el-input-number
-                    v-else-if="field.type === 'number'"
+                    v-if="field.type === 'number'"
                     v-model="values[field.key]"
                     :min="field.min"
                     :max="field.max"
@@ -258,7 +272,7 @@ watch(() => props.section, (section) => {
                     <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
                   <el-input v-else v-model="values[field.key]" />
-                  <FormHint v-if="field.hint" :inline="field.type === 'boolean'">{{ field.hint }}</FormHint>
+                  <FormHint v-if="field.hint">{{ field.hint }}</FormHint>
                 </el-form-item>
               </FormGrid>
             </el-form>
@@ -422,5 +436,23 @@ watch(() => props.section, (section) => {
   gap: 5px;
   font-size: 12px;
   color: #ffb35c;
+}
+/* 开关项：文字与开关同行（2026-11-16 用户反馈） */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+.switch-label :deep(.sshk-form-hint) {
+  width: auto;
 }
 </style>

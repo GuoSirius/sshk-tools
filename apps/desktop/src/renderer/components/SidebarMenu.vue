@@ -31,7 +31,8 @@ const ICONS: Record<string, string> = {
 const DOT = 'M12 10a2 2 0 100 4 2 2 0 000-4z'
 
 function iconPath(menu: ToolMenu): string {
-  return ICONS[menu.id] ?? (menu.children?.length ? ICONS['config']! : DOT)
+  // manifest 声明的 menu.icon 优先（SVG path d），其次宿主内置集，最后圆点兜底
+  return menu.icon ?? ICONS[menu.id] ?? (menu.children?.length ? ICONS['config']! : DOT)
 }
 function containsActive(menu: ToolMenu): boolean {
   if (menu.id === props.active) return true

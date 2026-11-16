@@ -31,6 +31,8 @@ export interface ToolConfigGroup {
   /** 分组 id；形态 2 下由 configPages.groups 引用，形态 1 下可直接作为 section 定位值 */
   id: string
   label: string
+  /** 可选图标（SVG path d），挂成二级菜单时显示；缺省用圆点 */
+  icon?: string
   fields: ToolConfigField[]
 }
 
@@ -42,6 +44,8 @@ export interface ToolConfigGroup {
 export interface ToolConfigPage {
   id: string
   label: string
+  /** 可选图标（SVG path d），挂成二级菜单时显示；缺省用圆点 */
+  icon?: string
   /** 本页包含的分组 id（引用 configGroups[].id），可多个 */
   groups: string[]
 }
@@ -197,6 +201,8 @@ export interface ToolMenu {
   /** 菜单 ID，传给工具页做视图切换 */
   id: string
   label: string
+  /** 可选菜单图标（SVG path d，24×24 视窗）；缺省回退宿主内置图标集 */
+  icon?: string
   /** 可选子菜单，支持任意层级（后台管理系统风格） */
   children?: ToolMenu[]
 }

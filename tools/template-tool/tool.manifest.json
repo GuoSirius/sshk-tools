@@ -16,7 +16,8 @@
   "menus": [
     {
       "id": "home",
-      "label": "能力演示"
+      "label": "能力演示",
+      "icon": "M13 2 4 14h6l-1 8 9-12h-6l1-8z"
     },
     {
       "id": "config",
@@ -142,6 +143,7 @@
     {
       "id": "config-model",
       "label": "模型与调用",
+      "icon": "M4 4h16v11H9l-5 4z",
       "groups": [
         "config-llm",
         "config-ocr"
@@ -150,6 +152,7 @@
     {
       "id": "config-io",
       "label": "路径与输出",
+      "icon": "M3 5h6l2 2h10v12H3z",
       "groups": [
         "config-path",
         "config-output"
