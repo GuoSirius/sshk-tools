@@ -19,7 +19,7 @@ import {
   type ToolPluginStatus,
   now,
 } from '@sshk/shared'
-import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
+import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
@@ -502,32 +502,43 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── LLM（宿主能力：工具可依赖，应用不依赖工具） ──
-  handleOk(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean }) => {
+  handleOk(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean; model?: string }) => {
     const p = readProvider(_event, provider)
     const apiKey = services!.getApiKey(p._id)
-    // H3-3 埋点：chat 开始/完成/失败（模型名 + 耗时，不含任何密钥）
+    // 模型链优先级：options.model（工具自选）→ provider.model（默认）→ provider.fallbackModel（回退）
+    const toolModel = typeof options?.model === 'string' && options.model.trim() ? options.model.trim() : ''
+    const models = [...new Set([toolModel, p.model, p.fallbackModel ?? ''].map((m) => m.trim()).filter(Boolean))]
+    const retries = Math.max(0, Math.min(5, Math.floor(Number(p.maxRetries) || 0)))
+    // H3-3 埋点：chat 开始/完成/失败（模型链 + 耗时，不含任何密钥）
     const started = Date.now()
     let chunkNo = 0
     let lastAt = 0
-    logger.info('llm', `chat start model=${p.model}${options?.onDelta ? '（流式）' : ''}`)
-    const call = options?.onDelta && mainWindow
-      ? chat({
-          provider: p,
-          apiKey,
-          messages: messages as never,
-          // D-V3-1：delta 到达埋点（chunk 序号/大小/间隔），dev 控制台 + 日志落盘，
-          // 用于核查「一下子输出」是端点聚合大分片还是非流式整包
-          onDelta: (delta) => {
-            const at = Date.now()
-            chunkNo++
-            const gap = lastAt ? at - lastAt : 0
-            logger.debug('llm', `chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
-            if (isDev) console.log(`[llm] chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
-            lastAt = at
-            mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta })
-          },
-        })
-      : chat({ provider: p, apiKey, messages: messages as never })
+    logger.info('llm', `chat start models=${models.join('→')}${options?.onDelta ? '（流式）' : ''}${retries ? ` retries=${retries}` : ''}`)
+    const streaming = options?.onDelta && mainWindow
+    const call = chatWithFallback(
+      {
+        provider: p,
+        apiKey,
+        messages: messages as never,
+        // D-V3-1：delta 到达埋点（chunk 序号/大小/间隔），dev 控制台 + 日志落盘，
+        // 用于核查「一下子输出」是端点聚合大分片还是非流式整包
+        ...(streaming
+          ? {
+              onDelta: (delta: string) => {
+                const at = Date.now()
+                chunkNo++
+                const gap = lastAt ? at - lastAt : 0
+                logger.debug('llm', `chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+                if (isDev) console.log(`[llm] chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+                lastAt = at
+                mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta })
+              },
+            }
+          : {}),
+      },
+      models,
+      retries,
+    )
     return call.then(
       (res) => {
         logger.info('llm', `chat done ${Date.now() - started}ms`)
@@ -551,7 +562,7 @@ async function registerIpc(): Promise<void> {
         recordUsage(services!.repository, {
           providerId: p._id,
           providerName: p.name,
-          model: p.model,
+          model: models[0] ?? p.model,
           purpose: 'console',
           streamed: Boolean(options?.onDelta),
           durationMs: Date.now() - started,

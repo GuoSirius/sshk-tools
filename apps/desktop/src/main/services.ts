@@ -13,6 +13,7 @@ import {
 } from '@sshk/repository'
 import {
   chat as llmChat,
+  chatWithFallback as llmChatWithFallback,
   listModels as llmListModels,
   type LlmProvider,
 } from '@sshk/llm-gateway'
@@ -260,6 +261,7 @@ export function setupServices(): AppServices {
       kind: p.kind,
       baseURL: p.baseURL,
       model: p.model,
+      fallbackModel: p.fallbackModel,
       enabled: p.enabled,
       // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型控制台填 Key」
       hasApiKey: Boolean(currentSecrets()[p._id]),
@@ -267,14 +269,23 @@ export function setupServices(): AppServices {
     chatByProvider: async (req) => {
       const provider = findProvider(req.providerId)
       const started = Date.now()
+      // 模型链优先级：req.model（工具自选，如 badge 识别页所选）→ Provider 默认模型 → 回退模型
+      const models = [...new Set(
+        [req.model?.trim() ?? '', provider.model, provider.fallbackModel ?? ''].map((m) => m.trim()).filter(Boolean),
+      )]
+      const retries = Math.max(0, Math.min(5, Math.floor(Number(provider.maxRetries) || 0)))
       try {
-        const result = await llmChat({
-          provider: req.model ? { ...provider, model: req.model } : provider,
-          apiKey: currentSecrets()[provider._id] ?? '',
-          messages: req.messages,
-          temperature: req.temperature,
-          maxTokens: req.maxTokens,
-        })
+        const result = await llmChatWithFallback(
+          {
+            provider,
+            apiKey: currentSecrets()[provider._id] ?? '',
+            messages: req.messages,
+            temperature: req.temperature,
+            maxTokens: req.maxTokens,
+          },
+          models,
+          retries,
+        )
         // D-Q1 用量记录（tool）：工具经宿主能力调用模型
         recordUsage(repository, {
           providerId: provider._id,

@@ -20,7 +20,12 @@ interface LlmProvider {
   name: string
   kind: 'local' | 'remote'
   baseURL: string
+  /** 默认模型名 */
   model: string
+  /** 回退模型名：默认模型失败后自动回退再试，可留空 */
+  fallbackModel?: string
+  /** 每个模型失败后的额外重试次数（0-5），默认 0 */
+  maxRetries?: number
   enabled: boolean
 }
 
@@ -85,7 +90,7 @@ interface Window {
             { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
           >
         }[],
-        options?: { onDelta?: boolean },
+        options?: { onDelta?: boolean; /** 工具自选模型：优先于 Provider 默认模型与回退模型 */ model?: string },
       ): Promise<{ content: string; model: string }>
       onDelta(callback: (delta: string) => void): void
       /** apiKey 可选：保存 Provider 前用刚填的 key 探测；不传则读主进程 safeStorage */

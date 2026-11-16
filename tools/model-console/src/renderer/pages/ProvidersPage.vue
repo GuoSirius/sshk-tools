@@ -25,7 +25,7 @@ const formRules = computed(() => ({
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const form = ref<Provider & { apiKey: string }>({
-  _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '',
+  _id: '', name: '', kind: 'remote', baseURL: '', model: '', fallbackModel: '', maxRetries: 0, enabled: true, apiKey: '',
 })
 const testingId = ref<string | null>(null)
 
@@ -33,7 +33,7 @@ function openCreate(): void {
   editingId.value = null
   presetId.value = ''
   modelOptions.value = []
-  Object.assign(form.value, { _id: '', name: '', kind: 'remote', baseURL: '', model: '', enabled: true, apiKey: '' })
+  Object.assign(form.value, { _id: '', name: '', kind: 'remote', baseURL: '', model: '', fallbackModel: '', maxRetries: 0, enabled: true, apiKey: '' })
   dialogOpen.value = true
 }
 
@@ -42,7 +42,7 @@ function openEdit(row: Provider): void {
   const matched = presets.value.find((p) => p.baseURL === row.baseURL)
   presetId.value = matched?.id ?? ''
   modelOptions.value = matched ? [...matched.models] : row.model ? [row.model] : []
-  Object.assign(form.value, { ...row, apiKey: '' })
+  Object.assign(form.value, { ...row, fallbackModel: row.fallbackModel ?? '', maxRetries: row.maxRetries ?? 0, apiKey: '' })
   dialogOpen.value = true
 }
 
@@ -56,6 +56,8 @@ function applyPreset(id: string): void {
     kind: preset.kind,
     baseURL: preset.baseURL,
     model: preset.defaultModel || preset.models[0] || '',
+    fallbackModel: '',
+    maxRetries: 0,
     enabled: true,
     apiKey: '',
   })
@@ -229,7 +231,12 @@ async function revealKey(): Promise<void> {
         </template>
       </el-table-column>
       <el-table-column prop="baseURL" label="baseURL" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="model" label="模型" min-width="140" show-overflow-tooltip />
+      <el-table-column label="模型" min-width="160">
+        <template #default="{ row }">
+          <span>{{ row.model }}</span>
+          <small v-if="row.fallbackModel" class="muted" style="display: block">回退：{{ row.fallbackModel }}</small>
+        </template>
+      </el-table-column>
       <el-table-column label="密钥" width="70">
         <template #default>
           <span class="masked">••••</span>
@@ -303,6 +310,24 @@ async function revealKey(): Promise<void> {
             <el-button size="small" :loading="fetchingModels" @click="fetchModels">拉取模型列表</el-button>
           </div>
           <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
+        </el-form-item>
+        <el-form-item label="回退模型">
+          <el-select
+            v-model="form.fallbackModel"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="可选；默认模型失败时自动回退到该模型再试"
+            style="width: 100%"
+          >
+            <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+          </el-select>
+          <div class="form-hint">调用优先级：工具自选模型 → 默认模型 → 回退模型；链上全部失败才报错</div>
+        </el-form-item>
+        <el-form-item label="重试次数">
+          <el-input-number v-model="form.maxRetries" :min="0" :max="5" :controls="false" style="width: 120px" />
+          <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
         </el-form-item>
         <el-form-item label="apiKey" prop="apiKey">
           <div class="model-row">

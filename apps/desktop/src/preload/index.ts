@@ -73,7 +73,7 @@ const api = {
     chat: (
       provider: unknown,
       messages: unknown,
-      options?: { onDelta?: boolean },
+      options?: { onDelta?: boolean; model?: string },
     ): Promise<{ content: string; model: string }> =>
       invoke(IPC_CHANNELS.llmChat, provider, messages, options),
     /** 流式回调经事件通道分片推送 */

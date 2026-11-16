@@ -94,7 +94,10 @@ export interface LlmProviderInfo {
   name: string
   kind: 'local' | 'remote'
   baseURL: string
+  /** 默认模型名 */
   model: string
+  /** 回退模型名：默认模型失败后自动回退再试，可留空 */
+  fallbackModel?: string
   enabled: boolean
   /** 是否已配置密钥（布尔标记，不含明文） */
   hasApiKey: boolean
@@ -103,7 +106,7 @@ export interface LlmProviderInfo {
 /** 工具按 Provider id 发起模型调用；baseURL / 密钥由主进程裁决注入 */
 export interface ToolHostProviderChatRequest {
   providerId: string
-  /** 覆盖 Provider 上的模型名；留空则用 Provider 自带模型 */
+  /** 工具自选模型：调用链首位，之后依次为 Provider 默认模型、回退模型 */
   model?: string
   messages: ToolVisionMessage[]
   temperature?: number

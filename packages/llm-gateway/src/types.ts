@@ -7,7 +7,12 @@ export interface LlmProvider {
   /** local = 本地推理（Ollama 等），remote = 云 API */
   kind: 'local' | 'remote'
   baseURL: string
+  /** 默认模型名：调用链首位（工具未自选模型时就是它） */
   model: string
+  /** 回退模型名：默认模型失败（含重试耗尽）后自动回退再试，可留空 */
+  fallbackModel?: string
+  /** 每个模型失败后的额外重试次数（网络抖动等瞬时错误），0-5，默认 0 */
+  maxRetries?: number
   enabled: boolean
 }
 
@@ -24,6 +29,8 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   provider: LlmProvider
+  /** 本次请求生效的模型名（工具自选等场景）；不传用 provider.model */
+  model?: string
   /** apiKey 由网关从 secrets 注入，绝不经渲染进程明文传递后落日志 */
   apiKey?: string
   messages: ChatMessage[]

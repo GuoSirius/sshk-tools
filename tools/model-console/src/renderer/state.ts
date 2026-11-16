@@ -21,7 +21,12 @@ export interface Provider {
   name: string
   kind: 'local' | 'remote'
   baseURL: string
+  /** 默认模型名：调用链首位 */
   model: string
+  /** 回退模型名：默认模型失败（含重试耗尽）后自动回退再试，可留空 */
+  fallbackModel?: string
+  /** 每个模型失败后的额外重试次数（0-5），默认 0 */
+  maxRetries?: number
   enabled: boolean
 }
 
