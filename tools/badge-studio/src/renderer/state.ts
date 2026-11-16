@@ -4,6 +4,7 @@ import { snapdom } from '@zumer/snapdom'
 import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo } from '@sshk/shared'
+import { host } from './host'
 
 /**
  * Badge Studio 共享状态（模块级单例）：
@@ -79,7 +80,7 @@ export const previewList = computed(() => imageFiles.value.map((file) => imageTh
 export async function loadThumb(file: string): Promise<void> {
   if (imageThumbs.value[file]) return
   try {
-    imageThumbs.value[file] = await window.api.os.readDataUri(file)
+    imageThumbs.value[file] = await host.os.readDataUri(file)
   } catch (err) {
     ElMessage.warning('图片预览加载失败：' + (err as Error).message)
   }
@@ -114,14 +115,14 @@ export const fieldOptions = computed(() => Array.from(new Set(['clicks', 'totalC
 /** 本机自查命令已随 C-Q1 UI 抹除下线（保留 ocrLayout 配置兼容，见 plans/06 §五） */
 
 async function textConfig(key: string, fallback: string): Promise<string> {
-  const value = await window.api.config.get(configKey(key))
+  const value = await host.config.get(configKey(key))
   return typeof value === 'string' && value.trim() ? value : fallback
 }
 
 export async function loadConfigAndRecent(): Promise<void> {
   badgeAttr.value = await textConfig('badgeAttr', 'data-edm-badge')
   clicksField.value = await textConfig('clicksField', 'clicks')
-  const savedStyle = (await window.api.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
+  const savedStyle = (await host.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
   // 2026-11-16 定位改造一次性迁移：旧出厂偏移 (-9,-11) 是 margin 语义的外飘值，
   // 新体系 translate(calc(-50% ± off)) 已含居中，旧值叠加会双重偏移导致角标外飘。
@@ -129,9 +130,9 @@ export async function loadConfigAndRecent(): Promise<void> {
   if (badgeStyle.offsetY === -9 && badgeStyle.offsetX === -11) {
     badgeStyle.offsetY = 0
     badgeStyle.offsetX = 0
-    void window.api.config.set(configKey('badgeStyle'), { ...badgeStyle })
+    void host.config.set(configKey('badgeStyle'), { ...badgeStyle })
   }
-  const savedCss = (await window.api.config.get(configKey('badgeStyleCss'))) as
+  const savedCss = (await host.config.get(configKey('badgeStyleCss'))) as
     | Partial<typeof badgeStyleCss>
     | null
   if (savedCss && typeof savedCss === 'object') {
@@ -140,26 +141,26 @@ export async function loadConfigAndRecent(): Promise<void> {
   }
   badgePositionText.value = await textConfig('badgePositionText', 'top-right')
   badgePositionImage.value = await textConfig('badgePositionImage', 'center')
-  const savedNorm = (await window.api.config.get(configKey('urlNorm'))) as Partial<typeof urlNorm> | null
+  const savedNorm = (await host.config.get(configKey('urlNorm'))) as Partial<typeof urlNorm> | null
   if (savedNorm && typeof savedNorm === 'object') Object.assign(urlNorm, savedNorm)
-  posterWidth.value = Number(await window.api.config.get(configKey('posterWidth'))) || 680
-  captureScale.value = Number(await window.api.config.get(configKey('scale'))) || 2
-  const recent = (await window.api.config.get(configKey('recentHtmls'))) as RecentHtml[] | null
+  posterWidth.value = Number(await host.config.get(configKey('posterWidth'))) || 680
+  captureScale.value = Number(await host.config.get(configKey('scale'))) || 2
+  const recent = (await host.config.get(configKey('recentHtmls'))) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
   // C-Q1：已存的 paddleocr 配置回落 cloud（数据保留，UI 不露出）
   const provider = await textConfig('vision.provider', 'cloud')
   vision.value.provider = provider === 'manual' ? 'manual' : 'cloud'
   vision.value.paddleCommand = await textConfig('vision.paddleCommand', 'python')
   vision.value.paddleArgs = await textConfig('vision.paddleArgs', '{image}')
-  const savedLayout = (await window.api.config.get(configKey('ocrLayout'))) as Partial<OcrLayoutConfig> | null
+  const savedLayout = (await host.config.get(configKey('ocrLayout'))) as Partial<OcrLayoutConfig> | null
   if (savedLayout && typeof savedLayout === 'object') Object.assign(ocrLayout, savedLayout)
   await loadProviders()
 }
 
 export async function loadProviders(): Promise<void> {
-  providers.value = await window.api.llm.providers().catch(() => [])
+  providers.value = await host.llm.providers().catch(() => [])
   if (!visionProviderId.value) {
-    const active = await window.api.config.get('app.llm.activeProviderId')
+    const active = await host.config.get('app.llm.activeProviderId')
     visionProviderId.value = (typeof active === 'string' && active)
       || (await textConfig('vision.providerId', ''))
       || providers.value.find((p) => p.enabled)?._id
@@ -181,7 +182,7 @@ export async function fetchProviderModels(): Promise<void> {
   }
   modelsLoading.value = true
   try {
-    const list = await window.api.llm.providerModels(visionProviderId.value)
+    const list = await host.llm.providerModels(visionProviderId.value)
     modelOptions.value = Array.from(new Set([...modelOptions.value, ...list.filter(Boolean)]))
     if (!visionModel.value && modelOptions.value[0]) visionModel.value = modelOptions.value[0]
     ElMessage.success(`拉取到 ${list.length} 个模型`)
@@ -196,15 +197,15 @@ export async function rememberRecent(path: string): Promise<void> {
   const name = path.split(/[\\/]/).pop() ?? path
   const next = [{ path, name, usedAt: new Date().toLocaleString('sv-SE') }, ...recentHtmls.value.filter((r) => r.path !== path)].slice(0, 10)
   recentHtmls.value = next
-  await window.api.config.set(configKey('recentHtmls'), next)
+  await host.config.set(configKey('recentHtmls'), next)
 }
 
 export async function pickHtml(): Promise<void> {
-  const [file] = await window.api.os.pickFile({
+  const [file] = await host.os.pickFile({
     filters: [{ name: '邮件 HTML', extensions: ['html', 'htm'] }],
   })
   if (!file) return
-  const { html } = await window.api.badge.readHtml(file)
+  const { html } = await host.badge.readHtml(file)
   pastedHtml.value = html
   htmlPath.value = file
   await rememberRecent(file)
@@ -212,7 +213,7 @@ export async function pickHtml(): Promise<void> {
 
 export async function useRecent(item: RecentHtml): Promise<void> {
   try {
-    const { html } = await window.api.badge.readHtml(item.path)
+    const { html } = await host.badge.readHtml(item.path)
     htmlPath.value = item.path
     pastedHtml.value = html
   } catch {
@@ -223,12 +224,12 @@ export async function useRecent(item: RecentHtml): Promise<void> {
 
 export async function removeRecent(item: RecentHtml): Promise<void> {
   recentHtmls.value = recentHtmls.value.filter((r) => r.path !== item.path)
-  await window.api.config.set(configKey('recentHtmls'), recentHtmls.value)
+  await host.config.set(configKey('recentHtmls'), recentHtmls.value)
 }
 
 export async function clearRecent(): Promise<void> {
   recentHtmls.value = []
-  await window.api.config.set(configKey('recentHtmls'), [])
+  await host.config.set(configKey('recentHtmls'), [])
   ElMessage.success('最近使用已清空（只清历史记录，不影响已粘贴的内容）')
 }
 
@@ -245,12 +246,12 @@ function applyRows(rows: StatRow[], warnings: string[], source = ''): void {
 }
 
 export async function pickStats(): Promise<void> {
-  const [file] = await window.api.os.pickFile({
+  const [file] = await host.os.pickFile({
     filters: [{ name: '点击统计', extensions: ['xlsx', 'xls', 'csv', 'tsv', 'json'] }],
   })
   if (!file) return
   try {
-    const parsed = (await window.api.badge.parseDatasource(file)) as { rows: StatRow[]; warnings: string[] }
+    const parsed = (await host.badge.parseDatasource(file)) as { rows: StatRow[]; warnings: string[] }
     applyRows(parsed.rows, parsed.warnings, file)
     if (parsed.rows.length > 0) ElMessage.success(`解析出 ${parsed.rows.length} 行，请在表格中核对`)
   } catch (err) {
@@ -317,7 +318,7 @@ export function setMetric(row: StatRow, key: string, raw: unknown): void {
 }
 
 export async function pickImages(): Promise<void> {
-  const files = await window.api.os.pickFile({
+  const files = await host.os.pickFile({
     filters: [{ name: '点击统计图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
     multi: true,
   })
@@ -347,7 +348,7 @@ export async function recognizeImages(): Promise<void> {
   const raws: string[] = []
   try {
     for (const file of imageFiles.value) {
-      const result = await window.api.badge.parseImage({
+      const result = await host.badge.parseImage({
         file,
         provider: vision.value.provider,
         providerId: visionProviderId.value,
@@ -377,7 +378,7 @@ export async function recognizeImages(): Promise<void> {
 /** 图片识别配置就地保存：不再跳工具配置页，识别方式 / Provider / 模型一处改完 */
 export async function saveVisionConfig(): Promise<void> {
   try {
-    await window.api.config.set(configKey('vision'), {
+    await host.config.set(configKey('vision'), {
       provider: vision.value.provider,
       providerId: visionProviderId.value,
       modelOverride: visionModel.value,
@@ -391,7 +392,7 @@ export async function saveVisionConfig(): Promise<void> {
 /** 批量补属性：给命中但未带 badgeAttr 的链接补上（只在生成的副本里生效，原文件不动） */
 export async function markBeforeGenerate(): Promise<void> {
   if (!hasHtml.value || !hasStats.value) return
-  pastedHtml.value = await window.api.badge.markBadges({ html: pastedHtml.value, stats: statRows.value, badgeAttr: badgeAttr.value })
+  pastedHtml.value = await host.badge.markBadges({ html: pastedHtml.value, stats: statRows.value, badgeAttr: badgeAttr.value })
   ElMessage.success('已在工作区副本中补齐 badge 属性，可直接生成')
 }
 
@@ -407,7 +408,7 @@ export async function generate(): Promise<void> {
   generating.value = true
   try {
     const name = posterName.value.trim() || htmlPath.value.split(/[\\/]/).pop()?.replace(/\.html?$/i, '') || `海报 ${new Date().toLocaleString('sv-SE')}`
-    const res = await window.api.badge.generate({
+    const res = await host.badge.generate({
       name,
       sourceHtml: pastedHtml.value,
       stats: statRows.value,
@@ -450,7 +451,7 @@ export async function generate(): Promise<void> {
 export async function loadPosters(): Promise<void> {
   listLoading.value = true
   try {
-    posters.value = (await window.api.badge.listPosters()).filter((p) => !p.archived)
+    posters.value = ((await host.badge.listPosters()) as PosterRecord[]).filter((p) => !p.archived)
   } finally {
     listLoading.value = false
   }
@@ -462,14 +463,14 @@ export function onSelectionChange(rows: PosterRecord[]): void { selectedPosters.
 
 export async function exportPosterHtml(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  const posterDir = (await window.api.config.get(configKey('posterDir'))) as string | null
-  const save = await window.api.os.pickSave({
+  const posterDir = (await host.config.get(configKey('posterDir'))) as string | null
+  const save = await host.os.pickSave({
     fileName: (row.name || 'poster') + '.zip',
     extensions: ['zip'],
     defaultPath: posterDir || undefined,
   })
   if (!save) return
-  const { outPath, posters: count } = (await window.api.badge.exportFiles({ posterIds: [row._id], outPath: save })) as { outPath: string; posters: number }
+  const { outPath, posters: count } = (await host.badge.exportFiles({ posterIds: [row._id], outPath: save })) as { outPath: string; posters: number }
   ElMessage.success('已导出 ' + count + ' 个海报（HTML + 长图）：' + outPath)
 }
 
@@ -478,14 +479,14 @@ export async function batchExportHtml(): Promise<void> {
   if (rows.length === 0) { ElMessage.warning('请先勾选要导出的海报')
     return }
   const date = new Date().toLocaleDateString('sv-SE')
-  const posterDir = (await window.api.config.get(configKey('posterDir'))) as string | null
-  const save = await window.api.os.pickSave({
+  const posterDir = (await host.config.get(configKey('posterDir'))) as string | null
+  const save = await host.os.pickSave({
     fileName: 'sshk-posters-' + date + '.zip',
     extensions: ['zip'],
     defaultPath: posterDir || undefined,
   })
   if (!save) return
-  const { outPath, posters: count } = (await window.api.badge.exportFiles({ posterIds: rows.map((row) => row._id), outPath: save })) as { outPath: string; posters: number }
+  const { outPath, posters: count } = (await host.badge.exportFiles({ posterIds: rows.map((row) => row._id), outPath: save })) as { outPath: string; posters: number }
   ElMessage.success('已批量导出 ' + count + ' 个海报（HTML + 长图，按名称分目录）：' + outPath)
 }
 
@@ -493,7 +494,7 @@ export async function batchExportHtml(): Promise<void> {
 export async function savePosterMeta(): Promise<void> {
   if (!currentPosterId.value) { ElMessage.warning('新海报请先生成一次，再使用保存修改'); return }
   try {
-    await window.api.badge.savePosterMeta({
+    await host.badge.savePosterMeta({
       posterId: currentPosterId.value,
       name: posterName.value.trim() || undefined,
       configSnapshot: {
@@ -519,7 +520,7 @@ export async function batchDeletePosters(): Promise<void> {
   const rows = selectedPosters.value
   if (rows.length === 0) { ElMessage.warning('请先勾选要删除的海报')
     return }
-  for (const row of rows) await window.api.badge.deletePoster(row._id)
+  for (const row of rows) await host.badge.deletePoster(row._id)
   ElMessage.success('已删除 ' + rows.length + ' 个')
   selectedPosters.value = []
   await loadPosters()
@@ -527,8 +528,8 @@ export async function batchDeletePosters(): Promise<void> {
 
 export async function copyCode(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
-  const { html } = await window.api.badge.readHtml(row.outputs.badged)
-  await window.api.os.clipboardWrite(html)
+  const { html } = await host.badge.readHtml(row.outputs.badged)
+  await host.os.clipboardWrite(html)
   ElMessage.success('badged.html 代码已复制')
 }
 
@@ -537,7 +538,7 @@ export const deleteTarget = ref<PosterRecord | null>(null)
 
 export async function confirmDelete(): Promise<void> {
   if (deleteTarget.value) {
-    await window.api.badge.deletePoster(deleteTarget.value._id)
+    await host.badge.deletePoster(deleteTarget.value._id)
     await loadPosters()
     ElMessage.success('已删除（产物文件保留）')
   }
@@ -564,7 +565,7 @@ export async function capturePoster(): Promise<void> {
     const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')
     if (dataUrl === '') throw new Error('截图失败：未获得图像数据')
     const base64 = dataUrl.split(',')[1] ?? ''
-    const rel = await window.api.badge.savePosterPng({ posterId: currentPosterId.value, base64 })
+    const rel = await host.badge.savePosterPng({ posterId: currentPosterId.value, base64 })
     ElMessage.success(`海报已保存：${rel}`)
     await loadPosters()
   } catch (err) {
@@ -578,7 +579,7 @@ export async function capturePoster(): Promise<void> {
 export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> {
   if (!row.source.htmlPath) return
   try {
-    const { html } = await window.api.badge.readHtml(row.source.htmlPath)
+    const { html } = await host.badge.readHtml(row.source.htmlPath)
     pastedHtml.value = html
     statRows.value = toStatRows(row.statsSnapshot ?? [], [])
   } catch (err) {
@@ -599,7 +600,7 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
   if (row.outputs.badged) {
     try {
       // 点击编辑即展示该海报的 badge 预览
-      const { html: badged } = await window.api.badge.readHtml(row.outputs.badged)
+      const { html: badged } = await host.badge.readHtml(row.outputs.badged)
       previewHtml.value = badged
     } catch { /* 预览读取失败不阻塞编辑 */ }
   }

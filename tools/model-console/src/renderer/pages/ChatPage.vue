@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { chatInput, chatProviderId, chatting, messages, providers, activeProvider } from '../state'
+import { host } from '../host'
 
 // LLM 输出为不可信内容：先 markdown 解析再 DOMPurify 净化，避免 v-html XSS
 marked.setOptions({ gfm: true, breaks: true })
@@ -73,7 +74,7 @@ async function sendChat(): Promise<void> {
   chatting.value = true
   scrollChatToBottom(true)
   try {
-    const res = await window.api.llm.chat(
+    const res = await host.llm.chat(
       provider,
       // 发送完整历史，但去掉末尾空 assistant 占位
       messages.value.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),

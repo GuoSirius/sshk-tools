@@ -32,6 +32,7 @@ import {
 } from '@sshk/shared'
 import RemoteProfileForm from './RemoteProfileForm.vue'
 import CloudProfileForm from './CloudProfileForm.vue'
+import { host } from './host'
 
 /**
  * T6 上传配置工具（应用级全局配置）。
@@ -181,8 +182,8 @@ async function testProfile(type: RowKind, id: string): Promise<void> {
 }
 
 async function load(): Promise<void> {
-  cfg.value = await window.api.upload.getConfig()
-  secretState.value = await window.api.upload.secretState()
+  cfg.value = await host.upload.getConfig()
+  secretState.value = await host.upload.secretState()
   acceptText.value = cfg.value.validation.accept.join(', ')
   maxSizeMb.value = cfg.value.validation.maxSize > 0
     ? Math.round((cfg.value.validation.maxSize / 1024 / 1024) * 100) / 100
@@ -193,7 +194,7 @@ async function load(): Promise<void> {
 }
 
 async function pickLocalDir(): Promise<void> {
-  const dir = await window.api.os.pickDir()
+  const dir = await host.os.pickDir()
   if (dir) cfg.value.local.defaultDir = dir
 }
 
@@ -253,8 +254,8 @@ async function doRemove(): Promise<void> {
   delete testResults.value[row.id]
   // 同步清掉 safeStorage 中该 profile 的密钥，避免孤儿密钥残留
   try {
-    await window.api.upload.setSecret(row.id, '')
-    secretState.value = await window.api.upload.secretState()
+    await host.upload.setSecret(row.id, '')
+    secretState.value = await host.upload.secretState()
   } catch {
     /* 清除失败不阻断 UI 删除 */
   }
@@ -262,7 +263,7 @@ async function doRemove(): Promise<void> {
 }
 
 async function clearSecret(id: string): Promise<void> {
-  await window.api.upload.setSecret(id, '')
+  await host.upload.setSecret(id, '')
   secretInputs.value[id] = ''
   secretState.value = await window.api.upload.secretState()
   ElMessage.success('密钥已清除')
@@ -288,7 +289,7 @@ async function save(): Promise<void> {
   if (bad) { ElMessage.error(bad); return }
   saving.value = true
   try {
-    await window.api.upload.setConfig({
+    await host.upload.setConfig({
       local: { defaultDir: cfg.value.local.defaultDir },
       remote: {
         defaultId: cfg.value.remote.defaultId,
@@ -304,7 +305,7 @@ async function save(): Promise<void> {
       },
     })
     for (const [id, value] of Object.entries(secretInputs.value)) {
-      if (value) await window.api.upload.setSecret(id, value)
+      if (value) await host.upload.setSecret(id, value)
       secretInputs.value[id] = ''
     }
     await load()
@@ -326,7 +327,7 @@ async function selfTest(): Promise<void> {
   progress.value = ''
   try {
     const text = `sshk upload self-test ${Date.now()}`
-    const res = await window.api.upload.single({
+    const res = await host.upload.single({
       name: 'upload-self-test.txt',
       size: text.length,
       mime: 'text/plain',
@@ -345,6 +346,8 @@ async function selfTest(): Promise<void> {
 onMounted(() => {
   checkCaps()
   void load()
+  // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
+  // eslint-disable-next-line no-restricted-syntax
   window.api.upload.onProgress((p) => {
     progress.value = `${p.status === 'success' ? '✓' : p.status === 'failed' ? '✗' : '…'} ${p.name} ${p.percent}%${p.error ? ` — ${p.error}` : ''}`
   })

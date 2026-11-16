@@ -3,7 +3,9 @@ import { computed, onMounted } from 'vue'
 import { ToolPageLayout, provideToolId } from '@sshk/ui-kit'
 import ContentManagePage from './pages/ContentManagePage.vue'
 import MailsPage from './pages/MailsPage.vue'
+import UploadProgressToast from './UploadProgressToast.vue'
 import { ensureLoaded } from './state'
+import { subscribeUploadProgress } from './upload-progress'
 
 /**
  * EDM Studio 渲染层——页面壳：
@@ -24,12 +26,16 @@ const pages: Record<string, unknown> = {
 }
 const active = computed(() => pages[tab.value] ?? MailsPage)
 
-onMounted(() => { void ensureLoaded() })
+onMounted(() => {
+  void ensureLoaded()
+  subscribeUploadProgress()
+})
 </script>
 
 <template>
   <ToolPageLayout title="EDM Studio" description="品牌 → 模板/片段（版本不可变）→ 邮件三阶段产物 → 导出与分享">
     <component :is="active" :menu="menu" />
+    <UploadProgressToast />
     <template #footer>
       <span class="muted">版本不可变（D8）· 覆盖式产物（D19）· 黑名单优先（D14）· 北京时间（D22）</span>
     </template>

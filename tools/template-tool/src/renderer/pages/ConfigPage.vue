@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { toolId } from '../state'
+import { host } from '../host'
 
 /** 配置回显页：演示 configGroups 契约被宿主读取 */
 const config = ref<Record<string, unknown> | null>(null)
 async function loadConfig(): Promise<void> {
-  config.value = (await window.api.config.get(`tools.${toolId.value}`)) as Record<string, unknown> | null
+  config.value = (await host.config.get(`tools.${toolId.value}`)) as Record<string, unknown> | null
 }
 onMounted(() => { void loadConfig() })
 </script>

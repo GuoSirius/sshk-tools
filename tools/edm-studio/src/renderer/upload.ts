@@ -1,6 +1,8 @@
 import { ElMessage } from 'element-plus'
 import type { RichTextUploadHook } from '@sshk/rich-text'
 import { extractInlineImages, replaceInlineImages, replacementFor } from '../core/inline-images.js'
+import { beginUploadSession, endUploadSession } from './upload-progress'
+import { host } from './host'
 
 /**
  * C2 唯一注入点：EDM 把共享上传能力接给富文本 / 图片字段。
@@ -22,8 +24,9 @@ function readAsDataUrl(file: File): Promise<string> {
 export function createImageUploader(toolId: string): RichTextUploadHook {
   return async (file: File): Promise<string> => {
     const dataUrl = await readAsDataUrl(file)
+    beginUploadSession(1)
     try {
-      const result = await window.api.upload.single({
+      const result = await host.upload.single({
         toolId,
         name: file.name,
         size: file.size,
@@ -34,6 +37,8 @@ export function createImageUploader(toolId: string): RichTextUploadHook {
     } catch (err) {
       ElMessage.warning(`上传未成功，已保留本地图片：${(err as Error).message}`)
       return dataUrl
+    } finally {
+      endUploadSession()
     }
   }
 }
@@ -45,20 +50,25 @@ export function createImageUploader(toolId: string): RichTextUploadHook {
 export async function uploadInlineImages(html: string, toolId: string): Promise<string> {
   const images = extractInlineImages(html)
   if (images.length === 0) return html
+  beginUploadSession(images.length)
   const pairs: { raw: string; replacement: string }[] = []
-  for (const img of images) {
-    try {
-      const result = await window.api.upload.single({
-        toolId,
-        name: img.name,
-        size: img.size,
-        mime: img.mime,
-        dataUrl: img.dataUrl,
-      })
-      pairs.push({ raw: img.raw, replacement: replacementFor(img, result.url) })
-    } catch {
-      // 单张失败不影响其余图片，也不阻断保存
+  try {
+    for (const img of images) {
+      try {
+        const result = await host.upload.single({
+          toolId,
+          name: img.name,
+          size: img.size,
+          mime: img.mime,
+          dataUrl: img.dataUrl,
+        })
+        pairs.push({ raw: img.raw, replacement: replacementFor(img, result.url) })
+      } catch {
+        // 单张失败不影响其余图片，也不阻断保存
+      }
     }
+  } finally {
+    endUploadSession()
   }
   return replaceInlineImages(html, pairs)
 }

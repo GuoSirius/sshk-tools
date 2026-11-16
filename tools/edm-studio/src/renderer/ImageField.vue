@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { CopyDocument, Upload } from '@element-plus/icons-vue'
 import { useToolId } from '@sshk/ui-kit'
 import { createImageUploader } from './upload.js'
+import { host } from './host'
 
 /**
  * 图片字段控件（R15 image / image-list）：支持「上传 + 预览 + URL 直填」。
@@ -44,7 +45,7 @@ async function copyUrl(): Promise<void> {
   const url = String(props.modelValue ?? '').trim()
   if (!url) { ElMessage.warning('还没有图片 URL'); return }
   try {
-    await window.api.os.clipboardWrite(url)
+    await host.os.clipboardWrite(url)
     ElMessage.success('图片 URL 已复制')
   } catch (err) {
     ElMessage.error(`复制失败：${(err as Error).message}`)

@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { entityId } from '@sshk/shared'
+import { host } from './host'
 
 /**
  * 模型控制台共享状态（模块级单例）：
@@ -54,17 +55,17 @@ export const activeProvider = computed<Provider | null>(
 )
 
 export async function load(): Promise<void> {
-  const saved = (await window.api.config.get('app.llm.providers')) as Provider[] | null
+  const saved = (await host.config.get('app.llm.providers')) as Provider[] | null
   providers.value = Array.isArray(saved) ? saved : []
   // 连通状态持久化：测过的 Provider 下次进来直接显示上次结果
-  const savedHealth = (await window.api.config.get('app.llm.health')) as Record<string, HealthState> | null
+  const savedHealth = (await host.config.get('app.llm.health')) as Record<string, HealthState> | null
   if (savedHealth && typeof savedHealth === 'object') health.value = savedHealth
-  const rawPresets = (await window.api.config.get(configKey('modelPresets'))) as ModelPreset[] | null
+  const rawPresets = (await host.config.get(configKey('modelPresets'))) as ModelPreset[] | null
   presets.value = Array.isArray(rawPresets)
     ? rawPresets.filter((p) => p && typeof p.baseURL === 'string' && Array.isArray(p.models))
     : []
   // 记忆上次选择的模型（Provider）：下次进入对话调试保持同一选择
-  const savedChat = (await window.api.config.get(configKey('chat.providerId'))) as string | null
+  const savedChat = (await host.config.get(configKey('chat.providerId'))) as string | null
   if (typeof savedChat === 'string' && providers.value.some((p) => p._id === savedChat)) {
     chatProviderId.value = savedChat
   }
@@ -72,11 +73,11 @@ export async function load(): Promise<void> {
 
 // 选择变化时持久化（记忆模型）——模块级注册，单例只挂一次
 watch(chatProviderId, (id) => {
-  if (id) void window.api.config.set(configKey('chat.providerId'), id)
+  if (id) void host.config.set(configKey('chat.providerId'), id)
 })
 
 export async function persist(): Promise<void> {
-  await window.api.config.set('app.llm.providers', providers.value)
+  await host.config.set('app.llm.providers', providers.value)
 }
 
 export function newProviderId(): string {

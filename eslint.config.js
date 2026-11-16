@@ -61,4 +61,23 @@ export default [
   ...(tsParser
     ? [{ files: ['**/*.ts'], languageOptions: { ...languageOptions, parser: tsParser }, rules }]
     : []),
+  // H2 工具渲染层零裸调：window.api.<group>.<method> 一律走 createSafeHost / callHostApi；
+  // window.api.ipc（工具自有通道直连，工具开发指南 §四文档化 API）豁免；
+  // 事件订阅类（onProgress/onDelta）集中在封装点并加 eslint-disable 行注释。
+  ...(tsParser
+    ? [{
+        files: ['tools/*/src/renderer/**/*.ts'],
+        rules: {
+          'no-restricted-syntax': [
+            'error',
+            {
+              selector:
+                "MemberExpression[object.object.name='window'][object.property.name='api'][property.name!='ipc']",
+              message:
+                '宿主能力一律经 createSafeHost（renderer/host.ts）或 callHostApi 调用（H2 零裸调）；事件订阅请留在封装点并加 eslint-disable 注释',
+            },
+          ],
+        },
+      }]
+    : []),
 ]

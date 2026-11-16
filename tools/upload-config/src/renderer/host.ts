@@ -1,0 +1,21 @@
+import { IPC_CHANNELS as C } from '@sshk/shared'
+import { createSafeHost } from '@sshk/ui-kit'
+
+/**
+ * H2 零裸调：upload-config 渲染层宿主代理。
+ * 事件订阅类（upload.onProgress）不登记、直通具名方法。
+ */
+export const host = createSafeHost({
+  os: { pickDir: C.osPickDir },
+  upload: {
+    getConfig: C.uploadConfigGet,
+    setConfig: C.uploadConfigSet,
+    profiles: C.uploadProfiles,
+    setSecret: C.uploadSecretSet,
+    secretState: C.uploadSecretState,
+    secretGet: C.uploadSecretGet,
+    test: C.uploadTest,
+    single: C.uploadSingle,
+    batch: C.uploadBatch,
+  },
+})

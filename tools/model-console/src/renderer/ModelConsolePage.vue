@@ -23,6 +23,8 @@ const active = computed(() => pages[tab.value] ?? ChatPage)
 onMounted(() => {
   void load()
   // 流式分片：仅当正在对话且末尾是 assistant 占位时追加，实时渲染即打字效果
+  // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
+  // eslint-disable-next-line no-restricted-syntax
   window.api.llm.onDelta((delta) => {
     if (!chatting.value) return
     const last = messages.value[messages.value.length - 1]

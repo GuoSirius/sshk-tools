@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { EmptyState, ConfirmDialog } from '@sshk/ui-kit'
+import { applyFallbackModels } from '../model-fallback'
+import { host } from '../host'
 import {
   providers, presets, health,
   persist, newProviderId,
@@ -82,17 +84,16 @@ async function fetchModels(): Promise<void> {
       model: form.value.model,
       enabled: true,
     }
-    const list = await window.api.llm.listModels(probe, form.value.apiKey.trim() || undefined)
+    const list = await host.llm.listModels(probe, form.value.apiKey.trim() || undefined)
     modelOptions.value = Array.from(new Set([...modelOptions.value, ...list.filter(Boolean)]))
     if (!form.value.model && modelOptions.value[0]) form.value.model = modelOptions.value[0]
     ElMessage.success(`拉取到 ${list.length} 个可用模型`)
   } catch (err) {
-    // /models 401 / 404 / 端点不开放时回退到该服务商的预设模型，绝不阻断保存
+    // /models 401 / 404 / 端点不开放时回退到该服务商的预设模型，绝不阻断保存（D-T1 单测锁行为）
     const preset = presets.value.find((p) => p.baseURL === form.value.baseURL.trim())
-    if (preset) {
-      modelOptions.value = Array.from(new Set([...modelOptions.value, ...preset.models]))
-      if (!form.value.model) form.value.model = preset.defaultModel || preset.models[0] || form.value.model
-    }
+    const fallback = applyFallbackModels(modelOptions.value, form.value.model, preset)
+    modelOptions.value = fallback.modelOptions
+    form.value.model = fallback.model
     ElMessage.warning(`模型列表拉取失败：${(err as Error).message}；已回退预设/手填，不影响保存`)
   } finally {
     fetchingModels.value = false
@@ -122,13 +123,13 @@ async function saveProvider(): Promise<void> {
       const idx = providers.value.findIndex((p) => p._id === editingId.value)
       if (idx >= 0) {
         const { apiKey, ...meta } = form.value
-        if (apiKey) await window.api.llm.setApiKey(meta._id, apiKey)
+        if (apiKey) await host.llm.setApiKey(meta._id, apiKey)
         providers.value[idx] = { ...providers.value[idx]!, ...meta }
       }
     } else {
       const id = newProviderId()
       const { apiKey, ...meta } = form.value
-      if (apiKey) await window.api.llm.setApiKey(id, apiKey)
+      if (apiKey) await host.llm.setApiKey(id, apiKey)
       providers.value.push({ ...meta, _id: id })
     }
     await persist()
@@ -154,7 +155,7 @@ async function doRemove(): Promise<void> {
   const target = removeTarget.value
   if (!target) return
   try {
-    await window.api.llm.setApiKey(target._id, '')
+    await host.llm.setApiKey(target._id, '')
     providers.value = providers.value.filter((p) => p._id !== target._id)
     await persist()
     removeOpen.value = false
@@ -167,13 +168,13 @@ async function doRemove(): Promise<void> {
 async function testProvider(row: Provider): Promise<void> {
   testingId.value = row._id
   try {
-    const result = await window.api.llm.healthCheck(row)
+    const result = await host.llm.healthCheck(row)
     health.value[row._id] = { ...result, at: new Date().toLocaleString('sv-SE') }
   } catch (err) {
     health.value[row._id] = { ok: false, message: (err as Error).message, at: new Date().toLocaleString('sv-SE') }
   } finally {
     testingId.value = null
-    await window.api.config.set('app.llm.health', JSON.parse(JSON.stringify(health.value)))
+    await host.config.set('app.llm.health', JSON.parse(JSON.stringify(health.value)))
   }
 }
 
@@ -181,7 +182,7 @@ async function testProvider(row: Provider): Promise<void> {
 async function revealKey(): Promise<void> {
   if (!editingId.value) return
   try {
-    form.value.apiKey = await window.api.llm.getApiKey(editingId.value)
+    form.value.apiKey = await host.llm.getApiKey(editingId.value)
     ElMessage.success('已填充已存密钥（仅本次编辑会话可见）')
   } catch (err) {
     ElMessage.error(`读取失败：${(err as Error).message}`)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
 import { ElMessage } from 'element-plus'
@@ -9,6 +9,7 @@ import {
   onSelectionChange,
   loadPosterIntoWorkspace, onPosterCommand, exportPosterHtml,
 } from '../state'
+import { host } from '../host'
 
 /**
  * Badge Studio——海报列表页：
@@ -37,27 +38,51 @@ async function editPoster(row: PosterRecord): Promise<void> {
 }
 
 async function uploadArtifacts(): Promise<void> {
-  const files = await window.api.os.pickFile({
+  const files = await host.os.pickFile({
     multi: true,
     filters: [{ name: '海报 / HTML 产物', extensions: ['png', 'jpg', 'html', 'htm'] }],
   })
   if (!files.length) return
   uploading.value = true
+  batchProgress.active = true
+  batchProgress.total = files.length
+  batchProgress.percent = 0
+  batchProgress.succeeded = 0
+  batchProgress.failed = 0
+  batchProgress.current = ''
   try {
-    const results = await window.api.upload.batch(files.map((file) => ({
+    const results = (await host.upload.batch(files.map((file: string) => ({
       toolId: toolId.value,
       name: file.split(/[\\/]/).pop() ?? file,
       size: 0,
       source: file,
-    })))
+    })))) as { url: string; name?: string }[]
     lastUpload.value = results.map((r) => r.url).join(' · ')
     ElMessage.success(`已上传 ${results.length} 个产物文件`)
   } catch (err) {
     ElMessage.error(`上传失败：${(err as Error).message}`)
   } finally {
     uploading.value = false
+    batchProgress.percent = 100
+    setTimeout(() => { batchProgress.active = false }, 2000)
   }
 }
+
+// ── E-T2 上传进度事件消费：upload:progress 按名聚合为汇总条 ──
+const batchProgress = reactive({ active: false, total: 0, percent: 0, succeeded: 0, failed: 0, current: '' })
+function onUploadProgressEvent(p: { name: string; percent: number; status: string; error?: string }): void {
+  if (!batchProgress.active) return
+  batchProgress.current = p.name
+  if (p.status === 'success') batchProgress.succeeded++
+  else if (p.status === 'failed') batchProgress.failed++
+  // 已完成文件计 100，进行中的取事件百分比；简化：完成数/总数 × 100 + 当前进行中的粗略占比
+  const doneFiles = batchProgress.succeeded + batchProgress.failed
+  batchProgress.percent = Math.min(100, Math.round((doneFiles / batchProgress.total) * 100))
+}
+// 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
+// eslint-disable-next-line no-restricted-syntax
+onMounted(() => { window.api.upload.onProgress(onUploadProgressEvent) })
+onBeforeUnmount(() => { batchProgress.active = false })
 </script>
 
 <template>
@@ -65,6 +90,16 @@ async function uploadArtifacts(): Promise<void> {
     <div class="upload-bar">
       <el-button size="small" :icon="Upload" :loading="uploading" @click="uploadArtifacts">上传产物文件</el-button>
       <span class="muted" :title="lastUpload">{{ lastUpload ? `最近上传：${lastUpload}` : '复用应用级「上传配置」的全局 profile，本工具只覆盖少量非固定信息' }}</span>
+      <el-progress
+        v-if="batchProgress.active"
+        class="upload-progress"
+        :percentage="batchProgress.percent"
+        :stroke-width="8"
+        :status="batchProgress.failed > 0 ? 'exception' : undefined"
+      />
+      <span v-if="batchProgress.active" class="muted">
+        {{ batchProgress.current }}（{{ batchProgress.succeeded }}/{{ batchProgress.total }}）
+      </span>
     </div>
     <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
