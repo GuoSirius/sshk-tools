@@ -21,6 +21,7 @@ import {
   sortSourcesByDefault,
 } from '../image-library-settings'
 import type { DirectoryTreeNode } from '../image-library-settings'
+import { contentName, fingerprintKey, hashFile } from '../upload-dedupe'
 
 /** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删）；scope 记录来源/桶/目录归属 */
 interface PoolItem extends RichTextImageItem {
@@ -47,6 +48,10 @@ interface UploadTask {
   /** 完成时间戳：成功后短暂保留「完成」卡片让用户看到进度结果，到点降级为普通缩略图 */
   doneAt?: number
   size: number
+  /** 去重指纹（目标位置 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
+  fingerprint: string
+  /** 实际存储名（原名-hash8.后缀）；UI 显示原名 name，上传用此名，保证同名不同内容不覆盖、重试幂等 */
+  uploadName: string
   scope: string
   source: RichTextImageSource
   target: RichTextImageTarget
@@ -213,7 +218,12 @@ const galleryView = computed<PoolItem[]>(() => {
   return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
 })
 /** 上传页可见项（同样支持文件名搜索） */
-const uploadView = computed<PoolItem[]>(() => uploaded.value.filter((i) => matchImageKeyword(i, keyword.value)))
+const uploadView = computed<PoolItem[]>(() => {
+  // 按 url 去重兜底（上传前已按内容 hash 去重，这里防历史/异常数据重复卡片）
+  const map = new Map<string, PoolItem>()
+  for (const i of uploaded.value) map.set(itemKey(i), i)
+  return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
+})
 /** 已选择 tab：展示统一选择池（跨 tab/源/桶/目录累积），同样支持文件名搜索 */
 const selectedView = computed<PoolItem[]>(() => poolList.value.filter((i) => matchImageKeyword(i, keyword.value)))
 const visible = computed<PoolItem[]>(() =>
@@ -397,7 +407,13 @@ async function runUpload(task: UploadTask): Promise<boolean> {
   task.doneAt = undefined
   ensureProgressTimer()
   try {
-    const url = await props.library.upload(task.file, task.source, task.target, (p) => {
+    // 用带 hash 的存储名上传：同名不同内容各自落盘、互不覆盖；重试沿用同一 uploadName 天然幂等。
+    // File.name 只读，包一层引用原内容即可（不重复拷贝数据）。UI 仍显示用户选的原名 task.name。
+    const uploadFile = new File([task.file], task.uploadName, {
+      type: task.file.type,
+      lastModified: task.file.lastModified,
+    })
+    const url = await props.library.upload(uploadFile, task.source, task.target, (p) => {
       if (p.status === 'success') task.percent = 100
     })
     task.url = url
@@ -405,7 +421,8 @@ async function runUpload(task: UploadTask): Promise<boolean> {
     task.status = 'success'
     task.doneAt = Date.now()
     ensureDoneWindowTimer()
-    const item: PoolItem = { url, key: task.name, name: task.name, origin: 'upload', scope: task.scope }
+    // 入库项用存储名：与 Provider listImages 刷新回来的名字一致，避免刷新前后显示不一致
+    const item: PoolItem = { url, key: task.uploadName, name: task.uploadName, origin: 'upload', scope: task.scope }
     uploaded.value.push(item)
     addToPool(item) // 上传即默认选中，可在预览里取消
     return true
@@ -423,10 +440,30 @@ async function onFilesChosen(e: Event): Promise<void> {
   const source = activeSource.value
   if (!source || files.length === 0) return
   const scope = currentScope.value
+
+  // 上传前去重：内容 hash（改个名也算同一张）+ 目标位置。已在传/已成功的不重复上传，失败的可重选。
+  const existing = new Set(
+    uploadTasks.value.filter((t) => t.status !== 'failed').map((t) => t.fingerprint),
+  )
+  const fresh: { file: File; fingerprint: string; uploadName: string }[] = []
+  let skipped = 0
   for (const file of files) {
+    const hash = await hashFile(file)
+    const fp = fingerprintKey({ scope, name: file.name, size: file.size, hash })
+    if (existing.has(fp)) {
+      skipped += 1
+      continue
+    }
+    existing.add(fp) // 同一批内也去重
+    fresh.push({ file, fingerprint: fp, uploadName: contentName(file.name, hash) })
+  }
+  if (skipped > 0) ElMessage.info(`已跳过 ${skipped} 张重复图片（同位置已上传或上传中）`)
+  if (fresh.length === 0) return
+
+  for (const { file, fingerprint, uploadName } of fresh) {
     const task: UploadTask = {
-      id: ++uploadSeq, file, name: file.name, status: 'uploading', percent: 0,
-      size: file.size, previewUrl: URL.createObjectURL(file),
+      id: ++uploadSeq, file, name: file.name, uploadName, status: 'uploading', percent: 0,
+      size: file.size, previewUrl: URL.createObjectURL(file), fingerprint,
       scope, source, target: { ...target.value },
     }
     uploadTasks.value.push(task)
