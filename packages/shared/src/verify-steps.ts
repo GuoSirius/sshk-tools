@@ -1,0 +1,136 @@
+/**
+ * U2 验证引导步骤数据（plans/04 §四）——单一数据源。
+ * 页内引导（桌面壳「验证引导」）与本目录验证清单文档共用此数据，文档只留历史表格不再双维护。
+ * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
+ */
+
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+
+/** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
+export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
+
+export interface VerifyStep {
+  /** 对齐总账编号（A1、E3、F/A-V5…） */
+  id: string
+  group: VerifyGroup
+  title: string
+  /** 一句话操作引导（含判定标准） */
+  guide: string
+  /** 直达入口：route=工具路由 /settings=设置抽屉分组 */
+  entry?: { type: 'route' | 'settings'; target: string }
+  /** 自动判定（能自动的不让用户肉眼判） */
+  auto?: { kind: VerifyAutoKind; spec: string }
+  /** 仅打包版可验（如口令双闸 C1-C3）；打包版过滤反向使用 */
+  requiresPackaged?: boolean
+  /** 关联文档/规划编号 */
+  relates?: string
+}
+
+export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
+  A: 'A · 上传配置工具',
+  B: 'B · 富文本全屏',
+  C: 'C · 开发者模式 / 密钥体系',
+  D: 'D · EDM 内容管理 / CSS / 编辑器',
+  E: 'E · 打包 / 依赖 / 门禁',
+  F: 'F · 应用与各工具收尾（总账 ⏳）',
+}
+
+export const VERIFY_STEPS: VerifyStep[] = [
+  // ── A 组：上传配置工具（验证清单 A1-A14）──
+  { id: 'A1', group: 'A', title: '打开「上传配置」工具', guide: '顶部无黄色「宿主能力缺失」横幅', entry: { type: 'route', target: 'upload' }, auto: { kind: 'hostCapability', spec: 'upload' }, relates: 'N8/C5/V11' },
+  { id: 'A2', group: 'A', title: '远程 profile 主机留空点「测试连接」', guide: '行内显示 ✗ 远程配置不完整 + 黄色提示；主进程终端不打印堆栈', entry: { type: 'route', target: 'upload' }, relates: 'N11/V12' },
+  { id: 'A3', group: 'A', title: '同时展开两个 profile 表单', guide: '两个表单同时展开互不折叠', entry: { type: 'route', target: 'upload' }, relates: 'N5' },
+  { id: 'A4', group: 'A', title: '云厂商下拉 7 家中文名', guide: '地域/Endpoint 为中文主名 + 灰色真实 ID 副标题', entry: { type: 'route', target: 'upload' }, relates: '3/N9' },
+  { id: 'A5', group: 'A', title: '地域输入中文自动纠正', guide: '输入「华东 1（杭州）」回车 → 自动纠正回 oss-cn-hangzhou', entry: { type: 'route', target: 'upload' }, relates: 'N9' },
+  { id: 'A6', group: 'A', title: '自定义地域可创建', guide: '输入预置里没有的 ID 可手动创建并保存（allow-create 生效）', entry: { type: 'route', target: 'upload' }, relates: '5' },
+  { id: 'A7', group: 'A', title: '密码框查看回填', guide: '点「查看」回填已保存口令；眼睛图标可切换显隐', entry: { type: 'route', target: 'upload' }, relates: 'N3' },
+  { id: 'A8', group: 'A', title: '临时口令不落盘', guide: '改口令不保存直接测试 → 测试用临时值；「查看」仍是旧值', entry: { type: 'route', target: 'upload' }, relates: 'N3/N4' },
+  { id: 'A9', group: 'A', title: '输入框与按钮对齐', guide: '等高、左右对齐，图标风格统一', entry: { type: 'route', target: 'upload' }, relates: 'N1/N2' },
+  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'upload' }, auto: { kind: 'catalogState', spec: 'upload' }, relates: 'N6' },
+  { id: 'A11', group: 'A', title: '列表行操作', guide: '设为默认/编辑/删除；删除弹二次确认；删默认项后自动顺延第一条', entry: { type: 'route', target: 'upload' }, relates: 'N6' },
+  { id: 'A12', group: 'A', title: '本地 profile 自动上传', guide: '本地 profile 设默认 → EDM 图片字段选图 → 自动上传 + 回填 URL；目录不存在自动创建', entry: { type: 'route', target: 'upload' }, relates: '4/V7' },
+  { id: 'A13', group: 'A', title: '复制图片 URL', guide: '图片字段点「复制图片 URL」→ 剪贴板为刚回填的 URL', entry: { type: 'route', target: 'upload' }, relates: '4' },
+  { id: 'A14', group: 'A', title: '真实账号连接测试', guide: '填一组真实 FTP/SFTP 或云账号测试 → ✓ 通过；临时密钥不写进 settings.json', entry: { type: 'route', target: 'upload' }, relates: 'N4/V7' },
+
+  // ── B 组：富文本全屏（验证清单 B1-B7）──
+  { id: 'B1', group: 'B', title: '全屏铺满窗口', guide: '内容管理页含富文本的表单点全屏 → 铺满窗口，左侧树/菜单全被遮住，底色不透明', entry: { type: 'route', target: 'edm' }, relates: 'N12/V13' },
+  { id: 'B2', group: 'B', title: '全屏 DOM 结构', guide: 'DevTools 查 .rich：body 直接子节点 + is-fullscreen + w-e-full-screen-container，z-index 2147483647', entry: { type: 'route', target: 'edm' }, relates: 'N12' },
+  { id: 'B3', group: 'B', title: '全屏内操作正常', guide: '输入文字/切粗体/展开下拉/插图片均正常，下拉面板不被遮挡', entry: { type: 'route', target: 'edm' }, relates: 'N12' },
+  { id: 'B4', group: 'B', title: '退出全屏归位', guide: '容器回到表单原位置；旧父节点无残留 class；页面无空白遮罩', entry: { type: 'route', target: 'edm' }, relates: 'N12' },
+  { id: 'B5', group: 'B', title: '连续进出全屏 3 次', guide: '每次正常，无空白层/抖动，编辑内容不丢', entry: { type: 'route', target: 'edm' }, relates: 'N12' },
+  { id: 'B6', group: 'B', title: '深色主题全屏', guide: '重复 B1/B4：底色 #181818，文字与工具栏可读', entry: { type: 'route', target: 'edm' }, relates: 'N12/V8' },
+  { id: 'B7', group: 'B', title: '双实例互不影响', guide: '同页两个富文本只全屏一个 → 另一个不受影响，退出后各归各位', entry: { type: 'route', target: 'edm' }, relates: 'N12/V8' },
+
+  // ── C 组：开发者模式 / 密钥体系（验证清单 C1-C6）──
+  { id: 'C1', group: 'C', title: '开发者模式口令弹框（打包版）', guide: '打包版开「开发者模式」→ 弹口令输入框；不填/填错开关回弹', entry: { type: 'settings', target: '系统与数据' }, requiresPackaged: true, relates: '10' },
+  { id: 'C2', group: 'C', title: '正确口令开启', guide: '输入正确口令 → 开关开启，开发者工具入口出现', entry: { type: 'settings', target: '系统与数据' }, requiresPackaged: true, relates: '10' },
+  { id: 'C3', group: 'C', title: '绕过 UI 被拒', guide: '绕过 UI 直接调配置接口开启开发者模式 → 主进程拒绝并提示需先通过访问密钥验证', requiresPackaged: true, relates: '10' },
+  { id: 'C4', group: 'C', title: '自动安装开关默认关', guide: '「下载更新后重启自动安装」默认关闭；打开后重启仍保持', entry: { type: 'settings', target: '系统与数据' }, relates: '10' },
+  { id: 'C5', group: 'C', title: '访问密钥说明可见', guide: '设置页「应用访问密钥」五套口令对照表可见，说明不联网/不登录/不加密文件/仅本机可见性门禁', entry: { type: 'settings', target: '系统与数据' }, relates: 'N10' },
+  { id: 'C6', group: 'C', title: '需访问密钥工具隐藏', guide: '某工具设为「需访问密钥」且未配置 → 列表中隐藏；配置后重新出现', entry: { type: 'settings', target: '工具与权限' }, auto: { kind: 'catalogState', spec: 'grants' }, relates: 'N10' },
+
+  // ── D 组：EDM 内容管理 / CSS / 编辑器（验证清单 D1-D18）──
+  { id: 'D1', group: 'D', title: '左侧树默认展开', guide: '内容管理打开 → 默认展开到模板/片段类目层；品牌下顺序 css → 模板 → 片段', entry: { type: 'route', target: 'edm' }, relates: 'U1' },
+  { id: 'D2', group: 'D', title: '空示例数据不报 YAML 错', guide: '空示例数据切「表单」→ 不报错，正常出空表单', entry: { type: 'route', target: 'edm' }, relates: '8/V1' },
+  { id: 'D3', group: 'D', title: '纯注释/null YAML 容错', guide: '纯注释、null、~ 切换均不报错；真语法错仍明确报错', entry: { type: 'route', target: 'edm' }, relates: '8' },
+  { id: 'D4', group: 'D', title: '@shared CSS 提取', guide: '模板源码写 link @shared/a.css 预览 → CSS 提取进 head 样式生效', entry: { type: 'route', target: 'edm' }, relates: 'V6/R28' },
+  { id: 'D5', group: 'D', title: 'CSS 引用去重', guide: '同一 CSS 重复引用 + 片段 repeat → head 内去重不重复注入', entry: { type: 'route', target: 'edm' }, relates: 'V6' },
+  { id: 'D6', group: 'D', title: '相对路径引用报错', guide: '引用写 ../../a.css → 明确报错并提示改用 @root/@shared/@system/@custom', entry: { type: 'route', target: 'edm' }, relates: 'R28' },
+  { id: 'D7', group: 'D', title: '存量资产就近链回退', guide: '无 link 的存量资产预览 → 回退就近链仍能出样式', entry: { type: 'route', target: 'edm' }, relates: 'R28' },
+  { id: 'D8', group: 'D', title: 'data: 图片批量上传回写', guide: '富文本插图保存示例数据 → data: 图片批量上传并回写 URL', entry: { type: 'route', target: 'edm' }, relates: 'V9' },
+  { id: 'D9', group: 'D', title: '新建同级版本', guide: '版本节点右键「新建版本（同级）」→ 复制全量内容，层级正确', entry: { type: 'route', target: 'edm' }, relates: 'V1/V3' },
+  { id: 'D10', group: 'D', title: '另存为类型隔离', guide: '另存为跨根/类型隔离 → 只能落允许的对象类型；自定义根统一 custom-edm', entry: { type: 'route', target: 'edm' }, relates: 'V1/V4' },
+  { id: 'D11', group: 'D', title: '自定义模板生成邮件', guide: '用 origin=custom 的模板/片段生成邮件 → 能被正确取用', entry: { type: 'route', target: 'edm' }, relates: 'V5' },
+  { id: 'D12', group: 'D', title: 'Monaco 多实例不串', guide: '多 tab + 深色主题 + md↔html 单向互转 → 多实例互不串内容；往返不保真属预期', entry: { type: 'route', target: 'edm' }, relates: 'V8' },
+  { id: 'D13', group: 'D', title: '工具设置页左右布局', guide: '非上传工具设置页：左栏分组导航独立滚动、点击定位右栏；右栏独立滚动无空盒；保存条固定；改动出「未保存」提示', entry: { type: 'route', target: 'badge-studio' }, relates: '#27' },
+  { id: 'D14', group: 'D', title: '上传工具设置页不受影响', guide: '上传配置工具设置页仍是原样式，未被改成左右布局', entry: { type: 'route', target: 'upload' }, relates: '#27' },
+  { id: 'D15', group: 'D', title: '形态 2 二级配置页', guide: '工具包开发模板：「工具配置」展开两个二级菜单；每页左栏只列该页分组、标题为页名；两页内容互不串', entry: { type: 'route', target: 'template-tool' }, relates: '#28' },
+  { id: 'D16', group: 'D', title: '形态 2 页级保存隔离', guide: '「模型与调用」改字段保存 → 只落本页；切「路径与输出」改动保存 → 上页不丢；boolean/select 正常渲染持久化', entry: { type: 'route', target: 'template-tool' }, relates: '#28' },
+  { id: 'D17', group: 'D', title: '创建工具向导（dev）', guide: '双入口可见（打包版不显示）；分步填写 → JSON 预览实时更新 → 创建后骨架落盘、目录刷新、重启 dev 可加载', entry: { type: 'settings', target: '工具与权限' }, relates: '#29' },
+  { id: 'D18', group: 'D', title: '清单编辑器表单化', guide: '「工具与权限 → 配置」：分组/字段/软依赖/defaults/通道行编辑；JSON 预览与保存一致；保存校验通过', entry: { type: 'settings', target: '工具与权限' }, relates: '#29' },
+
+  // ── E 组：打包 / 依赖 / 门禁（验证清单 E1-E5）──
+  { id: 'E1', group: 'E', title: 'pnpm verify 全绿', guide: '13 项门禁 + 全部单测通过', auto: { kind: 'fileExists', spec: 'verify-ok' }, relates: '门禁' },
+  { id: 'E2', group: 'E', title: 'desktop build 成功', guide: 'pnpm -C apps/desktop build 成功', relates: '门禁' },
+  { id: 'E3', group: 'E', title: '完整打包资源落位', guide: 'electron-builder 打包后启动：assets/edm 落在 resources/edm-studio/assets/edm；SFTP 纯 JS 回退可用', requiresPackaged: true, auto: { kind: 'fileExists', spec: 'edm-assets' }, relates: 'E3/C4' },
+  { id: 'E4', group: 'E', title: 'Dependabot 不再报安全无解', guide: 'fast-xml-parser ≥ 5.12.0，无 security_update_not_possible', relates: 'N7/C2' },
+  { id: 'E5', group: 'E', title: 'husky 门禁拦截', guide: '本地提交触发 pnpm verify + build；不带 close-on-press-escape 的弹框被 check:dialogs 拦下', relates: '11' },
+
+  // ── F 组：应用与各工具收尾（总账 ⏳ 项）──
+  { id: 'F/A-V2', group: 'F', title: '自动更新新版进度展示', guide: '更新横幅 + 设置中心进度卡实际渲染（修完新提问题后一并验证）', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V2' },
+  { id: 'F/A-V5', group: 'F', title: '备份导出→清空→导入还原', guide: '备份导出 zip → 清空数据 → 导入还原一致（含 D18 密钥加密迁移）', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V5/H5' },
+  { id: 'F/A-V6', group: 'F', title: '产物目录迁移 6 步', guide: '预检/停写/复制/校验/切换/清理全走通；旧目录绝不递归删', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V6' },
+  { id: 'F/A-V7', group: 'F', title: '右键菜单/开机自启 OS 授权', guide: '三平台各自验：右键菜单项出现、开机自启生效', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V7' },
+  { id: 'F/B-V1', group: 'F', title: '设置页左栏点击定位', guide: '逐个点左栏分组 → 右栏滚动定位且左栏高亮跟随（含反向滚动高亮）', entry: { type: 'route', target: 'badge-studio' }, relates: 'B-V1' },
+  { id: 'F/B-V2', group: 'F', title: '形态 2 页级隔离复验', guide: '「模型与调用」改字段保存 → 切「路径与输出」确认自己改动在且上页字段未被带过来 → 再切回双方均在', entry: { type: 'route', target: 'template-tool' }, relates: 'B-V2/D15/D16' },
+  { id: 'F/C-V2', group: 'F', title: 'badge 四种数据源导入', guide: 'pickStats 用真实 xlsx/xls/csv/tsv/json 文件导入 → 三类解析齐备结果正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V2' },
+  { id: 'F/C-V4', group: 'F', title: 'CodeEditor JSON 只读视图', guide: '海报页 JSON 视图按钮打开 → 内容与格式正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V4' },
+  { id: 'F/D-V3', group: 'F', title: '流式打字感核查', guide: '模型对话观察打字感；dev 日志查 chunk#n size gap；打字平滑开关默认开', entry: { type: 'route', target: 'model-console' }, relates: 'D-V3' },
+  { id: 'F/D-T2', group: 'F', title: '模型能力供工具调用', guide: 'badge/EDM 的 AI 能力均可用（badge 视觉已验；EDM AI 填充/润色走 D-Q2）', entry: { type: 'route', target: 'edm' }, relates: 'D-T2/D-Q2' },
+  { id: 'F/E-V1', group: 'F', title: '本地目录自检', guide: '上传配置工具自检按钮 + 本地 profile 上传回填', entry: { type: 'route', target: 'upload' }, relates: 'E-V1' },
+  { id: 'F/E-V2', group: 'F', title: '真实 FTP/SFTP/OSS 连接', guide: '临时密钥不落盘；测试结构化不刷堆栈（N11 已修复验）', entry: { type: 'route', target: 'upload' }, relates: 'E-V2/N11' },
+  { id: 'F/E-V3', group: 'F', title: '校验收紧语义', guide: '工具收紧（交集/取小）；未设限字段 undefined', entry: { type: 'route', target: 'upload' }, relates: 'E-V3' },
+  { id: 'F/E-V4', group: 'F', title: '内联图片回写', guide: 'saveSample 前 data: 图片批量上传回写 URL', entry: { type: 'route', target: 'edm' }, relates: 'E-V4/T8/V9' },
+  { id: 'F/E-V5', group: 'F', title: '能力兜底横幅 + 一键重载', guide: '旧窗口点测试走通用通道或给可操作提示 + 一键重载', entry: { type: 'route', target: 'upload' }, auto: { kind: 'hostCapability', spec: 'callHostApi' }, relates: 'E-V5/N8/V11' },
+  { id: 'F/E-V7', group: 'F', title: '打包后 SFTP 纯 JS 回退', guide: '随下次打包顺验：SFTP 连接不因 cpu-features shim 失效', requiresPackaged: true, relates: 'E-V7/C4' },
+  { id: 'F/F-T1', group: 'F', title: '打包资源路径验证', guide: '安装目录 resources/edm-studio/assets/edm/ 存在且有品牌内容', requiresPackaged: true, auto: { kind: 'fileExists', spec: 'edm-assets' }, relates: 'F-T1' },
+  { id: 'F/F-T2', group: 'F', title: '自定义根跨平台路径', guide: '正式包里自定义内容新建/编辑一次（落 userData/custom-edm）+ dev 同样操作一次（落源码旁）两边正常', requiresPackaged: true, relates: 'F-T2' },
+]
+
+/** 步骤总数（页脚展示用） */
+export const VERIFY_STEPS_TOTAL = VERIFY_STEPS.length
+
+/** 单条会话内某步骤的结果 */
+export interface VerifyStepResult {
+  state: 'pass' | 'fail' | 'skip'
+  note?: string
+  at: string
+}
+
+/** 会话文件结构（userData/verify-sessions/<日期>.json） */
+export interface VerifySession {
+  date: string
+  startedAt: string
+  updatedAt: string
+  results: Record<string, VerifyStepResult>
+}
