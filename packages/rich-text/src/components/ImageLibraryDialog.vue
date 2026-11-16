@@ -668,6 +668,15 @@ function onPaneScroll(e: Event): void {
             :preview-teleported="true"
             @click.stop
           >
+            <template #placeholder>
+              <div class="img-placeholder" aria-hidden="true">
+                <svg class="img-placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15.5 16 11 7 20" />
+                </svg>
+              </div>
+            </template>
             <template #error>
               <div class="img-fallback" title="图片加载失败">
                 <svg class="img-fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -769,7 +778,26 @@ function onPaneScroll(e: Event): void {
   text-align: center;
 }
 .thumb-cell.picked { border-color: var(--el-color-primary); background: rgba(64, 158, 255, 0.08); }
-.thumb-check { position: absolute; top: 6px; left: 6px; z-index: 2; background: rgba(255, 255, 255, 0.82); border-radius: 3px; }
+/* 悬浮复选框：半透明暗色毛玻璃背板 + 白描边，避免纯白方块浮在深色/失败占位上突兀（明暗主题通用） */
+.thumb-check {
+  position: absolute; top: 5px; left: 5px; z-index: 2;
+  margin: 0; padding: 2px; line-height: 0;
+  background: rgba(0, 0, 0, 0.34);
+  border-radius: 5px;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.thumb-check :deep(.el-checkbox__inner) {
+  width: 15px; height: 15px;
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.92);
+  border-radius: 3px;
+}
+.thumb-check :deep(.el-checkbox__inner:hover) { border-color: var(--el-color-primary); }
+.thumb-check.is-checked :deep(.el-checkbox__inner) {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
 .thumb-img { width: 100%; height: 80px; border-radius: 4px; display: block; cursor: zoom-in; }
 /* 图片加载失败：统一柔和占位（替代 Element Plus 默认 FAILED 与生硬的「裂图」文案） */
 .img-fallback {
@@ -778,6 +806,13 @@ function onPaneScroll(e: Event): void {
   color: var(--el-text-color-placeholder);
   background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.06) 0 6px, transparent 6px 12px);
 }
+/* 图片尚未加载（懒加载未触发/加载中）：柔和淡图标占位，替代纯空白卡片 */
+.img-placeholder {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  color: var(--el-text-color-placeholder);
+  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.04) 0 6px, transparent 6px 12px);
+}
+.img-placeholder-icon { width: 26px; height: 26px; opacity: 0.4; }
 .img-fallback-icon { width: 26px; height: 26px; opacity: 0.7; }
 .img-fallback-slash { opacity: 0.45; }
 .img-fallback-text { font-size: 11px; line-height: 1; }
