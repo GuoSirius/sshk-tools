@@ -76,7 +76,7 @@ const PAGE_SIZE = 48
 /** 一次向后端拉取的图片上限（各云 SDK 单页上限 ≥ 500；前端再分批渲染/懒加载） */
 const FETCH_LIMIT = 500
 
-const tab = ref<'upload' | 'gallery'>('upload')
+const tab = ref<'upload' | 'gallery' | 'selected'>('upload')
 const sources = ref<RichTextImageSource[]>([])
 const sourceId = ref('')
 const target = ref<RichTextImageTarget>({})
@@ -175,10 +175,7 @@ function removePoolKey(k: string): void {
 function clearPool(): void {
   pool.value = {}
 }
-/** 已选清单放大预览源（含全部来源） */
-const previewPoolUrls = computed(() => poolList.value.map((i) => toDisplaySrc(i.url)))
-const poolExpanded = ref(false)
-/** 作用域中文标签，用于跨源已选清单 */
+/** 作用域中文标签，用于「已选择」tab 卡片标注来源 */
 function scopeLabel(scope: string): string {
   const [sid = '', bucket = '', dir = ''] = scope.split('|')
   const src = sources.value.find((s) => s.id === sid)
@@ -217,10 +214,18 @@ const galleryView = computed<PoolItem[]>(() => {
 })
 /** 上传页可见项（同样支持文件名搜索） */
 const uploadView = computed<PoolItem[]>(() => uploaded.value.filter((i) => matchImageKeyword(i, keyword.value)))
-const visible = computed<PoolItem[]>(() => (tab.value === 'upload' ? uploadView.value : galleryView.value))
+/** 已选择 tab：展示统一选择池（跨 tab/源/桶/目录累积），同样支持文件名搜索 */
+const selectedView = computed<PoolItem[]>(() => poolList.value.filter((i) => matchImageKeyword(i, keyword.value)))
+const visible = computed<PoolItem[]>(() =>
+  tab.value === 'upload' ? uploadView.value : tab.value === 'selected' ? selectedView.value : galleryView.value,
+)
 const rendered = computed<PoolItem[]>(() => {
-  // 仍在任务卡片里展示进度的成功项先不在普通缩略图重复渲染，窗口过后自然回归
-  const inTaskCard = new Set(activeUploadTasks.value.filter((t) => t.status === 'success' && t.url).map((t) => t.url!))
+  // 仍在任务卡片里展示进度的成功项先不在普通缩略图重复渲染，窗口过后自然回归（仅上传 tab 有任务卡片）
+  const inTaskCard = new Set(
+    tab.value === 'upload'
+      ? activeUploadTasks.value.filter((t) => t.status === 'success' && t.url).map((t) => t.url!)
+      : [],
+  )
   return visible.value.filter((i) => !inTaskCard.has(i.url)).slice(0, renderedCount.value)
 })
 
@@ -535,6 +540,7 @@ function onPaneScroll(e: Event): void {
             <el-radio-group v-model="tab" class="mode-tabs">
               <el-radio-button value="upload">上传图片</el-radio-button>
               <el-radio-button value="gallery">从图库选择</el-radio-button>
+              <el-radio-button value="selected">已选择{{ poolCount ? ` ${poolCount}` : '' }}</el-radio-button>
             </el-radio-group>
           </div>
           <div class="lib-row lib-row-target">
@@ -557,56 +563,26 @@ function onPaneScroll(e: Event): void {
             <el-button size="small" @click="selectAllVisible(false)">全不选</el-button>
             <el-button size="small" @click="invertVisible">反选本页</el-button>
             <el-button v-if="tab === 'gallery'" size="small" :loading="loadingList" @click="loadGallery">刷新</el-button>
+            <el-button v-else-if="tab === 'selected'" size="small" type="danger" :disabled="poolCount === 0" @click="clearPool">清空</el-button>
             <el-button v-else size="small" :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
             <span class="lib-action-gap" />
             <el-button size="small" @click="uploadMore">继续上传</el-button>
             <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
           </div>
         </div>
+        <!-- 上传总体进度固定在 header，滚动区只放纯图片列表 -->
+        <div v-if="uploadTotal" class="upload-progress-bar">
+          <div class="up-summary">
+            <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
+            <el-button size="small" text @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
+          </div>
+          <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
+        </div>
       </div>
     </template>
     <input ref="uploadInput" type="file" accept="image/*" multiple class="hidden-input" @change="onFilesChosen" />
 
-    <!-- 跨 tab / 源 / 桶 / 目录的已选总清单：切走后仍能查看与移除任一项 -->
-    <div v-if="poolCount" class="pool-summary">
-      <div class="pool-summary-head" @click="poolExpanded = !poolExpanded">
-        <span class="pool-caret">{{ poolExpanded ? '▾' : '▸' }}</span>
-        <span>已选清单 · {{ poolCount }} 张（跨源/桶/目录累积，均为待插入）</span>
-        <el-button size="small" text type="danger" @click.stop="clearPool">清空</el-button>
-      </div>
-      <div v-if="poolExpanded" class="pool-items">
-        <div v-for="(item, k) in pool" :key="k" class="pool-item">
-          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="pool-thumb" loading="lazy" :preview-src-list="previewPoolUrls" :initial-index="poolList.findIndex((p) => itemKey(p) === k)" :preview-teleported="true">
-            <template #error>
-              <div class="img-fallback" title="图片加载失败">
-                <svg class="img-fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15.5 16 11 7 20" />
-                  <path d="M4 4 20 20" class="img-fallback-slash" />
-                </svg>
-                <span class="img-fallback-text">图片不可用</span>
-              </div>
-            </template>
-          </el-image>
-          <div class="pool-meta">
-            <div class="pool-name">{{ item.name || item.key || item.url }}</div>
-            <div class="pool-scope">{{ scopeLabel(item.scope) }}</div>
-          </div>
-          <el-button size="small" text class="pool-remove" @click="removePoolKey(k)">移除</el-button>
-        </div>
-      </div>
-    </div>
-
     <div class="lib-pane" @scroll="onPaneScroll">
-      <!-- 上传总体进度：任务数 + 成功/失败 + 汇总进度条 -->
-      <div v-if="uploadTotal" class="upload-progress-bar">
-        <div class="up-summary">
-          <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
-          <el-button size="small" text @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
-        </div>
-        <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
-      </div>
       <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
         <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
         <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
@@ -614,7 +590,7 @@ function onPaneScroll(e: Event): void {
       <div v-if="visible.length || (tab === 'upload' && activeUploadTasks.length)" class="thumb-grid">
         <!-- 上传中/失败任务：缩略图上叠进度/状态，卡片底部放重试与删除 -->
         <div
-          v-for="task in activeUploadTasks"
+          v-for="task in tab === 'upload' ? activeUploadTasks : []"
           :key="'task-' + task.id"
           class="thumb-cell task-cell"
           :class="'st-' + task.status"
@@ -690,14 +666,30 @@ function onPaneScroll(e: Event): void {
             </template>
           </el-image>
           <div class="thumb-name">{{ item.name || item.key }}</div>
-          <span v-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
-          <el-button v-if="item.origin === 'upload'" size="small" text class="thumb-remove" @click.stop="removeUploaded(item)">删除</el-button>
+          <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
+          <span v-else-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
+          <el-button
+            v-if="tab === 'selected'"
+            size="small"
+            text
+            class="thumb-remove"
+            @click.stop="removePoolKey(itemKey(item))"
+          >移除</el-button>
+          <el-button
+            v-else-if="item.origin === 'upload'"
+            size="small"
+            text
+            class="thumb-remove"
+            @click.stop="removeUploaded(item)"
+          >删除</el-button>
         </div>
       </div>
       <div v-else class="gallery-empty">
         {{ tab === 'upload'
           ? (keyword ? '无匹配图片' : '尚未上传；上传后在此预览，不会立即插入正文')
-          : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
+          : tab === 'selected'
+            ? (keyword ? '无匹配图片' : (poolCount ? '无匹配图片' : '尚未选择图片；在「上传图片」或「从图库选择」里勾选，会汇总到这里'))
+            : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
       </div>
       <div v-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
     </div>
@@ -755,17 +747,6 @@ function onPaneScroll(e: Event): void {
 .task-status.st-failed { color: var(--el-color-danger); }
 .task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
 .task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
-.pool-summary { flex: 0 0 auto; max-height: 38%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
-.pool-summary-head { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
-.pool-caret { opacity: 0.7; }
-.pool-summary-head > span:nth-child(2) { flex: 1 1 auto; }
-.pool-items { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.2)); padding: 6px 10px; }
-.pool-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-.pool-thumb { width: 42px; height: 34px; border-radius: 3px; flex: 0 0 auto; cursor: zoom-in; }
-.pool-meta { flex: 1 1 auto; min-width: 0; }
-.pool-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pool-scope { font-size: 11px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pool-remove { flex: 0 0 auto; }
 .drop-main { font-size: 14px; }
 .drop-sub { font-size: 12px; opacity: 0.6; margin-top: 5px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
@@ -815,8 +796,6 @@ function onPaneScroll(e: Event): void {
 .img-fallback-icon { width: 26px; height: 26px; opacity: 0.7; }
 .img-fallback-slash { opacity: 0.45; }
 .img-fallback-text { font-size: 11px; line-height: 1; }
-.pool-thumb .img-fallback-icon { width: 18px; height: 18px; }
-.pool-thumb .img-fallback-text { display: none; }
 .thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
 .thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
 .thumb-remove { margin-top: -4px; }

@@ -10,7 +10,7 @@ export interface ImageLibrarySettings {
   sourceId: string
   /** 每个来源独立保存专属项：切换来源不会丢掉此前填过的桶/目录 */
   targets: Record<string, RichTextImageTarget>
-  tab?: 'upload' | 'gallery'
+  tab?: 'upload' | 'gallery' | 'selected'
 }
 
 const PRIORITY: Record<RichTextImageSource['type'], number> = { cloud: 0, remote: 1, local: 2 }
@@ -40,7 +40,7 @@ export function loadSettings(store: Storage | null | undefined, stateKey: string
     return {
       sourceId: typeof parsed.sourceId === 'string' ? parsed.sourceId : '',
       targets: parsed.targets && typeof parsed.targets === 'object' ? parsed.targets : {},
-      tab: parsed.tab === 'gallery' || parsed.tab === 'upload' ? parsed.tab : undefined,
+      tab: parsed.tab === 'gallery' || parsed.tab === 'upload' || parsed.tab === 'selected' ? parsed.tab : undefined,
     }
   } catch {
     return null
