@@ -47,6 +47,26 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
     }
   }
 
+  // D-V3：端点不支持 SSE 时（请求了 stream 但 content-type 是 JSON）降级为整包解析，
+  // 避免 JSON 文本进 SSE 行解析后 content 为空导致回复空白；streamed=false 供 UI 标注
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('text/event-stream')) {
+    const json = (await res.json()) as {
+      choices?: { message?: { content?: string } }[]
+      model?: string
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
+    return {
+      content: json.choices?.[0]?.message?.content ?? '',
+      model: json.model ?? provider.model,
+      usage: {
+        promptTokens: json.usage?.prompt_tokens,
+        completionTokens: json.usage?.completion_tokens,
+      },
+      streamed: false,
+    }
+  }
+
   // SSE：data: {...} 行解析，[DONE] 结束
   const body = res.body
   if (!body) throw new Error('模型响应无内容流')

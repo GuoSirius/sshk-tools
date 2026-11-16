@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { entityId } from '@sshk/shared'
 import { host } from './host'
+import { createTypingSmoothener } from './typing-smoothener'
 
 /**
  * 模型控制台共享状态（模块级单例）：
@@ -43,12 +44,14 @@ export const presets = ref<ModelPreset[]>([])
 export const health = ref<Record<string, HealthState>>({})
 
 // ── 对话调试（多轮 · 流式打字 · Markdown 回显） ──
-export interface ChatMessage { role: 'user' | 'assistant'; content: string; error?: boolean }
+export interface ChatMessage { role: 'user' | 'assistant'; content: string; error?: boolean; nonStream?: boolean }
 export const messages = ref<ChatMessage[]>([])
 export const chatProviderId = ref('')
 export const chatting = ref(false)
 // 输入草稿也放单例：切到 Provider 页再切回，草稿不丢
 export const chatInput = ref('')
+/** D-V3-2 打字平滑开关（默认开）：积压分片按节拍释放，避免端点聚合大分片时「一下子输出」 */
+export const typeSmooth = ref(true)
 
 export const activeProvider = computed<Provider | null>(
   () => providers.value.find((p) => p._id === chatProviderId.value) ?? null,
@@ -69,11 +72,40 @@ export async function load(): Promise<void> {
   if (typeof savedChat === 'string' && providers.value.some((p) => p._id === savedChat)) {
     chatProviderId.value = savedChat
   }
+  // 打字平滑开关持久化（未配置默认开）
+  const savedSmooth = await host.config.get(configKey('chat.typeSmooth'))
+  typeSmooth.value = savedSmooth !== false
+}
+
+// ── D-V3-2 打字平滑：分片入队节拍释放（模块单例，壳的 onDelta 与 ChatPage 的 flush 共用） ──
+const smooth = createTypingSmoothener((text) => {
+  if (!chatting.value) return
+  const last = messages.value[messages.value.length - 1]
+  if (last && last.role === 'assistant') last.content += text
+})
+
+/** 流式分片入口：平滑开 → 入队节拍释放；关 → 直接追加（ModelConsolePage 壳调用） */
+export function appendDelta(delta: string): void {
+  if (!chatting.value) return
+  const last = messages.value[messages.value.length - 1]
+  if (!last || last.role !== 'assistant') return
+  if (typeSmooth.value) smooth.push(delta)
+  else last.content += delta
+}
+
+/** 流结束时立即释放平滑积压（避免结尾内容一次性跳变），ChatPage 收尾调用 */
+export function flushDelta(): void {
+  smooth.flush()
 }
 
 // 选择变化时持久化（记忆模型）——模块级注册，单例只挂一次
 watch(chatProviderId, (id) => {
   if (id) void host.config.set(configKey('chat.providerId'), id)
+})
+
+// 打字平滑开关持久化
+watch(typeSmooth, (value) => {
+  void host.config.set(configKey('chat.typeSmooth'), value)
 })
 
 export async function persist(): Promise<void> {

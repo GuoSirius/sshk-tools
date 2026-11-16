@@ -2,7 +2,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { chatInput, chatProviderId, chatting, messages, providers, activeProvider } from '../state'
+import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta } from '../state'
 import { host } from '../host'
 
 // LLM 输出为不可信内容：先 markdown 解析再 DOMPurify 净化，避免 v-html XSS
@@ -80,9 +80,16 @@ async function sendChat(): Promise<void> {
       messages.value.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
       { onDelta: true },
     )
+    // 先释放平滑积压再对齐最终内容，避免结尾一次性跳变（D-V3-2）
+    flushDelta()
     const last = messages.value[messages.value.length - 1]
-    if (last) last.content = res.content || last.content
+    if (last) {
+      last.content = res.content || last.content
+      // D-V3：端点不支持 SSE 降级整包时标注「非流式」
+      if (res.streamed === false) last.nonStream = true
+    }
   } catch (err) {
+    flushDelta()
     const last = messages.value[messages.value.length - 1]
     if (last) { last.content = `错误：${(err as Error).message}`; last.error = true }
   } finally {
@@ -128,6 +135,7 @@ onMounted(() => {
               </svg>
             </span>
             <span class="chat-role">{{ m.role === 'user' ? '我' : (activeProvider ? activeProvider.model : 'AI 助手') }}</span>
+            <el-tag v-if="m.nonStream" size="small" type="warning">非流式</el-tag>
           </div>
           <div class="chat-body" :class="{ error: m.error }" v-html="renderMd(m.content)"></div>
         </div>
@@ -154,7 +162,12 @@ onMounted(() => {
         <el-select v-model="chatProviderId" class="composer-model" placeholder="选择模型（Provider）">
           <el-option v-for="p in providers" :key="p._id" :label="`${p.name} · ${p.model}`" :value="p._id" />
         </el-select>
-        <button
+        <div class="composer-right">
+          <span class="composer-smooth" title="端点聚合大分片时按节拍逐字释放，保持连续打字感；关闭后分片到达即渲染">
+            <el-switch v-model="typeSmooth" size="small" />
+            <span class="composer-smooth-label">打字平滑</span>
+          </span>
+          <button
           type="button"
           class="composer-send"
           :disabled="!activeProvider || !chatInput.trim() || chatting"
@@ -166,6 +179,7 @@ onMounted(() => {
             <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
         </button>
+        </div>
       </div>
     </div>
   </div>
@@ -272,6 +286,10 @@ onMounted(() => {
 }
 /* 模型胶囊：透明底 + 圆角描边，聚焦变主题色 */
 .composer-model { max-width: 300px; }
+/* 右侧组：平滑开关 + 发送钮 */
+.composer-right { display: flex; align-items: center; gap: 10px; }
+.composer-smooth { display: inline-flex; align-items: center; gap: 5px; cursor: default; }
+.composer-smooth-label { font-size: 11px; opacity: .6; user-select: none; }
 .composer-model :deep(.el-select__wrapper) {
   border-radius: 999px;
   background: transparent;

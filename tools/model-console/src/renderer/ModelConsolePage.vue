@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
 import ChatPage from './pages/ChatPage.vue'
 import ProvidersPage from './pages/ProvidersPage.vue'
-import { toolId, load, chatting, messages } from './state'
+import { toolId, load, appendDelta } from './state'
 
 /**
  * 模型控制台渲染层——页面壳：
@@ -22,16 +22,10 @@ const active = computed(() => pages[tab.value] ?? ChatPage)
 
 onMounted(() => {
   void load()
-  // 流式分片：仅当正在对话且末尾是 assistant 占位时追加，实时渲染即打字效果
+  // 流式分片：交给 state.appendDelta（D-V3-2 打字平滑开关裁决入队或直追加）
   // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
   // eslint-disable-next-line no-restricted-syntax
-  window.api.llm.onDelta((delta) => {
-    if (!chatting.value) return
-    const last = messages.value[messages.value.length - 1]
-    if (last && last.role === 'assistant') {
-      last.content += delta
-    }
-  })
+  window.api.llm.onDelta((delta) => appendDelta(delta))
 })
 </script>
 

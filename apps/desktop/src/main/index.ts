@@ -493,11 +493,23 @@ async function registerIpc(): Promise<void> {
     const p = readProvider(_event, provider)
     const apiKey = services!.getApiKey(p._id)
     if (options?.onDelta && mainWindow) {
+      // D-V3-1：delta 到达埋点（chunk 序号/大小/间隔），dev 控制台 + 日志落盘，
+      // 用于核查「一下子输出」是端点聚合大分片还是非流式整包
+      let chunkNo = 0
+      let lastAt = 0
       return chat({
         provider: p,
         apiKey,
         messages: messages as never,
-        onDelta: (delta) => mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta }),
+        onDelta: (delta) => {
+          const at = Date.now()
+          chunkNo++
+          const gap = lastAt ? at - lastAt : 0
+          logger.debug('llm', `chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+          if (isDev) console.log(`[llm] chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+          lastAt = at
+          mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta })
+        },
       })
     }
     return chat({ provider: p, apiKey, messages: messages as never })

@@ -38,6 +38,8 @@ export interface ChatResponse {
   content: string
   model: string
   usage?: { promptTokens?: number; completionTokens?: number }
+  /** D-V3：请求了 stream 但端点不支持（响应非 text/event-stream）时为 false，UI 据此标注「非流式」 */
+  streamed?: boolean
 }
 
 export interface HealthResult {
