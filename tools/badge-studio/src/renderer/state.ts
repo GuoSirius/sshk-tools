@@ -123,6 +123,14 @@ export async function loadConfigAndRecent(): Promise<void> {
   clicksField.value = await textConfig('clicksField', 'clicks')
   const savedStyle = (await window.api.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
+  // 2026-11-16 定位改造一次性迁移：旧出厂偏移 (-9,-11) 是 margin 语义的外飘值，
+  // 新体系 translate(calc(-50% ± off)) 已含居中，旧值叠加会双重偏移导致角标外飘。
+  // 只清旧出厂默认值，用户手调过的其它数值不动。
+  if (badgeStyle.offsetY === -9 && badgeStyle.offsetX === -11) {
+    badgeStyle.offsetY = 0
+    badgeStyle.offsetX = 0
+    void window.api.config.set(configKey('badgeStyle'), { ...badgeStyle })
+  }
   const savedCss = (await window.api.config.get(configKey('badgeStyleCss'))) as
     | Partial<typeof badgeStyleCss>
     | null

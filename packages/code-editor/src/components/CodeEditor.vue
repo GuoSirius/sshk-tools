@@ -40,9 +40,9 @@ const options = computed(() => ({
   scrollBeyondLastLine: false,
   wordWrap: 'on' as const,
   tabSize: 2,
-  // 代码折叠（2026-11-16 用户反馈）：gutter 常显 chevron，点击行尾后自动展开下一行
+  // 代码折叠（2026-11-16 用户反馈）：chevron 悬停 gutter 才显示（IDE 常见行为，不常显抢视觉）
   folding: true,
-  showFoldingControls: 'always' as const,
+  showFoldingControls: 'mouseover' as const,
   unfoldOnClickAfterEndOfLine: true,
 }))
 
