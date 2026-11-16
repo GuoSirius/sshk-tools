@@ -105,8 +105,7 @@ function apply(): void {
           <!-- 说明：编辑器高度由 .src-editor-wrap 绝对定位填满，见下方样式 -->
         </div>
       </div>
-    </div>
-    <template #footer">
+      <!-- 操作栏放 body 内底部、flex-shrink:0 固定：不依赖 dialog #footer，避免弹框 flex 高度布局下被挤出 -->
       <div class="src-footer">
         <div class="src-footer-group">
           <el-button size="small" :loading="formatting" :disabled="readonly" @click="doFormat">格式化</el-button>
@@ -118,12 +117,12 @@ function apply(): void {
           <el-button @click="close">关闭</el-button>
         </div>
       </div>
-    </template>
+    </div>
   </el-dialog>
 </template>
 
 <style scoped>
-/* 与图片库同口径：整个弹框占视口 75%，header/footer 固定，body 吃满剩余；编辑器填满 body */
+/* 与图片库同口径：整个弹框占视口 75%，header 固定，body 吃满剩余；编辑器填满 body 剩余、操作栏固定在底部 */
 :global(.source-view-dialog) {
   height: 75vh;
   min-height: 460px;
@@ -141,10 +140,9 @@ function apply(): void {
   overflow: hidden;
   padding: 14px 20px 16px !important;
 }
-:global(.source-view-dialog .el-dialog__footer) { flex: 0 0 auto; }
 .src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.src-tip { font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
-.src-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.src-tip { flex: 0 0 auto; font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
+.src-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .src-footer-group { display: flex; align-items: center; gap: 8px; }
 .src-editor-panel {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;

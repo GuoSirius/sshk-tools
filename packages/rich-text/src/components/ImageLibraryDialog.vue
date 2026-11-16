@@ -44,6 +44,8 @@ interface UploadTask {
   previewUrl?: string
   /** 缩略图加载失败（CSP 拦截/损坏文件/不支持格式）时改用占位，不显示浏览器裂图 */
   previewFailed?: boolean
+  /** 完成时间戳：成功后短暂保留「完成」卡片让用户看到进度结果，到点降级为普通缩略图 */
+  doneAt?: number
   size: number
   scope: string
   source: RichTextImageSource
@@ -103,10 +105,35 @@ const overallPercent = computed(() => {
 })
 /** 有活动上传任务时显示总体进度条 */
 const uploadInProgress = computed(() => uploadTasks.value.some((t) => t.status === 'uploading'))
-/** 上传中/失败的任务：以缩略图卡片形式并入图片网格（成功项走 uploaded 卡片），受文件名搜索过滤 */
-const activeUploadTasks = computed(() =>
-  uploadTasks.value.filter((t) => t.status !== 'success' && (!keyword.value || t.name.toLowerCase().includes(keyword.value.toLowerCase()))),
-)
+/** 成功项完成后在卡片区保留这么久，让用户看清「上传中→100% 完成」的过程（Provider 太快时会一闪而过） */
+const DONE_KEEP_MS = 2500
+/** 时钟 tick：驱动「完成展示窗口」到期后重渲染（仅窗口内有任务时定时器才运行） */
+const nowTick = ref(0)
+let doneWindowTimer: ReturnType<typeof setInterval> | null = null
+function ensureDoneWindowTimer(): void {
+  if (doneWindowTimer) return
+  doneWindowTimer = setInterval(() => {
+    nowTick.value = Date.now()
+    if (!uploadTasks.value.some((t) => t.status === 'success' && t.doneAt && Date.now() - t.doneAt < DONE_KEEP_MS)) {
+      clearInterval(doneWindowTimer!)
+      doneWindowTimer = null
+    }
+  }, 300)
+}
+function stopDoneWindowTimer(): void {
+  if (!doneWindowTimer) return
+  clearInterval(doneWindowTimer)
+  doneWindowTimer = null
+}
+/** 上传中/失败 + 刚完成仍在展示窗口内的任务：以缩略图卡片并入网格，受文件名搜索过滤 */
+const activeUploadTasks = computed(() => {
+  void nowTick.value // 依赖时钟，窗口到期后重算
+  const inWindow = (t: UploadTask): boolean =>
+    t.status !== 'success' || Boolean(t.doneAt && Date.now() - t.doneAt < DONE_KEEP_MS)
+  return uploadTasks.value.filter(
+    (t) => inWindow(t) && (!keyword.value || t.name.toLowerCase().includes(keyword.value.toLowerCase())),
+  )
+})
 /** 图库已列图片 */
 const items = ref<RichTextImageItem[]>([])
 const loadingList = ref(false)
@@ -191,7 +218,11 @@ const galleryView = computed<PoolItem[]>(() => {
 /** 上传页可见项（同样支持文件名搜索） */
 const uploadView = computed<PoolItem[]>(() => uploaded.value.filter((i) => matchImageKeyword(i, keyword.value)))
 const visible = computed<PoolItem[]>(() => (tab.value === 'upload' ? uploadView.value : galleryView.value))
-const rendered = computed<PoolItem[]>(() => visible.value.slice(0, renderedCount.value))
+const rendered = computed<PoolItem[]>(() => {
+  // 仍在任务卡片里展示进度的成功项先不在普通缩略图重复渲染，窗口过后自然回归
+  const inTaskCard = new Set(activeUploadTasks.value.filter((t) => t.status === 'success' && t.url).map((t) => t.url!))
+  return visible.value.filter((i) => !inTaskCard.has(i.url)).slice(0, renderedCount.value)
+})
 
 /** 放大预览源始终取「当前可见全集」（非仅已渲染），可左右翻看；initial-index 用全集下标 */
 const previewUrls = computed(() => visible.value.map((i) => toDisplaySrc(i.url)))
@@ -246,6 +277,7 @@ watch(
     for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
     uploadTasks.value = []
     stopProgressTimer()
+    stopDoneWindowTimer()
     pool.value = {}
     items.value = []
     keyword.value = ''
@@ -304,6 +336,7 @@ function close(): void {
 onBeforeUnmount(() => {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
   stopProgressTimer()
+  stopDoneWindowTimer()
   for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
 })
 
@@ -356,6 +389,7 @@ async function runUpload(task: UploadTask): Promise<boolean> {
   task.status = 'uploading'
   task.percent = 0
   task.error = undefined
+  task.doneAt = undefined
   ensureProgressTimer()
   try {
     const url = await props.library.upload(task.file, task.source, task.target, (p) => {
@@ -364,6 +398,8 @@ async function runUpload(task: UploadTask): Promise<boolean> {
     task.url = url
     task.percent = 100
     task.status = 'success'
+    task.doneAt = Date.now()
+    ensureDoneWindowTimer()
     const item: PoolItem = { url, key: task.name, name: task.name, origin: 'upload', scope: task.scope }
     uploaded.value.push(item)
     addToPool(item) // 上传即默认选中，可在预览里取消
@@ -598,11 +634,13 @@ function onPaneScroll(e: Event): void {
                 <path d="M21 15.5 16 11 7 20" />
               </svg>
             </span>
-            <span v-if="task.status === 'failed'" class="task-thumb-state">!</span>
+            <span v-if="task.status === 'success'" class="task-thumb-state ok">✓</span>
+            <span v-else-if="task.status === 'failed'" class="task-thumb-state err">!</span>
             <el-progress
-              v-if="task.status === 'uploading'"
+              v-if="task.status !== 'failed'"
               class="task-thumb-progress"
-              :percentage="task.percent"
+              :percentage="task.status === 'success' ? 100 : task.percent"
+              :status="task.status === 'success' ? 'success' : undefined"
               :stroke-width="4"
               :show-text="false"
             />
@@ -610,7 +648,7 @@ function onPaneScroll(e: Event): void {
           <div class="thumb-name">{{ task.name }}</div>
           <div class="task-meta">
             <span class="task-status" :class="'st-' + task.status">
-              {{ task.status === 'uploading' ? `上传中 ${task.percent}%` : '上传失败' }}
+              {{ task.status === 'uploading' ? `上传中 ${task.percent}%` : task.status === 'success' ? '上传完成' : '上传失败' }}
             </span>
           </div>
           <div class="task-ops">
@@ -698,11 +736,14 @@ function onPaneScroll(e: Event): void {
 .task-thumb { position: relative; width: 100%; height: 80px; border-radius: 4px; overflow: hidden; background: rgba(128, 128, 128, 0.1); }
 .task-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .task-thumb-ph { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-text-color-placeholder); opacity: 0.4; }
-.task-thumb-state { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: grid; place-items: center; font-size: 12px; color: #fff; background: var(--el-color-danger); border-radius: 50%; }
+.task-thumb-state { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: grid; place-items: center; font-size: 12px; color: #fff; border-radius: 50%; }
+.task-thumb-state.ok { background: var(--el-color-success); }
+.task-thumb-state.err { background: var(--el-color-danger); }
 .task-thumb-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 3px 3px; }
 .task-meta { margin-top: 2px; }
 .task-status { font-size: 10px; }
 .task-status.st-uploading { color: var(--el-color-primary); }
+.task-status.st-success { color: var(--el-color-success); }
 .task-status.st-failed { color: var(--el-color-danger); }
 .task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
 .task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
@@ -768,5 +809,5 @@ function onPaneScroll(e: Event): void {
 }
 :global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
-.lib-pane { flex: 1 1 auto; min-height: 120px; padding-right: 4px; }
+.lib-pane { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding-right: 6px; }
 </style>
