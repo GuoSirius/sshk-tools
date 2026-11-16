@@ -62,8 +62,8 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
       })) as { url: string; key?: string; name: string }
       return result.url
     },
-    async list(source, target) {
-      const items = (await host.upload.listImages(requestOf(source, target ?? {}))) as {
+    async list(source, target, limit) {
+      const items = (await host.upload.listImages({ ...requestOf(source, target ?? {}), limit })) as {
         url: string
         key: string
         name: string

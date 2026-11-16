@@ -48,6 +48,6 @@ export interface RichTextImageLibrary {
   sources(): Promise<RichTextImageSource[]>
   /** 上传到指定来源，返回可插入的 URL */
   upload(file: File, source: RichTextImageSource, target?: RichTextImageTarget): Promise<string>
-  /** 列出某来源已有图片（新在前由实现方保证） */
-  list(source: RichTextImageSource, target?: RichTextImageTarget): Promise<RichTextImageItem[]>
+  /** 列出某来源已有图片（新在前由实现方保证）；limit 为期望一次拉取上限，实现方可按后端能力截断 */
+  list(source: RichTextImageSource, target?: RichTextImageTarget, limit?: number): Promise<RichTextImageItem[]>
 }

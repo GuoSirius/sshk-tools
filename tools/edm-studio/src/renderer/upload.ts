@@ -111,8 +111,8 @@ export function createImageLibrary(toolId: string): RichTextImageLibrary {
       const result = await host.upload.single({ ...requestOf(source, target ?? {}), name: file.name, size: file.size, mime: file.type, dataUrl })
       return result.url
     },
-    async list(source, target) {
-      const items = (await host.upload.listImages(requestOf(source, target ?? {}))) as {
+    async list(source, target, limit) {
+      const items = (await host.upload.listImages({ ...requestOf(source, target ?? {}), limit })) as {
         url: string
         name: string
         key?: string

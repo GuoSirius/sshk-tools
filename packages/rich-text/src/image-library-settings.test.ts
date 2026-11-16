@@ -3,7 +3,9 @@ import type { RichTextImageSource } from './types'
 import {
   defaultSourceId,
   directoriesFromKeys,
+  directoryTree,
   loadSettings,
+  matchImageKeyword,
   saveSettings,
   settingsKey,
   sortSourcesByDefault,
@@ -62,5 +64,31 @@ describe('image-library-settings', () => {
   it('目录从图片 key 派生多级完整前缀，末段文件名不算目录', () => {
     expect(directoriesFromKeys(['blog/2026/06/a.png', 'blog/2026/b.jpg', 'root.png', '\\win\\deep\\c.png']))
       .toEqual(['blog', 'blog/2026', 'blog/2026/06', 'win', 'win/deep'])
+  })
+
+  it('目录树：每层 value 为完整路径，叶子无空 children，可逐级展开', () => {
+    const tree = directoryTree(['blog/2026/06/a.png', 'blog/2025/x.jpg', 'root.png'])
+    expect(tree).toHaveLength(1)
+    const blog = tree[0]!
+    expect(blog).toMatchObject({ value: 'blog', label: 'blog' })
+    expect(blog.children?.map((n) => n.value)).toEqual(['blog/2025', 'blog/2026'])
+    const y2026 = blog.children?.find((n) => n.value === 'blog/2026')!
+    expect(y2026.children?.map((n) => n.value)).toEqual(['blog/2026/06'])
+    expect(y2026.children?.[0]).not.toHaveProperty('children') // 叶子不挂空 children
+    expect(blog.children?.find((n) => n.value === 'blog/2025')).not.toHaveProperty('children')
+  })
+
+  it('目录树：仅根图无目录时返回空树；反斜杠路径按目录段处理', () => {
+    expect(directoryTree(['root.png'])).toEqual([])
+    expect(directoryTree(['\\win\\a.png'])).toEqual([{ value: 'win', label: 'win' }])
+  })
+
+  it('文件名搜索：忽略大小写，命中 name / key / url 任一，空关键词全通过', () => {
+    const img = { url: 'https://cdn/x/IMG_001.png', name: 'Banner.png', key: 'blog/2026/Banner.png' }
+    expect(matchImageKeyword(img, '')).toBe(true)
+    expect(matchImageKeyword(img, 'banner')).toBe(true)
+    expect(matchImageKeyword(img, '2026')).toBe(true)
+    expect(matchImageKeyword(img, 'img_001')).toBe(true)
+    expect(matchImageKeyword(img, 'nope')).toBe(false)
   })
 })

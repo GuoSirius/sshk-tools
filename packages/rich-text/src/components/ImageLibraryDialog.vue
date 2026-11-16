@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 图片库弹窗（用户需求 2026-11-16 ④⑤ / 2026-11-17 ①~⑦）：
- * - 来源：本地（应用默认目录）/ 远程 profile / 云 profile，由工具侧注入 sources()
- * - 默认来源优先级：云 → 远程 → 本地；来源/桶/多级目录设置按 stateKey 持久化，重启与切页回显
- * - 上传后不直接插入：缩略图预览（点击放大）、删除、全选/反选，仅插入已选或全部插入
- * - 切到「从图库选择」自动列图；缩略图点击放大与复选分离
- * - 目录：多级完整路径可选，也可手输不存在的目录；弹框限高，仅图片区滚动
+ * 图片库弹窗（用户需求 2026-11-16 ④⑤ / 2026-11-17 ①~⑦ + 三轮追加）：
+ * - 来源：本地 / 远程 profile / 云 profile；默认云→远程→本地；设置按 stateKey 持久化，多实例隔离
+ * - 统一选择池：上传项与图库项共用一份「已选」，跨 tab / 跨目录 / 跨来源累积，最后一并插入
+ * - 上传图片并入图库页可见（按 url 去重，标「本次上传」）；切页/重列不清空已选
+ * - 图库一次拉足（桥接层提高 limit）+ 前端分批渲染 + 图片懒加载，避免图片过多撑爆
+ * - 文件名搜索（name/key/url）；目录级联逐层选择、任意层级可选，也可手输不存在目录
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -14,11 +14,19 @@ import type { RichTextImageItem, RichTextImageLibrary, RichTextImageSource, Rich
 import { toDisplaySrc } from '../display'
 import {
   defaultSourceId,
-  directoriesFromKeys,
+  directoryTree,
   loadSettings,
+  matchImageKeyword,
   saveSettings,
   sortSourcesByDefault,
 } from '../image-library-settings'
+import type { DirectoryTreeNode } from '../image-library-settings'
+
+/** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删） */
+interface PoolItem extends RichTextImageItem {
+  key?: string
+  origin: 'upload' | 'gallery'
+}
 
 const props = withDefaults(
   defineProps<{
@@ -32,6 +40,11 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
+/** 一批渲染的图片数：一次拉全但分批挂 DOM，滚动到底再追加 */
+const PAGE_SIZE = 48
+/** 一次向后端拉取的图片上限（各云 SDK 单页上限 ≥ 500；前端再分批渲染/懒加载） */
+const FETCH_LIMIT = 500
+
 const tab = ref<'upload' | 'gallery'>('upload')
 const sources = ref<RichTextImageSource[]>([])
 const sourceId = ref('')
@@ -42,22 +55,43 @@ const restored = ref(false)
 
 const uploading = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
-/** 上传结果先留在弹窗里预览，确认后才插入 */
-const uploaded = ref<(RichTextImageItem & { key?: string; selected: boolean })[]>([])
-/** 图片放大用：el-image-viewer 的 preview-src-list + initial-index */
-const previewUrls = ref<string[]>([])
-const previewIndex = ref(0)
-
-const loadingList = ref(false)
+/** 本次上传的图片（未插入前可删除）；图库页也会合并展示 */
+const uploaded = ref<PoolItem[]>([])
+/** 图库已列图片 */
 const items = ref<RichTextImageItem[]>([])
-const gallerySelected = ref<Set<string>>(new Set())
-/** 目录下拉的候选 key：打开弹窗/切来源时静默列一次，避免先切图库才有多级选项 */
+const loadingList = ref(false)
+/** 目录下拉的候选 key：打开弹窗/切来源时静默列一次，派生级联树 */
 const dirKeys = ref<string[]>([])
+/** 文件名搜索关键词 */
+const keyword = ref('')
+/** 已渲染数量（分批渲染） */
+const renderedCount = ref(PAGE_SIZE)
+
+/** 统一选择池：key = url（同一图片只算一次），跨 tab / 目录 / 来源累积 */
+const pool = ref<Record<string, PoolItem>>({})
+const poolCount = computed(() => Object.keys(pool.value).length)
+const uploadPicked = computed(() => Object.values(pool.value).filter((i) => i.origin === 'upload').length)
+const galleryPicked = computed(() => Object.values(pool.value).filter((i) => i.origin === 'gallery').length)
+const isSelected = (url: string): boolean => Boolean(pool.value[url])
+function addToPool(item: PoolItem): void {
+  if (!item.url) return
+  pool.value[item.url] = item
+}
+function removeFromPool(url: string): void {
+  if (!pool.value[url]) return
+  const next = { ...pool.value }
+  delete next[url]
+  pool.value = next
+}
+function togglePool(item: PoolItem): void {
+  if (isSelected(item.url)) removeFromPool(item.url)
+  else addToPool(item)
+}
 
 const activeSource = computed(() => sources.value.find((s) => s.id === sourceId.value) ?? null)
 const typeOf = computed(() => activeSource.value?.type ?? 'cloud')
 const showBucket = computed(() => typeOf.value === 'cloud')
-/** 目录（云前缀 / 远程路径 / 本地目录）统一用完整路径字符串，支持多级与手输 */
+/** 目录（云前缀 / 远程路径 / 本地目录）统一完整路径字符串，支持级联选择与手输 */
 const dirModel = computed({
   get: () => target.value.prefix || target.value.remotePath || target.value.localDir || '',
   set: (v: string) => {
@@ -66,22 +100,23 @@ const dirModel = computed({
     else target.value = { ...target.value, localDir: v }
   },
 })
-/** 从已列图片 key 派生的多级目录完整路径（可手输不存在的目录） */
-const dirOptions = computed(() => {
-  const keys: string[] = [
-    ...dirKeys.value,
-    ...items.value.map((i) => i.key ?? i.name ?? ''),
-    ...uploaded.value.map((i) => i.key ?? i.name ?? ''),
-  ]
-  return directoriesFromKeys(keys.filter((k): k is string => Boolean(k)))
+/** 级联目录树：从已列图片 key 派生，每层 value 为完整路径 */
+const dirTree = computed<DirectoryTreeNode[]>(() => directoryTree(dirKeys.value))
+
+/** 图库页可见项：本次上传优先（标 upload），后端列图去重补充，再按文件名过滤 */
+const galleryView = computed<PoolItem[]>(() => {
+  const map = new Map<string, PoolItem>()
+  for (const u of uploaded.value) map.set(u.url, u)
+  for (const it of items.value) if (!map.has(it.url)) map.set(it.url, { ...it, origin: 'gallery' })
+  return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
 })
+/** 上传页可见项（同样支持文件名搜索） */
+const uploadView = computed<PoolItem[]>(() => uploaded.value.filter((i) => matchImageKeyword(i, keyword.value)))
+const visible = computed<PoolItem[]>(() => (tab.value === 'upload' ? uploadView.value : galleryView.value))
+const rendered = computed<PoolItem[]>(() => visible.value.slice(0, renderedCount.value))
 
-/** 列表变化时同步放大预览源，保证首击即可放大（el-image 依赖 preview-src-list 已就位） */
-watch(uploaded, (list) => { if (tab.value === 'upload') previewUrls.value = list.map((i) => toDisplaySrc(i.url)) }, { deep: true })
-watch(items, (list) => { if (tab.value === 'gallery') previewUrls.value = list.map((i) => toDisplaySrc(i.url)) })
-
-const uploadedSelectedCount = computed(() => uploaded.value.filter((i) => i.selected).length)
-const gallerySelectedCount = computed(() => gallerySelected.value.size)
+/** 放大预览源始终取「当前可见全集」（非仅已渲染），可左右翻看；initial-index 用全集下标 */
+const previewUrls = computed(() => visible.value.map((i) => toDisplaySrc(i.url)))
 
 function storage(): Storage | null {
   try { return window.localStorage } catch { return null }
@@ -128,10 +163,12 @@ watch(
   async (open) => {
     if (!open) return
     restored.value = false
+    // 每次重新打开是新一轮会话：重置上传缓存与选择池
     uploaded.value = []
-    previewUrls.value = []
-    gallerySelected.value = new Set()
+    pool.value = {}
     items.value = []
+    keyword.value = ''
+    renderedCount.value = PAGE_SIZE
     await loadSources()
     const saved = loadSettings(storage(), props.stateKey)
     targetCache[props.stateKey] = saved?.targets ?? {}
@@ -150,9 +187,9 @@ let sourceWatchBusy = false
 watch(sourceId, async (id) => {
   if (!restored.value || sourceWatchBusy) return
   target.value = { ...(targetCache[props.stateKey]?.[id] ?? {}) }
-  items.value = []
-  gallerySelected.value = new Set()
+  items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
   dirKeys.value = []
+  renderedCount.value = PAGE_SIZE
   persist()
   void loadDirKeys()
   if (tab.value === 'gallery') await loadGallery()
@@ -172,8 +209,10 @@ watch(target, () => {
 }, { deep: true })
 watch(tab, async (v) => {
   persist()
+  renderedCount.value = PAGE_SIZE
   if (v === 'gallery' && props.open && restored.value) await loadGallery()
 })
+watch(keyword, () => { renderedCount.value = PAGE_SIZE })
 
 function close(): void {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
@@ -195,6 +234,8 @@ function insertUrls(urls: string[]): void {
   if (!editor || urls.length === 0) return
   editor.focus()
   editor.dangerouslyInsertHtml(urls.map((u) => `<img src="${esc(toDisplaySrc(u))}" alt=""/>`).join(''))
+  pool.value = {}
+  uploaded.value = []
   close()
   ElMessage.success(`已插入 ${urls.length} 张图片`)
 }
@@ -222,54 +263,45 @@ async function onFilesChosen(e: Event): Promise<void> {
   for (const file of files) {
     try {
       const url = await props.library.upload(file, source, target.value)
-      uploaded.value.push({
-        url,
-        key: file.name,
-        name: file.name,
-        selected: true,
-      })
+      const item: PoolItem = { url, key: file.name, name: file.name, origin: 'upload' }
+      uploaded.value.push(item)
+      addToPool(item) // 上传即默认选中，可在预览里取消
       ok += 1
     } catch (err) {
       ElMessage.error(`「${file.name}」上传失败：${(err as Error).message}`)
     }
   }
   uploading.value = false
-  if (ok > 0) ElMessage.success(`${ok} 张已上传，确认预览后再插入`)
-}
-
-function previewUploaded(index: number): void {
-  previewUrls.value = uploaded.value.map((i) => toDisplaySrc(i.url))
-  previewIndex.value = index
-}
-
-function previewGallery(index: number): void {
-  previewUrls.value = items.value.map((i) => toDisplaySrc(i.url))
-  previewIndex.value = index
+  if (ok > 0) ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
 }
 
 function removeUploaded(url: string): void {
   uploaded.value = uploaded.value.filter((i) => i.url !== url)
-  previewUrls.value = []
-}
-
-function selectAllUploaded(v: boolean): void {
-  uploaded.value.forEach((i) => { i.selected = v })
-}
-
-function invertUploaded(): void {
-  uploaded.value.forEach((i) => { i.selected = !i.selected })
+  removeFromPool(url)
 }
 
 function removeSelectedUploaded(): void {
-  const removed = uploaded.value.filter((i) => i.selected)
+  const removed = uploaded.value.filter((i) => isSelected(i.url))
   if (removed.length === 0) return
-  uploaded.value = uploaded.value.filter((i) => !i.selected)
-  previewUrls.value = []
+  for (const i of removed) removeFromPool(i.url)
+  uploaded.value = uploaded.value.filter((i) => !isSelected(i.url))
   ElMessage.success(`已删除 ${removed.length} 张未插入图片`)
 }
 
-function insertUploaded(all: boolean): void {
-  const urls = uploaded.value.filter((i) => all || i.selected).map((i) => i.url)
+/** 全选/全不选/反选作用于「当前可见集合」，不清空其他 tab / 目录已选的项 */
+function selectAllVisible(v: boolean): void {
+  for (const i of visible.value) {
+    if (v) addToPool(i)
+    else removeFromPool(i.url)
+  }
+}
+function invertVisible(): void {
+  for (const i of visible.value) togglePool(i)
+}
+
+/** 插入统一选择池中的全部图片（跨 tab / 目录 / 来源） */
+function insertSelected(): void {
+  const urls = Object.keys(pool.value)
   insertUrls(urls)
 }
 
@@ -277,9 +309,10 @@ async function loadGallery(): Promise<void> {
   const source = activeSource.value
   if (!source) return
   loadingList.value = true
-  gallerySelected.value = new Set()
+  renderedCount.value = PAGE_SIZE
   try {
-    items.value = await props.library.list(source, target.value)
+    // 不清空 pool：重选目录得到新列表后，此前已选仍保留，可继续累积
+    items.value = await props.library.list(source, target.value, FETCH_LIMIT)
   } catch (err) {
     items.value = []
     ElMessage.error(`读取图库失败：${(err as Error).message}`)
@@ -288,26 +321,12 @@ async function loadGallery(): Promise<void> {
   }
 }
 
-function toggleGallery(url: string): void {
-  const next = new Set(gallerySelected.value)
-  if (next.has(url)) next.delete(url)
-  else next.add(url)
-  gallerySelected.value = next
-}
-
-function selectAllGallery(v: boolean): void {
-  gallerySelected.value = v ? new Set(items.value.map((i) => i.url)) : new Set()
-}
-
-function invertGallery(): void {
-  const next = new Set<string>()
-  items.value.forEach((i) => { if (!gallerySelected.value.has(i.url)) next.add(i.url) })
-  gallerySelected.value = next
-}
-
-function insertGallery(all: boolean): void {
-  const urls = items.value.filter((i) => all || gallerySelected.value.has(i.url)).map((i) => i.url)
-  insertUrls(urls)
+/** 滚动到底追加下一批（一次性拉全，分批挂 DOM；图片本身再走 loading=lazy） */
+function onPaneScroll(e: Event): void {
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80 && renderedCount.value < visible.value.length) {
+    renderedCount.value += PAGE_SIZE
+  }
 }
 </script>
 
@@ -336,68 +355,62 @@ function insertGallery(all: boolean): void {
       </div>
       <div class="lib-row lib-row-target">
         <el-input v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
-        <el-select
+        <el-cascader
           v-model="dirModel"
+          :options="dirTree"
+          :props="{ checkStrictly: true, emitPath: false, expandTrigger: 'hover' }"
           filterable
-          allow-create
           clearable
-          default-first-option
-          :placeholder="showBucket ? '目录前缀（选多级路径或手输，如 blog/2026）' : typeOf === 'remote' ? '远程目录（选多级路径或手输）' : '本地目录（选多级路径或手输）'"
-          class="dir-select"
-        >
-          <el-option v-for="dir in dirOptions" :key="dir" :value="dir" :label="dir" />
-        </el-select>
+          class="dir-cascader"
+          :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
+        />
+        <el-input v-model="dirModel" clearable class="dir-manual" placeholder="或手输目录" />
       </div>
       <div class="lib-row lib-row-actions">
-        <span class="lib-count">
-          {{ tab === 'upload' ? `已上传 ${uploaded.length} 张 · 已选 ${uploadedSelectedCount} 张` : `图库 ${items.length} 张 · 已选 ${gallerySelectedCount} 张` }}
-        </span>
-        <el-button size="small" @click="tab === 'upload' ? selectAllUploaded(true) : selectAllGallery(true)">全选</el-button>
-        <el-button size="small" @click="tab === 'upload' ? selectAllUploaded(false) : selectAllGallery(false)">全不选</el-button>
-        <el-button size="small" @click="tab === 'upload' ? invertUploaded() : invertGallery()">反选</el-button>
+        <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
+        <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
+        <el-button size="small" @click="selectAllVisible(true)">全选本页</el-button>
+        <el-button size="small" @click="selectAllVisible(false)">全不选</el-button>
+        <el-button size="small" @click="invertVisible">反选本页</el-button>
         <el-button v-if="tab === 'gallery'" size="small" :loading="loadingList" @click="loadGallery">刷新</el-button>
-        <el-button v-else size="small" :disabled="uploadedSelectedCount === 0" @click="removeSelectedUploaded">删除所选</el-button>
+        <el-button v-else size="small" :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
         <span class="lib-action-gap" />
         <el-button size="small" @click="uploadMore">继续上传</el-button>
-        <el-button
-          size="small"
-          type="primary"
-          :disabled="tab === 'upload' ? uploadedSelectedCount === 0 : gallerySelectedCount === 0"
-          @click="tab === 'upload' ? insertUploaded(false) : insertGallery(false)"
-        >插入所选</el-button>
-        <el-button v-if="tab === 'upload'" size="small" type="primary" :disabled="uploaded.length === 0" @click="insertUploaded(true)">全部插入</el-button>
+        <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
       </div>
     </div>
 
-    <div v-if="tab === 'upload'" class="lib-pane">
-      <div class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
+    <div class="lib-pane" @scroll="onPaneScroll">
+      <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
         <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
-        <div class="drop-sub">上传后先预览、可删除/点开查看，确认无误再选择插入</div>
+        <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
       </div>
-      <div v-if="uploaded.length" class="thumb-grid">
-        <div v-for="(item, index) in uploaded" :key="item.url" class="thumb-cell" :class="{ picked: item.selected }">
-          <el-checkbox v-model="item.selected" class="thumb-check" @click.stop />
-          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="thumb-img" :preview-src-list="previewUrls" :initial-index="index" @click="previewUploaded(index)">
+      <div v-if="visible.length" class="thumb-grid">
+        <div v-for="item in rendered" :key="item.url" class="thumb-cell" :class="{ picked: isSelected(item.url) }">
+          <el-checkbox :model-value="isSelected(item.url)" class="thumb-check" @change="togglePool(item)" @click.stop />
+          <el-image
+            :src="toDisplaySrc(item.url)"
+            fit="cover"
+            loading="lazy"
+            class="thumb-img"
+            :preview-src-list="previewUrls"
+            :initial-index="visible.indexOf(item)"
+            :preview-teleported="true"
+            @click.stop
+          >
             <template #error><div class="img-err">裂图</div></template>
           </el-image>
-          <div class="thumb-name">{{ item.name }}</div>
-          <el-button size="small" text class="thumb-remove" @click.stop="removeUploaded(item.url)">删除</el-button>
+          <div class="thumb-name">{{ item.name || item.key }}</div>
+          <span v-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
+          <el-button v-if="item.origin === 'upload'" size="small" text class="thumb-remove" @click.stop="removeUploaded(item.url)">删除</el-button>
         </div>
       </div>
-      <div v-else class="gallery-empty">尚未上传；上传后在此预览，不会立即插入正文</div>
-    </div>
-
-    <div v-else class="lib-pane">
-      <div v-if="items.length" class="thumb-grid">
-        <div v-for="(item, index) in items" :key="item.url" class="thumb-cell" :class="{ picked: gallerySelected.has(item.url) }">
-          <el-checkbox :model-value="gallerySelected.has(item.url)" class="thumb-check" @change="toggleGallery(item.url)" @click.stop />
-          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="thumb-img" :preview-src-list="previewUrls" :initial-index="index" @click="previewGallery(index)">
-            <template #error><div class="img-err">裂图</div></template>
-          </el-image>
-          <div class="thumb-name">{{ item.name }}</div>
-        </div>
+      <div v-else class="gallery-empty">
+        {{ tab === 'upload'
+          ? (keyword ? '无匹配图片' : '尚未上传；上传后在此预览，不会立即插入正文')
+          : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
       </div>
-      <div v-else class="gallery-empty">{{ loadingList ? '读取中…' : '暂无图片，点「刷新列表」或先上传几张' }}</div>
+      <div v-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
     </div>
 
     <template #footer>
@@ -412,25 +425,27 @@ function insertGallery(all: boolean): void {
 .lib-row:last-child { margin-bottom: 0; }
 .source-select { flex: 1 1 auto; }
 .mode-tabs { flex: 0 0 auto; }
-.bucket-input { flex: 0 0 240px; }
-.dir-select { flex: 1 1 auto; min-width: 0; }
+.bucket-input { flex: 0 0 220px; }
+.dir-cascader { flex: 1 1 auto; min-width: 0; }
+.dir-manual { flex: 0 0 150px; }
+.search-input { flex: 0 0 150px; }
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }
-.lib-count { font-size: 12px; opacity: 0.75; margin-right: 4px; }
-.lib-action-gap { flex: 1 1 20px; }
+.lib-count { font-size: 12px; opacity: 0.75; margin-right: 2px; }
+.lib-action-gap { flex: 1 1 12px; }
 .drop-hint {
   border: 1px dashed rgba(128, 128, 128, 0.45);
   border-radius: 8px;
-  padding: 20px 16px;
+  padding: 16px 14px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 10px;
 }
 .drop-hint:hover { border-color: var(--el-color-primary); }
 .drop-hint.busy { opacity: 0.6; cursor: wait; }
 .drop-main { font-size: 14px; }
-.drop-sub { font-size: 12px; opacity: 0.6; margin-top: 6px; }
-.selection-bar { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.drop-sub { font-size: 12px; opacity: 0.6; margin-top: 5px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .thumb-cell {
   position: relative;
@@ -440,12 +455,14 @@ function insertGallery(all: boolean): void {
   text-align: center;
 }
 .thumb-cell.picked { border-color: var(--el-color-primary); background: rgba(64, 158, 255, 0.08); }
-.thumb-check { position: absolute; top: 6px; left: 6px; z-index: 2; background: rgba(255,255,255,0.82); border-radius: 3px; }
+.thumb-check { position: absolute; top: 6px; left: 6px; z-index: 2; background: rgba(255, 255, 255, 0.82); border-radius: 3px; }
 .thumb-img { width: 100%; height: 80px; border-radius: 4px; display: block; cursor: zoom-in; }
 .img-err { width: 100%; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 12px; opacity: 0.5; }
 .thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
+.thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
 .thumb-remove { margin-top: -4px; }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }
+.load-more { text-align: center; padding: 10px 0 2px; font-size: 12px; opacity: 0.6; }
 
 /* 弹框限高：工具栏/操作栏固定，只有图片网格区域滚动 */
 :global(.image-library-dialog) .el-dialog__body { max-height: calc(100vh - 190px) !important; overflow: hidden !important; padding: 16px 20px !important; }

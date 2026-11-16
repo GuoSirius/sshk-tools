@@ -75,3 +75,57 @@ export function directoriesFromKeys(keys: string[]): string[] {
   }
   return [...out].sort((a, b) => a.localeCompare(b))
 }
+
+/** 级联目录节点：label 是本级名，value 是完整路径（可直接写回 target），children 为子级 */
+export interface DirectoryTreeNode {
+  value: string
+  label: string
+  children?: DirectoryTreeNode[]
+}
+
+/**
+ * 把完整路径列表转成级联树（el-cascader 用），每一级都可被选中（checkStrictly）。
+ * 例 ['blog/2026/06', 'blog/2025'] → blog → {2025, 2026 → 06}；value 始终是完整路径。
+ */
+export function directoryTree(keys: string[]): DirectoryTreeNode[] {
+  const roots: DirectoryTreeNode[] = []
+  const byValue = new Map<string, DirectoryTreeNode>()
+  for (const full of directoriesFromKeys(keys)) {
+    const segs = full.split('/').filter(Boolean)
+    let prefix = ''
+    let siblings = roots
+    for (const seg of segs) {
+      prefix = prefix ? `${prefix}/${seg}` : seg
+      let node = byValue.get(prefix)
+      if (!node) {
+        node = { value: prefix, label: seg }
+        byValue.set(prefix, node)
+        siblings.push(node)
+      }
+      // 下一层的父节点可能是刚建的，children 延迟创建
+      siblings = node.children ?? (node.children = [])
+    }
+  }
+  // el-cascader 遇到空 children 数组会显示「无数据的下一级」箭头，叶子删掉
+  const prune = (nodes: DirectoryTreeNode[]): void => {
+    for (const n of nodes) {
+      if (n.children && n.children.length) prune(n.children)
+      else delete n.children
+    }
+  }
+  prune(roots)
+  return roots
+}
+
+/**
+ * 关键词匹配图片（文件名搜索）：忽略大小写，命中 name / key / url 任一即可。
+ * 搜索只作用于已加载项，不额外发起列图请求（后端 limit 已保证一次拿足）。
+ */
+export function matchImageKeyword<T extends { name?: string; key?: string; url: string }>(
+  item: T,
+  keyword: string,
+): boolean {
+  const kw = keyword.trim().toLowerCase()
+  if (!kw) return true
+  return [item.name, item.key, item.url].some((v) => (v ?? '').toLowerCase().includes(kw))
+}
