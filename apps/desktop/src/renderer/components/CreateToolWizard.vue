@@ -87,7 +87,28 @@ const stepErrors = computed<string[]>(() => {
 
 /** step0 错误直接内联到基本信息 id 行（BasicInfoSection idError），底部不再重复展示 */
 const idError = computed(() => (step.value === 0 ? stepErrors.value.join('；') : ''))
-const menuErrors = computed(() => (step.value === 1 ? stepErrors.value : []))
+
+/** step1 错误内联到对应菜单行下方：行号 → 文案（用户反馈：错误只出现在对应输入框附近） */
+const menuRowError = computed(() => {
+  if (step.value !== 1) return (): string => ''
+  const ids = form.menus.map((menu) => menu.id.trim())
+  const firstOf = new Map<string, number>()
+  const dup = new Set<number>()
+  ids.forEach((id, i) => {
+    if (firstOf.has(id)) {
+      dup.add(i)
+      dup.add(firstOf.get(id)!)
+    } else firstOf.set(id, i)
+  })
+  return (index: number): string => {
+    const msgs: string[] = []
+    const id = ids[index] ?? ''
+    if (!id) msgs.push('菜单 id 必填')
+    else if (!MENU_ID_RE.test(id)) msgs.push('小写字母开头，仅小写字母 / 数字 / 连字符')
+    if (dup.has(index)) msgs.push('菜单 id 重复')
+    return msgs.join('；')
+  }
+})
 
 const nextDisabled = computed(() => {
   if (step.value === 0) return !ID_RE.test(form.id) || !form.name.trim() || !form.description.trim()
@@ -192,7 +213,7 @@ function close(): void { emit('update:modelValue', false) }
 
         <!-- Step 2 菜单与页面 -->
         <div v-show="step === 1" class="pane">
-          <MenusSection :menus="form.menus" :min-rows="1" :file-for="menuFile">
+          <MenusSection :menus="form.menus" :min-rows="1" :file-for="menuFile" :row-error="menuRowError">
             <template #hint>
               <div class="hint">每行一个左侧菜单 = 一个页面文件；首个菜单会生成<b>最小可跑示例</b>（调主进程 + 读写配置），其余为占位页。</div>
             </template>
@@ -218,10 +239,6 @@ function close(): void { emit('update:modelValue', false) }
             v-model:layout="form.configLayout"
           />
           <div class="hint">不配分组也可以：跳过创建后再在「配置」编辑器里补。</div>
-        </div>
-
-        <div v-if="menuErrors.length" class="error-box">
-          <div v-for="e in menuErrors" :key="e">⚠ {{ e }}</div>
         </div>
       </div><!-- /wizard-form -->
       </div><!-- /wizard-body -->
@@ -257,7 +274,6 @@ function close(): void { emit('update:modelValue', false) }
 .wizard-preview { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .pane { min-height: 0; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.7; margin-top: 6px; }
-.error-box { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(245, 108, 108, .08); color: #c45656; font-size: 12px; line-height: 1.8; }
 .wizard-foot { flex: none; margin-top: 0; padding-top: 12px; border-top: 1px solid var(--sshk-border, #d0d0d0); }
 .wizard-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .preview-json { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: var(--sshk-panel-soft, rgba(128, 128, 128, .08)); font-size: 11px; line-height: 1.6; white-space: pre; }

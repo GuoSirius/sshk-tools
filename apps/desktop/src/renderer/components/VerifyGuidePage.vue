@@ -8,6 +8,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { now } from '@sshk/shared'
 import {
   VERIFY_STEPS,
@@ -25,6 +26,8 @@ const visible = computed({
   get: () => props.modelValue,
   set: (v: boolean) => emit('update:modelValue', v),
 })
+
+const router = useRouter()
 
 const groups = Object.keys(VERIFY_GROUP_LABELS) as VerifyGroup[]
 const stepsOf = (g: VerifyGroup): VerifyStep[] => VERIFY_STEPS.filter((s) => s.group === g)
@@ -133,11 +136,9 @@ async function runAutoChecks(): Promise<void> {
 function goEntry(step: VerifyStep): void {
   if (!step.entry) return
   visible.value = false
-  if (step.entry.type === 'route') {
-    window.location.hash = `#/tool/${step.entry.target}`
-  } else {
-    emit('open-settings', step.entry.target)
-  }
+  // 必须走 vue-router：手动改 location.hash 不触发 router 导航（曾因此按钮无反应）
+  if (step.entry.type === 'route') void router.push('/tool/' + step.entry.target)
+  else emit('open-settings', step.entry.target)
 }
 
 // ── 导出 markdown 报告 ──
