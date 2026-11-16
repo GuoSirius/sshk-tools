@@ -492,27 +492,33 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean }) => {
     const p = readProvider(_event, provider)
     const apiKey = services!.getApiKey(p._id)
-    if (options?.onDelta && mainWindow) {
-      // D-V3-1：delta 到达埋点（chunk 序号/大小/间隔），dev 控制台 + 日志落盘，
-      // 用于核查「一下子输出」是端点聚合大分片还是非流式整包
-      let chunkNo = 0
-      let lastAt = 0
-      return chat({
-        provider: p,
-        apiKey,
-        messages: messages as never,
-        onDelta: (delta) => {
-          const at = Date.now()
-          chunkNo++
-          const gap = lastAt ? at - lastAt : 0
-          logger.debug('llm', `chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
-          if (isDev) console.log(`[llm] chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
-          lastAt = at
-          mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta })
-        },
-      })
-    }
-    return chat({ provider: p, apiKey, messages: messages as never })
+    // H3-3 埋点：chat 开始/完成/失败（模型名 + 耗时，不含任何密钥）
+    const started = Date.now()
+    let chunkNo = 0
+    let lastAt = 0
+    logger.info('llm', `chat start model=${p.model}${options?.onDelta ? '（流式）' : ''}`)
+    const call = options?.onDelta && mainWindow
+      ? chat({
+          provider: p,
+          apiKey,
+          messages: messages as never,
+          // D-V3-1：delta 到达埋点（chunk 序号/大小/间隔），dev 控制台 + 日志落盘，
+          // 用于核查「一下子输出」是端点聚合大分片还是非流式整包
+          onDelta: (delta) => {
+            const at = Date.now()
+            chunkNo++
+            const gap = lastAt ? at - lastAt : 0
+            logger.debug('llm', `chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+            if (isDev) console.log(`[llm] chunk#${chunkNo} size=${delta.length} gap=${gap}ms`)
+            lastAt = at
+            mainWindow?.webContents.send(IPC_CHANNELS.llmChat, { delta })
+          },
+        })
+      : chat({ provider: p, apiKey, messages: messages as never })
+    return call.then(
+      (res) => { logger.info('llm', `chat done ${Date.now() - started}ms`); return res },
+      (err) => { logger.error('llm', `chat failed：${(err as Error).message}`); throw err },
+    )
   })
   // 渲染层可临时带 apiKey 做「保存前探测」；不传则读 safeStorage 中已存的密钥。
   // 临时 key 只在这一次 IPC 里使用，不落盘、不进配置。
@@ -548,8 +554,32 @@ async function registerIpc(): Promise<void> {
     services: services!,
     onProgress: (p) => mainWindow?.webContents.send(IPC_CHANNELS.uploadProgress, p),
   })
-  handleOk(IPC_CHANNELS.uploadSingle, (_event, req: UploadRequest) => uploads.single(req))
-  handleOk(IPC_CHANNELS.uploadBatch, (_event, reqs: UploadRequest[]) => uploads.batch(reqs))
+  handleOk(IPC_CHANNELS.uploadSingle, async (_event, req: UploadRequest) => {
+    // H3-3 埋点：上传开始/完成/失败（文件名 + 大小，不含密钥）
+    const started = Date.now()
+    logger.info('upload', `单文件上传：${String(req?.name ?? '')}（${Number(req?.size ?? 0)} B）`)
+    try {
+      const result = await uploads.single(req)
+      logger.info('upload', `单文件上传完成 ${Date.now() - started}ms：${String(req?.name ?? '')}`)
+      return result
+    } catch (err) {
+      logger.error('upload', `单文件上传失败：${String(req?.name ?? '')}：${(err as Error).message}`)
+      throw err
+    }
+  })
+  handleOk(IPC_CHANNELS.uploadBatch, async (_event, reqs: UploadRequest[]) => {
+    const count = Array.isArray(reqs) ? reqs.length : 0
+    const started = Date.now()
+    logger.info('upload', `批量上传：${count} 个文件`)
+    try {
+      const results = await uploads.batch(reqs)
+      logger.info('upload', `批量上传完成 ${Date.now() - started}ms：${count} 个`)
+      return results
+    } catch (err) {
+      logger.error('upload', `批量上传失败：${(err as Error).message}`)
+      throw err
+    }
+  })
   handleOk(IPC_CHANNELS.uploadConfigGet, () => uploads.getConfig())
   handleOk(IPC_CHANNELS.uploadConfigSet, (_event, raw: unknown) => uploads.setConfig(raw))
   handleOk(IPC_CHANNELS.uploadProfiles, (_event, type?: 'remote' | 'cloud') =>
@@ -686,7 +716,12 @@ interface UpdateState {
 let updateState: UpdateState = { phase: 'idle' }
 let latestVersion: string | undefined
 function pushUpdate(patch: Partial<UpdateState>): void {
+  const prevPhase = updateState.phase
   updateState = { ...updateState, ...patch }
+  // H3-3 埋点：phase 变化才落盘（download-progress 高频进度不刷日志）
+  if (patch.phase && patch.phase !== prevPhase) {
+    logger.info('updater', `更新状态 → ${patch.phase}${updateState.version ? ` v${updateState.version}` : ''}${updateState.error ? `：${updateState.error}` : ''}`)
+  }
   mainWindow?.webContents.send(IPC_CHANNELS.updateState, updateState)
 }
 

@@ -12,6 +12,7 @@ import { MAIN_LOADERS, MANIFESTS } from './discovery'
 import { wrapIpcHandler } from './ipc-wrap'
 import { readInstalled, runtimeRoot } from './runtime-installer.js'
 import type { UtilityInstance } from './utility-host.js'
+import { logger } from './logger'
 
 /** 宿主注入给插件的能力集合（工具可依赖应用）；toolId 来自 manifest，工具内不再硬编码 */
 export interface PluginDeps {
@@ -257,9 +258,12 @@ export async function loadToolPlugins(
         continue
       }
       status[tool.id] = { loaded: true }
+      // H3-3 埋点：插件加载成功（tools 关键节点）
+      logger.info('tools', `插件 ${tool.id} 已加载`)
     } catch (err) {
       const message = (err as Error).message
       status[tool.id] = { loaded: false, error: message }
+      logger.warn('tools', `插件 ${tool.id} 加载失败（不影响其它工具）：${message}`)
       console.warn(`[sshk] 插件 ${tool.id} 加载失败（不影响其它工具）：`, message)
       rejectAll(host.ipcMain, tool, `插件「${tool.id}」加载失败：${message}`)
     }
