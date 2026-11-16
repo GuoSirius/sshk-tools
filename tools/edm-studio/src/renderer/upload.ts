@@ -1,5 +1,5 @@
 import { ElMessage } from 'element-plus'
-import type { RichTextUploadHook } from '@sshk/rich-text'
+import type { RichTextImageLibrary, RichTextImageSource, RichTextImageTarget, RichTextUploadHook } from '@sshk/rich-text'
 import { extractInlineImages, replaceInlineImages, replacementFor } from '../core/inline-images.js'
 import { beginUploadSession, endUploadSession } from './upload-progress'
 import { host } from './host'
@@ -10,7 +10,12 @@ import { host } from './host'
  * 本文件是工具侧唯一实现，密钥、profile、校验都在 main 进程。
  *
  * toolId 由宿主 :tool-id 注入、经 useToolId() 取用后传入，源码不再硬编码工具 ID。
+ *
+ * 图片库桥接（2026-11-16 ④⑤）：富文本图片菜单可选 本地 / 远程 / 云 来源，
+ * 支持专属桶/目录覆盖，上传后插入；也可列出该来源已有图片挑选插入。
+ * 本地默认项 id 用 __local__（非真实 profile，type=local 时 profileId 不下发）。
  */
+const LOCAL_SOURCE_ID = '__local__'
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -71,4 +76,49 @@ export async function uploadInlineImages(html: string, toolId: string): Promise<
     endUploadSession()
   }
   return replaceInlineImages(html, pairs)
+}
+
+interface ProfileOption {
+  id: string
+  name: string
+  targetType: 'local' | 'remote' | 'cloud'
+  label: string
+}
+
+/** 富文本「图片库」桥接：来源 = 本地默认 + 已配置远程/云 profile；密钥解析全在 main */
+export function createImageLibrary(toolId: string): RichTextImageLibrary {
+  const requestOf = (source: RichTextImageSource, target?: RichTextImageTarget) => ({
+    toolId,
+    targetType: source.type,
+    profileId: source.type === 'local' ? undefined : source.id,
+    overrides: {
+      localDir: target?.localDir || undefined,
+      remotePath: target?.remotePath || undefined,
+      bucket: target?.bucket || undefined,
+      prefix: target?.prefix || undefined,
+    },
+  })
+  return {
+    async sources(): Promise<RichTextImageSource[]> {
+      const profiles = (await host.upload.profiles()) as ProfileOption[]
+      return [
+        { id: LOCAL_SOURCE_ID, type: 'local', label: '本地（应用默认上传目录）' },
+        ...profiles.map((p) => ({ id: p.id, type: p.targetType, label: p.label })),
+      ]
+    },
+    async upload(file, source, target) {
+      const dataUrl = await readAsDataUrl(file)
+      const result = await host.upload.single({ ...requestOf(source, target ?? {}), name: file.name, size: file.size, mime: file.type, dataUrl })
+      return result.url
+    },
+    async list(source, target) {
+      const items = (await host.upload.listImages(requestOf(source, target ?? {}))) as {
+        url: string
+        name: string
+        size?: number
+        modified?: number
+      }[]
+      return items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified }))
+    },
+  }
 }

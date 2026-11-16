@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
 import HomePage from './pages/HomePage.vue'
 import ConfigPage from './pages/ConfigPage.vue'
+import RichTextPage from './pages/RichTextPage.vue'
 import { toolId } from './state'
 
 /**
@@ -20,12 +21,12 @@ const props = defineProps<{ menu?: string; toolId?: string }>()
 toolId.value = props.toolId ?? ''
 
 const tab = computed(() => props.menu ?? 'home')
-const pages: Record<string, unknown> = { home: HomePage, config: ConfigPage }
+const pages: Record<string, unknown> = { home: HomePage, config: ConfigPage, richtext: RichTextPage }
 const active = computed(() => pages[tab.value] ?? HomePage)
 </script>
 
 <template>
-  <ToolPageLayout :title="tab === 'config' ? '工具配置' : '能力演示'">
+  <ToolPageLayout :title="tab === 'config' ? '工具配置' : tab === 'richtext' ? '富文本双实例（B7）' : '能力演示'">
     <component :is="active" :menu="menu" :tool-id="toolId" />
   </ToolPageLayout>
 </template>

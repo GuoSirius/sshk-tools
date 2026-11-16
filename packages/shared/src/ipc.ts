@@ -54,6 +54,8 @@ export const IPC_CHANNELS = {
   /** 复用 llm:getApiKey 范式：用户主动点「查看」才下发已存密钥，不随列表默认下发 */
   uploadSecretGet: 'upload:secret:get',  /** 每个 remote / cloud profile 独立连通性自检；可用表单里尚未保存的临时值，不落盘 */
   uploadTest: 'upload:test',
+  /** 富文本图片库：按来源（本地/远程/云）列出已有图片，供「从图床选择插入」 */
+  uploadListImages: 'upload:images:list',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

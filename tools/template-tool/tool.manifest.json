@@ -20,6 +20,11 @@
       "icon": "M13 2 4 14h6l-1 8 9-12h-6l1-8z"
     },
     {
+      "id": "richtext",
+      "label": "富文本双实例",
+      "icon": "M4 4h16v12H4zM4 20h16"
+    },
+    {
       "id": "config",
       "label": "工具配置"
     }

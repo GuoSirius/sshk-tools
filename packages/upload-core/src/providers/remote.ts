@@ -3,7 +3,8 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
-import type { UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import { byNewestFirst, isImageFileName } from '../image-files'
+import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /** T4：远程 profile（ftp | sftp 合并，protocol 区分）。连接信息由 main 进程从 settings/safeStorage 解析后注入 */
 export interface RemoteProfile {
@@ -36,6 +37,87 @@ export class RemoteUploadProvider implements UploadProvider {
       ? `${this.profile.baseUrl.replace(/\/+$/, '')}/${name}`
       : `${this.profile.protocol}://${this.profile.host}${remotePath}`
     return { url, key: remotePath, name: file.name }
+  }
+
+  /** 列出远端目录下已有图片（新在前）；无 baseUrl 时回填 protocol://host 形式 URL */
+  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+    const dir = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
+    const limit = ctx.limit ?? 200
+    if (this.profile.protocol === 'ftp') {
+      const client = new FtpClient()
+      try {
+        await client.access({
+          host: this.profile.host,
+          port: this.profile.port ?? 21,
+          user: this.profile.username,
+          password: this.profile.password,
+          secure: false,
+        })
+        const list = await client.list(dir)
+        return list
+          .filter((i) => !i.isDirectory && isImageFileName(i.name))
+          .slice(0, limit)
+          .map((i) => ({
+            url: this.urlFor(dir, i.name),
+            key: `${dir}/${i.name}`,
+            name: i.name,
+            size: i.size ?? 0,
+            modified: i.modifiedAt ? i.modifiedAt.getTime() : 0,
+          }))
+          .sort(byNewestFirst)
+      } finally {
+        client.close()
+      }
+    }
+    return await new Promise<UploadedImageInfo[]>((resolve, reject) => {
+      const conn = new SshClient()
+      conn.on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err) {
+            conn.end()
+            reject(err)
+            return
+          }
+          sftp.readdir(dir, (e, list) => {
+            conn.end()
+            if (e) {
+              reject(e)
+              return
+            }
+            resolve(
+              (list ?? [])
+                .filter((i) => isImageFileName(i.filename))
+                .slice(0, limit)
+                .map((i) => {
+                  const attrs = i.attrs as { size?: number; mtime?: number } | undefined
+                  return {
+                    url: this.urlFor(dir, i.filename),
+                    key: `${dir}/${i.filename}`,
+                    name: i.filename,
+                    size: Number(attrs?.size ?? 0) || 0,
+                    modified: Number(attrs?.mtime ?? 0) ? Number(attrs?.mtime) * 1000 : 0,
+                  }
+                })
+                .sort(byNewestFirst),
+            )
+          })
+        })
+      })
+      conn.on('error', reject)
+      conn.connect({
+        host: this.profile.host,
+        port: this.profile.port ?? 22,
+        username: this.profile.username,
+        password: this.profile.password,
+      })
+    })
+  }
+
+  /** 图库 URL 与 upload() 回填口径一致：baseUrl 优先 */
+  private urlFor(dir: string, name: string): string {
+    if (this.profile.baseUrl) return `${this.profile.baseUrl.replace(/\/+$/, '')}/${name}`
+    const p = encodeURI(`${dir}/${name}`)
+    return `${this.profile.protocol}://${this.profile.host}${p}`
   }
 
   private payloadOf(file: UploadFile): Buffer {

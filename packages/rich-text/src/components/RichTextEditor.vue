@@ -8,8 +8,20 @@ import {
   type IEditorConfig,
   type IToolbarConfig,
 } from '@wangeditor/editor'
-import type { RichTextImageRule, RichTextUploadHook } from '../types'
+import type {
+  RichTextImageLibrary,
+  RichTextImageRule,
+  RichTextUploadHook,
+} from '../types'
 import { toDisplayHtml, toStoredHtml } from '../display'
+import {
+  DEFAULT_GROUP_IMAGE_INDEX,
+  IMAGE_LIBRARY_MENU_KEY,
+  bindImageLibrary,
+  registerImageLibraryMenu,
+  unbindImageLibrary,
+} from '../image-library-menu'
+import ImageLibraryDialog from './ImageLibraryDialog.vue'
 
 /**
  * 共享富文本编辑器（从 edm-studio 迁入，R27 B3）。
@@ -35,6 +47,13 @@ import { toDisplayHtml, toStoredHtml } from '../display'
  *   - unFullScreen 延时里重新取 $box.parent() 仍是 .rich，能正确摘掉 class。
  * 另外 wangEditor 自带 CSS 只有 position:fixed，没有 z-index 与不透明背景，
  * 必须补上，否则左侧菜单 / 表单会从下面透出来。
+ *
+ * 工具栏（用户反馈 2026-11-16）：
+ *   - 取消上一版的自定义 toolbarKeys 平铺分组，恢复 wangEditor 原始默认分组顺序；
+ *     仅当无上传钩子时 excludeKeys 剔除 uploadImage / uploadVideo（缺钩子的上传菜单
+ *     只会走默认 ajax 上传，必失败）；有图片库时用 insertKeys 在默认 group-image 前
+ *     插入「图片库」菜单，其余不动。
+ *   - 图片库弹窗（用户需求 ④⑤）：本地/远程/云来源 + 桶/目录专属项 + 上传 + 列图插入。
  */
 const props = withDefaults(
   defineProps<{
@@ -43,8 +62,16 @@ const props = withDefaults(
     /** 工具侧注入；不传则隐藏上传菜单，降级为普通富文本 */
     onUploadImage?: RichTextUploadHook
     imageRule?: RichTextImageRule
+    /** 图片库桥接（来源/上传/列图）；不传则不显示「图片库」菜单 */
+    imageLibrary?: RichTextImageLibrary
   }>(),
-  { modelValue: '', readonly: false, onUploadImage: undefined, imageRule: undefined },
+  {
+    modelValue: '',
+    readonly: false,
+    onUploadImage: undefined,
+    imageRule: undefined,
+    imageLibrary: undefined,
+  },
 )
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
@@ -55,6 +82,7 @@ const editorBoxEl = ref<HTMLElement | null>(null)
 /** 全屏时 Teleport 到 body 的整块容器，也是 wangEditor 加 class 的节点 */
 const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
+const libraryOpen = ref(false)
 let classObserver: MutationObserver | null = null
 let detachEvents: (() => void) | null = null
 
@@ -83,31 +111,18 @@ if (hook) {
   }
   editorConfig.MENU_CONF = conf
 }
+
 /**
- * 全量工具栏（用户反馈 2026-11-16：默认配置把删除线/行内代码/上下标/清除格式/对齐/缩进
- * 折叠进「…」下拉组，窄容器下折行后看着像「最小菜单」且凌乱）——全部展开平铺，按功能分组加分隔条。
- * keys 均已对照 @wangeditor/editor 5.1.23 源码核实注册（拼错会抛 Not found menu item factory）；
- * 图片/视频保留下拉组（平铺 6 个按钮反而更乱），无上传钩子时剔除 upload 菜单降级为 URL 直填。
+ * 工具栏：以 wangEditor 默认 toolbarKeys 为基线（用户拍板：保持原始默认分组顺序）。
+ * - 无上传钩子：剔除 uploadImage / uploadVideo，其余默认项原样保留；
+ * - 有图片库：insertKeys 在默认 group-image（下标 22，对照 5.1.23 默认数组核实）前插入本菜单。
  */
-function buildToolbarKeys(hasUpload: boolean): NonNullable<IToolbarConfig['toolbarKeys']> {
-  return [
-    'headerSelect', 'blockquote', '|',
-    'bold', 'underline', 'italic', 'through', 'code', 'sup', 'sub', 'clearStyle', '|',
-    'color', 'bgColor', '|',
-    'fontSize', 'fontFamily', 'lineHeight', '|',
-    'bulletedList', 'numberedList', 'todo', '|',
-    'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyJustify', '|',
-    'indent', 'delIndent', '|',
-    'emotion', 'insertLink', '|',
-    { key: 'group-image', title: '图片', menuKeys: hasUpload ? ['insertImage', 'uploadImage', 'editImage'] : ['insertImage'] },
-    { key: 'group-video', title: '视频', menuKeys: hasUpload ? ['insertVideo', 'uploadVideo'] : ['insertVideo'] },
-    'insertTable', '|',
-    'codeBlock', 'divider', '|',
-    'undo', 'redo', '|',
-    'fullScreen',
-  ]
+const toolbarConfig: Partial<IToolbarConfig> = {}
+if (!hook) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
+if (props.imageLibrary) {
+  registerImageLibraryMenu()
+  toolbarConfig.insertKeys = { index: DEFAULT_GROUP_IMAGE_INDEX, keys: [IMAGE_LIBRARY_MENU_KEY] }
 }
-const toolbarConfig: Partial<IToolbarConfig> = { toolbarKeys: buildToolbarKeys(Boolean(hook)) }
 
 onMounted(() => {
   const box = editorBoxEl.value
@@ -121,6 +136,9 @@ onMounted(() => {
   })
   editorRef.value = editor
   createToolbar({ editor, selector: box, config: toolbarConfig, mode: 'default' })
+
+  // 图片库菜单 → 本实例弹窗（WeakMap 按编辑器实例路由，双实例互不串扰）
+  if (props.imageLibrary) bindImageLibrary(editor, () => { libraryOpen.value = true })
 
   // 主链路：wangEditor 自带生命周期事件（core 内部 hoverbar 也监听这两个事件）。
   // 退出时 unFullScreen 先移除 class 再 emit，200ms 延时已走完，无需额外等待。
@@ -166,6 +184,7 @@ onBeforeUnmount(() => {
   classObserver = null
   detachEvents?.()
   detachEvents = null
+  if (editorRef.value) unbindImageLibrary(editorRef.value)
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
@@ -177,6 +196,12 @@ onBeforeUnmount(() => {
       <div ref="editorBoxEl" class="rich-inner" />
     </div>
   </Teleport>
+  <ImageLibraryDialog
+    v-if="imageLibrary"
+    v-model:open="libraryOpen"
+    :editor="editorRef ?? null"
+    :library="imageLibrary"
+  />
 </template>
 
 <style scoped>
@@ -197,61 +222,75 @@ onBeforeUnmount(() => {
 .rich-inner :deep(.w-e-toolbar) { order: 0; flex: 0 0 auto; }
 .rich-inner :deep(.w-e-text-container) { order: 1; flex: 1 1 auto; min-height: 200px; }
 
-:global(html.dark) .rich {
-  border-color: #333;
-  background: #181818;
+/**
+ * 暗色根治（用户反馈 2026-11-16 B3/B6，两处「改了没生效」的真正原因）：
+ * ① 变量必须挂在 html.dark 上而不是 .rich —— 工具栏悬浮 tooltip、下拉组、hoverbar、
+ *    弹层有的挂在 body（不在 .rich 内），挂 .rich 的变量到不了那里；
+ * ② 上一版把代码块背景变量写成了 --w-e-textarea-sight-bg-color（正确拼写是 slight），
+ *    覆盖从未生效，代码块一直用默认 #f5f2f0 白底 + 浅色文字 → 「查看源码看不清」。
+ * wangEditor 全部弹层/悬浮菜单都取自这一套变量，改这一处即可全局生效。
+ */
+:global(html.dark) {
   --w-e-toolbar-bg-color: #1f1f1f;
   --w-e-toolbar-color: #d4d4d4;
-  --w-e-toolbar-active-bg-color: #333;
+  --w-e-toolbar-active-bg-color: #3a3a3a;
+  --w-e-toolbar-active-color: #e8e8e8;
+  --w-e-toolbar-disabled-color: #666;
   --w-e-toolbar-border-color: #333;
   --w-e-textarea-bg-color: #181818;
   --w-e-textarea-color: #e5e5e5;
   --w-e-textarea-border-color: #333;
-  --w-e-textarea-sight-bg-color: #2a2a2a;
-  --w-e-selection-bg-color: rgba(64, 158, 255, 0.25);
-  --w-e-border-color: #333;
-  --w-e-modal-bg-color: #1f1f1f;
-  --w-e-modal-color: #d4d4d4;
+  --w-e-textarea-slight-bg-color: #121417;
+  --w-e-textarea-slight-border-color: #333;
+  --w-e-textarea-slight-color: #c9d1d9;
+  --w-e-textarea-selected-border-color: #409eff;
+  --w-e-textarea-handler-bg-color: #2a2a2a;
   --w-e-modal-button-bg-color: #2a2a2a;
   --w-e-modal-button-border-color: #444;
 }
 
-/**
- * 弹层与下拉的暗色补丁（用户反馈 2026-11-16：codeBlock 查看源码 textarea 白底看不清、
- * 「选择语言」下拉 hover 配色错乱）。选择列表/弹层由 wangEditor 动态挂载到 body，
- * 没有 scoped 属性——必须把【整个选择器】包进 :global()，否则 scoped 编译会往
- * 弹层选择器上拼 data-v 属性导致永远匹配不上（scoped 局部变量那条 .rich 能中，
- * 只是因为 .rich 是本组件自己的节点）。
- */
-:global(html.dark .w-e-modal) {
-  background-color: #1f1f1f;
-  color: #d4d4d4;
+:global(html.dark .rich) {
   border-color: #333;
+  background: #181818;
 }
-:global(html.dark .w-e-modal textarea),
-:global(html.dark .w-e-modal input[type='text']),
-:global(html.dark .w-e-modal input[type='number']),
-:global(html.dark .w-e-modal select) {
-  background-color: #181818;
-  color: #d4d4d4;
-  border-color: #444;
+
+/* hover 提示（tooltip）与选中文字的暗色可读性：active-color 变亮后 tooltip 反转为浅底深字 */
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code) {
+  text-shadow: none;
 }
-:global(html.dark .w-e-modal button) {
-  background-color: #2a2a2a;
-  border-color: #444;
-  color: #d4d4d4;
-}
-:global(html.dark .w-e-select-list) {
-  background-color: #1f1f1f;
-  border-color: #333;
-  color: #d4d4d4;
-}
-:global(html.dark .w-e-select-list li) { color: #d4d4d4; }
-:global(html.dark .w-e-select-list li:hover),
-:global(html.dark .w-e-select-list li.selected) {
-  background-color: #333;
-  color: #e5e5e5;
-}
+
+/* 代码块语法高亮 token：默认配色是给白底的，暗色下统一换成亮色系 */
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.cdata),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.comment),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.doctype),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.prolog) { color: #8b949e; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.punctuation) { color: #c9d1d9; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.boolean),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.constant),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.deleted),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.number),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.property),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.symbol),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.tag) { color: #79c0ff; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.attr-name),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.builtin),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.char),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.inserted),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.selector),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.string) { color: #a5d6ff; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.language-css .token.string),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.style .token.string),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.entity),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.operator),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.url) { color: #e3b341; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.atrule),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.attr-value),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.keyword) { color: #ff7b72; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.class-name),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.function) { color: #d2a8ff; }
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.important),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.regex),
+:global(html.dark .w-e-text-container [data-slate-editor] pre>code .token.variable) { color: #ffa657; }
 
 /**
  * 全屏（N12）：.rich 同时带自有 .is-fullscreen 与 wangEditor 的

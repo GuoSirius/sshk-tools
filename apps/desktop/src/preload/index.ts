@@ -120,6 +120,9 @@ const api = {
     /** 单个 profile 连通性自检；可带表单里尚未保存的临时密钥。返回结构化结果，不 reject */
     test: (req: unknown): Promise<{ ok: boolean; message: string }> =>
       invoke(IPC_CHANNELS.uploadTest, req),
+    /** 富文本图片库：按来源（本地/远程/云）列出已有图片 */
+    listImages: (req: unknown): Promise<{ url: string; key: string; name: string; size?: number; modified?: number }[]> =>
+      invoke(IPC_CHANNELS.uploadListImages, req),
   },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>

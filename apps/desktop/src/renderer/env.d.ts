@@ -106,7 +106,7 @@ interface Window {
     }
     /** R26 应用级上传能力（全局 profile / safeStorage 密钥不下发） */
     upload: {
-      single(req: { toolId?: string; name: string; size: number; mime?: string; source?: string; dataUrl?: string }): Promise<{ url: string; key?: string; name: string }>
+      single(req: { toolId?: string; name: string; size: number; mime?: string; source?: string; dataUrl?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string } }): Promise<{ url: string; key?: string; name: string }>
       batch(reqs: { toolId?: string; name: string; size: number; mime?: string; source?: string; dataUrl?: string }[]): Promise<{ url: string; key?: string; name: string }[]>
       onProgress(callback: (payload: { name: string; percent: number; status: string; error?: string }) => void): void
       getConfig(): Promise<import('@sshk/shared').UploadGlobalConfig>
@@ -117,6 +117,8 @@ interface Window {
       getSecret(profileId: string): Promise<string>
       /** N11：返回结构化结果，校验失败不 reject，避免主进程控制台刷堆栈 */
       test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<{ ok: boolean; message: string }>
+      /** 富文本图片库：按来源列出已有图片 */
+      listImages(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string }; limit?: number }): Promise<{ url: string; key: string; name: string; size?: number; modified?: number }[]>
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>

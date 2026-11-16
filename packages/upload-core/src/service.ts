@@ -1,6 +1,7 @@
 import { mapWithConcurrency, withRetry } from './concurrency'
 import { DEFAULT_VALIDATION, mergeValidation, validateFile } from './validation'
 import type {
+  UploadedImageInfo,
   UploadBatchOptions,
   UploadContext,
   UploadFile,
@@ -60,6 +61,13 @@ export class UploadService {
       this.notify({ name: file.name, percent: 0, status: 'failed', error: (err as Error).message })
       throw err
     }
+  }
+
+  /** 富文本图片库：列出某来源已有图片；Provider 不支持时给出明确错误 */
+  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+    const provider = this.providerFor(ctx.targetType)
+    if (!provider.listImages) throw new Error(`${ctx.targetType} 来源不支持列出图片`)
+    return provider.listImages(ctx)
   }
 
   /** 批量：先整批校验（避免部分上传后才发现不合规），再按并发上限上传，逐个重试 */

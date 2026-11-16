@@ -36,7 +36,7 @@ import { defaultConfigPath, listSnapshots, restoreSnapshot, clearSnapshots } fro
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
-import { UploadRuntime, type UploadRequest, type UploadTestRequest } from './upload'
+import { UploadRuntime, type UploadListRequest, type UploadRequest, type UploadTestRequest } from './upload'
 import { installLocalResHandler, registerLocalResScheme } from './local-res'
 
 /** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
@@ -647,6 +647,8 @@ async function registerIpc(): Promise<void> {
   // N3 / N4：按 id 主动查看密钥、按 profile 独立连通性自检（临时密钥不落盘）
   handleOk(IPC_CHANNELS.uploadSecretGet, (_event, profileId: string) => uploads.getSecret(profileId))
   handleOk(IPC_CHANNELS.uploadTest, (_event, req: UploadTestRequest) => uploads.test(req))
+  // 富文本图片库：按来源列出已有图片（上传 runtime 内部解析 profile 与密钥）
+  handleOk(IPC_CHANNELS.uploadListImages, (_event, req: UploadListRequest) => uploads.listImages(req))
 
   // ── OS 能力（宿主提供） ──
   handleOk(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {

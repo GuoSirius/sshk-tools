@@ -6,7 +6,7 @@ import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
 import { CodeEditor } from '@sshk/code-editor'
 import { useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
-import { createImageUploader } from './upload.js'
+import { createImageLibrary, createImageUploader } from './upload.js'
 import { llmApi, type LlmProviderLite } from './shared'
 import { generateSample, polishRichText, type ChatMessage } from './ai-copy'
 
@@ -34,6 +34,8 @@ const errors = computed(() => validateModel(props.fields, props.modelValue))
 /** 上传钩子按宿主注入的 toolId 生成，与 ImageField 共用同一实现（C2 唯一注入点） */
 const toolId = useToolId()
 const uploader = computed<RichTextUploadHook>(() => createImageUploader(toolId.value))
+/** 图片库桥接：富文本图片菜单可选本地/远程/云来源，可上传也可列图插入 */
+const library = computed(() => createImageLibrary(toolId.value))
 
 /** 分组分隔：group 与上一字段不同时插分隔条 */
 const rows = computed(() => {
@@ -213,6 +215,7 @@ function acceptPolish(): void {
             :model-value="strVal(f.key)"
             :readonly="readonly"
             :on-upload-image="uploader"
+            :image-library="library"
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->

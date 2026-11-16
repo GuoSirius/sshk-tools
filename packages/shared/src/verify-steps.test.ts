@@ -27,4 +27,11 @@ describe('VERIFY_STEPS 自动判定 spec 契约', () => {
     const ids = VERIFY_STEPS.map((s) => s.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
+
+  it('route 直达 target 必须是真实工具 id（B/D 组曾写成 edm/upload 短名，点直达被路由打回桌面）', () => {
+    const bad = VERIFY_STEPS
+      .filter((s) => s.entry?.type === 'route')
+      .filter((s) => !REAL_TOOL_IDS.has(s.entry!.target))
+    expect(bad.map((s) => `${s.id}:${s.entry!.target}`)).toEqual([])
+  })
 })

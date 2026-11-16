@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@wangeditor/editor": "latest",
+    "element-plus": "latest",
     "marked": "latest",
     "turndown": "latest",
     "vue": "latest"

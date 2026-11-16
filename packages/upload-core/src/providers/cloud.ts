@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import { byNewestFirst, isImageFileName } from '../image-files'
+import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /**
  * T5 / 复核项 3：云上传 Provider，覆盖常见厂商与 S3 兼容服务。
@@ -133,6 +134,146 @@ function publicUrl(profile: CloudProfile, key: string, sdkUrl?: string): string 
 }
 
 interface PutOutcome { url?: string }
+
+/**
+ * 各云 SDK 返回结构差异极大（Contents/contents/items/objects、大小写不一、
+ * OBS 还多包一层 InterfaceResult），这里做深度兜底解析：浅层常见字段优先，
+ * 否则按任意键名向下找「对象数组」，避免逐家写死猜错层级。
+ */
+function collectObjects(res: unknown, depth = 0): Record<string, unknown>[] {
+  if (!res || typeof res !== 'object' || depth > 4) return []
+  const r = res as Record<string, unknown>
+  for (const k of ['objects', 'items', 'Contents', 'contents']) {
+    const v = r[k]
+    if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && v[0] !== null) {
+      return v as Record<string, unknown>[]
+    }
+  }
+  for (const v of Object.values(r)) {
+    const found = collectObjects(v, depth + 1)
+    if (found.length > 0) return found
+  }
+  return []
+}
+
+function strOf(obj: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k]
+    if (v != null && v !== '') return String(v)
+  }
+  return ''
+}
+
+async function listObjects(
+  profile: CloudProfile,
+  mod: SdkModule,
+  q: { bucket: string; prefix: string; limit: number },
+): Promise<UploadedImageInfo[]> {
+  const ep = profile.endpoint?.trim() ?? ''
+  let raw: unknown
+  switch (profile.provider) {
+    case 'aliyun-oss': {
+      const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
+        listV2(q: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
+      raw = await client.listV2({ 'max-keys': q.limit, prefix: q.prefix || undefined })
+      break
+    }
+    case 'tencent-cos': {
+      const COS = ctorOf(mod, ['default', 'COS'], 'cos-nodejs-sdk-v5') as new (o: Record<string, unknown>) => {
+        listObjects(p: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void
+      }
+      const client = new COS({ SecretId: profile.accessKeyId, SecretKey: profile.accessKeySecret })
+      raw = await new Promise((resolve, reject) => {
+        client.listObjects({ Bucket: q.bucket, Region: profile.region, Prefix: q.prefix || undefined, MaxKeys: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      })
+      break
+    }
+    case 'qiniu': {
+      const qn = nsOf(mod) as unknown as {
+        auth: { digest: { Mac: new (ak: string, sk: string) => unknown } }
+        conf: { Config: new (o: Record<string, unknown>) => unknown }
+        rs: { BucketManager: new (mac: unknown, c: unknown) => { listPrefix(b: string, o: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void } }
+        zone: Record<string, unknown>
+      }
+      const mac = new qn.auth.digest.Mac(profile.accessKeyId, profile.accessKeySecret)
+      const config = new qn.conf.Config({ zone: qn.zone[`Zone_${profile.region || 'z0'}`] ?? qn.zone['Zone_z0'] })
+      const manager = new qn.rs.BucketManager(mac, config)
+      raw = await new Promise((resolve, reject) => {
+        manager.listPrefix(q.bucket, { prefix: q.prefix || undefined, limit: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      })
+      break
+    }
+    case 'aws-s3': {
+      const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => { send(cmd: unknown): Promise<unknown> }
+      const ListCommand = mod['ListObjectsV2Command'] as new (o: Record<string, unknown>) => unknown
+      const client = new S3Client({
+        region: profile.region || 'auto', endpoint: ep ? withScheme(ep) : undefined, forcePathStyle: Boolean(ep),
+        credentials: { accessKeyId: profile.accessKeyId, secretAccessKey: profile.accessKeySecret },
+      })
+      raw = await client.send(new ListCommand({ Bucket: q.bucket, Prefix: q.prefix || undefined, MaxKeys: q.limit }))
+      break
+    }
+    case 'huawei-obs': {
+      const ObsClient = ctorOf(mod, ['default', 'ObsClient'], 'esdk-obs-nodejs') as new (o: Record<string, unknown>) => {
+        listObjects(p: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new ObsClient({ access_key_id: profile.accessKeyId, secret_access_key: profile.accessKeySecret, server: withScheme(ep) })
+      raw = await client.listObjects({ Bucket: q.bucket, Prefix: q.prefix || undefined, MaxKeys: q.limit })
+      break
+    }
+    case 'baidu-bos': {
+      const BosClient = ctorOf(mod, ['BosClient', 'default'], 'bce-sdk-js') as new (o: Record<string, unknown>) => {
+        listObjects(b: string, o?: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new BosClient({ endpoint: withScheme(ep || 'bj.bcebos.com'), credentials: { ak: profile.accessKeyId, sk: profile.accessKeySecret } })
+      raw = await client.listObjects(q.bucket, { prefix: q.prefix || undefined, limit: q.limit })
+      break
+    }
+    case 'azure-blob': {
+      const BlobServiceClient = mod['BlobServiceClient'] as new (url: string, cred: unknown) => {
+        getContainerClient(name: string): {
+          listBlobsFlat(o: Record<string, unknown>): { byPage(o: Record<string, unknown>): { next(): Promise<unknown> } }
+        }
+      }
+      const Credential = mod['StorageSharedKeyCredential'] as new (account: string, key: string) => unknown
+      const service = new BlobServiceClient(withScheme(ep), new Credential(profile.accessKeyId, profile.accessKeySecret))
+      const page = (await service
+        .getContainerClient(q.bucket)
+        .listBlobsFlat({ prefix: q.prefix || undefined, includeDeleted: false })
+        .byPage({ pageSize: q.limit })
+        .next()) as { value?: { blobs?: Record<string, unknown>[] } }
+      const blobs = (page.value?.blobs ?? []) as Record<string, unknown>[]
+      // Azure 字段嵌在 properties 里，先摊平成 key/size/modified 再走统一解析
+      raw = {
+        contents: blobs.map((b) => ({
+          Key: String(b['name'] ?? ''),
+          Size: (b['properties'] as Record<string, unknown> | undefined)?.['contentLength'],
+          LastModified: (b['properties'] as Record<string, unknown> | undefined)?.['lastModified'],
+        })),
+      }
+      break
+    }
+    default:
+      throw new Error(`不支持的云厂商：${profile.provider}`)
+  }
+  const limit = q.limit
+  const out: UploadedImageInfo[] = []
+  for (const o of collectObjects(raw)) {
+    const key = strOf(o, ['Key', 'key', 'name'])
+    if (!key || !isImageFileName(key)) continue
+    out.push({
+      url: publicUrl(profile, key),
+      key,
+      name: key.slice(key.lastIndexOf('/') + 1),
+      size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
+      // 七牛 putTime 是 100ns 单位，其他家是 ISO/时间戳；仅用于排序展示，不做换算
+      modified: Number(strOf(o, ['LastModified', 'lastModified', 'putTime']).replace(/[^0-9]/g, '')) || 0,
+    })
+  }
+  return out.sort(byNewestFirst).slice(0, limit)
+}
 
 async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buffer, ctx: UploadContext): Promise<PutOutcome> {
   const bucket = ctx.overrides?.bucket || profile.bucket
@@ -339,5 +480,15 @@ export class CloudUploadProvider implements UploadProvider {
     if (!p.accessKeyId.trim() || !p.accessKeySecret.trim()) throw new Error('AccessKey ID / Secret 未配置完整')
     const mod = await loadSdk(specOf(p))
     return await probe(p, mod)
+  }
+
+  /** 富文本图片库：列出 bucket（可被 overrides.bucket / overrides.prefix 覆盖）下已有图片 */
+  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+    const mod = await loadSdk(specOf(this.profile))
+    return await listObjects(this.profile, mod, {
+      bucket: ctx.overrides?.bucket || this.profile.bucket,
+      prefix: (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, ''),
+      limit: ctx.limit ?? 200,
+    })
   }
 }

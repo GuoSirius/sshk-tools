@@ -6,10 +6,13 @@ import {
   CloudUploadProvider,
 } from '@sshk/upload-core'
 import type {
+  UploadedImageInfo,
   UploadContext,
   UploadFile,
+  UploadOverrides,
   UploadProgress,
   UploadResult,
+  UploadTargetType,
   UploadValidation,
 } from '@sshk/upload-core'
 import {
@@ -47,6 +50,19 @@ export interface UploadRequest {
   source?: string
   /** data URL（来自 <input type=file> / 富文本 File） */
   dataUrl?: string
+  /** 请求级覆盖：富文本「图片库」等场景显式指定来源；缺省回落工具级配置 */
+  targetType?: UploadTargetType
+  profileId?: string
+  overrides?: UploadOverrides
+}
+
+/** 图库列图请求：只读，不需要文件内容 */
+export interface UploadListRequest {
+  toolId?: string
+  targetType?: UploadTargetType
+  profileId?: string
+  overrides?: UploadOverrides
+  limit?: number
 }
 
 export interface UploadTestRequest {
@@ -92,15 +108,23 @@ export class UploadRuntime {
     const toolId = String(req.toolId ?? '').trim()
     const tool = resolveUploadTool(toolId ? services.config.get(`tools.${toolId}.upload`) : undefined)
 
+    // 请求级显式指定（富文本图片库选了某个远程/云 profile）优先，其次工具级配置
+    const reqTarget = req.targetType
+    const targetType: UploadTargetType =
+      reqTarget === 'local' || reqTarget === 'remote' || reqTarget === 'cloud' ? reqTarget : tool.targetType
+    const profileId = req.profileId || tool.profileId
+    const ov = req.overrides ?? {}
+    const overrides: UploadOverrides = {
+      localDir: ov.localDir || tool.overrides.localDir || undefined,
+      remotePath: ov.remotePath || tool.overrides.remotePath || undefined,
+      bucket: ov.bucket || tool.overrides.bucket || undefined,
+      prefix: ov.prefix || tool.overrides.prefix || undefined,
+    }
+
     const ctx: UploadContext = {
-      targetType: tool.targetType,
-      profileId: tool.profileId || undefined,
-      overrides: {
-        localDir: tool.overrides.localDir || undefined,
-        remotePath: tool.overrides.remotePath || undefined,
-        bucket: tool.overrides.bucket || undefined,
-        prefix: tool.overrides.prefix || undefined,
-      },
+      targetType,
+      profileId: profileId || undefined,
+      overrides,
       validation: tool.validation,
     }
     const globalValidation: UploadValidation = {
@@ -113,8 +137,8 @@ export class UploadRuntime {
     })
     service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
 
-    if (tool.targetType === 'remote') {
-      const p = pickRemoteProfile(global, tool.profileId)
+    if (ctx.targetType === 'remote') {
+      const p = pickRemoteProfile(global, ctx.profileId)
       if (!p) throw new Error('未找到远程上传 profile：请先在「上传配置」中添加并选择')
       const password = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
       service.register(new RemoteUploadProvider({
@@ -129,8 +153,8 @@ export class UploadRuntime {
       }))
       ctx.profileId = p.id
     }
-    if (tool.targetType === 'cloud') {
-      const p = pickCloudProfile(global, tool.profileId)
+    if (ctx.targetType === 'cloud') {
+      const p = pickCloudProfile(global, ctx.profileId)
       if (!p) throw new Error('未找到云上传 profile：请先在「上传配置」中添加并选择')
       const accessKeySecret = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
       service.register(new CloudUploadProvider({
@@ -152,6 +176,60 @@ export class UploadRuntime {
   single(req: UploadRequest): Promise<UploadResult> {
     const { service, ctx, file } = this.prepare(req, this.globalConfig())
     return service.upload(file, ctx)
+  }
+
+  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件） */
+  async listImages(req: UploadListRequest): Promise<UploadedImageInfo[]> {
+    const global = this.globalConfig()
+    const toolId = String(req?.toolId ?? '').trim()
+    const tool = resolveUploadTool(toolId ? this.opts.services.config.get(`tools.${toolId}.upload`) : undefined)
+    const reqTarget = req?.targetType
+    const targetType: UploadTargetType =
+      reqTarget === 'local' || reqTarget === 'remote' || reqTarget === 'cloud' ? reqTarget : tool.targetType
+    const ov = req?.overrides ?? {}
+    const ctx: UploadContext = {
+      targetType,
+      profileId: req?.profileId || tool.profileId || undefined,
+      overrides: {
+        localDir: ov.localDir || tool.overrides.localDir || undefined,
+        remotePath: ov.remotePath || tool.overrides.remotePath || undefined,
+        bucket: ov.bucket || tool.overrides.bucket || undefined,
+        prefix: ov.prefix || tool.overrides.prefix || undefined,
+      },
+    }
+    const service = new UploadService({})
+    service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
+    if (ctx.targetType === 'remote') {
+      const p = pickRemoteProfile(global, ctx.profileId)
+      if (!p) throw new Error('未找到远程上传 profile：请先在「上传配置」中添加并选择')
+      service.register(new RemoteUploadProvider({
+        protocol: p.protocol,
+        host: p.host,
+        port: p.port,
+        username: p.username,
+        password: this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id),
+        remoteDir: p.remoteDir,
+        passive: p.passive,
+        baseUrl: p.baseUrl,
+      }))
+      ctx.profileId = p.id
+    }
+    if (ctx.targetType === 'cloud') {
+      const p = pickCloudProfile(global, ctx.profileId)
+      if (!p) throw new Error('未找到云上传 profile：请先在「上传配置」中添加并选择')
+      service.register(new CloudUploadProvider({
+        provider: p.provider,
+        sdk: uploadVendorMeta(p.provider).sdk,
+        region: p.region,
+        endpoint: p.endpoint,
+        bucket: p.bucket,
+        accessKeyId: p.accessKeyId,
+        accessKeySecret: this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id),
+        baseUrl: p.baseUrl,
+      }))
+      ctx.profileId = p.id
+    }
+    return service.listImages({ ...ctx, limit: req?.limit })
   }
 
   /** 批量共用第一个请求解析出的工具级配置（同一批文件应属同一工具） */

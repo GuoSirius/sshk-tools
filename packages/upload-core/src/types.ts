@@ -52,6 +52,17 @@ export interface UploadResult {
   name: string
 }
 
+/** 图床已有图片（富文本图片库 / 图床浏览用） */
+export interface UploadedImageInfo {
+  url: string
+  /** 云对象 key / 远程路径 / 本地文件名 */
+  key: string
+  name: string
+  size?: number
+  /** 毫秒时间戳（七牛 putTime 是 100ns 单位，仅用于排序展示） */
+  modified?: number
+}
+
 export type UploadStatus = 'pending' | 'uploading' | 'success' | 'failed'
 
 export interface UploadProgress {
@@ -67,6 +78,8 @@ export interface UploadProvider {
   upload(file: UploadFile, ctx: UploadContext): Promise<UploadResult>
   /** 可选扩展点：Provider 自带的原生批量传输；Service 默认用并发单文件实现 */
   uploadBatch?(files: UploadFile[], ctx: UploadContext): Promise<UploadResult[]>
+  /** 可选扩展点：列出该来源已有图片（富文本「从图床选择插入」用）；不支持时 Service 抛错 */
+  listImages?(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]>
 }
 
 export interface UploadBatchOptions {
