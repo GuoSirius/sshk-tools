@@ -513,9 +513,11 @@ onMounted(() => {
 .path-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .path-row > :first-child { flex: 1; min-width: 0; }
 .path-row > :last-child { flex: none; }
-.profile { border: 1px dashed var(--sshk-border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.profile { border: 1px dashed var(--sshk-border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
 .profile.is-open { border-style: solid; border-color: var(--el-color-primary-light-5); }
 .profile-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 展开时头部与表单拉开间距；收起态保持紧凑 */
+.is-open .profile-head { margin-bottom: 10px; }
 .item-title { font-weight: 600; flex: none; }
 .row-detail { font-size: 12px; opacity: .65; flex: 1 1 180px; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-ops { display: flex; align-items: center; gap: 6px; margin-left: auto; }
