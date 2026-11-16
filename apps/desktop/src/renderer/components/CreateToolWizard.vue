@@ -210,7 +210,15 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
 
       <!-- 中间主体：左表单 / 右 JSON 各自独立滚动，互不影响 -->
       <div class="wizard-body">
-      <div class="wizard-left">
+      <!-- 左栏：实时预览（与落盘共用同一份生成器），独立滚动 -->
+      <div class="wizard-preview">
+        <div class="preview-title">tool.manifest.json 实时预览</div>
+        <div v-if="preview.error" class="error-box">{{ preview.error }}</div>
+        <pre v-else class="preview-json">{{ preview.manifest }}</pre>
+      </div>
+
+
+      <div class="wizard-form">
         <!-- Step 1 基本信息 -->
         <el-form v-show="step === 0" label-width="92px" size="small" class="pane">
           <el-form-item label="工具 id" required>
@@ -319,14 +327,7 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
         <div v-if="stepErrors.length" class="error-box">
           <div v-for="e in stepErrors" :key="e">⚠ {{ e }}</div>
         </div>
-      </div><!-- /wizard-left -->
-
-      <!-- 右栏：实时预览（与落盘共用同一份生成器），独立滚动 -->
-      <div class="wizard-right">
-        <div class="preview-title">tool.manifest.json 实时预览</div>
-        <div v-if="preview.error" class="error-box">{{ preview.error }}</div>
-        <pre v-else class="preview-json">{{ preview.manifest }}</pre>
-      </div>
+      </div><!-- /wizard-form -->
       </div><!-- /wizard-body -->
 
       <!-- 底部操作栏：固定，按钮靠右 -->
@@ -356,8 +357,8 @@ function menuFile(id: string): string { return `pages/${pascalCase(id || 'page')
 .wizard { display: flex; flex-direction: column; height: min(74vh, 700px); }
 .wizard-head { flex: none; padding: 4px 0 14px; }
 .wizard-body { flex: 1; min-height: 0; display: flex; gap: 14px; }
-.wizard-left { flex: 1.2; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 6px; }
-.wizard-right { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.wizard-form { flex: 1.2; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 6px; }
+.wizard-preview { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .pane { min-height: 0; }
 .row-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .field-row { flex-wrap: wrap; }
