@@ -652,3 +652,20 @@ body {
 .el-scrollbar__bar .el-scrollbar__thumb {
   border-radius: 4px;
 }
+
+/* ── 图片预览大图查看器暗色适配（viewer 传送挂到 body，必须写全局） ──
+   EP 默认把 actions/关闭/箭头底色写死为 var(--el-text-color-regular)（暗色下是浅灰）
+   配白色图标 → 暗色主题下出现白块白图标。这里统一改为跟随 --sshk-* 主题。 */
+html.dark .el-image-viewer__actions,
+html.dark .el-image-viewer__close,
+html.dark .el-image-viewer__prev,
+html.dark .el-image-viewer__next {
+  background-color: color-mix(in srgb, var(--sshk-panel) 90%, transparent);
+  border-color: var(--sshk-border);
+}
+html.dark .el-image-viewer__actions__inner,
+html.dark .el-image-viewer__close,
+html.dark .el-image-viewer__prev,
+html.dark .el-image-viewer__next {
+  color: var(--sshk-text);
+}

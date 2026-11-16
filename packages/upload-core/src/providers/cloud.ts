@@ -190,7 +190,9 @@ async function listCloudPage(
   q: { bucket: string; prefix: string; pageSize: number; cursor?: string | null; delimiter?: boolean },
 ): Promise<CloudPage> {
   const ep = profile.endpoint?.trim() ?? ''
-  const prefix = q.prefix || undefined
+  // delimiter 列目录时必须带尾斜杠：OSS/S3 系对 prefix='dir'（无斜杠）会把 'dir/'
+  // 本身作为唯一 CommonPrefix 返回而非其子级，导致目录树只列得出第一层
+  const prefix = q.prefix ? (q.delimiter ? `${q.prefix.replace(/\/+$/, '')}/` : q.prefix) || undefined : undefined
   const delimiter = q.delimiter ? '/' : undefined
   switch (profile.provider) {
     case 'aliyun-oss': {
