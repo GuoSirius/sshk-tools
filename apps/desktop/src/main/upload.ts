@@ -6,7 +6,7 @@ import {
   CloudUploadProvider,
 } from '@sshk/upload-core'
 import type {
-  UploadedImageInfo,
+  UploadedImagePage,
   UploadContext,
   UploadFile,
   UploadOverrides,
@@ -63,6 +63,8 @@ export interface UploadListRequest {
   profileId?: string
   overrides?: UploadOverrides
   limit?: number
+  /** 列图翻页游标：传上次返回的 nextCursor 续拉 */
+  cursor?: string
 }
 
 export interface UploadTestRequest {
@@ -232,10 +234,10 @@ export class UploadRuntime {
     return { service, ctx }
   }
 
-  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件） */
-  async listImages(req: UploadListRequest): Promise<UploadedImageInfo[]> {
+  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件）；返回分页与游标供大目录续拉 */
+  async listImages(req: UploadListRequest): Promise<UploadedImagePage> {
     const { service, ctx } = this.readonlyList(req)
-    return service.listImages({ ...ctx, limit: req?.limit })
+    return service.listImages({ ...ctx, limit: req?.limit, cursor: req?.cursor })
   }
 
   /** 富文本图片库：按来源列出真实目录（只读）；失败原样抛出，由前端降级并提示原因 */

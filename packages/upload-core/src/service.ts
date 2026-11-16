@@ -1,7 +1,7 @@
 import { mapWithConcurrency, withRetry } from './concurrency'
 import { DEFAULT_VALIDATION, mergeValidation, validateFile } from './validation'
 import type {
-  UploadedImageInfo,
+  UploadedImagePage,
   UploadBatchOptions,
   UploadContext,
   UploadFile,
@@ -63,8 +63,8 @@ export class UploadService {
     }
   }
 
-  /** 富文本图片库：列出某来源已有图片；Provider 不支持时给出明确错误 */
-  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+  /** 富文本图片库：列出某来源已有图片（跟随翻页分页）；Provider 不支持时给出明确错误 */
+  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
     const provider = this.providerFor(ctx.targetType)
     if (!provider.listImages) throw new Error(`${ctx.targetType} 来源不支持列出图片`)
     return provider.listImages(ctx)

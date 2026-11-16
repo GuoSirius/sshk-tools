@@ -1,14 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { mapWithConcurrency } from '../concurrency'
 import { byNewestFirst, isImageFileName } from '../image-files'
 import {
   collectPrefixes,
+  DIRECTORY_CONCURRENCY,
   MAX_DIRECTORIES,
   MAX_DIRECTORY_DEPTH,
   normalizeDirPath,
   relativeDir,
 } from '../directories'
-import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /**
  * T5 / 复核项 3：云上传 Provider，覆盖常见厂商与 S3 兼容服务。
@@ -171,33 +173,53 @@ function strOf(obj: Record<string, unknown>, keys: string[]): string {
   return ''
 }
 
+/** 单页列取结果：raw 交给 collectObjects / collectPrefixes 统一解析，nextCursor 用于翻页 */
+interface CloudPage {
+  raw: unknown
+  nextCursor: string | null
+}
+
 /**
- * delimiter 列目录：拿某前缀下的直接子目录前缀（各家 SDK 字段/参数不同，逐家适配）。
- * 返回原始响应，交给 collectPrefixes 统一抽前缀；失败向上抛，由 listDirectories 兜底。
+ * 统一的单页列取原语（图片与目录共用）：delimiter=true 列直接子目录前缀，false 列对象。
+ * cursor 传上一页返回的游标续拉下一页；各家翻页字段不同，逐家适配。单页失败向上抛，由调用方兜底。
+ * 返回原始响应 + 翻页游标，避免每家单独写翻页循环。
  */
-async function listPrefixesRaw(
+async function listCloudPage(
   profile: CloudProfile,
   mod: SdkModule,
-  q: { bucket: string; prefix: string; limit: number },
-): Promise<unknown> {
+  q: { bucket: string; prefix: string; pageSize: number; cursor?: string | null; delimiter?: boolean },
+): Promise<CloudPage> {
   const ep = profile.endpoint?.trim() ?? ''
   const prefix = q.prefix || undefined
+  const delimiter = q.delimiter ? '/' : undefined
   switch (profile.provider) {
     case 'aliyun-oss': {
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
       const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
-      return await client.listV2({ 'max-keys': q.limit, prefix, delimiter: '/' })
+      const raw = await client.listV2({
+        'max-keys': q.pageSize, prefix, delimiter,
+        ...(q.cursor ? { 'continuation-token': q.cursor } : {}),
+      })
+      const r = raw as { isTruncated?: boolean | string; nextContinuationToken?: string }
+      const truncated = r.isTruncated === true || r.isTruncated === 'true'
+      return { raw, nextCursor: truncated ? (r.nextContinuationToken ?? null) : null }
     }
     case 'tencent-cos': {
       const COS = ctorOf(mod, ['default', 'COS'], 'cos-nodejs-sdk-v5') as new (o: Record<string, unknown>) => {
         listObjects(p: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void
       }
       const client = new COS({ SecretId: profile.accessKeyId, SecretKey: profile.accessKeySecret })
-      return await new Promise((resolve, reject) => {
-        client.listObjects({ Bucket: q.bucket, Region: profile.region, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      const raw = await new Promise((resolve, reject) => {
+        client.listObjects(
+          { Bucket: q.bucket, Region: profile.region, Prefix: prefix, Delimiter: delimiter, MaxKeys: q.pageSize, ...(q.cursor ? { Marker: q.cursor } : {}) },
+          (e, d) => e ? reject(e) : resolve(d),
+        )
       })
+      const r = raw as { IsTruncated?: boolean | string; NextMarker?: string }
+      const truncated = r.IsTruncated === true || r.IsTruncated === 'true'
+      return { raw, nextCursor: truncated ? (r.NextMarker ?? null) : null }
     }
     case 'qiniu': {
       const qn = nsOf(mod) as unknown as {
@@ -209,9 +231,11 @@ async function listPrefixesRaw(
       const mac = new qn.auth.digest.Mac(profile.accessKeyId, profile.accessKeySecret)
       const config = new qn.conf.Config({ zone: qn.zone[`Zone_${profile.region || 'z0'}`] ?? qn.zone['Zone_z0'] })
       const manager = new qn.rs.BucketManager(mac, config)
-      return await new Promise((resolve, reject) => {
-        manager.listPrefix(q.bucket, { prefix, delimiter: '/', limit: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      const raw = await new Promise((resolve, reject) => {
+        manager.listPrefix(q.bucket, { prefix, delimiter, limit: q.pageSize, marker: q.cursor || undefined }, (e, d) => e ? reject(e) : resolve(d))
       })
+      const r = raw as { isTruncated?: boolean; marker?: string }
+      return { raw, nextCursor: r.isTruncated ? (r.marker ?? null) : null }
     }
     case 'aws-s3': {
       const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => { send(cmd: unknown): Promise<unknown> }
@@ -220,151 +244,104 @@ async function listPrefixesRaw(
         region: profile.region || 'auto', endpoint: ep ? withScheme(ep) : undefined, forcePathStyle: Boolean(ep),
         credentials: { accessKeyId: profile.accessKeyId, secretAccessKey: profile.accessKeySecret },
       })
-      return await client.send(new ListCommand({ Bucket: q.bucket, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit }))
+      const raw = await client.send(new ListCommand({
+        Bucket: q.bucket, Prefix: prefix, Delimiter: delimiter, MaxKeys: q.pageSize,
+        ...(q.cursor ? { ContinuationToken: q.cursor } : {}),
+      }))
+      const r = raw as { IsTruncated?: boolean; NextContinuationToken?: string }
+      return { raw, nextCursor: r.IsTruncated ? (r.NextContinuationToken ?? null) : null }
     }
     case 'huawei-obs': {
       const ObsClient = ctorOf(mod, ['default', 'ObsClient'], 'esdk-obs-nodejs') as new (o: Record<string, unknown>) => {
         listObjects(p: Record<string, unknown>): Promise<unknown>
       }
       const client = new ObsClient({ access_key_id: profile.accessKeyId, secret_access_key: profile.accessKeySecret, server: withScheme(ep) })
-      return await client.listObjects({ Bucket: q.bucket, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit })
+      const raw = await client.listObjects({ Bucket: q.bucket, Prefix: prefix, Delimiter: delimiter, MaxKeys: q.pageSize, Marker: q.cursor || undefined })
+      const ir = (raw as { InterfaceResult?: { IsTruncated?: boolean | string; NextMarker?: string } })?.InterfaceResult
+      const truncated = ir?.IsTruncated === true || ir?.IsTruncated === 'true'
+      return { raw, nextCursor: truncated ? (ir?.NextMarker ?? null) : null }
     }
     case 'baidu-bos': {
       const BosClient = ctorOf(mod, ['BosClient', 'default'], 'bce-sdk-js') as new (o: Record<string, unknown>) => {
         listObjects(b: string, o?: Record<string, unknown>): Promise<unknown>
       }
       const client = new BosClient({ endpoint: withScheme(ep || 'bj.bcebos.com'), credentials: { ak: profile.accessKeyId, sk: profile.accessKeySecret } })
-      return await client.listObjects(q.bucket, { prefix, delimiter: '/', limit: q.limit })
+      const raw = await client.listObjects(q.bucket, { prefix, delimiter, maxKeys: q.pageSize, marker: q.cursor || undefined })
+      const r = raw as { isTruncated?: boolean; nextMarker?: string }
+      return { raw, nextCursor: r.isTruncated ? (r.nextMarker ?? null) : null }
     }
     case 'azure-blob': {
       const BlobServiceClient = mod['BlobServiceClient'] as new (url: string, cred: unknown) => {
         getContainerClient(name: string): {
           listBlobsByHierarchy(d: string, o: Record<string, unknown>): { byPage(o: Record<string, unknown>): { next(): Promise<unknown> } }
+          listBlobsFlat(o: Record<string, unknown>): { byPage(o: Record<string, unknown>): { next(): Promise<unknown> } }
         }
       }
       const Credential = mod['StorageSharedKeyCredential'] as new (account: string, key: unknown) => unknown
       const service = new BlobServiceClient(withScheme(ep), new Credential(profile.bucket, profile.accessKeySecret))
-      const page = (await service
-        .getContainerClient(q.bucket)
-        .listBlobsByHierarchy('/', { prefix })
-        .byPage({ pageSize: q.limit })
-        .next()) as { value?: { blobPrefixes?: { name: string }[] } }
-      return { prefixes: (page.value?.blobPrefixes ?? []).map((p) => p.name) }
+      const container = service.getContainerClient(q.bucket)
+      const page = (q.delimiter
+        ? await container
+            .listBlobsByHierarchy('/', { prefix })
+            .byPage({ pageSize: q.pageSize, ...(q.cursor ? { continuationToken: q.cursor } : {}) })
+            .next()
+        : await container
+            .listBlobsFlat({ prefix, includeDeleted: false })
+            .byPage({ pageSize: q.pageSize, ...(q.cursor ? { continuationToken: q.cursor } : {}) })
+            .next()) as { value?: { continuationToken?: string; blobs?: Record<string, unknown>[] } }
+      // 列图时把 Azure 的 properties 摊平成统一 Key/Size/LastModified 形态再走通用解析
+      const blobs = q.delimiter ? [] : ((page.value?.blobs ?? []) as Record<string, unknown>[])
+      const raw = q.delimiter
+        ? page.value
+        : {
+            contents: blobs.map((b) => ({
+              Key: String(b['name'] ?? ''),
+              Size: (b['properties'] as Record<string, unknown> | undefined)?.['contentLength'],
+              LastModified: (b['properties'] as Record<string, unknown> | undefined)?.['lastModified'],
+            })),
+          }
+      return { raw, nextCursor: page.value?.continuationToken || null }
     }
     default:
       throw new Error(`不支持的云厂商：${profile.provider}`)
   }
 }
 
+/**
+ * 列图片（跟随翻页）：按 limit 收集，每页走 listCloudPage 续拉游标。
+ * 一次调用最多翻 20 页（每页 ≤1000 个），防止异常游标导致死循环；游标未尽时返回 nextCursor 交给调用方续拉。
+ */
 async function listObjects(
   profile: CloudProfile,
   mod: SdkModule,
-  q: { bucket: string; prefix: string; limit: number },
-): Promise<UploadedImageInfo[]> {
-  const ep = profile.endpoint?.trim() ?? ''
-  let raw: unknown
-  switch (profile.provider) {
-    case 'aliyun-oss': {
-      const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
-        listV2(q: Record<string, unknown>): Promise<unknown>
-      }
-      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
-      raw = await client.listV2({ 'max-keys': q.limit, prefix: q.prefix || undefined })
-      break
-    }
-    case 'tencent-cos': {
-      const COS = ctorOf(mod, ['default', 'COS'], 'cos-nodejs-sdk-v5') as new (o: Record<string, unknown>) => {
-        listObjects(p: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void
-      }
-      const client = new COS({ SecretId: profile.accessKeyId, SecretKey: profile.accessKeySecret })
-      raw = await new Promise((resolve, reject) => {
-        client.listObjects({ Bucket: q.bucket, Region: profile.region, Prefix: q.prefix || undefined, MaxKeys: q.limit }, (e, d) => e ? reject(e) : resolve(d))
-      })
-      break
-    }
-    case 'qiniu': {
-      const qn = nsOf(mod) as unknown as {
-        auth: { digest: { Mac: new (ak: string, sk: string) => unknown } }
-        conf: { Config: new (o: Record<string, unknown>) => unknown }
-        rs: { BucketManager: new (mac: unknown, c: unknown) => { listPrefix(b: string, o: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void } }
-        zone: Record<string, unknown>
-      }
-      const mac = new qn.auth.digest.Mac(profile.accessKeyId, profile.accessKeySecret)
-      const config = new qn.conf.Config({ zone: qn.zone[`Zone_${profile.region || 'z0'}`] ?? qn.zone['Zone_z0'] })
-      const manager = new qn.rs.BucketManager(mac, config)
-      raw = await new Promise((resolve, reject) => {
-        manager.listPrefix(q.bucket, { prefix: q.prefix || undefined, limit: q.limit }, (e, d) => e ? reject(e) : resolve(d))
-      })
-      break
-    }
-    case 'aws-s3': {
-      const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => { send(cmd: unknown): Promise<unknown> }
-      const ListCommand = mod['ListObjectsV2Command'] as new (o: Record<string, unknown>) => unknown
-      const client = new S3Client({
-        region: profile.region || 'auto', endpoint: ep ? withScheme(ep) : undefined, forcePathStyle: Boolean(ep),
-        credentials: { accessKeyId: profile.accessKeyId, secretAccessKey: profile.accessKeySecret },
-      })
-      raw = await client.send(new ListCommand({ Bucket: q.bucket, Prefix: q.prefix || undefined, MaxKeys: q.limit }))
-      break
-    }
-    case 'huawei-obs': {
-      const ObsClient = ctorOf(mod, ['default', 'ObsClient'], 'esdk-obs-nodejs') as new (o: Record<string, unknown>) => {
-        listObjects(p: Record<string, unknown>): Promise<unknown>
-      }
-      const client = new ObsClient({ access_key_id: profile.accessKeyId, secret_access_key: profile.accessKeySecret, server: withScheme(ep) })
-      raw = await client.listObjects({ Bucket: q.bucket, Prefix: q.prefix || undefined, MaxKeys: q.limit })
-      break
-    }
-    case 'baidu-bos': {
-      const BosClient = ctorOf(mod, ['BosClient', 'default'], 'bce-sdk-js') as new (o: Record<string, unknown>) => {
-        listObjects(b: string, o?: Record<string, unknown>): Promise<unknown>
-      }
-      const client = new BosClient({ endpoint: withScheme(ep || 'bj.bcebos.com'), credentials: { ak: profile.accessKeyId, sk: profile.accessKeySecret } })
-      raw = await client.listObjects(q.bucket, { prefix: q.prefix || undefined, limit: q.limit })
-      break
-    }
-    case 'azure-blob': {
-      const BlobServiceClient = mod['BlobServiceClient'] as new (url: string, cred: unknown) => {
-        getContainerClient(name: string): {
-          listBlobsFlat(o: Record<string, unknown>): { byPage(o: Record<string, unknown>): { next(): Promise<unknown> } }
-        }
-      }
-      const Credential = mod['StorageSharedKeyCredential'] as new (account: string, key: string) => unknown
-      const service = new BlobServiceClient(withScheme(ep), new Credential(profile.accessKeyId, profile.accessKeySecret))
-      const page = (await service
-        .getContainerClient(q.bucket)
-        .listBlobsFlat({ prefix: q.prefix || undefined, includeDeleted: false })
-        .byPage({ pageSize: q.limit })
-        .next()) as { value?: { blobs?: Record<string, unknown>[] } }
-      const blobs = (page.value?.blobs ?? []) as Record<string, unknown>[]
-      // Azure 字段嵌在 properties 里，先摊平成 key/size/modified 再走统一解析
-      raw = {
-        contents: blobs.map((b) => ({
-          Key: String(b['name'] ?? ''),
-          Size: (b['properties'] as Record<string, unknown> | undefined)?.['contentLength'],
-          LastModified: (b['properties'] as Record<string, unknown> | undefined)?.['lastModified'],
-        })),
-      }
-      break
-    }
-    default:
-      throw new Error(`不支持的云厂商：${profile.provider}`)
-  }
-  const limit = q.limit
+  q: { bucket: string; prefix: string; limit: number; cursor?: string | null },
+): Promise<{ items: UploadedImageInfo[]; nextCursor: string | null }> {
   const out: UploadedImageInfo[] = []
-  for (const o of collectObjects(raw)) {
-    const key = strOf(o, ['Key', 'key', 'name'])
-    if (!key || !isImageFileName(key)) continue
-    out.push({
-      url: publicUrl(profile, key),
-      key,
-      name: key.slice(key.lastIndexOf('/') + 1),
-      size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
-      // 七牛 putTime 是 100ns 单位，其他家是 ISO/时间戳；仅用于排序展示，不做换算
-      modified: Number(strOf(o, ['LastModified', 'lastModified', 'putTime']).replace(/[^0-9]/g, '')) || 0,
+  let cursor: string | null = q.cursor ?? null
+  for (let page = 0; page < 20 && out.length < q.limit; page++) {
+    const p = await listCloudPage(profile, mod, {
+      bucket: q.bucket,
+      prefix: q.prefix,
+      pageSize: Math.min(q.limit - out.length, 1000),
+      cursor,
+      delimiter: false,
     })
+    for (const o of collectObjects(p.raw)) {
+      const key = strOf(o, ['Key', 'key', 'name'])
+      if (!key || !isImageFileName(key)) continue
+      out.push({
+        url: publicUrl(profile, key),
+        key,
+        name: key.slice(key.lastIndexOf('/') + 1),
+        size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
+        // 七牛 putTime 是 100ns 单位，其他家是 ISO/时间戳；仅用于排序展示，不做换算
+        modified: Number(strOf(o, ['LastModified', 'lastModified', 'putTime']).replace(/[^0-9]/g, '')) || 0,
+      })
+    }
+    cursor = p.nextCursor
+    if (!cursor) break
   }
-  return out.sort(byNewestFirst).slice(0, limit)
+  return { items: out.sort(byNewestFirst), nextCursor: cursor }
 }
 
 async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buffer, ctx: UploadContext): Promise<PutOutcome> {
@@ -575,39 +552,55 @@ export class CloudUploadProvider implements UploadProvider {
   }
 
   /** 富文本图片库：列出 bucket（可被 overrides.bucket / overrides.prefix 覆盖）下已有图片 */
-  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+  /** 富文本图片库：按前缀列已有图片（跟随翻页收集）；返回分页与游标，大目录由上层带游标续拉 */
+  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
     const mod = await loadSdk(specOf(this.profile))
     return await listObjects(this.profile, mod, {
       bucket: ctx.overrides?.bucket || this.profile.bucket,
       prefix: (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, ''),
-      limit: ctx.limit ?? 200,
+      limit: ctx.limit ?? 500,
+      cursor: ctx.cursor ?? null,
     })
   }
 
-  /** 富文本图片库：用 delimiter 递归列出真实目录（含空目录）；单层失败静默跳过，整体不阻断 */
+  /** 富文本图片库：用 delimiter 逐层列出真实目录（含空目录）；层内并发 + 跟随翻页，单目录失败打印告警并跳过 */
   async listDirectories(ctx: UploadContext): Promise<string[]> {
-    // 没有 delimiter 能力的厂商（列表里显式关掉）直接抛，交由上层降级到图片 key 反推
     const mod = await loadSdk(specOf(this.profile))
     const bucket = ctx.overrides?.bucket || this.profile.bucket
     const base = (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, '')
     const out = new Set<string>()
-    const queue: { prefix: string; depth: number }[] = [{ prefix: base, depth: 0 }]
-    while (queue.length > 0 && out.size < MAX_DIRECTORIES) {
-      const cur = queue.shift()!
-      if (cur.depth > MAX_DIRECTORY_DEPTH) continue
-      let raw: unknown
-      try {
-        raw = await listPrefixesRaw(this.profile, mod, { bucket, prefix: cur.prefix, limit: MAX_DIRECTORIES })
-      } catch {
-        continue
+    // 逐层 BFS：每层并发列取、单目录内跟随翻页；层数受 MAX_DIRECTORY_DEPTH 限制，总量受 MAX_DIRECTORIES 限制
+    // frontier 存完整前缀（含 base），rel 只在写入结果集时计算
+    let frontier = [base]
+    for (let depth = 0; depth <= MAX_DIRECTORY_DEPTH && frontier.length > 0 && out.size < MAX_DIRECTORIES; depth++) {
+      const perDir = await mapWithConcurrency(frontier, DIRECTORY_CONCURRENCY, async (prefix): Promise<string[]> => {
+        const fulls: string[] = []
+        let cursor: string | null = null
+        for (let page = 0; page < 50; page++) {
+          try {
+            const p = await listCloudPage(this.profile, mod, { bucket, prefix, pageSize: MAX_DIRECTORIES, cursor, delimiter: true })
+            for (const full of collectPrefixes(p.raw)) {
+              if (!fulls.includes(full)) fulls.push(full)
+            }
+            cursor = p.nextCursor
+            if (!cursor) break
+          } catch (err) {
+            console.warn(`[upload-core] 列云目录失败（prefix=${prefix || '(根)'}）：${(err as Error).message}`)
+            break
+          }
+        }
+        return fulls
+      })
+      const nextFrontier: string[] = []
+      for (const fulls of perDir) {
+        for (const full of fulls) {
+          const rel = relativeDir(full, base)
+          if (!rel || out.has(rel) || out.size >= MAX_DIRECTORIES) continue
+          out.add(rel)
+          nextFrontier.push(normalizeDirPath(full))
+        }
       }
-      for (const full of collectPrefixes(raw)) {
-        if (out.size >= MAX_DIRECTORIES) break
-        const rel = relativeDir(full, base)
-        if (!rel || out.has(rel)) continue
-        out.add(rel)
-        queue.push({ prefix: normalizeDirPath(full), depth: cur.depth + 1 })
-      }
+      frontier = nextFrontier
     }
     return [...out].sort((a, b) => a.localeCompare(b))
   }

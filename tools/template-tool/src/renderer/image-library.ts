@@ -64,15 +64,19 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
       onProgress?.({ percent: 100, status: 'success' })
       return result.url
     },
-    async list(source, target, limit) {
-      const items = (await host.upload.listImages({ ...requestOf(source, target ?? {}), limit })) as {
-        url: string
-        key: string
-        name: string
-        size?: number
-        modified?: number
-      }[]
-      return items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified, key: i.key }))
+    async list(source, target, opts) {
+      const page = (await host.upload.listImages({
+        ...requestOf(source, target ?? {}),
+        limit: opts?.limit,
+        cursor: opts?.cursor,
+      })) as {
+        items: { url: string; key: string; name: string; size?: number; modified?: number }[]
+        nextCursor?: string | null
+      }
+      return {
+        items: page.items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified, key: i.key })),
+        nextCursor: page.nextCursor ?? null,
+      }
     },
     async listDirectories(source, target) {
       return (await host.upload.listDirectories(requestOf(source, target ?? {}))) as string[]

@@ -6,6 +6,7 @@
  */
 export type {
   UploadedImageInfo,
+  UploadedImagePage,
   UploadBatchOptions,
   UploadContext,
   UploadFile,

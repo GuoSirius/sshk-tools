@@ -5,7 +5,7 @@ import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import { byNewestFirst, isImageFileName } from '../image-files'
 import { joinDir, MAX_DIRECTORIES, MAX_DIRECTORY_DEPTH, DIRECTORY_LIST_BUDGET_MS } from '../directories'
-import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /** T4：远程 profile（ftp | sftp 合并，protocol 区分）。连接信息由 main 进程从 settings/safeStorage 解析后注入 */
 export interface RemoteProfile {
@@ -40,37 +40,53 @@ export class RemoteUploadProvider implements UploadProvider {
     return { url, key: remotePath, name: file.name }
   }
 
-  /** 列出远端目录下已有图片（新在前）；无 baseUrl 时回填 protocol://host 形式 URL */
-  async listImages(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]> {
+  /**
+   * 列出远端目录下已有图片（新在前）；无 baseUrl 时回填 protocol://host 形式 URL。
+   * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉。
+   */
+  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
     const dir = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
-    const limit = ctx.limit ?? 200
-    if (this.profile.protocol === 'ftp') {
-      const client = new FtpClient()
-      try {
-        await client.access({
-          host: this.profile.host,
-          port: this.profile.port ?? 21,
-          user: this.profile.username,
-          password: this.profile.password,
-          secure: false,
-        })
-        const list = await client.list(dir)
-        return list
-          .filter((i) => !i.isDirectory && isImageFileName(i.name))
-          .slice(0, limit)
-          .map((i) => ({
-            url: this.urlFor(dir, i.name),
-            key: `${dir}/${i.name}`,
-            name: i.name,
-            size: i.size ?? 0,
-            modified: i.modifiedAt ? i.modifiedAt.getTime() : 0,
-          }))
-          .sort(byNewestFirst)
-      } finally {
-        client.close()
-      }
+    const limit = ctx.limit ?? 500
+    const offset = Math.max(0, Math.floor(Number(ctx.cursor) || 0))
+    const all =
+      this.profile.protocol === 'ftp'
+        ? await this.ftpListImages(dir)
+        : await this.sftpListImages(dir)
+    all.sort(byNewestFirst)
+    const items = all.slice(offset, offset + limit)
+    const nextCursor = offset + limit < all.length ? String(offset + limit) : null
+    return { items, nextCursor }
+  }
+
+  /** FTP 列一个目录的全部图片（一次连接拉全量，分页在 listImages 统一做） */
+  private async ftpListImages(dir: string): Promise<UploadedImageInfo[]> {
+    const client = new FtpClient()
+    try {
+      await client.access({
+        host: this.profile.host,
+        port: this.profile.port ?? 21,
+        user: this.profile.username,
+        password: this.profile.password,
+        secure: false,
+      })
+      const list = await client.list(dir)
+      return list
+        .filter((i) => !i.isDirectory && isImageFileName(i.name))
+        .map((i) => ({
+          url: this.urlFor(dir, i.name),
+          key: `${dir}/${i.name}`,
+          name: i.name,
+          size: i.size ?? 0,
+          modified: i.modifiedAt ? i.modifiedAt.getTime() : 0,
+        }))
+    } finally {
+      client.close()
     }
-    return await new Promise<UploadedImageInfo[]>((resolve, reject) => {
+  }
+
+  /** SFTP 列一个目录的全部图片（单连接拉全量，分页在 listImages 统一做） */
+  private sftpListImages(dir: string): Promise<UploadedImageInfo[]> {
+    return new Promise<UploadedImageInfo[]>((resolve, reject) => {
       const conn = new SshClient()
       conn.on('ready', () => {
         conn.sftp((err, sftp) => {
@@ -88,7 +104,6 @@ export class RemoteUploadProvider implements UploadProvider {
             resolve(
               (list ?? [])
                 .filter((i) => isImageFileName(i.filename))
-                .slice(0, limit)
                 .map((i) => {
                   const attrs = i.attrs as { size?: number; mtime?: number } | undefined
                   return {
@@ -98,8 +113,7 @@ export class RemoteUploadProvider implements UploadProvider {
                     size: Number(attrs?.size ?? 0) || 0,
                     modified: Number(attrs?.mtime ?? 0) ? Number(attrs?.mtime) * 1000 : 0,
                   }
-                })
-                .sort(byNewestFirst),
+                }),
             )
           })
         })

@@ -336,7 +336,7 @@ async function loadDirKeys(): Promise<void> {
     // 真实目录列取成功（含空结果）即视为权威；仅失败时降级为图片 key 反推
     const fallback = async (): Promise<string[]> => {
       try {
-        return directoriesFromKeys((await props.library.list(source, {})).map((i) => i.key ?? i.name ?? ''))
+        return directoriesFromKeys((await props.library.list(source, {})).items.map((i) => i.key ?? i.name ?? ''))
       } catch {
         return []
       }
@@ -607,6 +607,10 @@ function insertSelected(): void {
   insertUrls(poolList.value.map((i) => i.url))
 }
 
+/** 图库分页游标：非空表示来源侧还有剩余图片，可「加载更多」续拉 */
+const galleryCursor = ref<string | null>(null)
+const loadingMore = ref(false)
+
 async function loadGallery(): Promise<void> {
   const source = activeSource.value
   if (!source) return
@@ -614,12 +618,32 @@ async function loadGallery(): Promise<void> {
   renderedCount.value = PAGE_SIZE
   try {
     // 不清空 pool：重选目录得到新列表后，此前已选仍保留，可继续累积
-    items.value = await props.library.list(source, target.value, FETCH_LIMIT)
+    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT })
+    items.value = page.items
+    galleryCursor.value = page.nextCursor ?? null
   } catch (err) {
     items.value = []
+    galleryCursor.value = null
     ElMessage.error(`读取图库失败：${(err as Error).message}`)
   } finally {
     loadingList.value = false
+  }
+}
+
+/** 「加载更多」续拉下一页（大目录 1000/10000+ 张时按页取，不一次列爆） */
+async function loadMoreGallery(): Promise<void> {
+  const source = activeSource.value
+  if (!source || !galleryCursor.value || loadingMore.value) return
+  loadingMore.value = true
+  try {
+    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, cursor: galleryCursor.value })
+    items.value = [...items.value, ...page.items]
+    galleryCursor.value = page.nextCursor ?? null
+    renderedCount.value += PAGE_SIZE
+  } catch (err) {
+    ElMessage.error(`加载更多失败：${(err as Error).message}`)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -668,7 +692,7 @@ function onPaneScroll(e: Event): void {
               filterable
               clearable
               class="dir-cascader"
-              :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
+              :placeholder="dirLoading ? '目录加载中…' : showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
             />
             <el-input
               v-model="dirModel"
@@ -825,6 +849,10 @@ function onPaneScroll(e: Event): void {
             : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
       </div>
       <div v-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
+      <div v-else-if="galleryCursor" class="load-more load-more--action">
+        已加载 {{ items.length }} 张，来源侧可能还有更多
+        <el-button size="small" type="primary" plain :loading="loadingMore" @click="loadMoreGallery">加载更多</el-button>
+      </div>
     </div>
 
     <template #footer>
@@ -940,6 +968,7 @@ function onPaneScroll(e: Event): void {
 .thumb-remove { margin-top: -4px; }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }
 .load-more { text-align: center; padding: 10px 0 2px; font-size: 12px; opacity: 0.6; }
+.load-more--action { display: flex; align-items: center; justify-content: center; gap: 10px; }
 
 /* 整个弹框（含 header 工具栏 + footer）占应用视口约 75%，body 用 flex 吃掉 header 之外的剩余 */
 :global(.image-library-dialog) {

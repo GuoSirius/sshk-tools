@@ -63,6 +63,13 @@ export interface UploadedImageInfo {
   modified?: number
 }
 
+/** 列图分页结果：大目录（上千上万张）由调用方带 nextCursor 续拉，避免一次列爆 */
+export interface UploadedImagePage {
+  items: UploadedImageInfo[]
+  /** 非空表示还有剩余数据；把它作为下次请求的 cursor 传入即可续拉 */
+  nextCursor?: string | null
+}
+
 export type UploadStatus = 'pending' | 'uploading' | 'success' | 'failed'
 
 export interface UploadProgress {
@@ -78,8 +85,12 @@ export interface UploadProvider {
   upload(file: UploadFile, ctx: UploadContext): Promise<UploadResult>
   /** 可选扩展点：Provider 自带的原生批量传输；Service 默认用并发单文件实现 */
   uploadBatch?(files: UploadFile[], ctx: UploadContext): Promise<UploadResult[]>
-  /** 可选扩展点：列出该来源已有图片（富文本「从图床选择插入」用）；不支持时 Service 抛错 */
-  listImages?(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]>
+  /**
+   * 可选扩展点：列出该来源已有图片（富文本「从图床选择插入」用）；不支持时 Service 抛错。
+   * 分页语义：cursor 传上次返回的 nextCursor 续拉；limit 为本页期望收集上限（实现方内部可再按
+   * 单请求上限翻页）；返回 nextCursor 非空表示未取尽，调用方可继续拉。
+   */
+  listImages?(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage>
   /**
    * 可选扩展点：列出该来源的真实目录（富文本图片库下拉用）。
    * 返回相对当前前缀的子目录路径段（不含尾斜杠，可多级），不去重图片文件；

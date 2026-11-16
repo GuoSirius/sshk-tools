@@ -117,8 +117,8 @@ interface Window {
       getSecret(profileId: string): Promise<string>
       /** N11：返回结构化结果，校验失败不 reject，避免主进程控制台刷堆栈 */
       test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<{ ok: boolean; message: string }>
-      /** 富文本图片库：按来源列出已有图片 */
-      listImages(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string }; limit?: number }): Promise<{ url: string; key: string; name: string; size?: number; modified?: number }[]>
+      /** 富文本图片库：按来源列出已有图片，返回分页（nextCursor 非空可续拉） */
+      listImages(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string }; limit?: number; cursor?: string }): Promise<{ items: { url: string; key: string; name: string; size?: number; modified?: number }[]; nextCursor?: string | null }>
       /** 富文本图片库：按来源列出真实目录（含空目录），返回相对路径数组 */
       listDirectories(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string } }): Promise<string[]>
     }

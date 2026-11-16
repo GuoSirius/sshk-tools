@@ -43,6 +43,13 @@ export interface RichTextImageItem {
   key?: string
 }
 
+/** 列图分页结果：大目录（上千上万张）由图片库带 nextCursor 续拉「加载更多」 */
+export interface RichTextImagePage {
+  items: RichTextImageItem[]
+  /** 非空表示未取尽；下次请求放进 opts.cursor 继续拉 */
+  nextCursor?: string | null
+}
+
 /** 上传进度可观测点：Provider 无 byte 级上报，只有开始(0)/完成(100)；失败由 upload reject 表达 */
 export interface RichTextUploadProgress {
   /** 0 或 100 */
@@ -63,8 +70,15 @@ export interface RichTextImageLibrary {
     target?: RichTextImageTarget,
     onProgress?: RichTextUploadProgressHook,
   ): Promise<string>
-  /** 列出某来源已有图片（新在前由实现方保证）；limit 为期望一次拉取上限，实现方可按后端能力截断 */
-  list(source: RichTextImageSource, target?: RichTextImageTarget, limit?: number): Promise<RichTextImageItem[]>
+  /**
+   * 列出某来源已有图片（新在前由实现方保证），返回分页：
+   * limit 为单页期望上限；cursor 传上次返回的 nextCursor 续拉下一页。
+   */
+  list(
+    source: RichTextImageSource,
+    target?: RichTextImageTarget,
+    opts?: { limit?: number; cursor?: string },
+  ): Promise<RichTextImagePage>
   /**
    * 列出某来源的真实目录（相对目标位置的完整路径，可多级，含空目录）。
    * 可选：未实现时图片库会降级用「已列图片 key」反推目录。
