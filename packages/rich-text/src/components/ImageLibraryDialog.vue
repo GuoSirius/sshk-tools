@@ -22,11 +22,20 @@ import {
 } from '../image-library-settings'
 import type { DirectoryTreeNode } from '../image-library-settings'
 
-/** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删） */
+/** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删）；scope 记录来源/桶/目录归属 */
 interface PoolItem extends RichTextImageItem {
   key?: string
   origin: 'upload' | 'gallery'
+  /** 归属作用域：sourceId|bucket|目录，跨源/桶/目录的同名图片互不串扰 */
+  scope: string
 }
+
+/**
+ * 选择池键：url 唯一标识一张图。不同源/桶的对象 URL 本身就不同，无需把 scope 拼进 key；
+ * 这样上传选中后切到图库（同 url）仍保持选中，切目录/源亦然，且计数不重复。
+ * scope 只记录来源用于清单展示，不参与去重。
+ */
+const itemKey = (i: { url: string }): string => i.url
 
 const props = withDefaults(
   defineProps<{
@@ -67,25 +76,47 @@ const keyword = ref('')
 /** 已渲染数量（分批渲染） */
 const renderedCount = ref(PAGE_SIZE)
 
-/** 统一选择池：key = url（同一图片只算一次），跨 tab / 目录 / 来源累积 */
+/** 统一选择池：key = 作用域+url，跨 tab / 目录 / 源 / 桶累积，同名图片不串扰 */
 const pool = ref<Record<string, PoolItem>>({})
-const poolCount = computed(() => Object.keys(pool.value).length)
-const uploadPicked = computed(() => Object.values(pool.value).filter((i) => i.origin === 'upload').length)
-const galleryPicked = computed(() => Object.values(pool.value).filter((i) => i.origin === 'gallery').length)
-const isSelected = (url: string): boolean => Boolean(pool.value[url])
+const poolList = computed(() => Object.values(pool.value))
+const poolCount = computed(() => poolList.value.length)
+const uploadPicked = computed(() => poolList.value.filter((i) => i.origin === 'upload').length)
+const galleryPicked = computed(() => poolList.value.filter((i) => i.origin === 'gallery').length)
+const isSelected = (item: PoolItem): boolean => Boolean(pool.value[itemKey(item)])
 function addToPool(item: PoolItem): void {
   if (!item.url) return
-  pool.value[item.url] = item
+  pool.value[itemKey(item)] = item
 }
-function removeFromPool(url: string): void {
-  if (!pool.value[url]) return
+function removeFromPool(item: PoolItem): void {
+  const k = itemKey(item)
+  if (!pool.value[k]) return
   const next = { ...pool.value }
-  delete next[url]
+  delete next[k]
   pool.value = next
 }
 function togglePool(item: PoolItem): void {
-  if (isSelected(item.url)) removeFromPool(item.url)
+  if (isSelected(item)) removeFromPool(item)
   else addToPool(item)
+}
+/** 按作用域 key 移除（用于跨源清单，item 可能来自已切换的旧源） */
+function removePoolKey(k: string): void {
+  const next = { ...pool.value }
+  delete next[k]
+  pool.value = next
+}
+function clearPool(): void {
+  pool.value = {}
+}
+/** 已选清单放大预览源（含全部来源） */
+const previewPoolUrls = computed(() => poolList.value.map((i) => toDisplaySrc(i.url)))
+const poolExpanded = ref(false)
+/** 作用域中文标签，用于跨源已选清单 */
+function scopeLabel(scope: string): string {
+  const [sid = '', bucket = '', dir = ''] = scope.split('|')
+  const src = sources.value.find((s) => s.id === sid)
+  const base = src?.label ?? sid
+  const extra = [bucket, dir].filter(Boolean).join(' / ')
+  return extra ? `${base} · ${extra}` : base
 }
 
 const activeSource = computed(() => sources.value.find((s) => s.id === sourceId.value) ?? null)
@@ -100,14 +131,20 @@ const dirModel = computed({
     else target.value = { ...target.value, localDir: v }
   },
 })
+/** 当前来源+桶+目录的作用域串，构造图库项/上传项时固化进 pool key */
+const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', dirModel.value].join('|'))
 /** 级联目录树：从已列图片 key 派生，每层 value 为完整路径 */
 const dirTree = computed<DirectoryTreeNode[]>(() => directoryTree(dirKeys.value))
 
-/** 图库页可见项：本次上传优先（标 upload），后端列图去重补充，再按文件名过滤 */
+/** 图库页可见项：本次上传（含旧源上传的）优先，当前源列图按作用域+url 去重补充，再按文件名过滤 */
 const galleryView = computed<PoolItem[]>(() => {
   const map = new Map<string, PoolItem>()
-  for (const u of uploaded.value) map.set(u.url, u)
-  for (const it of items.value) if (!map.has(it.url)) map.set(it.url, { ...it, origin: 'gallery' })
+  for (const u of uploaded.value) map.set(itemKey(u), u)
+  const scope = currentScope.value
+  for (const it of items.value) {
+    const wrapped: PoolItem = { ...it, origin: 'gallery', scope }
+    if (!map.has(itemKey(wrapped))) map.set(itemKey(wrapped), wrapped)
+  }
   return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
 })
 /** 上传页可见项（同样支持文件名搜索） */
@@ -263,7 +300,7 @@ async function onFilesChosen(e: Event): Promise<void> {
   for (const file of files) {
     try {
       const url = await props.library.upload(file, source, target.value)
-      const item: PoolItem = { url, key: file.name, name: file.name, origin: 'upload' }
+      const item: PoolItem = { url, key: file.name, name: file.name, origin: 'upload', scope: currentScope.value }
       uploaded.value.push(item)
       addToPool(item) // 上传即默认选中，可在预览里取消
       ok += 1
@@ -275,34 +312,36 @@ async function onFilesChosen(e: Event): Promise<void> {
   if (ok > 0) ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
 }
 
-function removeUploaded(url: string): void {
-  uploaded.value = uploaded.value.filter((i) => i.url !== url)
-  removeFromPool(url)
+function removeUploaded(item: PoolItem): void {
+  const k = itemKey(item)
+  uploaded.value = uploaded.value.filter((i) => itemKey(i) !== k)
+  removePoolKey(k)
 }
 
+/** 只删除「本次上传且已选」的项，未选中的上传图保留 */
 function removeSelectedUploaded(): void {
-  const removed = uploaded.value.filter((i) => isSelected(i.url))
+  const removed = uploaded.value.filter(isSelected)
   if (removed.length === 0) return
-  for (const i of removed) removeFromPool(i.url)
-  uploaded.value = uploaded.value.filter((i) => !isSelected(i.url))
+  for (const i of removed) removePoolKey(itemKey(i))
+  const keys = new Set(removed.map(itemKey))
+  uploaded.value = uploaded.value.filter((i) => !keys.has(itemKey(i)))
   ElMessage.success(`已删除 ${removed.length} 张未插入图片`)
 }
 
-/** 全选/全不选/反选作用于「当前可见集合」，不清空其他 tab / 目录已选的项 */
+/** 全选/全不选/反选作用于「当前可见集合」，不清空其他 tab / 目录 / 源已选的项 */
 function selectAllVisible(v: boolean): void {
   for (const i of visible.value) {
     if (v) addToPool(i)
-    else removeFromPool(i.url)
+    else removeFromPool(i)
   }
 }
 function invertVisible(): void {
   for (const i of visible.value) togglePool(i)
 }
 
-/** 插入统一选择池中的全部图片（跨 tab / 目录 / 来源） */
+/** 插入统一选择池中的全部图片（跨 tab / 目录 / 源 / 桶） */
 function insertSelected(): void {
-  const urls = Object.keys(pool.value)
-  insertUrls(urls)
+  insertUrls(poolList.value.map((i) => i.url))
 }
 
 async function loadGallery(): Promise<void> {
@@ -380,14 +419,33 @@ function onPaneScroll(e: Event): void {
       </div>
     </div>
 
+    <!-- 跨 tab / 源 / 桶 / 目录的已选总清单：切走后仍能查看与移除任一项 -->
+    <div v-if="poolCount" class="pool-summary">
+      <div class="pool-summary-head" @click="poolExpanded = !poolExpanded">
+        <span class="pool-caret">{{ poolExpanded ? '▾' : '▸' }}</span>
+        <span>已选清单 · {{ poolCount }} 张（跨源/桶/目录累积，均为待插入）</span>
+        <el-button size="small" text type="danger" @click.stop="clearPool">清空</el-button>
+      </div>
+      <div v-if="poolExpanded" class="pool-items">
+        <div v-for="(item, k) in pool" :key="k" class="pool-item">
+          <el-image :src="toDisplaySrc(item.url)" fit="cover" class="pool-thumb" loading="lazy" :preview-src-list="previewPoolUrls" :initial-index="poolList.findIndex((p) => itemKey(p) === k)" :preview-teleported="true" />
+          <div class="pool-meta">
+            <div class="pool-name">{{ item.name || item.key || item.url }}</div>
+            <div class="pool-scope">{{ scopeLabel(item.scope) }}</div>
+          </div>
+          <el-button size="small" text class="pool-remove" @click="removePoolKey(k)">移除</el-button>
+        </div>
+      </div>
+    </div>
+
     <div class="lib-pane" @scroll="onPaneScroll">
       <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
         <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
         <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
       </div>
       <div v-if="visible.length" class="thumb-grid">
-        <div v-for="item in rendered" :key="item.url" class="thumb-cell" :class="{ picked: isSelected(item.url) }">
-          <el-checkbox :model-value="isSelected(item.url)" class="thumb-check" @change="togglePool(item)" @click.stop />
+        <div v-for="item in rendered" :key="itemKey(item)" class="thumb-cell" :class="{ picked: isSelected(item) }">
+          <el-checkbox :model-value="isSelected(item)" class="thumb-check" @change="togglePool(item)" @click.stop />
           <el-image
             :src="toDisplaySrc(item.url)"
             fit="cover"
@@ -402,7 +460,7 @@ function onPaneScroll(e: Event): void {
           </el-image>
           <div class="thumb-name">{{ item.name || item.key }}</div>
           <span v-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
-          <el-button v-if="item.origin === 'upload'" size="small" text class="thumb-remove" @click.stop="removeUploaded(item.url)">删除</el-button>
+          <el-button v-if="item.origin === 'upload'" size="small" text class="thumb-remove" @click.stop="removeUploaded(item)">删除</el-button>
         </div>
       </div>
       <div v-else class="gallery-empty">
@@ -444,6 +502,17 @@ function onPaneScroll(e: Event): void {
 }
 .drop-hint:hover { border-color: var(--el-color-primary); }
 .drop-hint.busy { opacity: 0.6; cursor: wait; }
+.pool-summary { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
+.pool-summary-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+.pool-caret { opacity: 0.7; }
+.pool-summary-head > span:nth-child(2) { flex: 1 1 auto; }
+.pool-items { max-height: 150px; overflow-y: auto; border-top: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.2)); padding: 6px 10px; }
+.pool-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.pool-thumb { width: 42px; height: 34px; border-radius: 3px; flex: 0 0 auto; cursor: zoom-in; }
+.pool-meta { flex: 1 1 auto; min-width: 0; }
+.pool-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-scope { font-size: 11px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-remove { flex: 0 0 auto; }
 .drop-main { font-size: 14px; }
 .drop-sub { font-size: 12px; opacity: 0.6; margin-top: 5px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }

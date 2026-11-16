@@ -60,7 +60,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'B5', group: 'B', title: '连续进出全屏 3 次', guide: '每次正常，无空白层/抖动，编辑内容不丢', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12' },
   { id: 'B6', group: 'B', title: '深色主题全屏', guide: '重复 B1/B4：底色 #181818，文字与工具栏可读；代码块（查看源码内容）应为深底浅字', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12/V8' },
   { id: 'B7', group: 'B', title: '双实例互不影响', guide: '「富文本双实例」页只全屏实例 A → 实例 B 不受影响，退出后各归各位；切换两实例编辑焦点后引用/代码块/网络图片按钮不再假死禁用', entry: { type: 'route', target: 'template-tool' }, relates: 'N12/V8' },
-  { id: 'B8', group: 'B', title: '图片库上传与插入', guide: '工具栏「图片库」→ 默认源按云→远程→本地；选来源（桶可输入、目录逐级展开可选任意层级或手输不存在目录）→ 上传后缩略图预览（点图放大/删除/全选/反选）→ 切到图库页仍能看到本次上传并继续勾选；跨 tab/目录勾选累积到顶栏「已选 N 张」，最后一并插入；搜索文件名快速定位；图过多分批渲染滚动加载、图片懒加载；设置切页/重启回显、多实例隔离', entry: { type: 'route', target: 'edm-studio' }, relates: 'C2/R28' },
+  { id: 'B8', group: 'B', title: '图片库上传与插入', guide: '工具栏「图片库」→ 默认源按云→远程→本地；选来源（桶可输入、目录逐级展开可选任意层级或手输不存在目录）→ 上传后缩略图预览（点图放大/删除/全选/反选）→ 切到图库页仍能看到本次上传且选中状态一致；切目录/源/桶已选持续累积，同 URL 的图不重复计数；展开「已选清单」可查看各来源并逐项移除或清空；最后一并插入；搜索文件名快速定位；图过多分批渲染滚动加载、图片懒加载；设置切页/重启回显、多实例隔离', entry: { type: 'route', target: 'edm-studio' }, relates: 'C2/R28' },
   { id: 'B9', group: 'B', title: '查看源码', guide: '工具栏「</>」按钮 → Monaco 代码编辑器（高度受控），打开即格式化展示；「格式化」「压缩」按钮生效且 pre/code 空白不被破坏；修改后「应用修改」写回编辑器；复制源码到剪贴板正常', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
   { id: 'B10', group: 'B', title: '底部字数状态栏', guide: '编辑器底部显示 字数/字符（含空格数）/段落；选中文字时显示「已选 X 字」；全屏时状态栏沉底不丢', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
 
