@@ -710,10 +710,9 @@ function onPaneScroll(e: Event): void {
 
 <style scoped>
 /* 工具栏已移入 header：标题 + 三行高频操作区，结构上不随内容滚动 */
-.lib-header { padding-right: 28px; }
-.lib-title { display: block; font-size: 18px; font-weight: 600; line-height: 24px; margin-bottom: 12px; }
-.lib-top { border-bottom: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); padding-bottom: 10px; }
-.lib-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lib-title { display: block; font-size: 18px; font-weight: 600; line-height: 24px; margin-bottom: 8px; padding-right: 32px; }
+.lib-top { border-bottom: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); padding-bottom: 8px; }
+.lib-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .lib-row:last-child { margin-bottom: 0; }
 .source-select { flex: 1 1 auto; }
 .mode-tabs { flex: 0 0 auto; }
@@ -833,16 +832,16 @@ function onPaneScroll(e: Event): void {
   flex-direction: column;
   overflow: hidden;
 }
-:global(.image-library-dialog .el-dialog__header) { flex: 0 0 auto; }
+:global(.image-library-dialog .el-dialog__header) { flex: 0 0 auto; padding: 16px 16px 12px !important; margin-right: 0 !important; }
 :global(.image-library-dialog .el-dialog__body) {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 16px 20px !important;
+  padding: 12px 16px !important;
 }
-:global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; }
+:global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 16px 16px !important; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
 .lib-pane { flex: 1 1 0; min-height: 120px; overflow-y: auto; padding-right: 6px; }
 </style>
