@@ -11,3 +11,5 @@ export { hasHostApi, hostApiMissing, callHostApi, reloadHostWindow, HOST_API_STA
 export type { HostApiSpec } from './host-api'
 export { createSafeHost } from './safe-host'
 export type { SafeHostChannelMap } from './safe-host'
+export { logFront } from './front-log'
+export type { FrontLogLevel } from './front-log'

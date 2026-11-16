@@ -22,6 +22,7 @@ import {
 import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
+import { logger } from './logger'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
@@ -612,6 +613,14 @@ async function registerIpc(): Promise<void> {
     return true
   })
 
+  // ── H3 日志落盘：渲染层日志汇入 + 日志目录信息 / 清空 ──
+  ipcMain.on(IPC_CHANNELS.logFrontend, (_event, payload: { level?: string; scope?: string; msg?: string; detail?: unknown }) => {
+    const level = (['debug', 'info', 'warn', 'error'].includes(String(payload?.level)) ? payload!.level : 'info') as 'debug' | 'info' | 'warn' | 'error'
+    logger[level](String(payload?.scope ?? 'renderer').slice(0, 40), String(payload?.msg ?? '').slice(0, 4000), payload?.detail)
+  })
+  handleOk(IPC_CHANNELS.logDirGet, () => logger.describe())
+  handleOk(IPC_CHANNELS.logClean, () => ({ removed: logger.clean() }))
+
   // ── 插件：按构建期发现的清单逐个加载，任一失败只影响它自己 ──
   pluginStatus = await loadToolPlugins({
     ipcMain,
@@ -711,6 +720,10 @@ void app.whenReady().then(async () => {
   seedDefaultProviders()
   migrateLegacyVisionConfig()
   await registerIpc()
+  // H3 日志：启动清理过期文件 + 记录启动事件
+  const removedLogs = logger.clean()
+  if (removedLogs > 0) logger.info('app', `已清理 ${removedLogs} 个过期日志文件`)
+  logger.info('app', `应用启动 v${app.getVersion()}（${app.isPackaged ? 'packaged' : 'dev'}）`)
   // H6 NeDB 防膨胀：每日首次启动全量压缩一次；超阈(>10MB)文件无论何时启动都压缩
   const today = now().slice(0, 10)
   if (services.config.get('app.lastCompactAt') !== today) {
@@ -728,6 +741,15 @@ void app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// H3：主进程兜底异常落盘（不改变退出行为）
+process.on('uncaughtException', (err) => {
+  logger.error('process', `uncaughtException：${err.message}`, err.stack)
+})
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason))
+  logger.error('process', `unhandledRejection：${err.message}`, err.stack)
 })
 
 app.on('window-all-closed', () => {

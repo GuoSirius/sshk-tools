@@ -9,15 +9,19 @@ import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { AppError, isIpcResult } from '@sshk/shared'
 import type { IpcResult } from '@sshk/shared'
+import { logger } from './logger'
 
 type Handler<T> = (event: IpcMainInvokeEvent, ...args: any[]) => T | Promise<T>
 
 function toResult(err: unknown, channel: string): IpcResult<never> {
   if (err instanceof AppError) {
+    // 预期内业务失败：warn 级落盘（含归类），终端不再刷堆栈
+    logger.warn('ipc', `${channel} 业务失败（${err.code}）：${err.message}`)
     return { __ipc: true, ok: false, code: err.code, message: err.message }
   }
   // 意外异常 = 真 bug：保留终端日志便于排查，但同样不 reject
   console.error(`[ipc] ${channel} 未预期异常：`, err)
+  logger.error('ipc', `${channel} 未预期异常：${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined)
   return {
     __ipc: true,
     ok: false,

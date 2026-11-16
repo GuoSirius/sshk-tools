@@ -173,6 +173,15 @@ const api = {
     visionState: (): Promise<{ hasKey: boolean }> =>
       invoke(IPC_CHANNELS.badgeVisionState),
   },
+  logs: {
+    /** 渲染层日志上报（单向 send，不等待返回；经主进程脱敏落盘） */
+    logFront: (payload: { level: 'debug' | 'info' | 'warn' | 'error'; scope: string; msg: string; detail?: unknown }): void => {
+      ipcRenderer.send(IPC_CHANNELS.logFrontend, payload)
+    },
+    getDir: (): Promise<{ dir: string; sizeBytes: number; files: { name: string; sizeBytes: number }[] }> =>
+      invoke(IPC_CHANNELS.logDirGet),
+    clean: (): Promise<{ removed: number }> => invoke(IPC_CHANNELS.logClean),
+  },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
     list: (): Promise<unknown> => invoke(IPC_CHANNELS.toolsList),

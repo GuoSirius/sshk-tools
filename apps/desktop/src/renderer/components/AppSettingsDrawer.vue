@@ -192,6 +192,20 @@ async function pickDir(): Promise<void> {
 async function onTheme(next: ThemeMode): Promise<void> { await setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
 
+// ── H3 日志：目录信息 / 打开 / 清空 ──
+const logInfo = ref<{ dir: string; sizeBytes: number; files: { name: string; sizeBytes: number }[] } | null>(null)
+async function refreshLogInfo(): Promise<void> {
+  try { logInfo.value = await window.api.logs.getDir() } catch { /* 忽略 */ }
+}
+function openLogDir(): void { if (logInfo.value) void window.api.os.shellOpen(logInfo.value.dir) }
+async function cleanLogs(): Promise<void> {
+  try {
+    const { removed } = await window.api.logs.clean()
+    await refreshLogInfo()
+    ElMessage.success(`已清理 ${removed} 个过期日志文件`)
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
+
 // ── 访问密钥（只写 safeStorage，明文不回传） ──
 const accessKey = ref('')
 async function saveKey(): Promise<void> {
@@ -321,7 +335,7 @@ async function removeRuntime(id: string): Promise<void> {
     ElMessage.error(`卸载失败：${(err as Error).message}`)
   }
 }
-onMounted(() => { void refreshRuntime(); void refreshKeys() })
+onMounted(() => { void refreshRuntime(); void refreshKeys(); void refreshLogInfo() })
 
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
@@ -654,6 +668,14 @@ async function cleanupOrphans(): Promise<void> {
               <div class="card-title">系统与数据</div>
               <div class="kv-line"><span>应用版本</span><strong>v{{ version }}</strong></div>
               <div class="kv-line"><span>数据目录</span><el-button size="small" type="primary" text @click="openDataDir">打开</el-button></div>
+              <div class="kv-line">
+                <span>日志</span>
+                <span class="hint">{{ logInfo ? `${logInfo.dir}（${(logInfo.sizeBytes / 1024).toFixed(1)} KB · ${logInfo.files.length} 个文件，保留 7 天）` : '加载中…' }}</span>
+                <div class="btn-group">
+                  <el-button size="small" type="primary" text :disabled="!logInfo" @click="openLogDir">打开</el-button>
+                  <el-button size="small" text type="danger" :disabled="!logInfo" @click="cleanLogs">清空</el-button>
+                </div>
+              </div>
               <div class="kv-line"><span>密钥管理</span><span class="hint">模型 Provider 密钥：Model Console；应用访问密钥：本页「工具与权限」</span></div>
               <div class="kv-line">
                 <span>备份</span>

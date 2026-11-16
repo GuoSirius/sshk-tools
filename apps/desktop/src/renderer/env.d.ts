@@ -153,6 +153,11 @@ interface Window {
       setVisionKey(key: string): Promise<boolean>
       visionState(): Promise<{ hasKey: boolean }>
     }
+    logs: {
+      logFront(payload: { level: 'debug' | 'info' | 'warn' | 'error'; scope: string; msg: string; detail?: unknown }): void
+      getDir(): Promise<{ dir: string; sizeBytes: number; files: { name: string; sizeBytes: number }[] }>
+      clean(): Promise<{ removed: number }>
+    }
     tools: {
       list(): Promise<import('@sshk/shared').ToolCatalogPayload>
       setEnabled(id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload>
