@@ -24,6 +24,7 @@ import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
+import { collectToolHealth } from './health'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
@@ -701,6 +702,9 @@ async function registerIpc(): Promise<void> {
   })
   handleOk(IPC_CHANNELS.logDirGet, () => logger.describe())
   handleOk(IPC_CHANNELS.logClean, () => ({ removed: logger.clean() }))
+
+  // ── N2 工具健康度面板：目录裁决 + 插件状态 + 日志 error 检索 ──
+  handleOk(IPC_CHANNELS.toolsHealth, () => collectToolHealth(buildCatalog(), allManifests()))
 
   // ── N1 一键诊断：采集（预览）+ 导出 zip（report.md + 近 3 天日志）──
   handleOk(IPC_CHANNELS.diagCollect, () => collectDiagnostics(services!, pluginStatus, buildCatalog()))

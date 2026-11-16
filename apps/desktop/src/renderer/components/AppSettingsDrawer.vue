@@ -249,6 +249,49 @@ const diagIssueTools = computed(() =>
   (diagData.value?.tools ?? []).filter((t) => !t.enabled || !t.visible || t.plugin.includes('失败') || t.warnings.length > 0),
 )
 
+// ── N2 工具健康度面板：目录裁决 + 插件 + 依赖 + 日志 error 检索 ──
+type ToolHealthPayload = import('@sshk/shared').ToolHealthPayload
+type ToolHealthRow = import('@sshk/shared').ToolHealthRow
+/** N8 纪律：新增宿主能力一律走 callHostApi（旧 preload 快照兜底），不裸调 */
+const HEALTH_SPEC: HostApiSpec = { group: 'tools', method: 'health', channel: IPC_CHANNELS.toolsHealth, label: '工具健康度' }
+const health = ref<ToolHealthPayload | null>(null)
+const healthOpen = ref(false)
+const healthLoading = ref(false)
+async function refreshHealth(): Promise<void> {
+  healthLoading.value = true
+  try {
+    health.value = await callHostApi<ToolHealthPayload>(HEALTH_SPEC)
+  } catch (err) {
+    ElMessage.error(`健康数据获取失败：${(err as Error).message}`)
+  } finally {
+    healthLoading.value = false
+  }
+}
+function toggleHealthPanel(): void {
+  healthOpen.value = !healthOpen.value
+  if (healthOpen.value && !health.value) void refreshHealth()
+}
+/** 异常行置顶：plugin-failed > dep-missing > warn > disabled > ok */
+const HEALTH_STATE_RANK: Record<ToolHealthRow['state'], number> = {
+  'plugin-failed': 0, 'dep-missing': 1, warn: 2, disabled: 3, ok: 4,
+}
+const healthSorted = computed(() =>
+  [...(health.value?.tools ?? [])].sort(
+    (a, b) => (HEALTH_STATE_RANK[a.state] ?? 9) - (HEALTH_STATE_RANK[b.state] ?? 9) || a.id.localeCompare(b.id),
+  ),
+)
+function healthStateLabel(state: ToolHealthRow['state']): string {
+  const map: Record<string, string> = {
+    ok: '正常', warn: '告警', disabled: '已禁用', 'plugin-failed': '插件失败', 'dep-missing': '缺依赖',
+  }
+  return map[state] ?? state
+}
+function healthStateTag(state: ToolHealthRow['state']): 'success' | 'warning' | 'danger' | 'info' {
+  if (state === 'ok') return 'success'
+  if (state === 'warn' || state === 'disabled') return 'info'
+  return 'danger'
+}
+
 // ── 访问密钥（只写 safeStorage，明文不回传） ──
 const accessKey = ref('')
 async function saveKey(): Promise<void> {
@@ -378,7 +421,7 @@ async function removeRuntime(id: string): Promise<void> {
     ElMessage.error(`卸载失败：${(err as Error).message}`)
   }
 }
-onMounted(() => { void refreshRuntime(); void refreshKeys(); void refreshLogInfo() })
+onMounted(() => { void refreshRuntime(); void refreshKeys(); void refreshLogInfo(); void refreshHealth() })
 
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
@@ -541,6 +584,39 @@ async function cleanupOrphans(): Promise<void> {
 
           <!-- 工具与权限 -->
           <template v-else-if="activeGroup === 'tools'">
+            <section class="settings-card">
+              <div class="card-title">
+                工具健康度
+                <el-tag v-if="health" size="small" :type="health.abnormal === 0 ? 'success' : 'warning'">
+                  {{ health.ok }} 正常 / {{ health.abnormal }} 异常
+                </el-tag>
+                <el-tag v-else size="small" type="info">加载中…</el-tag>
+                <el-button size="small" text type="primary" :loading="healthLoading" @click="toggleHealthPanel">
+                  {{ healthOpen ? '收起面板' : '展开面板' }}
+                </el-button>
+                <el-button size="small" text :loading="healthLoading" @click="refreshHealth">刷新</el-button>
+              </div>
+              <template v-if="healthOpen && health">
+                <div v-for="row in healthSorted" :key="row.id" class="health-row" :class="{ 'health-row-bad': row.state !== 'ok' }">
+                  <div class="health-head">
+                    <el-tag size="small" :type="healthStateTag(row.state)">{{ healthStateLabel(row.state) }}</el-tag>
+                    <strong>{{ row.name }}</strong>
+                    <span class="hint">{{ row.id }} · 通道 {{ row.channels }}</span>
+                    <el-button v-if="row.state !== 'ok'" size="small" text type="primary" class="health-log-btn" @click="openLogDir">
+                      打开日志定位
+                    </el-button>
+                  </div>
+                  <div v-if="row.plugin !== '已加载' && row.plugin !== '无主进程插件'" class="warning-line">插件：{{ row.plugin }}</div>
+                  <div v-if="row.missingDeps.length" class="warning-line">缺失硬依赖：{{ row.missingDeps.join('、') }}</div>
+                  <div v-for="(w, i) in row.warnings" :key="'w' + i" class="warning-line">{{ w }}</div>
+                  <div v-if="row.lastError" class="warning-line">最近错误 [{{ row.lastError.time }}] {{ row.lastError.text }}</div>
+                </div>
+              </template>
+              <div v-else class="hint">
+                按工具聚合加载状态 / 主进程插件 / 依赖缺失 / 最近日志错误；异常行可一键打开日志目录定位。
+              </div>
+            </section>
+
             <section class="settings-card">
               <div class="card-title">访问密钥与权限</div>
               <div class="kv-line">
@@ -872,4 +948,11 @@ async function cleanupOrphans(): Promise<void> {
 /* 穿插⑦-2：日志行标签不换行、摘要单行省略（完整目录 tooltip 悬浮） */
 .kv-label { flex: none; white-space: nowrap; }
 .log-summary { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* N2 工具健康度面板 */
+.health-row { padding: 8px 0; border-bottom: 1px dashed var(--el-border-color-lighter); }
+.health-row:last-child { border-bottom: none; }
+.health-row-bad { background: var(--el-fill-color-light); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+.health-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.health-log-btn { margin-left: auto; }
 </style>

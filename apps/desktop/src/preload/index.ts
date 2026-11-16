@@ -213,6 +213,8 @@ const api = {
       invoke(IPC_CHANNELS.toolsSetDistribution, ids),
     cleanupOrphans: (): Promise<unknown> =>
       invoke(IPC_CHANNELS.toolsCleanupOrphans),
+    /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
+    health: (): Promise<import('@sshk/shared').ToolHealthPayload> => invoke(IPC_CHANNELS.toolsHealth),
   },
   backup: {
     export: (zipPath: string, passphrase?: string): Promise<unknown> =>

@@ -128,6 +128,8 @@ export const IPC_CHANNELS = {
   /** D-Q1 模型用量日志：统计（分组+最近明细）/ 清空 */
   usageStats: 'usage:stats',
   usageClear: 'usage:clear',
+  /** N2 工具健康度面板：聚合目录裁决 + 插件状态 + 日志 error 检索 */
+  toolsHealth: 'tools:health',
   /** 关于页运行环境信息（版本/commit/Electron/Chrome/Node） */
   appRuntime: 'app:runtime',
 } as const

@@ -362,6 +362,34 @@ export interface DiagnosisData {
   }
 }
 
+/** N2 工具健康度 · 单工具摘要（主进程聚合；无敏感信息） */
+export interface ToolHealthRow {
+  id: string
+  name: string
+  enabled: boolean
+  visible: boolean
+  /** ok=正常 / warn=有告警 / disabled=已禁用 / plugin-failed=插件加载失败 / dep-missing=硬依赖缺失 */
+  state: 'ok' | 'warn' | 'disabled' | 'plugin-failed' | 'dep-missing'
+  /** 主进程插件状态文字（无 / 已加载 / 失败：原因） */
+  plugin: string
+  /** 主进程插件注册的通道数（manifest plugin.channels） */
+  channels: number
+  /** 缺失的硬依赖（依赖工具已禁用 / 不可见） */
+  missingDeps: string[]
+  warnings: string[]
+  /** 最近日志中与本工具相关的 error 行（时间 + 内容，落盘时已脱敏） */
+  lastError: { time: string; text: string } | null
+}
+
+/** N2 工具健康度面板 payload（设置抽屉「工具与权限」顶部展示） */
+export interface ToolHealthPayload {
+  generatedAt: string
+  logDir: string
+  ok: number
+  abnormal: number
+  tools: ToolHealthRow[]
+}
+
 /** D-Q1 模型用量记录（只记元数据，绝不记 messages 内容；跨 IPC 下发渲染层用） */
 export interface UsageRow {
   _id: string

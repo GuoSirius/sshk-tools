@@ -175,6 +175,8 @@ interface Window {
       setOverrides(id: string, overrides: Record<string, string>): Promise<import('@sshk/shared').ToolCatalogPayload>
       setDistribution(ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload>
       cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>
+      /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
+      health(): Promise<import('@sshk/shared').ToolHealthPayload>
     }
     backup: {
       export(zipPath: string, passphrase?: string): Promise<{ counts: Record<string, number>; file: string }>
