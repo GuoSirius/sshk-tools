@@ -21,7 +21,7 @@ import {
 } from '@sshk/repository'
 import { compose, type ComposePlacement } from '../core/compose.js'
 import { renderSystemPreview, renderSystemCompose, type SystemSelector } from '../core/system-css.js'
-import { ShareServer } from './share.js'
+import { ShareServer } from '@sshk/share-core'
 
 export interface EdmIpcDeps {
   repository: Repository
@@ -79,7 +79,8 @@ function obj(p: Payload, key: string): Payload {
  */
 export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareServer } {
   const repo = deps.repository
-  const share = new ShareServer(deps.outputRoot)
+  // C-T1：分享内核抽到 @sshk/share-core；EDM 的产物在 <root>/outputs 下，serve 该子目录
+  const share = new ShareServer(path.join(deps.outputRoot, 'outputs'))
 
   /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
   async function assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void> {

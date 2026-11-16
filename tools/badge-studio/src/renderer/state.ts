@@ -513,6 +513,8 @@ export async function savePosterMeta(): Promise<void> {
 
 export function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === 'copy') void copyCode(row)
+  else if (cmd === 'download-png') void downloadPosterPng(row)
+  else if (cmd === 'share') void sharePoster(row)
   else if (cmd === 'delete') { deleteTarget.value = row; deleteOpen.value = true }
 }
 
@@ -548,23 +550,29 @@ export async function confirmDelete(): Promise<void> {
 /** 预览 iframe：生成页通过同名 ref 绑定写入；截图按钮在壳 actions 槽，故 ref 必须活在单例 */
 export const previewFrame = ref<HTMLIFrameElement | null>(null)
 
-/** snapdom 截长图 → base64 → 覆盖写 poster.png */
-export async function capturePoster(): Promise<void> {
+/** snapdom 截长图 → dataUrl（保存 / 下载共用） */
+async function captureDataUrl(): Promise<string> {
   const frame = previewFrame.value
-  if (!frame || !currentPosterId.value) {
+  if (!frame) throw new Error('预览未就绪')
+  const doc = frame.contentDocument
+  const target = doc?.body
+  if (!target || target.children.length === 0) throw new Error('预览内容为空')
+  const capture = await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value })
+  const out = await (capture as { toPng?: () => Promise<unknown> }).toPng?.()
+  const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')
+  if (dataUrl === '') throw new Error('截图失败：未获得图像数据')
+  return dataUrl
+}
+
+/** 截图并覆盖写 poster.png（产物目录；海报列表「图片」列读取） */
+export async function capturePoster(): Promise<void> {
+  if (!currentPosterId.value) {
     ElMessage.warning('请先生成海报')
     return
   }
   capturing.value = true
   try {
-    const doc = frame.contentDocument
-    const target = doc?.body
-    if (!target || target.children.length === 0) throw new Error('预览内容为空')
-    const capture = (await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value }))
-    const out = await (capture as { toPng?: () => Promise<unknown> }).toPng?.()
-    const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')
-    if (dataUrl === '') throw new Error('截图失败：未获得图像数据')
-    const base64 = dataUrl.split(',')[1] ?? ''
+    const base64 = (await captureDataUrl()).split(',')[1] ?? ''
     const rel = await host.badge.savePosterPng({ posterId: currentPosterId.value, base64 })
     ElMessage.success(`海报已保存：${rel}`)
     await loadPosters()
@@ -573,6 +581,55 @@ export async function capturePoster(): Promise<void> {
   } finally {
     capturing.value = false
   }
+}
+
+/** 下载 = 截图 + 下载；未生成时先生成再截图，落盘位置由用户保存对话框决定 */
+export const downloading = ref(false)
+export async function downloadPoster(): Promise<void> {
+  if (!currentPosterId.value) {
+    await generate()
+    if (!currentPosterId.value) return // generate 失败已自带报错
+  }
+  downloading.value = true
+  try {
+    const base64 = (await captureDataUrl()).split(',')[1] ?? ''
+    const poster = posters.value.find((row) => row._id === currentPosterId.value)
+    const save = await host.os.pickSave({ fileName: (poster?.name || 'poster') + '.png', extensions: ['png'] })
+    if (!save) return
+    await host.os.writeBinary(save, base64)
+    ElMessage.success('已下载：' + save)
+    await loadPosters()
+  } catch (err) {
+    ElMessage.error(`下载失败：${(err as Error).message}`)
+  } finally {
+    downloading.value = false
+  }
+}
+
+/** 表格行下载：导出已截图的 poster.png（条件显示 = outputs.poster 存在） */
+export async function downloadPosterPng(row: PosterRecord): Promise<void> {
+  if (!row.outputs.poster) { ElMessage.warning('该海报尚未截图保存 PNG'); return }
+  const save = await host.os.pickSave({ fileName: (row.name || 'poster') + '.png', extensions: ['png'] })
+  if (!save) return
+  const { outPath } = await host.badge.downloadPng({ posterId: row._id, outPath: save })
+  ElMessage.success('已下载：' + outPath)
+}
+
+// ── 海报分享（C-T1 @sshk/share-core）：表格行与生成页共用，72h token 局域网只读 ──
+export const shareState = reactive({ running: false, expiresAt: 0 })
+export async function refreshShareStatus(): Promise<void> {
+  try { Object.assign(shareState, await host.badge.shareStatus()) } catch { /* 忽略 */ }
+}
+export async function sharePoster(poster: Pick<PosterRecord, '_id' | 'name'>): Promise<void> {
+  const res = await host.badge.shareStart({ posterId: poster._id, ttlHours: 72 })
+  await host.os.clipboardWrite(res.url)
+  Object.assign(shareState, { running: true, expiresAt: res.expiresAt })
+  ElMessage.success(`「${poster.name}」分享已启动（72h 有效），链接已复制：${res.url}`)
+}
+export async function stopPosterShare(): Promise<void> {
+  await host.badge.shareStop()
+  Object.assign(shareState, { running: false, expiresAt: 0 })
+  ElMessage.success('分享已停止')
 }
 
 /** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */

@@ -26,6 +26,12 @@
       "badge:savePosterPng",
       "badge:listPosters",
       "badge:deletePoster",
+      "badge:savePosterMeta",
+      "badge:exportFiles",
+      "badge:downloadPng",
+      "badge:shareStart",
+      "badge:shareStop",
+      "badge:shareStatus",
       "badge:parseImage",
       "badge:setVisionKey",
       "badge:visionState"

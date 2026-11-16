@@ -5,8 +5,9 @@ import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
 import {
   toolId, loadConfigAndRecent, loadPosters,
-  hasHtml, hasStats, generating, currentPosterId, capturing,
-  pickHtml, pickStats, markBeforeGenerate, generate, savePosterMeta, capturePoster,
+  hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
+  pickHtml, pickStats, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
+  posterName, sharePoster, stopPosterShare, shareState,
   selectedPosters, batchExportHtml, batchDeletePosters,
   currentPage, pageSize, posters, onPageChange,
   deleteOpen, deleteTarget, confirmDelete,
@@ -48,6 +49,11 @@ onMounted(() => {
         </el-button>
         <el-button size="small" :disabled="!currentPosterId" @click="savePosterMeta">保存修改</el-button>
         <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
+        <el-button type="success" size="small" :loading="downloading" @click="downloadPoster">下载图片</el-button>
+        <el-button v-if="!shareState.running" size="small" type="warning" plain :disabled="!currentPosterId" @click="sharePoster({ _id: currentPosterId, name: posterName || '海报' })">
+          分享
+        </el-button>
+        <el-button v-else size="small" type="warning" plain @click="stopPosterShare">停止分享</el-button>
       </template>
       <template v-else>
         <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>

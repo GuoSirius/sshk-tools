@@ -126,6 +126,8 @@ const api = {
     readDataUri: (file: string): Promise<string> => invoke(IPC_CHANNELS.osReadDataUri, file),
     /** 文本写盘：路径来自 pickSave */
     writeText: (path: string, content: string): Promise<boolean> => invoke(IPC_CHANNELS.osWriteText, path, content),
+    /** 二进制写盘（base64 → 文件）：下载 PNG 等场景；路径来自 pickSave */
+    writeBinary: (path: string, base64: string): Promise<boolean> => invoke(IPC_CHANNELS.osWriteBinary, path, base64),
     /** 保存对话框（导出备份等）；defaultPath 作为默认目录/起始路径，fileName 为默认文件名 */
     pickSave: (opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string> =>
       invoke(IPC_CHANNELS.osPickSave, opts),
@@ -149,6 +151,13 @@ const api = {
       invoke(IPC_CHANNELS.badgeSavePosterMeta, payload),
     deletePoster: (posterId: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
+    downloadPng: (payload: { posterId: string; outPath: string }): Promise<{ outPath: string }> =>
+      invoke(IPC_CHANNELS.badgeDownloadPng, payload),
+    shareStart: (payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }> =>
+      invoke(IPC_CHANNELS.badgeShareStart, payload),
+    shareStop: (): Promise<boolean> => invoke(IPC_CHANNELS.badgeShareStop),
+    shareStatus: (): Promise<{ running: boolean; expiresAt: number }> =>
+      invoke(IPC_CHANNELS.badgeShareStatus),
     parseImage: (payload: {
       file: string
       provider: 'cloud' | 'paddleocr' | 'manual'

@@ -60,6 +60,8 @@ export const IPC_CHANNELS = {
   osPickSave: 'os:pickSave',
   osReadDataUri: 'os:readDataUri',
   osWriteText: 'os:writeText',
+  /** 二进制写盘（base64 → 文件；路径必须来自用户保存对话框），下载 PNG 等场景 */
+  osWriteBinary: 'os:writeBinary',
   osClipboardWrite: 'os:clipboardWrite',
   osShellOpen: 'os:shellOpen',
   edmListMails: 'edm:listMails',
@@ -110,6 +112,12 @@ export const IPC_CHANNELS = {
   badgeParseImage: 'badge:parseImage',
   badgeSetVisionKey: 'badge:setVisionKey',
   badgeVisionState: 'badge:visionState',
+  /** 下载已截图海报 PNG：{ posterId, outPath }，outPath 来自 pickSave */
+  badgeDownloadPng: 'badge:downloadPng',
+  /** 海报分享（C-T1 @sshk/share-core）：局域网只读 token 链接 */
+  badgeShareStart: 'badge:shareStart',
+  badgeShareStop: 'badge:shareStop',
+  badgeShareStatus: 'badge:shareStatus',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

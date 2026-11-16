@@ -118,6 +118,7 @@ interface Window {
       pickSave(opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string>
       readDataUri(file: string): Promise<string>
       writeText(path: string, content: string): Promise<boolean>
+      writeBinary(path: string, base64: string): Promise<boolean>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
     }
@@ -130,6 +131,10 @@ interface Window {
       listPosters(): Promise<PosterRecord[]>
       savePosterMeta(payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean>
       deletePoster(posterId: string): Promise<boolean>
+      downloadPng(payload: { posterId: string; outPath: string }): Promise<{ outPath: string }>
+      shareStart(payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }>
+      shareStop(): Promise<boolean>
+      shareStatus(): Promise<{ running: boolean; expiresAt: number }>
       exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {
         file: string

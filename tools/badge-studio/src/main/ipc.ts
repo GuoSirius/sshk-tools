@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import { zipSync, type Zippable } from 'fflate'
 import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { ShareServer } from '@sshk/share-core'
 import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
@@ -116,6 +117,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     if (!deps.host) throw new Error('宿主未提供图片识别能力')
     return deps.host
   }
+  // C-T1：海报分享复用宿主级 share-core 内核（serve 产物根，html + assets 同源可访问）
+  const share = new ShareServer(deps.outputRoot)
 
   // ① 数据源解析：按扩展名分派（xlsx/csv/json）
   //    支持文件选择器给出的绝对路径（用户主动选择）与产物系统相对路径
@@ -290,4 +293,31 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     await deps.repository.archive('posters', posterId)
     return true
   }))
+
+  // ⑧ 下载已截图海报 PNG：复制产物到用户指定路径（渲染层经 pickSave 取路径）
+  ipc.handle(IPC_CHANNELS.badgeDownloadPng, wrap(async (payload: { posterId: string; outPath: string }) => {
+    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
+    if (!poster?.outputs.poster) throw new Error('该海报尚未截图保存 PNG，请先在生成页「截图保存 PNG」')
+    const src = resolveSafe(deps.outputRoot, poster.outputs.poster)
+    if (!existsSync(src)) throw new Error('海报图片文件不存在：' + poster.outputs.poster)
+    mkdirSync(dirname(payload.outPath), { recursive: true })
+    copyFileSync(src, payload.outPath)
+    return { outPath: payload.outPath }
+  }))
+
+  // ⑨ 海报分享（C-T1）：share:start { posterId, ttlHours? } → { url, expiresAt }
+  ipc.handle(IPC_CHANNELS.badgeShareStart, wrap(async (payload: { posterId: string; ttlHours?: number }) => {
+    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
+    if (!poster?.outputs.badged) throw new Error('海报尚未生成，无法分享')
+    const res = await share.start(Number(payload.ttlHours ?? 72), 0)
+    return { url: share.linkFor(poster.outputs.badged), expiresAt: res.expiresAt, urls: res.urls }
+  }))
+  ipc.handle(IPC_CHANNELS.badgeShareStop, wrap(async () => {
+    await share.stop()
+    return true
+  }))
+  ipc.handle(IPC_CHANNELS.badgeShareStatus, wrap(() => ({
+    running: share.running,
+    expiresAt: share.expiresAt,
+  })))
 }

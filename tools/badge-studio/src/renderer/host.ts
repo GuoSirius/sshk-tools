@@ -29,5 +29,9 @@ export const host = createSafeHost({
     parseImage: C.badgeParseImage,
     setVisionKey: C.badgeSetVisionKey,
     visionState: C.badgeVisionState,
+    downloadPng: C.badgeDownloadPng,
+    shareStart: C.badgeShareStart,
+    shareStop: C.badgeShareStop,
+    shareStatus: C.badgeShareStatus,
   },
 })

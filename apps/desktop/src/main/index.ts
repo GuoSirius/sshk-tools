@@ -588,6 +588,14 @@ async function registerIpc(): Promise<void> {
     writeFileSync(target, String(content ?? ''), 'utf8')
     return true
   })
+  // 二进制写盘（base64 → 文件）：下载 PNG 等场景；路径同样必须来自用户保存对话框
+  handleOk(IPC_CHANNELS.osWriteBinary, (_event, path: string, base64: string) => {
+    const target = String(path || '')
+    if (!target) throw new Error('缺少写入路径')
+    if (!/^[A-Za-z0-9+/=]+$/.test(String(base64 ?? ''))) throw new Error('内容必须是合法 base64')
+    writeFileSync(target, Buffer.from(String(base64), 'base64'))
+    return true
+  })
   handleOk(IPC_CHANNELS.osPickDir, async (_event) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })

@@ -16,6 +16,7 @@
     "@element-plus/icons-vue": "latest",
     "@sshk/code-editor": "workspace:*",
     "@sshk/repository": "workspace:*",
+    "@sshk/share-core": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@zumer/snapdom": "latest",

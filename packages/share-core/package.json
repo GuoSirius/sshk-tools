@@ -1,0 +1,23 @@
+{
+  "name": "@sshk/share-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 局域网只读分享内核（C-T1）：token 路径 + TTL + 内网网卡绑定，EDM/badge 共用",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/repository": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "6"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
