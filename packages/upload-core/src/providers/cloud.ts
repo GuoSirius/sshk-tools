@@ -39,6 +39,19 @@ function specOf(profile: CloudProfile): string {
   return profile.sdk || SDK_FALLBACK[profile.provider] || ''
 }
 
+async function importSdk(spec: string): Promise<unknown> {
+  switch (spec) {
+    case 'ali-oss': return import('ali-oss')
+    case 'cos-nodejs-sdk-v5': return import('cos-nodejs-sdk-v5')
+    case 'qiniu': return import('qiniu')
+    case '@aws-sdk/client-s3': return import('@aws-sdk/client-s3')
+    case 'esdk-obs-nodejs': return import('esdk-obs-nodejs')
+    case 'bce-sdk-js': return import('bce-sdk-js')
+    case '@azure/storage-blob': return import('@azure/storage-blob')
+    default: throw new Error(`云 SDK 未就绪（未知包名 ${spec}）：请检查上传配置或执行 pnpm install`)
+  }
+}
+
 /**
  * 字面量 import()：构建器为每个 SDK 生成独立 chunk（懒加载，不拖慢启动），
  * 且 chunk 位于 out/main/ 随安装包分发 —— 安装包排除 node_modules 也照样可用。
@@ -46,22 +59,29 @@ function specOf(profile: CloudProfile): string {
  */
 async function loadSdk(spec: string): Promise<SdkModule> {
   if (!spec) throw new Error('未知的云厂商：请检查上传配置中的「云厂商」选项')
+  let loaded: unknown
   try {
-    let loaded: unknown
-    switch (spec) {
-      case 'ali-oss': loaded = await import('ali-oss'); break
-      case 'cos-nodejs-sdk-v5': loaded = await import('cos-nodejs-sdk-v5'); break
-      case 'qiniu': loaded = await import('qiniu'); break
-      case '@aws-sdk/client-s3': loaded = await import('@aws-sdk/client-s3'); break
-      case 'esdk-obs-nodejs': loaded = await import('esdk-obs-nodejs'); break
-      case 'bce-sdk-js': loaded = await import('bce-sdk-js'); break
-      case '@azure/storage-blob': loaded = await import('@azure/storage-blob'); break
-      default: throw new Error(`云 SDK 未就绪（未知包名 ${spec}）：请检查上传配置或执行 pnpm install`)
+    try {
+      loaded = await importSdk(spec)
+    } catch (err) {
+      // dev 热重载竞态：主进程重建会清空 chunks/ 并换内容 hash，仍在运行的旧进程
+      // 懒加载引用旧 hash 会 ERR_MODULE_NOT_FOUND。短等一次让重建完成后再试；
+      // 仍失败说明进程持有旧代码，只能重启 dev（错误信息里给指引）。
+      if (/Cannot find module|ERR_MODULE_NOT_FOUND/i.test(String((err as Error).message))) {
+        await new Promise((r) => setTimeout(r, 1200))
+        loaded = await importSdk(spec)
+      } else {
+        throw err
+      }
     }
     const ns = (loaded as { default?: unknown }).default ?? loaded
     return (typeof ns === 'object' && ns !== null ? ns : loaded) as unknown as SdkModule
   } catch (err) {
-    throw new Error(`云 SDK 未就绪（${spec}）：${(err as Error).message}`)
+    const msg = String((err as Error).message ?? err)
+    const stale = /Cannot find module/i.test(msg)
+      ? '——主进程刚重编译过，懒加载 chunk 引用已失效，重启 pnpm dev 即可恢复'
+      : ''
+    throw new Error(`云 SDK 未就绪（${spec}）：${msg}${stale}`)
   }
 }
 
