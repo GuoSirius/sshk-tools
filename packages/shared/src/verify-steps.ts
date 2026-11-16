@@ -59,7 +59,10 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'B4', group: 'B', title: '退出全屏归位', guide: '容器回到表单原位置；旧父节点无残留 class；页面无空白遮罩', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12' },
   { id: 'B5', group: 'B', title: '连续进出全屏 3 次', guide: '每次正常，无空白层/抖动，编辑内容不丢', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12' },
   { id: 'B6', group: 'B', title: '深色主题全屏', guide: '重复 B1/B4：底色 #181818，文字与工具栏可读；代码块（查看源码内容）应为深底浅字', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12/V8' },
-  { id: 'B7', group: 'B', title: '双实例互不影响', guide: '「富文本双实例」页只全屏实例 A → 实例 B 不受影响，退出后各归各位', entry: { type: 'route', target: 'template-tool' }, relates: 'N12/V8' },
+  { id: 'B7', group: 'B', title: '双实例互不影响', guide: '「富文本双实例」页只全屏实例 A → 实例 B 不受影响，退出后各归各位；切换两实例编辑焦点后引用/代码块/网络图片按钮不再假死禁用', entry: { type: 'route', target: 'template-tool' }, relates: 'N12/V8' },
+  { id: 'B8', group: 'B', title: '图片库上传与插入', guide: '富文本工具栏「图片库」→ 选来源（本地/远程/云 profile，可填桶/目录专属项）→ 上传自动插入；「从图库选择」列出该来源已有图片勾选插入', entry: { type: 'route', target: 'edm-studio' }, relates: 'C2/R28' },
+  { id: 'B9', group: 'B', title: '查看源码', guide: '工具栏「</>」按钮 → 弹窗显示存储形态 HTML；修改后「应用修改」写回编辑器；复制源码到剪贴板正常', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
+  { id: 'B10', group: 'B', title: '底部字数状态栏', guide: '编辑器底部显示 字数/字符（含空格数）/段落；选中文字时显示「已选 X 字」；全屏时状态栏沉底不丢', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
 
   // ── C 组：开发者模式 / 密钥体系（验证清单 C1-C6）──
   { id: 'C1', group: 'C', title: '开发者模式口令弹框（打包版）', guide: '打包版开「开发者模式」→ 弹口令输入框；不填/填错开关回弹', entry: { type: 'settings', target: '系统与数据' }, requiresPackaged: true, relates: '10' },

@@ -207,7 +207,10 @@
       "config:get",
       "config:set",
       "os:clipboardWrite",
-      "os:pickFile"
+      "os:pickFile",
+      "upload:single",
+      "upload:profiles",
+      "upload:images:list"
     ]
   }
 }

@@ -21,7 +21,15 @@ import {
   registerImageLibraryMenu,
   unbindImageLibrary,
 } from '../image-library-menu'
+import {
+  SOURCE_VIEW_MENU_KEY,
+  bindSourceView,
+  registerSourceViewMenu,
+  unbindSourceView,
+} from '../source-view-menu'
+import { countText, type TextStats } from '../word-count'
 import ImageLibraryDialog from './ImageLibraryDialog.vue'
+import SourceViewDialog from './SourceViewDialog.vue'
 
 /**
  * 共享富文本编辑器（从 edm-studio 迁入，R27 B3）。
@@ -83,8 +91,14 @@ const editorBoxEl = ref<HTMLElement | null>(null)
 const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
 const libraryOpen = ref(false)
+const sourceOpen = ref(false)
+/** 底部状态栏（Word 式字数统计） */
+const stats = ref<TextStats>({ words: 0, chars: 0, charsNoSpace: 0, paragraphs: 0 })
+const selectedLen = ref(0)
 let classObserver: MutationObserver | null = null
 let detachEvents: (() => void) | null = null
+/** 双实例禁用修复的延时刷新句柄 */
+let viewTimers: number[] = []
 
 interface UploadImageConf {
   customUpload: (file: File, insertFn: (url: string) => void) => Promise<void>
@@ -115,14 +129,18 @@ if (hook) {
 /**
  * 工具栏：以 wangEditor 默认 toolbarKeys 为基线（用户拍板：保持原始默认分组顺序）。
  * - 无上传钩子：剔除 uploadImage / uploadVideo，其余默认项原样保留；
- * - 有图片库：insertKeys 在默认 group-image（下标 22，对照 5.1.23 默认数组核实）前插入本菜单。
+ * - insertKeys 在默认 group-image（下标 22，对照 5.1.23 默认数组核实）前插入
+ *   「查看源码」（恒有）与「图片库」（有图片库桥接时），其余不动。
  */
 const toolbarConfig: Partial<IToolbarConfig> = {}
 if (!hook) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
+registerSourceViewMenu()
+const extraKeys: string[] = [SOURCE_VIEW_MENU_KEY]
 if (props.imageLibrary) {
   registerImageLibraryMenu()
-  toolbarConfig.insertKeys = { index: DEFAULT_GROUP_IMAGE_INDEX, keys: [IMAGE_LIBRARY_MENU_KEY] }
+  extraKeys.push(IMAGE_LIBRARY_MENU_KEY)
 }
+toolbarConfig.insertKeys = { index: DEFAULT_GROUP_IMAGE_INDEX, keys: extraKeys }
 
 onMounted(() => {
   const box = editorBoxEl.value
@@ -139,6 +157,31 @@ onMounted(() => {
 
   // 图片库菜单 → 本实例弹窗（WeakMap 按编辑器实例路由，双实例互不串扰）
   if (props.imageLibrary) bindImageLibrary(editor, () => { libraryOpen.value = true })
+  // 查看源码菜单 → 本实例弹窗
+  bindSourceView(editor, () => { sourceOpen.value = true })
+
+  // 双实例工具栏假死禁用修复（用户反馈 2026-11-16：切换实例后引用/代码块/网络图片变灰）。
+  // 根因：工具栏禁用态只在编辑器 change 事件刷新（200ms 防抖），且 selection == null 时全禁。
+  // 切到另一实例时本实例被 deselect → change → 全禁；点回本实例时若 DOM 选择与上次一致，
+  // slate 同步不产生 change，工具栏就停在禁用态。此处在 focusin 后强制 updateView
+  // （150ms / 500ms 双保险，晚于 slate 100ms 的 DOM 选择同步防抖），按实时 selection 重算禁用态。
+  const refreshToolbar = (): void => {
+    viewTimers.forEach((t) => window.clearTimeout(t))
+    viewTimers = [
+      window.setTimeout(() => editor.updateView(), 150),
+      window.setTimeout(() => editor.updateView(), 500),
+    ]
+  }
+  rich.addEventListener('focusin', refreshToolbar)
+
+  // 底部状态栏字数：change 事件（含选区变化）驱动，初始算一次
+  const refreshStats = (): void => {
+    stats.value = countText(editor.getText())
+    const sel = editor.getSelectionText()
+    selectedLen.value = sel ? sel.replace(/\n/g, '').length : 0
+  }
+  refreshStats()
+  editor.on('change', refreshStats)
 
   // 主链路：wangEditor 自带生命周期事件（core 内部 hoverbar 也监听这两个事件）。
   // 退出时 unFullScreen 先移除 class 再 emit，200ms 延时已走完，无需额外等待。
@@ -184,7 +227,12 @@ onBeforeUnmount(() => {
   classObserver = null
   detachEvents?.()
   detachEvents = null
-  if (editorRef.value) unbindImageLibrary(editorRef.value)
+  viewTimers.forEach((t) => window.clearTimeout(t))
+  viewTimers = []
+  if (editorRef.value) {
+    unbindImageLibrary(editorRef.value)
+    unbindSourceView(editorRef.value)
+  }
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
@@ -194,6 +242,14 @@ onBeforeUnmount(() => {
   <Teleport to="body" :disabled="!fullScreen">
     <div ref="richEl" class="rich" :class="{ 'is-fullscreen': fullScreen }">
       <div ref="editorBoxEl" class="rich-inner" />
+      <!-- 底部状态栏（Word 式）：全屏时一并带起，随 .rich flex 布局沉底 -->
+      <div class="rich-status">
+        <span>字数 {{ stats.words }}</span>
+        <span>字符 {{ stats.chars }}（空格 {{ stats.chars - stats.charsNoSpace }}）</span>
+        <span>段落 {{ stats.paragraphs }}</span>
+        <span v-if="selectedLen > 0" class="rich-status-sel">已选 {{ selectedLen }} 字</span>
+        <span v-if="readonly" class="rich-status-ro">只读</span>
+      </div>
     </div>
   </Teleport>
   <ImageLibraryDialog
@@ -202,6 +258,7 @@ onBeforeUnmount(() => {
     :editor="editorRef ?? null"
     :library="imageLibrary"
   />
+  <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
 </template>
 
 <style scoped>
@@ -221,6 +278,30 @@ onBeforeUnmount(() => {
 }
 .rich-inner :deep(.w-e-toolbar) { order: 0; flex: 0 0 auto; }
 .rich-inner :deep(.w-e-text-container) { order: 1; flex: 1 1 auto; min-height: 200px; }
+
+/** 底部状态栏（Word 式字数统计）：全屏时沉底，随 .rich 一起 Teleport */
+.rich-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--sshk-text-dim, rgba(128, 128, 128, 0.9));
+  background: var(--sshk-panel, #fff);
+  border-top: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.3));
+  border-radius: 0 0 6px 6px;
+  user-select: none;
+}
+.rich-status-sel { color: var(--el-color-primary, #409eff); }
+.rich-status-ro {
+  color: var(--el-color-warning, #e6a23c);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 5px;
+  line-height: 16px;
+}
 
 /**
  * 暗色根治（用户反馈 2026-11-16 B3/B6，两处「改了没生效」的真正原因）：
@@ -252,6 +333,12 @@ onBeforeUnmount(() => {
 :global(html.dark .rich) {
   border-color: #333;
   background: #181818;
+}
+
+:global(html.dark .rich-status) {
+  color: #8a8a8a;
+  background: #1f1f1f;
+  border-color: #333;
 }
 
 /* hover 提示（tooltip）与选中文字的暗色可读性：active-color 变亮后 tooltip 反转为浅底深字 */
@@ -325,4 +412,5 @@ onBeforeUnmount(() => {
 :global(.rich.is-fullscreen .rich-inner) { flex: 1 1 auto !important; min-height: 0 !important; }
 :global(.rich.is-fullscreen .w-e-text-container) { flex: 1 1 auto !important; min-height: 0 !important; }
 :global(.rich.is-fullscreen .w-e-toolbar) { flex: 0 0 auto !important; }
+:global(.rich.is-fullscreen .rich-status) { border-radius: 0; }
 </style>

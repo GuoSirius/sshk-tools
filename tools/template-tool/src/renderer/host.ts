@@ -7,4 +7,5 @@ import { createSafeHost } from '@sshk/ui-kit'
  */
 export const host = createSafeHost({
   config: { get: C.configGet, set: C.configSet },
+  upload: { single: C.uploadSingle, profiles: C.uploadProfiles, listImages: C.uploadListImages },
 })
