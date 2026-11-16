@@ -5,8 +5,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- script-src 必须放行 blob:：运行时工具包（.sshktool）的渲染层经 Blob URL 动态 import，
-         内容来自安装时已通过契约校验的本机包，非远程脚本 -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:" />
+         内容来自安装时已通过契约校验的本机包，非远程脚本；
+         connect-src 放行 https:：与 img-src https: 对齐——snapdom 截图内联像素用 fetch 拉外链图片，
+         fetch 无显式 connect-src 时回退 default-src 'self' 被拦（2026-11-16 用户实测 OSS 图片截图报错） -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:" />
     <title>sshk-tools</title>
   </head>
   <body>
