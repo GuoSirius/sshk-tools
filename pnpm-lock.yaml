@@ -214,6 +214,19 @@ importers:
         specifier: latest
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
 
+  packages/share-core:
+    dependencies:
+      '@sshk/repository':
+        specifier: workspace:*
+        version: link:../repository
+    devDependencies:
+      '@types/node':
+        specifier: latest
+        version: 26.6.6
+      typescript:
+        specifier: '6'
+        version: 6.0.3
+
   packages/shared:
     dependencies:
       dayjs:
@@ -300,6 +313,9 @@ importers:
       '@sshk/repository':
         specifier: workspace:*
         version: link:../../packages/repository
+      '@sshk/share-core':
+        specifier: workspace:*
+        version: link:../../packages/share-core
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -349,6 +365,9 @@ importers:
       '@sshk/rich-text':
         specifier: workspace:*
         version: link:../../packages/rich-text
+      '@sshk/share-core':
+        specifier: workspace:*
+        version: link:../../packages/share-core
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
