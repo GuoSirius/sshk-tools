@@ -119,14 +119,25 @@ function apply(): void {
 </template>
 
 <style scoped>
-/* 与 badge-studio 同款呈现：body 固定高度 + flex 列，编辑器填满剩余空间、高度跟随弹框 */
-:global(.source-view-dialog) .el-dialog__body {
-  height: clamp(400px, 74vh, 900px);
+/* 与图片库同口径：整个弹框占视口 75%，header/footer 固定，body 吃满剩余；编辑器填满 body */
+:global(.source-view-dialog) {
+  height: 75vh;
+  min-height: 460px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+:global(.source-view-dialog .el-dialog__header) { flex: 0 0 auto; }
+:global(.source-view-dialog .el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 14px 20px 16px !important;
 }
+:global(.source-view-dialog .el-dialog__footer) { flex: 0 0 auto; }
 .src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .src-tip { font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
 .src-actions { display: flex; gap: 8px; margin-bottom: 8px; }

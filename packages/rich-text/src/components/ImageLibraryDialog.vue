@@ -42,16 +42,12 @@ interface UploadTask {
   url?: string
   /** 本地预览 objectURL（web-uploader 风格缩略图），卸载/删除时 revoke */
   previewUrl?: string
+  /** 缩略图加载失败（CSP 拦截/损坏文件/不支持格式）时改用占位，不显示浏览器裂图 */
+  previewFailed?: boolean
   size: number
   scope: string
   source: RichTextImageSource
   target: RichTextImageTarget
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 /**
@@ -107,6 +103,10 @@ const overallPercent = computed(() => {
 })
 /** 有活动上传任务时显示总体进度条 */
 const uploadInProgress = computed(() => uploadTasks.value.some((t) => t.status === 'uploading'))
+/** 上传中/失败的任务：以缩略图卡片形式并入图片网格（成功项走 uploaded 卡片），受文件名搜索过滤 */
+const activeUploadTasks = computed(() =>
+  uploadTasks.value.filter((t) => t.status !== 'success' && (!keyword.value || t.name.toLowerCase().includes(keyword.value.toLowerCase()))),
+)
 /** 图库已列图片 */
 const items = ref<RichTextImageItem[]>([])
 const loadingList = ref(false)
@@ -571,47 +571,53 @@ function onPaneScroll(e: Event): void {
         </div>
         <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
       </div>
-      <!-- 单项上传任务：web-uploader 风格文件行（缩略图 + 名称/大小 + 状态 + 进度条 + 操作） -->
-      <div v-if="tab === 'upload' && uploadTasks.length" class="upload-task-list">
-        <div v-for="task in uploadTasks" :key="task.id" class="wu-file-row" :class="'st-' + task.status">
-          <div class="wu-thumb">
-            <img v-if="task.previewUrl" :src="task.previewUrl" :alt="task.name" />
-            <span v-else class="wu-thumb-ph">图</span>
-            <span v-if="task.status === 'success'" class="wu-thumb-state ok">✓</span>
-            <span v-else-if="task.status === 'failed'" class="wu-thumb-state err">!</span>
-          </div>
-          <div class="wu-info">
-            <div class="wu-line1">
-              <span class="wu-name" :title="task.name">{{ task.name }}</span>
-              <span class="wu-size">{{ formatSize(task.size) }}</span>
-              <span class="wu-status" :class="'st-' + task.status">
-                {{ task.status === 'uploading' ? '上传中' : task.status === 'success' ? '上传成功' : '上传失败' }}
-              </span>
-            </div>
-            <el-progress
-              class="wu-progress"
-              :percentage="task.percent"
-              :status="task.status === 'failed' ? 'exception' : task.status === 'success' ? 'success' : undefined"
-              :stroke-width="4"
-              :show-text="false"
-            />
-            <div v-if="task.status === 'failed'" class="wu-error" :title="task.error">{{ task.error }}</div>
-          </div>
-          <div class="wu-actions">
-            <el-tooltip v-if="task.status === 'failed'" content="重试" placement="top">
-              <el-button size="small" type="primary" link @click="retryUpload(task)">重试</el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button size="small" type="danger" link @click="removeUploadTask(task)">删除</el-button>
-            </el-tooltip>
-          </div>
-        </div>
-      </div>
       <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
         <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
         <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
       </div>
-      <div v-if="visible.length" class="thumb-grid">
+      <div v-if="visible.length || (tab === 'upload' && activeUploadTasks.length)" class="thumb-grid">
+        <!-- 上传中/失败任务：缩略图上叠进度/状态，卡片底部放重试与删除 -->
+        <div
+          v-for="task in activeUploadTasks"
+          :key="'task-' + task.id"
+          class="thumb-cell task-cell"
+          :class="'st-' + task.status"
+          :title="task.status === 'failed' ? task.error : task.name"
+        >
+          <div class="task-thumb">
+            <img
+              v-if="task.previewUrl && !task.previewFailed"
+              :src="task.previewUrl"
+              :alt="task.name"
+              @error="task.previewFailed = true"
+            />
+            <span v-else class="task-thumb-ph" title="图片预览不可用">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15.5 16 11 7 20" />
+              </svg>
+            </span>
+            <span v-if="task.status === 'failed'" class="task-thumb-state">!</span>
+            <el-progress
+              v-if="task.status === 'uploading'"
+              class="task-thumb-progress"
+              :percentage="task.percent"
+              :stroke-width="4"
+              :show-text="false"
+            />
+          </div>
+          <div class="thumb-name">{{ task.name }}</div>
+          <div class="task-meta">
+            <span class="task-status" :class="'st-' + task.status">
+              {{ task.status === 'uploading' ? `上传中 ${task.percent}%` : '上传失败' }}
+            </span>
+          </div>
+          <div class="task-ops">
+            <el-button v-if="task.status === 'failed'" size="small" type="primary" link @click="retryUpload(task)">重试</el-button>
+            <el-button size="small" type="danger" link @click="removeUploadTask(task)">删除</el-button>
+          </div>
+        </div>
         <div v-for="item in rendered" :key="itemKey(item)" class="thumb-cell" :class="{ picked: isSelected(item) }">
           <el-checkbox :model-value="isSelected(item)" class="thumb-check" @change="togglePool(item)" @click.stop />
           <el-image
@@ -686,30 +692,20 @@ function onPaneScroll(e: Event): void {
 /* 上传总体进度条 */
 .upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
 .up-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
-/* 单项上传任务列表：web-uploader 风格文件行 */
-.upload-task-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-.wu-file-row {
-  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
-  border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25));
-  border-radius: 6px; background: var(--el-fill-color-blank, rgba(128, 128, 128, 0.04));
-}
-.wu-thumb { position: relative; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 4px; overflow: hidden; background: rgba(128, 128, 128, 0.1); }
-.wu-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.wu-thumb-ph { display: grid; place-items: center; width: 100%; height: 100%; font-size: 14px; opacity: 0.5; }
-.wu-thumb-state { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; display: grid; place-items: center; font-size: 11px; color: #fff; }
-.wu-thumb-state.ok { background: var(--el-color-success); }
-.wu-thumb-state.err { background: var(--el-color-danger); }
-.wu-info { flex: 1 1 auto; min-width: 0; }
-.wu-line1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.wu-name { flex: 1 1 auto; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wu-size { flex: 0 0 auto; font-size: 11px; opacity: 0.6; }
-.wu-status { flex: 0 0 auto; font-size: 11px; }
-.wu-status.st-uploading { color: var(--el-color-primary); }
-.wu-status.st-success { color: var(--el-color-success); }
-.wu-status.st-failed { color: var(--el-color-danger); }
-.wu-progress { width: 100%; }
-.wu-error { font-size: 11px; color: var(--el-color-danger); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wu-actions { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0; }
+/* 上传中/失败任务卡片：与成功缩略图同网格，进度直接叠在图片上 */
+.task-cell { border-color: var(--sshk-border, rgba(128, 128, 128, 0.3)); }
+.task-cell.st-failed { border-color: var(--el-color-danger); }
+.task-thumb { position: relative; width: 100%; height: 80px; border-radius: 4px; overflow: hidden; background: rgba(128, 128, 128, 0.1); }
+.task-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.task-thumb-ph { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-text-color-placeholder); opacity: 0.4; }
+.task-thumb-state { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: grid; place-items: center; font-size: 12px; color: #fff; background: var(--el-color-danger); border-radius: 50%; }
+.task-thumb-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 3px 3px; }
+.task-meta { margin-top: 2px; }
+.task-status { font-size: 10px; }
+.task-status.st-uploading { color: var(--el-color-primary); }
+.task-status.st-failed { color: var(--el-color-danger); }
+.task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
+.task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
 .pool-summary { flex: 0 1 auto; min-height: 0; max-height: 38%; display: flex; flex-direction: column; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
 .pool-summary-head { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .pool-caret { opacity: 0.7; }
@@ -761,8 +757,8 @@ function onPaneScroll(e: Event): void {
   flex-direction: column;
   overflow: hidden;
 }
-:global(.image-library-dialog) .el-dialog__header { flex: 0 0 auto; }
-:global(.image-library-dialog) .el-dialog__body {
+:global(.image-library-dialog .el-dialog__header) { flex: 0 0 auto; }
+:global(.image-library-dialog .el-dialog__body) {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -770,7 +766,7 @@ function onPaneScroll(e: Event): void {
   overflow: hidden;
   padding: 16px 20px !important;
 }
-:global(.image-library-dialog) .el-dialog__footer { flex: 0 0 auto; }
+:global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
 .lib-pane { flex: 1 1 auto; min-height: 120px; padding-right: 4px; }
 </style>
