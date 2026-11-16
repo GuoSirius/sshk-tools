@@ -39,6 +39,8 @@ export interface RichTextImageItem {
   name?: string
   size?: number
   modified?: number
+  /** 对象 key / 相对路径（用于派生多级目录选项；可选兼容旧桥接） */
+  key?: string
 }
 
 export interface RichTextImageLibrary {

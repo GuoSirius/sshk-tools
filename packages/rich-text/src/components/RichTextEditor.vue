@@ -72,6 +72,8 @@ const props = withDefaults(
     imageRule?: RichTextImageRule
     /** 图片库桥接（来源/上传/列图）；不传则不显示「图片库」菜单 */
     imageLibrary?: RichTextImageLibrary
+    /** 图片库设置隔离键：多实例各传不同值，来源/桶/目录设置互不串扰 */
+    stateKey?: string
   }>(),
   {
     modelValue: '',
@@ -79,6 +81,7 @@ const props = withDefaults(
     onUploadImage: undefined,
     imageRule: undefined,
     imageLibrary: undefined,
+    stateKey: 'default',
   },
 )
 
@@ -257,6 +260,7 @@ onBeforeUnmount(() => {
     v-model:open="libraryOpen"
     :editor="editorRef ?? null"
     :library="imageLibrary"
+    :state-key="stateKey"
   />
   <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
 </template>

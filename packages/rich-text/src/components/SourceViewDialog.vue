@@ -8,7 +8,9 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { IDomEditor } from '@wangeditor/editor'
+import { CodeEditor } from '@sshk/code-editor'
 import { toDisplayHtml, toStoredHtml } from '../display'
+import { compactHtml, formatHtml } from '../source-format'
 
 const props = defineProps<{
   open: boolean
@@ -19,15 +21,36 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
 const text = ref('')
 const dirty = ref(false)
+const formatting = ref(false)
 
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     if (!open) return
-    text.value = props.editor ? toStoredHtml(props.editor.getHtml()) : ''
+    const stored = props.editor ? toStoredHtml(props.editor.getHtml()) : ''
+    // 默认格式化展示（wangEditor getHtml 返回压缩串）：只影响弹窗文本，不写回编辑器
+    formatting.value = true
+    text.value = await formatHtml(stored)
+    formatting.value = false
     dirty.value = false
   },
 )
+
+function markDirty(): void {
+  dirty.value = true
+}
+
+async function doFormat(): Promise<void> {
+  formatting.value = true
+  text.value = await formatHtml(text.value)
+  formatting.value = false
+  markDirty()
+}
+
+function doCompact(): void {
+  text.value = compactHtml(text.value)
+  markDirty()
+}
 
 function close(): void {
   emit('update:open', false)
@@ -50,32 +73,32 @@ function apply(): void {
   ElMessage.success('已应用源码修改')
 }
 
-function onInput(): void {
-  dirty.value = true
-}
 </script>
 
 <template>
   <el-dialog
     :model-value="open"
     title="查看源码"
-    width="760px"
+    width="820px"
+    top="6vh"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     append-to-body
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
     <div class="src-tip">
-      存储形态 HTML（图片为 file:// 资源路径）。{{ readonly ? '只读内容，仅可查看与复制。' : '可直接修改后「应用」写回编辑器。' }}
+      存储形态 HTML（图片为 file:// 资源路径）。{{ readonly ? '只读内容，仅可查看与复制。' : '默认格式化展示；可直接修改，或格式化/压缩后「应用修改」写回编辑器。' }}
     </div>
-    <el-input
+    <div class="src-actions">
+      <el-button size="small" :loading="formatting" @click="doFormat">格式化</el-button>
+      <el-button size="small" @click="doCompact">压缩</el-button>
+    </div>
+    <CodeEditor
       v-model="text"
-      type="textarea"
-      :rows="18"
+      language="html"
+      height="min(52vh, 480px)"
       :readonly="readonly"
-      class="src-area"
-      spellcheck="false"
-      @input="onInput"
+      @update:model-value="markDirty"
     />
     <template #footer>
       <el-button @click="copy">复制源码</el-button>
@@ -87,5 +110,5 @@ function onInput(): void {
 
 <style scoped>
 .src-tip { font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
-.src-area :deep(textarea) { font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.6; }
+.src-actions { display: flex; gap: 8px; margin-bottom: 8px; }
 </style>

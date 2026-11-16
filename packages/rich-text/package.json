@@ -11,9 +11,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sshk/code-editor": "workspace:*",
     "@wangeditor/editor": "latest",
     "element-plus": "latest",
     "marked": "latest",
+    "prettier": "latest",
     "turndown": "latest",
     "vue": "latest"
   },

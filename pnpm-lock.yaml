@@ -191,6 +191,9 @@ importers:
 
   packages/rich-text:
     dependencies:
+      '@sshk/code-editor':
+        specifier: workspace:*
+        version: link:../code-editor
       '@wangeditor/editor':
         specifier: latest
         version: 5.1.23
@@ -200,6 +203,9 @@ importers:
       marked:
         specifier: latest
         version: 18.2.0
+      prettier:
+        specifier: latest
+        version: 3.10.1
       turndown:
         specifier: latest
         version: 7.2.5

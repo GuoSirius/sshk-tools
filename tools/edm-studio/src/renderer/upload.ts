@@ -115,10 +115,11 @@ export function createImageLibrary(toolId: string): RichTextImageLibrary {
       const items = (await host.upload.listImages(requestOf(source, target ?? {}))) as {
         url: string
         name: string
+        key?: string
         size?: number
         modified?: number
       }[]
-      return items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified }))
+      return items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified, key: i.key }))
     },
   }
 }

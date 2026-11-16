@@ -216,6 +216,7 @@ function acceptPolish(): void {
             :readonly="readonly"
             :on-upload-image="uploader"
             :image-library="library"
+            :state-key="`edm:${f.key}`"
             @update:model-value="(v: string) => set(f.key, v)"
           />
           <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
