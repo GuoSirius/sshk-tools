@@ -714,7 +714,7 @@ async function cleanupOrphans(): Promise<void> {
                 <el-button size="small" @click="clearKey">清除</el-button>
               </div>
               <div class="hint">
-                密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。
+                密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。完整体系（五套口令对照 / 进程边界 / 脱敏红线）见 docs/02-architecture/安全与密钥体系.md。
               </div>
             </section>
 

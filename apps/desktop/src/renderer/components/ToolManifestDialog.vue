@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { Delete, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { HOST_API_VERSION, TOOL_PACKAGE_SCHEMA_VERSION } from '@sshk/shared'
 import type { ToolConfigFieldType } from '@sshk/shared'
@@ -324,9 +325,11 @@ async function execute(label: string, action: () => Promise<{ ok: boolean; outpu
   }
 }
 
+/** T4：校验错误行内提示（不整弹窗；与出错字段同屏可见，随下次保存清空） */
+const formError = ref('')
 async function saveAndVerify(): Promise<void> {
   let raw: string
-  try { raw = toManifest() } catch (err) { ElMessage.error((err as Error).message); return }
+  try { raw = toManifest(); formError.value = '' } catch (err) { formError.value = (err as Error).message; return }
   await execute('保存并校验', async () => {
     const saved = await window.api.dev.manifestSet(props.toolId, raw)
     if (!saved.ok) return saved
@@ -373,9 +376,10 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <el-form-item label="工具自有通道">
             <div v-for="(_channel, ci) in channelRows" :key="ci" class="inline-form">
               <el-input v-model="channelRows[ci]" size="small" placeholder="如 toolId:list" style="width: 260px" />
-              <el-button size="small" type="danger" plain @click="channelRows.splice(ci, 1)">删除</el-button>
+              <el-button size="small" type="danger" plain :icon="Delete" @click="channelRows.splice(ci, 1)" />
             </div>
-            <el-button size="small" type="primary" plain @click="channelRows.push('')">新增通道</el-button>
+            <div v-if="channelRows.length === 0" class="empty-hint">暂无自有通道——多数纯前端工具不需要；宿主白名单在「契约」页维护</div>
+            <el-button size="small" type="primary" plain :icon="Plus" @click="channelRows.push('')">新增通道</el-button>
           </el-form-item>
           <div class="hint">工具自有通道（plugin.channels）与宿主通道白名单（package.ipcAllowlist）是两回事，勿混填。</div>
         </el-form>
@@ -424,13 +428,15 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
             </el-select>
             <el-input v-model="dep.key" size="small" placeholder="配置 key" style="width: 180px" />
             <el-input v-model="dep.label" size="small" placeholder="展示名称" style="width: 180px" />
-            <el-button size="small" type="danger" plain @click="depRows.splice(di, 1)">删除</el-button>
+            <el-button size="small" type="danger" plain :icon="Delete" @click="depRows.splice(di, 1)" />
           </div>
-          <el-button size="small" type="primary" plain @click="addDep">新增依赖</el-button>
+          <div v-if="depRows.length === 0" class="empty-hint">暂无软依赖——软依赖缺失只预警不隐藏（硬依赖在上方「dependsOn」）</div>
+          <el-button size="small" type="primary" plain :icon="Plus" @click="addDep">新增依赖</el-button>
 
           <div class="section-title">默认值（defaults，按分组字段自动派生）</div>
           <div class="hint" style="margin-bottom: 8px">新增 / 删除字段后点「重扫默认值」同步行；不在字段中的额外键保存时原样保留。</div>
           <el-button size="small" plain @click="rescanDefaults">重扫默认值</el-button>
+          <div v-if="defaultRows.length === 0" class="empty-hint">暂无默认值行——配置分组加字段后点「重扫默认值」生成</div>
           <div v-for="row in defaultRows" :key="row.key" class="inline-form">
             <el-input :model-value="row.key" size="small" disabled style="width: 200px" />
             <el-switch v-if="row.type === 'boolean'" v-model="row.value" />
@@ -456,6 +462,10 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
       </el-tab-pane>
     </el-tabs>
 
+      <div v-if="formError" class="form-error">
+        <el-icon><WarningFilled /></el-icon>
+        <span>{{ formError }}</span>
+      </div>
       <div class="manifest-actionbar">
         <div class="dev-actions">
           <el-button type="primary" size="small" :loading="busy" @click="saveAndVerify">保存并校验</el-button>
@@ -473,7 +483,9 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 
 <style scoped>
 .hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
-.inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.inline-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.empty-hint { font-size: 12px; color: var(--el-text-color-placeholder); padding: 2px 0 6px; }
+.form-error { display: flex; align-items: center; gap: 6px; color: var(--el-color-danger); font-size: 12px; padding: 6px 10px; margin-bottom: 6px; background: var(--el-color-danger-light-9); border-radius: 6px; }
 
 /* 固定高度壳：头部 tab + 底部操作条固定，仅内容区滚动，切换 tab 不抖动。
    高度按视口百分比（66vh 上限 640px），叠加弹框头/底后总高 < 86vh 全局上限，不触发外层滚动 */
