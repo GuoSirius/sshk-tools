@@ -543,13 +543,19 @@ async function cleanupOrphans(): Promise<void> {
                     size="small"
                     type="success"
                     text
-                    :title="devState.available ? '打开工具清单配置与打包表单' : devState.reason"
+                    :title="devState.available ? '开发者配置（tool.manifest.json / 构建打包）' : devState.reason"
                     @click="openManifest(tool)"
                   >
                     配置
                   </el-button>
-                  <el-button size="small" type="primary" text @click="editing === tool.id ? (editing = null) : startEdit(tool)">
-                    {{ editing === tool.id ? '收起' : '编辑' }}
+                  <el-button
+                    size="small"
+                    type="primary"
+                    text
+                    title="覆盖卡片名称 / 描述 / 分类 / 图标等展示信息，不改工具源码"
+                    @click="editing === tool.id ? (editing = null) : startEdit(tool)"
+                  >
+                    {{ editing === tool.id ? '收起' : '展示定制' }}
                   </el-button>
                 </div>
                 <div class="tool-manage-meta tag-row">

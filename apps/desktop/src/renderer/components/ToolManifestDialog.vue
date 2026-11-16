@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { HOST_API_VERSION, IPC_CHANNELS, TOOL_PACKAGE_SCHEMA_VERSION, ACCESS_GRANT } from '@sshk/shared'
+import { HOST_API_VERSION, TOOL_PACKAGE_SCHEMA_VERSION } from '@sshk/shared'
 import type { ToolConfigFieldType } from '@sshk/shared'
 import { useToolCatalog } from '../composables/useToolCatalog'
+import BasicInfoSection from './tool-form/BasicInfoSection.vue'
+import MenusSection from './tool-form/MenusSection.vue'
+import CapabilitiesSection from './tool-form/CapabilitiesSection.vue'
+import ConfigGroupsSection from './tool-form/ConfigGroupsSection.vue'
+import JsonPreviewPane from './tool-form/JsonPreviewPane.vue'
+import { parseOptions } from './tool-form/types'
 
 /**
  * 开发者模式：工具清单（tool.manifest.json）可视化编辑 + 构建/打包动作。
- * 表单覆盖基础 / 菜单 / 插件 / 契约 / 高级五组；保存后写回源码文件并可立即跑 verify。
+ * 表单由 tool-form/ 共享组件拼装（与创建向导同源）；保存后写回源码文件并可立即跑 verify。
  * 由设置抽屉打开：源码 dev 运行始终可用；打包/安装版需 app.developerMode 且主进程确认源码仓库可用。
  */
 const props = defineProps<{ modelValue: boolean; toolId: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [unknown] }>()
 
-const CAPABILITIES = [
-  'getToolSecret', 'setToolSecret', 'chat', 'listProviders',
-  'chatByProvider', 'listModelsByProvider', 'runLocalOcr',
-]
-const HOST_CHANNELS = Object.values(IPC_CHANNELS) as string[]
-
-interface MenuRow { id: string; label: string }
+interface DepRow { toolId: string; key: string; label: string }
+interface DefaultRow { key: string; label: string; type: ToolConfigFieldType; value: string | number | boolean | null }
 interface ManifestForm {
   id: string
   name: string
@@ -31,7 +32,7 @@ interface ManifestForm {
   enabled: boolean
   visibility: string
   configLayout: string
-  menus: MenuRow[]
+  menus: { id: string; label: string }[]
   plugin: { source: string; main: string; renderer: string }
   pkg: {
     version: string
@@ -67,51 +68,16 @@ const categoryOptions = computed(() => {
   for (const tool of catalogPayload.value.tools) for (const c of tool.categories) set.add(c)
   return [...set]
 })
-/** 分类：历史建议下拉 + 自由手输（多分类仍用顿号分隔，逐项从建议里选或手打） */
-function queryCategories(query: string, cb: (items: { value: string }[]) => void): void {
-  const last = query.split('、').pop()?.trim().toLowerCase() ?? ''
-  cb(categoryOptions.value.filter((c) => !last || c.toLowerCase().includes(last)).map((value) => ({ value })))
-}
-/** 选中建议：替换最后一段并保留已输入的多分类（顿号分隔），末尾补顿号便于继续选 */
-function onCategorySelect(value: string): void {
-  const parts = form.category.split('、').map((s) => s.trim()).filter(Boolean)
-  parts.push(value)
-  form.category = [...new Set(parts)].join('、') + '、'
-}
 
-// ── N16 表单化：原 JSON 文本域（configGroups / configDeps / defaults / channels）全部结构化 ──
-const FIELD_TYPES: { label: string; value: ToolConfigFieldType }[] = [
-  { label: '文本 string', value: 'string' },
-  { label: '数字 number', value: 'number' },
-  { label: '开关 boolean', value: 'boolean' },
-  { label: '下拉 select', value: 'select' },
-  { label: '目录 dir', value: 'dir' },
-  { label: '文件 file', value: 'file' },
-]
-interface FieldRow { key: string; label: string; type: ToolConfigFieldType; hint: string; min: number | null; optionsText: string }
-interface GroupRow { id: string; label: string; fields: FieldRow[] }
-interface DepRow { toolId: string; key: string; label: string }
-interface DefaultRow { key: string; label: string; type: ToolConfigFieldType; value: string | number | boolean | null }
-
-const groupRows = ref<GroupRow[]>([])
+// ── N16 表单化：configGroups / configDeps / defaults 全部结构化行编辑 ──
+const groupRows = ref<import('./tool-form/types').GroupRow[]>([])
 const depRows = ref<DepRow[]>([])
 const channelRows = ref<string[]>([])
 /** defaults 行：key 来自当前 configGroups 字段；额外键保留在 extraDefaults */
 const defaultRows = ref<DefaultRow[]>([])
 const extraDefaults = ref<Record<string, unknown>>({})
 
-function emptyField(): FieldRow {
-  return { key: '', label: '', type: 'string', hint: '', min: null, optionsText: '' }
-}
-function addGroup(): void { groupRows.value.push({ id: `config-${groupRows.value.length + 1}`, label: '', fields: [emptyField()] }) }
-function addField(group: GroupRow): void { group.fields.push(emptyField()) }
 function addDep(): void { depRows.value.push({ toolId: '', key: '', label: '' }) }
-function parseOptions(text: string): { label: string; value: string }[] {
-  return text.split(/[,，]+/).map((seg) => seg.trim()).filter(Boolean).map((seg) => {
-    const [label, value] = seg.split(/[:：]/).map((s) => s.trim())
-    return { label: label ?? seg, value: value ?? label ?? seg }
-  })
-}
 /** a.b.c 点路径读值 */
 function nestedGet(obj: Record<string, unknown>, path: string): unknown {
   let cursor: unknown = obj
@@ -337,8 +303,8 @@ function toManifest(): string {
 }
 
 /** N16：实时 JSON 预览（填写完成即可看到落盘数据；解析失败显示原因） */
-const previewText = computed(() => {
-  try { return toManifest() } catch (err) { return `⚠ ${(err as Error).message}` }
+const preview = computed<{ text: string; error: string }>(() => {
+  try { return { text: toManifest(), error: '' } } catch (err) { return { text: '', error: (err as Error).message } }
 })
 
 async function execute(label: string, action: () => Promise<{ ok: boolean; output: string }>): Promise<void> {
@@ -387,55 +353,10 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
     <div class="manifest-shell">
       <el-tabs v-model="tab" type="card" class="manifest-tabs">
       <el-tab-pane v-for="t in tabList" :key="t.id" :name="t.id" :label="t.label">
-        <el-form v-if="t.id === 'basic'" label-width="96px" size="small" class="manifest-form">
-          <div class="form-grid">
-            <el-form-item label="id" class="span-2">
-              <el-input :model-value="form.id" disabled />
-              <div class="hint">唯一真相源，必须与目录名一致，不可改</div>
-            </el-form-item>
-            <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-            <el-form-item label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
-            <el-form-item label="分类">
-              <el-autocomplete
-                v-model="form.category"
-                :fetch-suggestions="queryCategories"
-                @select="onCategorySelect"
-                style="width: 100%"
-                clearable
-                placeholder="选历史分类或直接输入；多个用顿号分隔"
-              />
-            </el-form-item>
-            <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔；标签内可含空格，如 OCR 识别" /></el-form-item>
-            <el-form-item label="图标"><el-input v-model="form.icon" placeholder="auto = assets/icon.svg" /></el-form-item>
-            <el-form-item label="配置布局">
-              <el-select v-model="form.configLayout" style="width: 100%">
-                <el-option label="single（单页）" value="single" />
-                <el-option label="tabs（分页）" value="tabs" />
-                <el-option label="menu（子菜单）" value="menu" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
-            <el-form-item label="可见性">
-              <el-select v-model="form.visibility" style="width: 100%">
-                <el-option label="desktop（默认上桌面）" value="desktop" />
-                <el-option label="managed（受控：进权限列表，用户开启后上桌面）" value="managed" />
-                <el-option label="hidden（隐藏：不上桌面也不进列表，仅可独立启停）" value="hidden" />
-                <el-option label="implicit（隐式基座：永不上桌面、仅被其它工具依赖）" value="implicit" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="描述" class="span-2">
-              <el-input v-model="form.description" type="textarea" :rows="2" />
-            </el-form-item>
-          </div>
-        </el-form>
+        <BasicInfoSection v-if="t.id === 'basic'" :form="form" mode="edit" :categories="categoryOptions" />
 
-        <div v-else-if="t.id === 'menus'">
-          <div v-for="(row, i) in form.menus" :key="i" class="inline-form">
-            <el-input v-model="row.id" size="small" placeholder="菜单 id" style="width: 200px" />
-            <el-input v-model="row.label" size="small" placeholder="显示名称" style="width: 240px" />
-            <el-button size="small" type="danger" plain @click="form.menus.splice(i, 1)">删除</el-button>
-          </div>
-          <el-button size="small" type="primary" plain @click="form.menus.push({ id: '', label: '' })">新增菜单</el-button>
+        <div v-else-if="t.id === 'menus'" class="menus-pane">
+          <MenusSection :menus="form.menus" />
         </div>
 
         <el-form v-else-if="t.id === 'plugin'" label-width="130px" size="small">
@@ -457,74 +378,40 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <div class="hint">工具自有通道（plugin.channels）与宿主通道白名单（package.ipcAllowlist）是两回事，勿混填。</div>
         </el-form>
 
-        <el-form v-else-if="t.id === 'contract'" label-width="130px" size="small">
-          <el-form-item label="schemaVersion"><el-input :model-value="String(TOOL_PACKAGE_SCHEMA_VERSION)" disabled /></el-form-item>
-          <el-form-item label="requiresHost.api"><el-input :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
-          <el-form-item label="版本号"><el-input v-model="form.pkg.version" /></el-form-item>
-          <el-form-item label="宿主能力">
-            <div class="cap-box">
-              <el-checkbox-group v-model="form.pkg.capabilities">
-                <el-checkbox v-for="c in CAPABILITIES" :key="c" :value="c" :label="c" />
-              </el-checkbox-group>
-              <div class="hint">全选 = 最高权限形态（外部包分发需有效签名）</div>
-            </div>
-          </el-form-item>
-          <el-form-item label="沙箱">
-            <el-select v-model="form.pkg.sandbox" style="width: 220px">
-              <el-option label="utility（默认）" value="utility" />
-              <el-option label="main（需有效签名）" value="main" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="宿主通道白名单">
-            <el-select v-model="form.pkg.ipcAllowlist" multiple filterable collapse-tags clearable style="width: 100%">
-              <el-option v-for="c in HOST_CHANNELS" :key="c" :label="c" :value="c" />
-            </el-select>
-            <div class="hint">可选集 = IPC_CHANNELS 全表；签名由 sign-tool 写入，不在表单维护</div>
-          </el-form-item>
-        </el-form>
+        <div v-else-if="t.id === 'contract'" class="contract-pane">
+          <el-form label-width="130px" size="small">
+            <el-form-item label="schemaVersion"><el-input :model-value="String(TOOL_PACKAGE_SCHEMA_VERSION)" disabled /></el-form-item>
+            <el-form-item label="requiresHost.api"><el-input :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
+            <el-form-item label="版本号"><el-input v-model="form.pkg.version" /></el-form-item>
+            <el-form-item label="沙箱">
+              <el-select v-model="form.pkg.sandbox" style="width: 220px">
+                <el-option label="utility（默认）" value="utility" />
+                <el-option label="main（需有效签名）" value="main" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <CapabilitiesSection
+            v-model:capabilities="form.pkg.capabilities"
+            v-model:allowlist="form.pkg.ipcAllowlist"
+            v-model:grant="form.requiredGrant"
+          />
+        </div>
 
-        <!-- N16：配置与依赖全表单化（原 JSON 文本域已移除），分组/字段/依赖/默认值全部行编辑 -->
+        <!-- N16：配置与依赖全表单化，分组/字段行编辑走共享 ConfigGroupsSection -->
         <div v-else-if="t.id === 'advanced'" class="advanced-pane">
           <div class="hint" style="margin-bottom: 8px">
-            配置分组 / 依赖 / 默认值全部表单化；路径类字段请用 dir / file 类型（选择 + 可改，禁止裸 string 手填）。
-            填写结果可在「JSON 预览」页查看。
+            路径类字段请用 dir / file 类型（选择 + 可改，禁止裸 string 手填）。填写结果可在「JSON 预览」页查看。
           </div>
 
-          <div class="section-title">配置分组（configGroups）</div>
-          <div v-for="(group, gi) in groupRows" :key="gi" class="group-card">
-            <div class="inline-form">
-              <el-input v-model="group.id" size="small" placeholder="分组 id" style="width: 170px" />
-              <el-input v-model="group.label" size="small" placeholder="分组名称" style="width: 180px" />
-              <el-button size="small" type="danger" plain @click="groupRows.splice(gi, 1)">删除分组</el-button>
-            </div>
-            <div v-for="(field, fi) in group.fields" :key="fi" class="inline-form field-row">
-              <el-input v-model="field.key" size="small" placeholder="key（a.b.c）" style="width: 160px" />
-              <el-input v-model="field.label" size="small" placeholder="名称" style="width: 120px" />
-              <el-select v-model="field.type" size="small" style="width: 120px">
-                <el-option v-for="item in FIELD_TYPES" :key="item.value" :label="item.label" :value="item.value" />
-              </el-select>
-              <el-input v-if="field.type === 'select'" v-model="field.optionsText" size="small" placeholder="选项 标签:值, 标签:值" style="width: 180px" />
-              <el-input v-else-if="field.type === 'number'" v-model.number="field.min" size="small" placeholder="最小值" style="width: 110px" />
-              <el-input v-model="field.hint" size="small" placeholder="提示语" style="flex: 1; min-width: 120px" />
-              <el-button size="small" type="danger" plain @click="group.fields.splice(fi, 1)">删除</el-button>
-            </div>
-            <el-button size="small" type="primary" plain @click="addField(group)">加字段</el-button>
-          </div>
-          <el-button size="small" type="primary" plain @click="addGroup">新增配置分组</el-button>
+          <ConfigGroupsSection :groups="groupRows" />
 
-          <div class="section-title">硬依赖（dependsOn）与访问门槛</div>
+          <div class="section-title">硬依赖（dependsOn）</div>
           <el-form label-width="96px" size="small" style="margin-bottom: 10px">
             <el-form-item label="硬依赖">
               <el-select v-model="form.dependsOn" multiple filterable clearable collapse-tags style="width: 100%" placeholder="默认零依赖">
                 <el-option v-for="id in toolIdOptions" :key="id" :label="id" :value="id" />
               </el-select>
               <div class="hint">依赖工具不可用时本工具一并隐藏</div>
-            </el-form-item>
-            <el-form-item label="访问门槛">
-              <el-select v-model="form.requiredGrant" style="width: 280px">
-                <el-option label="公开（默认）" value="" />
-                <el-option label="需访问密钥" :value="ACCESS_GRANT" />
-              </el-select>
             </el-form-item>
           </el-form>
 
@@ -557,10 +444,13 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           </div>
         </div>
 
-        <div v-else-if="t.id === 'preview'" class="preview-pane">
-          <div class="hint" style="margin-bottom: 8px">以下为「保存并校验」将写回 tool.manifest.json 的最终内容（只读）。</div>
-          <pre class="json-preview">{{ previewText }}</pre>
-        </div>
+        <JsonPreviewPane
+          v-else-if="t.id === 'preview'"
+          class="preview-pane"
+          :text="preview.text"
+          :error="preview.error"
+          hint="以下为「保存并校验」将写回 tool.manifest.json 的最终内容（只读）。"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -592,24 +482,16 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 .manifest-tabs :deep(.el-tabs__item.is-active) { font-weight: 600; }
 .manifest-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 6px 4px; }
 
-/* 基础页双列栅格：短字段并排，长字段跨两列 */
-.manifest-form :deep(.form-grid) { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
-.manifest-form :deep(.form-grid .span-2) { grid-column: 1 / -1; }
-
-.cap-box { width: 100%; border: 1px dashed var(--el-border-color); border-radius: 8px; padding: 8px 12px 0; }
-.cap-box :deep(.el-checkbox) { margin-right: 14px; }
+.menus-pane { max-width: 640px; }
+.contract-pane { max-width: 680px; }
 
 /* 底部操作条：与内容区隔离固定，按钮水平居中（全局弹框规范），输出区独立滚动 */
 .manifest-actionbar { flex: none; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color-lighter); }
 .dev-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .dev-output { max-height: 140px; overflow: auto; background: var(--el-fill-color-light); padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; margin-top: 8px; }
 
-/* N16：配置与依赖表单化 + JSON 预览 */
+/* N16：配置与依赖表单化 */
 .advanced-pane { max-width: 880px; }
 .section-title { font-size: 13px; font-weight: 600; margin: 14px 0 8px; }
-.section-title:first-child { margin-top: 0; }
-.group-card { border: 1px dashed var(--el-border-color); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
-.field-row { margin-left: 14px; }
-.preview-pane { display: flex; flex-direction: column; height: 100%; }
-.json-preview { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: var(--el-fill-color-light); font-size: 11px; line-height: 1.6; white-space: pre; }
+.preview-pane { height: 100%; }
 </style>
