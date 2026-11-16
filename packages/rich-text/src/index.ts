@@ -5,4 +5,5 @@
  */
 export { default as RichTextEditor } from './components/RichTextEditor.vue'
 export { htmlToMarkdown, markdownToHtml } from './markdown'
+export { toDisplayHtml, toStoredHtml, toDisplaySrc } from './display'
 export type { RichTextImageRule, RichTextUploadHook } from './types'

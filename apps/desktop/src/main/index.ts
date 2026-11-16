@@ -37,6 +37,10 @@ import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
 import { UploadRuntime, type UploadRequest, type UploadTestRequest } from './upload'
+import { installLocalResHandler, registerLocalResScheme } from './local-res'
+
+/** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
+registerLocalResScheme()
 import { devtoolsKeyMatches } from './dev-access'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -864,6 +868,7 @@ function setupAutoUpdate(): void {
 void app.whenReady().then(async () => {
   migrateLegacyUserData()
   services = setupServices()
+  installLocalResHandler(services.config)
   seedDefaultProviders()
   migrateLegacyVisionConfig()
   await registerIpc()

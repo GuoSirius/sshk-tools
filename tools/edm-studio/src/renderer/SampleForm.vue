@@ -267,7 +267,7 @@ function acceptPolish(): void {
                 :readonly="readonly"
                 @update:model-value="(v: string) => setArr(f.key, arrVal(f.key).map((x, j) => (j === i ? v : x)))"
               />
-              <el-button size="small" type="danger" plain :disabled="readonly" @click="removeImage(f.key, i)">删</el-button>
+              <el-button type="danger" plain :disabled="readonly" @click="removeImage(f.key, i)">删</el-button>
             </div>
             <el-button
               size="small"

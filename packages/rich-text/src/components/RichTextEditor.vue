@@ -9,6 +9,7 @@ import {
   type IToolbarConfig,
 } from '@wangeditor/editor'
 import type { RichTextImageRule, RichTextUploadHook } from '../types'
+import { toDisplayHtml, toStoredHtml } from '../display'
 
 /**
  * 共享富文本编辑器（从 edm-studio 迁入，R27 B3）。
@@ -66,7 +67,8 @@ const editorConfig: Partial<IEditorConfig> = {
   placeholder: '请输入内容…',
   readOnly: props.readonly,
   onChange(editor) {
-    emit('update:modelValue', editor.getHtml())
+    // 回写存储前转回 file://（编辑器内显示用 localres://，见 display.ts）
+    emit('update:modelValue', toStoredHtml(editor.getHtml()))
   },
 }
 if (hook) {
@@ -81,7 +83,31 @@ if (hook) {
   }
   editorConfig.MENU_CONF = conf
 }
-const toolbarConfig: Partial<IToolbarConfig> = hook ? {} : { excludeKeys: ['uploadImage', 'uploadVideo'] }
+/**
+ * 全量工具栏（用户反馈 2026-11-16：默认配置把删除线/行内代码/上下标/清除格式/对齐/缩进
+ * 折叠进「…」下拉组，窄容器下折行后看着像「最小菜单」且凌乱）——全部展开平铺，按功能分组加分隔条。
+ * keys 均已对照 @wangeditor/editor 5.1.23 源码核实注册（拼错会抛 Not found menu item factory）；
+ * 图片/视频保留下拉组（平铺 6 个按钮反而更乱），无上传钩子时剔除 upload 菜单降级为 URL 直填。
+ */
+function buildToolbarKeys(hasUpload: boolean): NonNullable<IToolbarConfig['toolbarKeys']> {
+  return [
+    'headerSelect', 'blockquote', '|',
+    'bold', 'underline', 'italic', 'through', 'code', 'sup', 'sub', 'clearStyle', '|',
+    'color', 'bgColor', '|',
+    'fontSize', 'fontFamily', 'lineHeight', '|',
+    'bulletedList', 'numberedList', 'todo', '|',
+    'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyJustify', '|',
+    'indent', 'delIndent', '|',
+    'emotion', 'insertLink', '|',
+    { key: 'group-image', title: '图片', menuKeys: hasUpload ? ['insertImage', 'uploadImage', 'editImage'] : ['insertImage'] },
+    { key: 'group-video', title: '视频', menuKeys: hasUpload ? ['insertVideo', 'uploadVideo'] : ['insertVideo'] },
+    'insertTable', '|',
+    'codeBlock', 'divider', '|',
+    'undo', 'redo', '|',
+    'fullScreen',
+  ]
+}
+const toolbarConfig: Partial<IToolbarConfig> = { toolbarKeys: buildToolbarKeys(Boolean(hook)) }
 
 onMounted(() => {
   const box = editorBoxEl.value
@@ -89,7 +115,7 @@ onMounted(() => {
   if (!box || !rich) return
   const editor = createEditor({
     selector: box,
-    html: props.modelValue || '',
+    html: toDisplayHtml(props.modelValue || ''),
     config: editorConfig,
     mode: 'default',
   })
@@ -115,12 +141,13 @@ onMounted(() => {
   classObserver.observe(rich, { attributes: true, attributeFilter: ['class'] })
 })
 
-// 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环
+// 外部值变化（切换表单/数据、回填）同步进编辑器，避免与当前内容死循环。
+// 比较与回填都要经过显示层转换（编辑器内部持有 localres:// 形态，存储是 file://）
 watch(
   () => props.modelValue,
   (v) => {
     const editor = editorRef.value
-    if (editor && v !== editor.getHtml()) editor.setHtml(v ?? '')
+    if (editor && v !== toStoredHtml(editor.getHtml())) editor.setHtml(toDisplayHtml(v ?? ''))
   },
 )
 
@@ -187,6 +214,41 @@ onBeforeUnmount(() => {
   --w-e-modal-color: #d4d4d4;
   --w-e-modal-button-bg-color: #2a2a2a;
   --w-e-modal-button-border-color: #444;
+}
+
+/**
+ * 弹层与下拉的暗色补丁（用户反馈 2026-11-16：codeBlock 查看源码 textarea 白底看不清、
+ * 「选择语言」下拉 hover 配色错乱）。选择列表/弹层可能挂载到 .rich 作用域之外，
+ * 故不能用 .rich 前缀的作用域变量兜底，必须在 html.dark 下全局显式配色。
+ */
+:global(html.dark) .w-e-modal {
+  background-color: #1f1f1f;
+  color: #d4d4d4;
+  border-color: #333;
+}
+:global(html.dark) .w-e-modal textarea,
+:global(html.dark) .w-e-modal input[type='text'],
+:global(html.dark) .w-e-modal input[type='number'],
+:global(html.dark) .w-e-modal select {
+  background-color: #181818;
+  color: #d4d4d4;
+  border-color: #444;
+}
+:global(html.dark) .w-e-modal button {
+  background-color: #2a2a2a;
+  border-color: #444;
+  color: #d4d4d4;
+}
+:global(html.dark) .w-e-select-list {
+  background-color: #1f1f1f;
+  border-color: #333;
+  color: #d4d4d4;
+}
+:global(html.dark) .w-e-select-list li { color: #d4d4d4; }
+:global(html.dark) .w-e-select-list li:hover,
+:global(html.dark) .w-e-select-list li.selected {
+  background-color: #333;
+  color: #e5e5e5;
 }
 
 /**
