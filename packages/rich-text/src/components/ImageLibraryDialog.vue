@@ -756,7 +756,7 @@ function onPaneScroll(e: Event): void {
 .task-status.st-failed { color: var(--el-color-danger); }
 .task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
 .task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
-.pool-summary { flex: 0 1 auto; min-height: 0; max-height: 38%; display: flex; flex-direction: column; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
+.pool-summary { flex: 0 0 auto; max-height: 38%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; margin-bottom: 10px; }
 .pool-summary-head { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .pool-caret { opacity: 0.7; }
 .pool-summary-head > span:nth-child(2) { flex: 1 1 auto; }
@@ -844,5 +844,5 @@ function onPaneScroll(e: Event): void {
 }
 :global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
-.lib-pane { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding-right: 6px; }
+.lib-pane { flex: 1 1 0; min-height: 120px; overflow-y: auto; padding-right: 6px; }
 </style>
