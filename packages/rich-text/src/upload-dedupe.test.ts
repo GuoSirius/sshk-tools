@@ -12,8 +12,12 @@ describe('fingerprintKey', () => {
     expect(fingerprintKey(base)).toBe(fingerprintKey({ ...base }))
   })
 
-  it('hash 相同时，文件名不同也视为同一张（改名去重）', () => {
-    expect(fingerprintKey(base)).toBe(fingerprintKey({ ...base, name: 'renamed.png' }))
+  it('hash 相同但文件名不同，视为不同文件（同内容复制多份改名，都允许上传）', () => {
+    expect(fingerprintKey(base)).not.toBe(fingerprintKey({ ...base, name: 'renamed.png' }))
+  })
+
+  it('源文件名带后缀不同即视为不同（a.png / a.jpg 不去重）', () => {
+    expect(fingerprintKey(base)).not.toBe(fingerprintKey({ ...base, name: 'a.jpg' }))
   })
 
   it('目标位置不同则 key 不同（同名同内容传到不同目录允许各传一份）', () => {

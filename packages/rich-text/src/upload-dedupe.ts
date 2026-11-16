@@ -1,10 +1,12 @@
 /**
  * 上传去重指纹。
  *
- * 同一张图重复选择的判定维度：目标位置（源|桶|目录）+ 内容 SHA-256。
- * - 内容 hash 为主判据：同一张图改个文件名再选，仍视为同一张，不会重复上传；
- * - 目标位置纳入 key：同一张图传到不同目录/来源属于不同意图，允许各传一份；
- * - Web Crypto 不可用时降级为「文件名 + 大小」——装不上 hash 的环境也不至于完全不去重。
+ * 重复选择的判定维度：目标位置（源|桶|目录）+ 源文件名（带后缀）+ 内容 SHA-256。
+ * - 文件名纳入 key：同一份内容复制多份、改成不同名字，视为不同文件，都允许上传；
+ * - 内容 hash 纳入 key：同名但内容不同（改过再存）也算不同文件，不会被误当作已传过；
+ * - 两者都相同才算重复（同位置、同名、同内容），不重复上传；
+ * - 目标位置纳入 key：同一文件传到不同目录/来源属于不同意图，允许各传一份；
+ * - Web Crypto 不可用时降级为「位置 + 文件名 + 大小」——装不上 hash 的环境也不至于完全不去重。
  */
 
 export interface UploadFingerprintInput {
@@ -20,13 +22,13 @@ export interface UploadFingerprintInput {
 const SEP = '\u0000'
 
 /**
- * 构造去重 key。
- * hash 存在时用 hash 作为身份（改名也算同一张）；否则降级 name+size。
- * 无论哪条路径都拼上 scope，保证不同目标位置互不冲突。
+ * 构造去重 key = 位置 + 源文件名（带后缀）+ 内容 hash。
+ * - 三条都拼进来：同名同内容同位置才算重复；改名或改内容或换位置都不重复。
+ * - hash 不可用时降级用 size 顶替 hash 这一维（name 始终参与），仍不阻断上传。
  */
 export function fingerprintKey(input: UploadFingerprintInput): string {
-  const identity = input.hash ? `h${SEP}${input.hash}` : `n${SEP}${input.name}${SEP}${input.size}`
-  return `${input.scope}${SEP}${identity}`
+  const content = input.hash ? `h${SEP}${input.hash}` : `n${SEP}${input.size}`
+  return `${input.scope}${SEP}${input.name}${SEP}${content}`
 }
 
 /** 存储名里用的 hash 长度（hex 字符）：8 位 = 32bit，图片库量级碰撞可忽略，文件名也不至于太长 */
