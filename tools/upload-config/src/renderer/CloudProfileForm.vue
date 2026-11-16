@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Connection, Delete, View } from '@element-plus/icons-vue'
+import { FormGrid } from '@sshk/ui-kit'
 import {
   uploadVendorMeta,
   uploadVendorOptions,
@@ -67,101 +68,103 @@ watch(() => props.profile.endpoint, (v) => {
 </script>
 
 <template>
-  <el-form label-width="120px" size="small">
-    <el-form-item label="名称"><el-input v-model="profile.name" /></el-form-item>
-    <el-form-item label="ID">
-      <el-input :model-value="profile.id" disabled />
-      <span class="hint-inline">密钥按此 ID 关联</span>
-    </el-form-item>
-    <el-form-item label="云厂商">
-      <el-select v-model="profile.provider" filterable style="width: 280px">
-        <el-option v-for="v in vendors" :key="v.value" :label="v.label" :value="v.value" />
-      </el-select>
-      <span class="hint-inline">SDK：{{ meta.sdk }}</span>
-    </el-form-item>
-    <el-form-item label="地域">
-      <el-select
-        v-model="profile.region"
-        filterable
-        allow-create
-        clearable
-        default-first-option
-        :filter-method="(q: string) => (regionQuery = q)"
-        :placeholder="meta.regionHint"
-        style="width: 100%"
-      >
-        <el-option v-for="r in visibleRegions" :key="r.value" :label="r.label" :value="r.value">
-          <div class="choice">
-            <span class="choice-name">{{ r.label }}</span>
-            <span class="choice-code">{{ r.value }}</span>
-          </div>
-        </el-option>
-      </el-select>
-      <div class="hint-block">
-        {{ meta.regionHint }}；可输入中文名或地域 ID 搜索，清单外的值直接键入即可
-        <template v-if="profile.region"> · 当前地域 ID：<code>{{ profile.region }}</code></template>
-      </div>
-    </el-form-item>
-    <el-form-item label="Endpoint">
-      <el-select
-        v-model="profile.endpoint"
-        filterable
-        allow-create
-        clearable
-        default-first-option
-        :filter-method="(q: string) => (endpointQuery = q)"
-        :placeholder="meta.endpointHint"
-        style="width: 100%"
-      >
-        <el-option v-for="e in visibleEndpoints" :key="e.value" :label="e.label" :value="e.value">
-          <div class="choice">
-            <span class="choice-name">{{ e.label }}</span>
-            <span class="choice-code">{{ e.value }}</span>
-          </div>
-        </el-option>
-      </el-select>
-      <div class="hint-block">
-        {{ meta.endpointHint }}；可输入中文说明或域名搜索，清单外的地址直接键入即可
-        <template v-if="profile.endpoint"> · 当前值：<code>{{ profile.endpoint }}</code></template>
-      </div>
-    </el-form-item>
-    <el-form-item label="Bucket"><el-input v-model="profile.bucket" /></el-form-item>
-    <el-form-item label="AccessKey ID"><el-input v-model="profile.accessKeyId" /></el-form-item>
-    <el-form-item label="AccessKey Secret">
-      <div class="two">
-        <el-input
-          :model-value="secretValue"
-          type="password"
-          show-password
-          :placeholder="hasSecret ? '点击查看可回显已存密钥；留空保持不变' : '加密存储，可点眼睛查看 / 直接输入'"
-          @update:model-value="(v: unknown) => emit('updateSecret', profile.id, String(v ?? ''))"
-        />
-        <el-tooltip content="查看 / 回显已保存的密钥" placement="top">
-          <el-button size="small" :icon="View" :disabled="!hasSecret" @click="emit('revealSecret', profile.id)">查看</el-button>
-        </el-tooltip>
-        <el-button size="small" :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', profile.id)">清除</el-button>
-      </div>
-    </el-form-item>
-    <el-form-item label="访问域名"><el-input v-model="profile.baseUrl" placeholder="CDN 域名（可选）" /></el-form-item>
-    <el-form-item label="连通性">
-      <el-button size="small" type="primary" plain :icon="Connection" :loading="testing" @click="emit('test', profile.id)">
-        测试连接
-      </el-button>
-      <span v-if="testResult" class="test-result" :class="{ 'is-error': testResult.startsWith('✗') }">{{ testResult }}</span>
-      <span v-else class="hint-inline">验证厂商 / 地域 / Endpoint / AK / Bucket 是否正确，不写任何文件</span>
-    </el-form-item>
+  <el-form label-width="100px" size="small">
+    <FormGrid>
+      <el-form-item label="名称"><el-input v-model="profile.name" /></el-form-item>
+      <el-form-item label="ID">
+        <el-input :model-value="profile.id" disabled />
+        <span class="hint-inline">密钥按此 ID 关联</span>
+      </el-form-item>
+      <el-form-item label="云厂商">
+        <el-select v-model="profile.provider" filterable>
+          <el-option v-for="v in vendors" :key="v.value" :label="v.label" :value="v.value" />
+        </el-select>
+        <span class="hint-inline">SDK：{{ meta.sdk }}</span>
+      </el-form-item>
+      <el-form-item label="Bucket"><el-input v-model="profile.bucket" /></el-form-item>
+      <el-form-item label="地域">
+        <el-select
+          v-model="profile.region"
+          filterable
+          allow-create
+          clearable
+          default-first-option
+          :filter-method="(q: string) => (regionQuery = q)"
+          :placeholder="meta.regionHint"
+          style="width: 100%"
+        >
+          <el-option v-for="r in visibleRegions" :key="r.value" :label="r.label" :value="r.value">
+            <div class="choice">
+              <span class="choice-name">{{ r.label }}</span>
+              <span class="choice-code">{{ r.value }}</span>
+            </div>
+          </el-option>
+        </el-select>
+        <div class="hint-block">
+          {{ meta.regionHint }}；可输入中文名或地域 ID 搜索，清单外的值直接键入即可
+          <template v-if="profile.region"> · 当前地域 ID：<code>{{ profile.region }}</code></template>
+        </div>
+      </el-form-item>
+      <el-form-item label="Endpoint">
+        <el-select
+          v-model="profile.endpoint"
+          filterable
+          allow-create
+          clearable
+          default-first-option
+          :filter-method="(q: string) => (endpointQuery = q)"
+          :placeholder="meta.endpointHint"
+          style="width: 100%"
+        >
+          <el-option v-for="e in visibleEndpoints" :key="e.value" :label="e.label" :value="e.value">
+            <div class="choice">
+              <span class="choice-name">{{ e.label }}</span>
+              <span class="choice-code">{{ e.value }}</span>
+            </div>
+          </el-option>
+        </el-select>
+        <div class="hint-block">
+          {{ meta.endpointHint }}；可输入中文说明或域名搜索，清单外的地址直接键入即可
+          <template v-if="profile.endpoint"> · 当前值：<code>{{ profile.endpoint }}</code></template>
+        </div>
+      </el-form-item>
+      <el-form-item label="AccessKey ID"><el-input v-model="profile.accessKeyId" /></el-form-item>
+      <el-form-item label="访问域名"><el-input v-model="profile.baseUrl" placeholder="CDN 域名（可选）" /></el-form-item>
+      <el-form-item label="AccessKey Secret" class="full">
+        <div class="combo">
+          <el-input
+            :model-value="secretValue"
+            type="password"
+            show-password
+            :placeholder="hasSecret ? '点击查看可回显已存密钥；留空保持不变' : '加密存储，可点眼睛查看 / 直接输入'"
+            @update:model-value="(v: unknown) => emit('updateSecret', profile.id, String(v ?? ''))"
+          />
+          <el-tooltip content="查看 / 回显已保存的密钥" placement="top">
+            <el-button :icon="View" :disabled="!hasSecret" @click="emit('revealSecret', profile.id)">查看</el-button>
+          </el-tooltip>
+          <el-button :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', profile.id)">清除</el-button>
+        </div>
+      </el-form-item>
+      <el-form-item label="连通性" class="full">
+        <div class="combo">
+          <el-button type="primary" plain :icon="Connection" :loading="testing" @click="emit('test', profile.id)">
+            测试连接
+          </el-button>
+          <span v-if="testResult" class="test-result" :class="{ 'is-error': testResult.startsWith('✗') }">{{ testResult }}</span>
+          <span v-else class="hint-inline">验证厂商 / 地域 / Endpoint / AK / Bucket 是否正确，不写任何文件</span>
+        </div>
+      </el-form-item>
+    </FormGrid>
   </el-form>
 </template>
 
 <style scoped>
-.two { display: flex; align-items: center; gap: 8px; width: 100%; }
-.two > :first-child { flex: 1; min-width: 0; }
 .hint-inline { display: inline; margin-left: 12px; font-size: 12px; opacity: .6; }
 .hint-block { width: 100%; font-size: 12px; opacity: .6; line-height: 1.5; margin-top: 2px; }
 .choice { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .choice-name { font-weight: 500; }
 .choice-code { font-size: 11px; opacity: .55; font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
 .hint-block code { font-family: ui-monospace, Consolas, monospace; opacity: .9; }
-.test-result { margin-left: 12px; font-size: 12px; color: var(--el-color-success); }
+.test-result { margin-left: 0; font-size: 12px; color: var(--el-color-success); }
 .test-result.is-error { color: var(--el-color-danger); }
 </style>

@@ -499,7 +499,8 @@ onMounted(() => {
 <style scoped>
 .cap-alert { margin-bottom: 12px; }
 .cap-body { display: flex; align-items: center; justify-content: space-between; gap: 12px; line-height: 1.6; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+/* profile 卡两列表单需要横向空间：最小 560px，窄窗口自动降为单卡一行 */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 12px; }
 .panel {
   border: 1px solid var(--sshk-border);
   border-radius: 10px;
