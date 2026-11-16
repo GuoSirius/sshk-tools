@@ -3,8 +3,8 @@ export type Origin = 'system' | 'custom'
 export type EntityStatus = 'draft' | 'previewed' | 'generated' | 'archived'
 export type DatasourceKind = 'image' | 'xlsx' | 'csv' | 'json'
 
-/** 工具配置项类型：工具级配置页按 schema 自动生成表单 */
-export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'select' | 'dir' | 'file'
+/** 工具配置项类型：工具级配置页按 schema 自动生成表单；textarea 独占整行（plans/01） */
+export type ToolConfigFieldType = 'boolean' | 'number' | 'string' | 'textarea' | 'select' | 'dir' | 'file'
 
 export interface ToolConfigField {
   /** 必填项：配置页红星标注，保存时空值拦截 */

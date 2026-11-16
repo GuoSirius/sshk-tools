@@ -201,6 +201,64 @@
       ]
     },
     {
+      "id": "config-badge-style",
+      "label": "角标样式覆盖",
+      "fields": [
+        {
+          "key": "badgeStyleCss.common",
+          "label": "公共样式",
+          "type": "textarea",
+          "full": true,
+          "hint": "所有位置共享；后于内置默认生效"
+        },
+        {
+          "key": "badgeStyleCss.positions.topLeft",
+          "label": "左上",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.topCenter",
+          "label": "上中",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.topRight",
+          "label": "右上",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.leftCenter",
+          "label": "左中",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.center",
+          "label": "居中",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.rightCenter",
+          "label": "右中",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.bottomLeft",
+          "label": "左下",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.bottomCenter",
+          "label": "下中",
+          "type": "textarea"
+        },
+        {
+          "key": "badgeStyleCss.positions.bottomRight",
+          "label": "右下",
+          "type": "textarea"
+        }
+      ]
+    },
+    {
       "id": "config-poster",
       "label": "海报",
       "fields": [
@@ -276,6 +334,10 @@
       "offsetX": 0
     },
     "clicksField": "clicks",
+    "badgeStyleCss": {
+      "common": "",
+      "positions": {}
+    },
     "urlNorm": {
       "stripUtm": true,
       "stripHash": true,

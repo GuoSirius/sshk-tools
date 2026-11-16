@@ -238,7 +238,7 @@ watch(() => props.section, (section) => {
                   v-for="field in group.fields"
                   :key="field.key"
                   :label="field.label"
-                  :class="{ full: field.full || field.type === 'dir' || field.type === 'file' }"
+                  :class="{ full: field.full || field.type === 'textarea' || field.type === 'dir' || field.type === 'file' }"
                 >
                   <el-switch v-if="field.type === 'boolean'" v-model="values[field.key]" />
                   <el-input-number
@@ -247,6 +247,7 @@ watch(() => props.section, (section) => {
                     :min="field.min"
                     :max="field.max"
                   />
+                  <el-input v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
                   <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">
                     <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
                     <el-button size="small" @click="pickPath(field)">

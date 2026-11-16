@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import path from 'node:path'
-import { promises as fs } from 'node:fs'
+import { existsSync, promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
 import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
@@ -110,15 +110,27 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
     if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('越权路径')
     return abs
   }
-  /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（按部署形态，不与系统根同位置） */
+  /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（2026-11-16 拍板：dev 与打包统一落 userData，仓库源码目录不进运行数据） */
   function resolveContentRoot(source: string): string {
-    if (source === 'custom') {
-      if (app.isPackaged) return path.join(app.getPath('userData'), 'custom-edm')
-      // 外置安装（dev）：与系统根（tools/edm-studio/assets/edm）同级 → assets/custom-edm
-      return path.resolve(resolveEdmRoot(), '../custom-edm')
-    }
+    if (source === 'custom') return path.join(app.getPath('userData'), 'custom-edm')
     return resolveEdmRoot()
   }
+
+  /**
+   * 一次性迁移（2026-11-16 用户反馈 bug 修复）：dev 曾把自定义内容写进仓库
+   * `tools/edm-studio/assets/custom-edm`，现统一落 userData/custom-edm。
+   * 旧目录存在且 userData 根不存在时整树拷贝（保留仓库原目录不删，由用户自行清理）。
+   */
+  async function migrateLegacyCustomRoot(): Promise<void> {
+    const legacy = path.resolve(resolveEdmRoot(), '../custom-edm')
+    const target = resolveContentRoot('custom')
+    if (!existsSync(legacy) || existsSync(target)) return
+    await fs.cp(legacy, target, { recursive: true })
+    console.warn('[edm] 已迁移 dev 遗留自定义内容：' + legacy + ' → ' + target + '（仓库内旧目录可手动删除）')
+  }
+  void migrateLegacyCustomRoot().catch((err: unknown) =>
+    console.warn('[edm] 遗留自定义内容迁移失败：', err instanceof Error ? err.message : err),
+  )
   /** 相对路径规范化（POSIX 分隔，渲染层统一用 /） */
   function relOf(file: string): string {
     return path.resolve(resolveEdmRoot(), file).split(path.sep).join('/')

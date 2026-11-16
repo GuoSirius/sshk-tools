@@ -26,6 +26,11 @@ export interface RecentHtml {
 // ── 角标 / URL 归一 / 海报尺寸：全部来自工具配置，生成页不写死 ──
 export const badgeAttr = ref('data-edm-badge')
 export const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: 0, offsetX: 0 })
+/** 角标样式覆盖（工具配置 → 角标样式覆盖）：common 公共 + 九位置单独，留空 = 内置默认 */
+export const badgeStyleCss = reactive({
+  common: '',
+  positions: {} as Record<string, string>,
+})
 export const posterName = ref('')
 export const badgePositionText = ref('top-right')
 export const badgePositionImage = ref('center')
@@ -118,6 +123,13 @@ export async function loadConfigAndRecent(): Promise<void> {
   clicksField.value = await textConfig('clicksField', 'clicks')
   const savedStyle = (await window.api.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
+  const savedCss = (await window.api.config.get(configKey('badgeStyleCss'))) as
+    | Partial<typeof badgeStyleCss>
+    | null
+  if (savedCss && typeof savedCss === 'object') {
+    badgeStyleCss.common = typeof savedCss.common === 'string' ? savedCss.common : ''
+    badgeStyleCss.positions = { ...(savedCss.positions ?? {}) }
+  }
   badgePositionText.value = await textConfig('badgePositionText', 'top-right')
   badgePositionImage.value = await textConfig('badgePositionImage', 'center')
   const savedNorm = (await window.api.config.get(configKey('urlNorm'))) as Partial<typeof urlNorm> | null
@@ -399,6 +411,10 @@ export async function generate(): Promise<void> {
         urlNorm: { ...urlNorm },
         badgeStyle: { ...badgeStyle },
         defaultPositions: { text: badgePositionText.value as never, image: badgePositionImage.value as never },
+        customCss: {
+          common: badgeStyleCss.common,
+          positions: { ...badgeStyleCss.positions },
+        },
       },
     })
     currentPosterId.value = res.posterId

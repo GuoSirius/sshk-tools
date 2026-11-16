@@ -18,6 +18,14 @@ export interface BadgeInjectConfig {
   badgeStyle: BadgeStyle
   /** 默认位置（来自工具配置）：文本 a 与图片 a 各自的出厂角标位置 */
   defaultPositions: { text: BadgePosition; image: BadgePosition }
+  /** 角标样式覆盖（工具配置页「角标样式覆盖」组）：common → positions 先后叠加，后者覆盖同名属性 */
+  customCss?: BadgeCustomCss
+}
+
+/** 九位置单独 + 公共 CSS（工具配置页维护；留空 = 内置默认生效） */
+export interface BadgeCustomCss {
+  common: string
+  positions: Partial<Record<BadgePosition, string>>
 }
 
 /** 角标锚点位置：四角 + 四边中点 + 中心；写入 <a data-badge-position>，包内作者可手动覆盖 */
@@ -48,6 +56,20 @@ export interface InjectResult {
   html: string
   /** 每个 URL（按表格原始 url）实际被标记的 <a> 数量；缺失 = 未命中，供表格核对 */
   matchCounts: Record<string, number>
+}
+
+/**
+ * 用户自定义 CSS 清洗：折叠换行；剥离 position / transform / margin —— 这三者
+ * 由锚点 + offset 体系接管（双写会破坏定位语义）；同名属性按追加顺序天然覆盖。
+ */
+function sanitizeCss(raw: string | undefined): string {
+  if (!raw) return ''
+  return raw
+    .replace(/[\r\n]+/g, '')
+    .replace(/(?<![a-zA-Z-])(position|transform|margin)\s*:[^;}]*/gi, '')
+    .replace(/;{2,}/g, ';')
+    .replace(/^;+|;+$/g, '')
+    .trim()
 }
 
 /** 取角标数值：内置两列优先，其余从用户自定义数值列 metrics 里取，缺失时回退 clicks */
@@ -99,14 +121,19 @@ export function injectBadges(html: string, stats: StatRow[], cfg: BadgeInjectCon
     $(el).attr('data-badge-position', position)
 
     const { offsetX, offsetY } = cfg.badgeStyle
+    // 覆盖链：内置基础 → 用户公共样式 → 九位置单独样式（后写覆盖同名属性）
+    const commonCss = sanitizeCss(cfg.customCss?.common)
+    const posCss = sanitizeCss(cfg.customCss?.positions?.[position])
     $(el).append(
       '<span ' + cfg.badgeAttr + '="' + value + '" style="position:absolute;' +
         POSITION_POINTS[position] +
         ';transform:translate(calc(-50% + ' + offsetX + 'px), calc(-50% + ' + offsetY + 'px));' +
         'display:inline-block;background:' + cfg.badgeStyle.background +
         ';color:' + cfg.badgeStyle.color + ';font-size:' + cfg.badgeStyle.size + 'px;' +
-        'line-height:1;padding:2px 5px;border-radius:9px;white-space:nowrap;z-index:9;">' +
-        value + '</span>',
+        'line-height:1;padding:2px 5px;border-radius:9px;white-space:nowrap;z-index:9;' +
+        (commonCss ? commonCss + ';' : '') +
+        (posCss ? posCss + ';' : '') +
+        '">' + value + '</span>',
     )
   }
   return { html: $.html(), matchCounts }

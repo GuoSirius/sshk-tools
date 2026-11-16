@@ -86,3 +86,53 @@ describe('badge 注入（严格门控）', () => {
     expect(marked).not.toContain('href="https://other.com" data-edm-badge')
   })
 })
+
+describe('角标定位与样式覆盖（2026-11-16 批次）', () => {
+  it('9 位置统一锚点 + transform calc 吸收 offset，无 margin 注入', () => {
+    const html = '<a href="https://a.com/p/1" data-edm-badge="" data-badge-position="center">A</a>'
+    const out = injectBadges(html, stats, { ...cfg, badgeStyle: { ...cfg.badgeStyle, offsetX: 6, offsetY: -4 } }).html
+    expect(out).toContain('top:50%;left:50%')
+    expect(out).toContain('translate(calc(-50% + 6px), calc(-50% + -4px))')
+    expect(out).not.toContain('margin:')
+  })
+
+  it('customCss：公共样式先叠加，位置样式后叠加覆盖同名属性', () => {
+    const html = '<a href="https://a.com/p/1" data-edm-badge="" data-badge-position="top-right">A</a>'
+    const out = injectBadges(html, stats, {
+      ...cfg,
+      customCss: {
+        common: 'padding:4px 10px;border-radius:3px',
+        positions: { 'top-right': 'background:#0066cc;border-radius:14px' },
+      },
+    }).html
+    // 公共属性在基础样式之后
+    expect(out).toContain('padding:4px 10px')
+    // 位置样式在公共之后 → border-radius 以位置值为准（CSS 后写覆盖）
+    expect(out).toContain('border-radius:14px')
+    expect(out.indexOf('border-radius:14px')).toBeGreaterThan(out.indexOf('border-radius:3px'))
+  })
+
+  it('customCss 清洗：position / transform / margin 由锚点体系接管，用户写也不生效', () => {
+    const html = '<a href="https://a.com/p/1" data-edm-badge="">A</a>'
+    const out = injectBadges(html, stats, {
+      ...cfg,
+      customCss: { common: 'position:fixed;transform:scale(2);margin:99px;background:#123456', positions: {} },
+    }).html
+    expect(out).not.toContain('position:fixed')
+    expect(out).not.toContain('transform:scale(2)')
+    expect(out).not.toContain('margin:99px')
+    // background-position 这类含 position 子串的合法属性不被误伤
+    const keep = injectBadges(html, stats, {
+      ...cfg,
+      customCss: { common: 'background-position:center top', positions: {} },
+    }).html
+    expect(keep).toContain('background-position:center top')
+  })
+
+  it('customCss 缺省（undefined / 空串）= 内置默认，无额外分号残留', () => {
+    const html = '<a href="https://a.com/p/1" data-edm-badge="">A</a>'
+    const out = injectBadges(html, stats, cfg).html
+    expect(out).toContain('border-radius:9px')
+    expect(out).not.toContain(';;')
+  })
+})
