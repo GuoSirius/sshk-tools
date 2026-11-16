@@ -109,8 +109,11 @@ const groupDone = (g: VerifyGroup): number => stepsOf(g).filter((s) => session.r
 // ── 自动判定 ──
 function hostCapabilityCheck(spec: string): { state: string; detail: string } {
   const ns = (window.api as unknown as Record<string, unknown>)[spec]
-  if (ns && typeof ns === 'object') return { state: 'pass', detail: `宿主命名空间 api.${spec} 可用` }
-  return { state: 'fail', detail: `宿主缺少 api.${spec} 命名空间（旧窗口？尝试一键重载）` }
+  // 命名空间可能是对象（如 api.upload）也可能是单函数（如 api.callHostApi），两者都算就绪
+  if (ns && (typeof ns === 'object' || typeof ns === 'function')) {
+    return { state: 'pass', detail: `宿主能力 api.${spec} 可用` }
+  }
+  return { state: 'fail', detail: `宿主缺少 api.${spec} 能力（旧窗口？尝试一键重载）` }
 }
 
 async function runAutoChecks(): Promise<void> {

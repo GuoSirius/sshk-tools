@@ -46,7 +46,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'A7', group: 'A', title: '密码框查看回填', guide: '点「查看」回填已保存口令；眼睛图标可切换显隐', entry: { type: 'route', target: 'upload' }, relates: 'N3' },
   { id: 'A8', group: 'A', title: '临时口令不落盘', guide: '改口令不保存直接测试 → 测试用临时值；「查看」仍是旧值', entry: { type: 'route', target: 'upload' }, relates: 'N3/N4' },
   { id: 'A9', group: 'A', title: '输入框与按钮对齐', guide: '等高、左右对齐，图标风格统一', entry: { type: 'route', target: 'upload' }, relates: 'N1/N2' },
-  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'upload' }, auto: { kind: 'catalogState', spec: 'upload' }, relates: 'N6' },
+  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'upload' }, auto: { kind: 'catalogState', spec: 'upload-config' }, relates: 'N6' },
   { id: 'A11', group: 'A', title: '列表行操作', guide: '设为默认/编辑/删除；删除弹二次确认；删默认项后自动顺延第一条', entry: { type: 'route', target: 'upload' }, relates: 'N6' },
   { id: 'A12', group: 'A', title: '本地 profile 自动上传', guide: '本地 profile 设默认 → EDM 图片字段选图 → 自动上传 + 回填 URL；目录不存在自动创建', entry: { type: 'route', target: 'upload' }, relates: '4/V7' },
   { id: 'A13', group: 'A', title: '复制图片 URL', guide: '图片字段点「复制图片 URL」→ 剪贴板为刚回填的 URL', entry: { type: 'route', target: 'upload' }, relates: '4' },
