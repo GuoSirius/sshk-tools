@@ -674,7 +674,17 @@ async function captureDataUrl(): Promise<string> {
   const target = doc?.body
   if (!target || target.children.length === 0) throw new Error('预览内容为空')
   await waitForAssets(doc!)
-  const capture = await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value })
+  // 邮件 HTML 的白底多为浏览器默认而非显式样式；snapdom 克隆渲染无「文档默认背景」，
+  // 未显式设背景的区域导出 PNG 变透明 alpha（深色查看器里就是灰底，2026-11-16 用户实测）。
+  // 双保险：① computed 背景为透明的文档根/body 兜底铺白（只在真透明时设，避免内联样式覆盖类背景）；
+  // ② snapdom backgroundColor 选项显式合成白底。
+  const isTransparent = (el: Element): boolean => {
+    const bg = getComputedStyle(el).backgroundColor
+    return bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)'
+  }
+  if (isTransparent(doc!.documentElement)) doc!.documentElement.style.backgroundColor = '#ffffff'
+  if (isTransparent(target) && isTransparent(doc!.documentElement)) target.style.backgroundColor = '#ffffff'
+  const capture = await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value, backgroundColor: '#ffffff' })
   const out = await (capture as { toPng?: () => Promise<unknown> }).toPng?.()
   const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')
   if (dataUrl === '') throw new Error('截图失败：未获得图像数据')
