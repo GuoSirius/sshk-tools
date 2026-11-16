@@ -5,7 +5,7 @@
 import type { ToolConfigFieldType } from '@sshk/shared'
 
 export interface MenuRow { id: string; label: string }
-export interface FieldRow { key: string; label: string; type: ToolConfigFieldType; hint: string; min: number | null; optionsText: string }
+export interface FieldRow { key: string; label: string; type: ToolConfigFieldType; hint: string; min: number | null; max: number | null; optionsText: string }
 export interface GroupRow { id: string; label: string; fields: FieldRow[] }
 export interface PageRow { id: string; label: string; groups: string[] }
 
@@ -33,7 +33,7 @@ export const VISIBILITIES = [
 ]
 
 export function emptyField(): FieldRow {
-  return { key: '', label: '', type: 'string', hint: '', min: null, optionsText: '' }
+  return { key: '', label: '', type: 'string', hint: '', min: null, max: null, optionsText: '' }
 }
 
 /** 选项文本 → 结构化 options（"标签:值, 标签:值"） */

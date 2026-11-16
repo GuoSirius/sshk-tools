@@ -182,6 +182,7 @@ async function loadManifest(): Promise<void> {
           type: (asString(field.type, 'string') as ToolConfigFieldType),
           hint: asString(field.hint),
           min: typeof field.min === 'number' ? field.min : null,
+          max: typeof field.max === 'number' ? field.max : null,
           optionsText: (Array.isArray(field.options) ? field.options as { label: string; value: string }[] : [])
             .map((opt) => `${opt.label}:${opt.value}`).join(', '),
         })),
@@ -238,6 +239,7 @@ function buildConfigGroups(): Record<string, unknown>[] {
           type: field.type,
           ...(field.hint.trim() ? { hint: field.hint.trim() } : {}),
           ...(field.min !== null ? { min: field.min } : {}),
+          ...(field.max !== null ? { max: field.max } : {}),
           ...(field.type === 'select' ? { options: parseOptions(field.optionsText) } : {}),
         }
       }),

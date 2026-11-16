@@ -11,7 +11,7 @@
   "icon": "auto",
   "entryRoute": "home",
   "enabled": true,
-  "visibility": "hidden",
+  "visibility": "desktop",
   "configLayout": "menu",
   "menus": [
     {
@@ -61,9 +61,9 @@
           "key": "llm.temperature",
           "label": "温度",
           "type": "number",
+          "hint": "0=确定性，2=发散",
           "min": 0,
-          "max": 2,
-          "hint": "0=确定性，2=发散"
+          "max": 2
         }
       ]
     },
@@ -81,9 +81,9 @@
           "key": "ocr.timeoutMs",
           "label": "超时(ms)",
           "type": "number",
+          "hint": "单次识别超时",
           "min": 1000,
-          "max": 60000,
-          "hint": "单次识别超时"
+          "max": 60000
         }
       ]
     },
@@ -119,12 +119,21 @@
           "key": "output.format",
           "label": "默认导出格式",
           "type": "select",
+          "hint": "演示 select 字段类型的表单自动生成",
           "options": [
-            { "label": "HTML", "value": "html" },
-            { "label": "Markdown", "value": "md" },
-            { "label": "纯文本", "value": "txt" }
-          ],
-          "hint": "演示 select 字段类型的表单自动生成"
+            {
+              "label": "HTML",
+              "value": "html"
+            },
+            {
+              "label": "Markdown",
+              "value": "md"
+            },
+            {
+              "label": "纯文本",
+              "value": "txt"
+            }
+          ]
         }
       ]
     }
@@ -133,12 +142,18 @@
     {
       "id": "config-model",
       "label": "模型与调用",
-      "groups": ["config-llm", "config-ocr"]
+      "groups": [
+        "config-llm",
+        "config-ocr"
+      ]
     },
     {
       "id": "config-io",
       "label": "路径与输出",
-      "groups": ["config-path", "config-output"]
+      "groups": [
+        "config-path",
+        "config-output"
+      ]
     }
   ],
   "defaults": {
@@ -154,6 +169,8 @@
       "command": "",
       "timeoutMs": 30000
     },
+    "workspaceDir": "",
+    "lastImageFile": "",
     "output": {
       "keepHtml": true,
       "format": "html"

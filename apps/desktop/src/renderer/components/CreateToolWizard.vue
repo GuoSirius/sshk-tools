@@ -127,6 +127,7 @@ function toRequest(): Parameters<typeof buildSkeletonFiles>[0] {
         type: field.type,
         ...(field.hint.trim() ? { hint: field.hint.trim() } : {}),
         ...(field.min !== null ? { min: field.min } : {}),
+        ...(field.max !== null ? { max: field.max } : {}),
         ...(field.type === 'select' ? { options: parseOptions(field.optionsText) } : {}),
       })),
     })),

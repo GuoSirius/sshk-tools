@@ -51,7 +51,10 @@ function addPage(): void { props.pages?.push({ id: `config-page-${props.pages.le
           <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
         </el-select>
         <el-input v-if="field.type === 'select'" v-model="field.optionsText" size="small" placeholder="选项 标签:值, 标签:值" style="width: 170px" />
-        <el-input v-else-if="field.type === 'number'" v-model.number="field.min" size="small" placeholder="最小值" style="width: 110px" />
+        <template v-else-if="field.type === 'number'">
+          <el-input v-model.number="field.min" size="small" placeholder="最小值" style="width: 100px" />
+          <el-input v-model.number="field.max" size="small" placeholder="最大值" style="width: 100px" />
+        </template>
         <el-input v-model="field.hint" size="small" placeholder="提示语" style="flex: 1; min-width: 120px" />
         <el-button size="small" type="danger" plain :icon="Delete" @click="group.fields.splice(fi, 1)" />
       </div>
