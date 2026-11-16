@@ -9,12 +9,13 @@
  */
 import { app } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { IPC_CHANNELS } from '@sshk/shared'
 import { handleOk } from './ipc-wrap'
 import { buildSkeletonFiles } from '@sshk/shared'
-import type { CreateToolRequest } from '@sshk/shared'
+import type { CreateToolRequest, ToolDescriptor } from '@sshk/shared'
+import { MANIFESTS } from './discovery'
 
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/
 const OUTPUT_LIMIT = 12000
@@ -100,6 +101,28 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
   }
 
   handleOk(IPC_CHANNELS.devState, () => state)
+
+  // U1-1 L1 提示层（仅源码 dev 可用）：扫描 tools/ 对比当前清单，发现新工具供横幅提示。
+  // 只读扫描不改内存清单——渲染层组件走构建期 glob，热载入属 U1-2 单独验证，横幅固定引导重启 dev。
+  handleOk(IPC_CHANNELS.devToolScan, () => {
+    const repo = guard()
+    const known = new Set(MANIFESTS.map((m) => m.id))
+    const newTools: { id: string; name: string }[] = []
+    try {
+      for (const entry of readdirSync(join(repo, 'tools'), { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const file = join(repo, 'tools', entry.name, 'tool.manifest.json')
+        if (!existsSync(file)) continue
+        try {
+          const manifest = JSON.parse(readFileSync(file, 'utf8')) as ToolDescriptor
+          if (manifest?.id && manifest.id === entry.name && !known.has(manifest.id)) {
+            newTools.push({ id: manifest.id, name: manifest.name ?? manifest.id })
+          }
+        } catch { /* 单个清单损坏不阻断扫描 */ }
+      }
+    } catch { /* tools 目录缺失视为无新工具 */ }
+    return { newTools }
+  })
 
   handleOk(IPC_CHANNELS.devManifestGet, (_event, rawId: unknown) => {
     const repo = guard()

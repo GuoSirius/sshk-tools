@@ -85,6 +85,8 @@ export const IPC_CHANNELS = {
   devBuildExternal: 'dev:buildExternal',
   devPack: 'dev:pack',
   devToolCreate: 'dev:toolCreate',
+  /** U1-1 L1 提示层（仅源码 dev）：扫描 tools/ 发现新工具，供渲染层横幅提示重启 */
+  devToolScan: 'dev:toolScan',
   /** 应用访问密钥（写入 safeStorage，明文永不下发） */
   accessKeySet: 'accessKey:set',
   /** 运行时工具包（#35 阶段二）：导入 / 列表 / 卸载 */

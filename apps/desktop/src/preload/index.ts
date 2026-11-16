@@ -273,6 +273,9 @@ const api = {
     /** 仅 dev：按向导表单生成整套工具骨架（目录已存在会拒绝） */
     create: (req: unknown): Promise<{ ok: boolean; output: string; catalog?: unknown }> =>
       invoke(IPC_CHANNELS.devToolCreate, req),
+    /** U1-1 L1 提示层：扫描 tools/ 发现清单外的新工具（打包版恒空） */
+    toolScan: (): Promise<{ newTools: { id: string; name: string }[] }> =>
+      invoke(IPC_CHANNELS.devToolScan),
   },
   /**
    * 通用通道调用：供工具（含运行时外部包）调用各自 main 注册的专属通道。

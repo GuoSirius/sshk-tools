@@ -220,6 +220,8 @@ interface Window {
       pack(id: string, sign?: boolean): Promise<{ ok: boolean; output: string }>
       /** 仅 dev：创建工具向导提交后生成整套骨架 */
       create(req: Record<string, unknown>): Promise<{ ok: boolean; output: string; catalog?: import('@sshk/shared').ToolCatalogPayload }>
+      /** U1-1 L1 提示层：扫描 tools/ 发现清单外的新工具（打包版恒空） */
+      toolScan(): Promise<{ newTools: { id: string; name: string }[] }>
     }
     /** 通用通道调用：工具（含运行时外部包）调用各自 main 注册的专属通道 */
     ipc: {

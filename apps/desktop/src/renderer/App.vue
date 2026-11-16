@@ -221,6 +221,29 @@ function onToolCreated(catalog: unknown): void {
   else void refreshCatalog()
 }
 
+// ── U1-1 L1 提示层（仅 dev）：窗口 focus / 定时轻扫描 tools/，发现新工具出横幅引导重启 ──
+const newTools = ref<{ id: string; name: string }[]>([])
+const newToolsDismissed = ref(false)
+let scanTimer: number | undefined
+async function scanNewTools(): Promise<void> {
+  if (!isDev || newToolsDismissed.value || newTools.value.length > 0) return
+  try {
+    const res = await window.api.dev.toolScan()
+    newTools.value = res.newTools ?? []
+  } catch { /* 打包版 / 旧宿主快照：静默跳过 */ }
+}
+function dismissNewTools(): void {
+  newToolsDismissed.value = true
+  newTools.value = []
+}
+onMounted(() => {
+  if (!isDev) return
+  void scanNewTools()
+  window.addEventListener('focus', () => { void scanNewTools() })
+  scanTimer = window.setInterval(() => { void scanNewTools() }, 30_000)
+})
+onBeforeUnmount(() => { if (scanTimer !== undefined) window.clearInterval(scanTimer) })
+
 // 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
 watch(catalogTools, (list) => {
   if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
@@ -368,6 +391,14 @@ onMounted(async () => {
     >
       <span>更新检查失败：{{ updater.error }}</span>
       <el-button size="small" text @click="checkUpdate">重试</el-button>
+    </div>
+
+    <div
+      v-else-if="isDev && newTools.length > 0"
+      class="update-banner update-banner--ok"
+    >
+      <span>检测到新工具：{{ newTools.map((t) => t.name).join('、') }} —— 重启 pnpm dev 后即可加载（渲染层组件需构建期发现）</span>
+      <el-button size="small" text @click="dismissNewTools">知道了</el-button>
     </div>
 
     <div class="app-body">
