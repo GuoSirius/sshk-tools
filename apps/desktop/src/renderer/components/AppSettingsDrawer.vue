@@ -494,26 +494,6 @@ async function cleanupOrphans(): Promise<void> {
               <div class="hint">
                 密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。
               </div>
-              <div class="key-guide">
-                <div class="key-guide-title">它是什么、怎么用</div>
-                <ul>
-                  <li><b>不是账号密码</b>：不联网、不登录、不加密文件，只是本机的「显示门禁」，用来把内部工具在共用电脑上收起来。</li>
-                  <li><b>设置</b>：上方输入任意口令 →「保存密钥」。口令明文进系统凭据库，settings.json 只留摘要；忘了就直接重设一个。</li>
-                  <li><b>使用</b>：在下方「工具管理」把目标工具的「权限要求」选成「需访问密钥」；此后本机已配置密钥才显示该工具，点「清除」后这些工具立即从桌面隐藏。</li>
-                  <li><b>作用范围</b>：只控制工具可见性，不影响工具内部数据，也不阻止已打开的工具继续运行（重启后生效）。</li>
-                </ul>
-                <div class="key-guide-title">别和这几套口令搞混</div>
-                <table class="about-table">
-                  <thead><tr><th>口令 / 密钥</th><th>在哪设置</th><th>作用</th></tr></thead>
-                  <tbody>
-                    <tr><td>应用访问密钥（本页）</td><td>工具与权限 → 访问密钥与权限</td><td>解锁「需访问密钥」的工具，控制桌面可见性</td></tr>
-                    <tr><td>开发者工具口令</td><td>默认内置，可用 SSHK_DEVTOOLS_KEY 覆盖</td><td>打包版打开开发者工具 / 开启开发者模式</td></tr>
-                    <tr><td>FTP / SFTP 密码、AccessKey Secret</td><td>上传配置工具 → 对应 profile</td><td>连接远程 / 云厂商，按 profile 独立加密存储</td></tr>
-                    <tr><td>模型 Provider API Key</td><td>Model Console → Provider</td><td>调用大模型接口</td></tr>
-                    <tr><td>备份迁移口令</td><td>系统与数据 → 迁移口令</td><td>仅在备份导出 / 导入时加密迁移密钥</td></tr>
-                  </tbody>
-                </table>
-              </div>
             </section>
 
             <section v-if="isDev" class="settings-card">
@@ -719,7 +699,7 @@ async function cleanupOrphans(): Promise<void> {
                 <thead><tr><th>层级</th><th>落盘</th><th>入口</th></tr></thead>
                 <tbody>
                   <tr><td>应用 / 系统</td><td><code>app.*</code></td><td>顶部「设置」→ 常规 / 工具与权限 / 系统与数据</td></tr>
-                  <tr><td>工具自有</td><td><code>tools.&lt;id&gt;.*</code></td><td>工具左侧「工具配置」页（single / tabs / menu 由工具包清单声明）</td></tr>
+                  <tr><td>工具自有</td><td><code>tools.&lt;id&gt;.*</code></td><td>工具左侧「工具配置」页（single / menu 两种形态，由工具包清单声明）</td></tr>
                   <tr><td>工具清单</td><td><code>tools/&lt;id&gt;/tool.manifest.json</code></td><td>名称、描述、多分类标签、图标、菜单、配置项、默认配置、依赖、权限、插件入口</td></tr>
                   <tr><td>密钥</td><td><code>secrets.bin</code>（safeStorage）</td><td>主进程注入，永不下发渲染层</td></tr>
                 </tbody>
@@ -735,9 +715,4 @@ async function cleanupOrphans(): Promise<void> {
 </template>
 
 <style scoped>
-.key-guide { margin-top: 12px; padding: 12px 14px; border-radius: 6px; background: var(--sshk-panel-soft, rgba(128, 128, 128, .07)); }
-.key-guide-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-.key-guide ul { margin: 0 0 12px; padding-left: 18px; font-size: 12px; line-height: 1.8; color: var(--sshk-muted); }
-.key-guide li b { color: var(--sshk-text, inherit); }
-.key-guide .about-table { font-size: 12px; width: 100%; }
 </style>
