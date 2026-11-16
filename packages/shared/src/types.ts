@@ -319,3 +319,45 @@ export type InstallPreview =
   | { status: 'upgrade'; id: string; newVersion: string; installedVersion: string }
   | { status: 'downgrade'; id: string; newVersion: string; installedVersion: string }
   | { status: 'builtin-conflict'; id: string }
+
+/** N1 诊断报告 · 单工具健康行（无敏感信息） */
+export interface DiagnosisToolRow {
+  id: string
+  name: string
+  enabled: boolean
+  visible: boolean
+  visibility: string
+  grant: string
+  /** 主进程插件状态：无 / 已加载 / 失败原因 */
+  plugin: string
+  dependsOn: string[]
+  warnings: string[]
+}
+
+/**
+ * N1 一键诊断数据（plans/04）：只含布尔状态、变量名、计数与目录占用，
+ * 绝不含 env 值 / 密钥明文 / 口令内容，渲染层可直接预览确认。
+ */
+export interface DiagnosisData {
+  generatedAt: string
+  app: { version: string; packaged: boolean; electron: string; node: string; locale: string }
+  platform: { os: string; arch: string; release: string; memoryGB: string; displays: { w: number; h: number; scale: number }[] }
+  /** env 只列「变量名 + 是否已设置」，值永不采集 */
+  env: { name: string; set: boolean }[]
+  secrets: {
+    /** 应用访问密钥（settings 里是否有 sha256 摘要） */
+    accessKey: boolean
+    /** 开发者工具口令（settings 哈希 或 env 默认） */
+    devtoolsKey: boolean
+    providers: { id: string; name: string; hasApiKey: boolean }[]
+    uploads: { id: string; name: string; hasSecret: boolean }[]
+  }
+  tools: DiagnosisToolRow[]
+  outputs: { root: string; files: number; totalMB: string; largest: { rel: string; kb: number }[] }
+  logs: {
+    dir: string
+    files: { name: string; sizeKB: number; warn: number; error: number }[]
+    /** 最近 20 条 error 行（落盘时已脱敏） */
+    recentErrors: string[]
+  }
+}

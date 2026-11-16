@@ -122,6 +122,9 @@ export const IPC_CHANNELS = {
   /** 日志目录信息 / 清空（设置 → 系统与数据 → 日志） */
   logDirGet: 'log:dir',
   logClean: 'log:clean',
+  /** N1 一键诊断：采集（预览，只含布尔/名称/计数）+ 导出 zip（report.md + logs/） */
+  diagCollect: 'diag:collect',
+  diagExport: 'diag:export',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

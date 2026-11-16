@@ -158,6 +158,10 @@ interface Window {
       getDir(): Promise<{ dir: string; sizeBytes: number; files: { name: string; sizeBytes: number }[] }>
       clean(): Promise<{ removed: number }>
     }
+    diagnostics: {
+      collect(): Promise<import('@sshk/shared').DiagnosisData>
+      save(outPath: string): Promise<{ file: string; logs: number }>
+    }
     tools: {
       list(): Promise<import('@sshk/shared').ToolCatalogPayload>
       setEnabled(id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload>

@@ -182,6 +182,12 @@ const api = {
       invoke(IPC_CHANNELS.logDirGet),
     clean: (): Promise<{ removed: number }> => invoke(IPC_CHANNELS.logClean),
   },
+  diagnostics: {
+    /** N1 采集诊断数据（只含布尔/名称/计数，可直接预览） */
+    collect: (): Promise<import('@sshk/shared').DiagnosisData> => invoke(IPC_CHANNELS.diagCollect),
+    /** N1 导出诊断 zip（report.md + 近 3 天日志），路径必须来自 pickSave */
+    save: (outPath: string): Promise<{ file: string; logs: number }> => invoke(IPC_CHANNELS.diagExport, outPath),
+  },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
     list: (): Promise<unknown> => invoke(IPC_CHANNELS.toolsList),

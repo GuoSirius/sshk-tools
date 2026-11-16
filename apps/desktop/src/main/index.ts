@@ -23,6 +23,7 @@ import { chat, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gatew
 import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
+import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
@@ -620,6 +621,11 @@ async function registerIpc(): Promise<void> {
   })
   handleOk(IPC_CHANNELS.logDirGet, () => logger.describe())
   handleOk(IPC_CHANNELS.logClean, () => ({ removed: logger.clean() }))
+
+  // ── N1 一键诊断：采集（预览）+ 导出 zip（report.md + 近 3 天日志）──
+  handleOk(IPC_CHANNELS.diagCollect, () => collectDiagnostics(services!, pluginStatus, buildCatalog()))
+  handleOk(IPC_CHANNELS.diagExport, (_event, zipPath: string) =>
+    exportDiagnosisZip(collectDiagnostics(services!, pluginStatus, buildCatalog()), String(zipPath ?? '')))
 
   // ── 插件：按构建期发现的清单逐个加载，任一失败只影响它自己 ──
   pluginStatus = await loadToolPlugins({
