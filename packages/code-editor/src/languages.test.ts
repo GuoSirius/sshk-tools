@@ -4,7 +4,7 @@ import { DEFAULT_LANGUAGE, LANGUAGES, languageForPath, monacoLanguageFor } from 
 describe('扩展名→语言映射', () => {
   it('覆盖 R27 约定的全部语言与 markdown', () => {
     const ids = LANGUAGES.map((l) => l.id)
-    for (const id of ['html', 'css', 'js', 'ts', 'json', 'yaml', 'python', 'java', 'php', 'markdown', 'njk', 'env']) {
+    for (const id of ['html', 'css', 'js', 'ts', 'json', 'yaml', 'python', 'java', 'php', 'markdown', 'njk', 'env', 'csv', 'tsv']) {
       expect(ids).toContain(id)
     }
     expect(monacoLanguageFor({ path: 'readme.md' })).toBe('markdown')
@@ -12,6 +12,12 @@ describe('扩展名→语言映射', () => {
     expect(monacoLanguageFor({ path: 'config.yml' })).toBe('yaml')
     expect(monacoLanguageFor({ path: 'index.ts' })).toBe('typescript')
     expect(monacoLanguageFor({ path: 'a.PHP' })).toBe('php')
+  })
+
+  it('csv / tsv 注册为独立语言（badge 统计粘贴等场景）', () => {
+    expect(monacoLanguageFor({ path: 'stats.csv' })).toBe('csv')
+    expect(monacoLanguageFor({ path: 'stats.tsv' })).toBe('tsv')
+    expect(monacoLanguageFor({ language: 'csv' })).toBe('csv')
   })
 
   it('P2 近似：njk→html、env→ini', () => {

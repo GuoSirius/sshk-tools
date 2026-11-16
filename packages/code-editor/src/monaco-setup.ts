@@ -51,7 +51,28 @@ export function setupMonaco(): typeof monaco {
       completion: true,
     })
   }
+  registerDelimitedLanguages()
   return monaco
+}
+
+/** csv / tsv：Monaco 无内置，注册轻量 Monarch（字符串 / 分隔符 / 数字 / URL 四类 token） */
+function registerDelimitedLanguages(): void {
+  const delimited = (id: string, separator: RegExp): void => {
+    if (monaco.languages.getLanguages().some((l) => l.id === id)) return
+    monaco.languages.register({ id })
+    monaco.languages.setMonarchTokensProvider(id, {
+      tokenizer: {
+        root: [
+          [/"([^"]|"")*"/, 'string'],
+          [separator, 'delimiter'],
+          [/-?\d+(?:\.\d+)?/, 'number'],
+          [/https?:\/\/[^\s,"]+/, 'type.identifier'],
+        ],
+      },
+    })
+  }
+  delimited('csv', /,|;/)
+  delimited('tsv', /\t/)
 }
 
 /** yaml 模式注入 JSON Schema（实时校验 meta.yaml / sample.yaml） */

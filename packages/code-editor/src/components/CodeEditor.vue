@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance } from 'vue'
+import { computed, getCurrentInstance, shallowRef } from 'vue'
 import { Editor, loader } from '@guolao/vue-monaco-editor'
 import { monaco, setupMonaco, setYamlSchema } from '../monaco-setup'
 import { monacoLanguageFor } from '../languages'
@@ -42,6 +42,11 @@ const options = computed(() => ({
   tabSize: 2,
 }))
 
+/** 编辑器实例暴露：供页面级搜索定位（setSelection / revealRangeInCenter）等高级用法 */
+const editorInstance = shallowRef<unknown>(null)
+function onMount(instance: unknown): void { editorInstance.value = instance }
+defineExpose({ getEditor: () => editorInstance.value })
+
 function onBeforeMount(): void {
   if (props.schema) setYamlSchema(props.schema)
 }
@@ -55,6 +60,7 @@ function onBeforeMount(): void {
       :path="virtualPath"
       :theme="theme"
       :options="options"
+      @mount="onMount"
       @update:value="(v: string | undefined) => emit('update:modelValue', v ?? '')"
       @before-mount="onBeforeMount"
     />

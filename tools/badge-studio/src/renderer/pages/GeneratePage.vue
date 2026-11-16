@@ -10,8 +10,7 @@ import {
   addRow, hasStats, clearRows, statRows, statsFile,
   imageFiles, imageThumbs, previewList, loadThumb, recognizing, vision, visionRaw,
   visionProviderId, onProviderChange, providers, activeProvider, recognizeImages,
-  visionModel, modelOptions, modelsLoading, fetchProviderModels,
-  pickPython, selfCheckCommand, copySelfCheck, saveVisionConfig,
+  visionModel, modelOptions, modelsLoading, fetchProviderModels, saveVisionConfig,
   badgeAttr, posterName, badgePositionText, badgePositionImage, badgePositionOptions,
   clicksField, fieldOptions, posterWidth, previewHtml, previewFrame,
   statsWarnings, customMetricKeys, removeMetric, metricOf, setMetric,
@@ -25,15 +24,28 @@ const statsJson = computed(() => JSON.stringify(statRows.value, null, 2))
 /**
  * Badge Studio——生成海报页：
  * 模板与布局从单文件原样迁移；状态/业务在 ../state（模块单例），
- * 仅 DOM 强相关逻辑留在本页（HTML 定位）；previewFrame 由页面绑定、壳的截图按钮消费。
+ * HTML 定位走 Monaco（真高亮 + 居中滚动），previewFrame 由页面绑定、壳的截图按钮消费。
  */
-const htmlInputRef = ref<{ $el: { querySelector: (sel: string) => HTMLTextAreaElement | null } } | null>(null)
 
-// ── HTML 搜索定位：textarea 无法高亮，用 setSelectionRange 选中 + 行号滚动 ──
+// ── HTML 搜索定位（Monaco 版）：findMatches 全量命中 + 装饰高亮 + 选中居中 ──
+interface MonacoEditorLike {
+  getModel(): { findMatches: (
+    searchString: string, searchOnlyEditableRange: boolean, isRegex: boolean,
+    matchCase: boolean, wordSeparators: string | null, captureMatches: boolean,
+    limitResultCount: number,
+  ) => { range: unknown }[] } | null
+  setSelection(range: unknown): void
+  revealRangeInCenter(range: unknown): void
+  createDecorationsCollection(decorations: { range: unknown; options: Record<string, unknown> }[]): { clear(): void }
+  focus(): void
+}
+const htmlEditorRef = ref<{ getEditor: () => MonacoEditorLike | null } | null>(null)
 const htmlSearch = ref('')
 const htmlSearchPos = ref<{ index: number; total: number } | null>(null)
 const htmlSearchLast = ref('')
 const htmlSearchCursor = ref(-1)
+let searchDecorations: { clear(): void } | null = null
+
 function locateInHtml(term: string): void {
   const query = term || htmlSearch.value.trim()
   if (!query) { ElMessage.warning('请输入搜索内容（url 片段 / 文字 / 属性名）')
@@ -43,31 +55,22 @@ function locateInHtml(term: string): void {
     htmlSearchLast.value = query
     htmlSearchCursor.value = -1
   }
-  const text = pastedHtml.value
-  const positions: number[] = []
-  for (let i = text.indexOf(query); i !== -1; i = text.indexOf(query, i + query.length)) positions.push(i)
-  if (positions.length === 0) { ElMessage.warning('未在 HTML 中找到：' + query)
+  const editor = htmlEditorRef.value?.getEditor()
+  const model = editor?.getModel()
+  if (!editor || !model) return
+  const matches = model.findMatches(query, false, false, true, null, false, 5000)
+  if (matches.length === 0) { ElMessage.warning('未在 HTML 中找到：' + query)
     return }
-  htmlSearchCursor.value = (htmlSearchCursor.value + 1) % positions.length
-  const idx = positions[htmlSearchCursor.value] ?? 0
-  const el = htmlInputRef.value?.$el?.querySelector('textarea') as HTMLTextAreaElement | null
-  if (!el) return
-  // 关闭软换行：代码查看场景标准形态，逻辑行 = 视觉行，scrollTop 计算才精确
-  el.setAttribute('wrap', 'off')
-  el.setSelectionRange(idx, idx + query.length)
-  el.focus()
-  const style = getComputedStyle(el)
-  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5 || 20
-  const line = text.slice(0, idx).split('\n').length
-  // 目标行置于视口上部（上留 4 行缓冲）
-  el.scrollTop = Math.max(0, (line - 4) * lineHeight)
-  // 水平跟随：列号 × 等宽字符宽度（scrollWidth / 最长行长），选中内容水平居中可见
-  const lineStart = text.lastIndexOf('\n', idx) + 1
-  const col = idx - lineStart
-  const maxLineLen = Math.max(...text.split('\n').map((l) => l.length), 1)
-  const charWidth = el.scrollWidth / maxLineLen
-  el.scrollLeft = Math.max(0, col * charWidth - el.clientWidth / 2)
-  htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: positions.length }
+  htmlSearchCursor.value = (htmlSearchCursor.value + 1) % matches.length
+  const range = matches[htmlSearchCursor.value]?.range
+  searchDecorations?.clear()
+  searchDecorations = editor.createDecorationsCollection(
+    matches.map((m) => ({ range: m.range, options: { className: 'badge-search-hit', isWholeLine: false } })),
+  )
+  editor.setSelection(range)
+  editor.revealRangeInCenter(range)
+  editor.focus()
+  htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: matches.length }
 }
 </script>
 
@@ -100,15 +103,12 @@ function locateInHtml(term: string): void {
             @keydown.enter="locateInHtml('')"
           />
           <el-button size="small" @click="locateInHtml(htmlSearch)">查找下一个</el-button>
-          <span v-if="htmlSearchPos" class="muted">第 {{ htmlSearchPos.index }} / {{ htmlSearchPos.total }} 处</span>
+          <!-- 常驻占位：宽度预留、不可见，首次命中不挤动布局（2026-11-16 用户反馈） -->
+          <span class="muted search-pos" :class="{ on: htmlSearchPos }">
+            {{ htmlSearchPos ? `第 ${htmlSearchPos.index} / ${htmlSearchPos.total} 处` : '—' }}
+          </span>
         </div>
-        <el-input
-          ref="htmlInputRef"
-          v-model="pastedHtml"
-          type="textarea"
-          :rows="8"
-          placeholder="粘贴邮件 HTML 源码，或点击右上角「选择 HTML」"
-        />
+        <CodeEditor ref="htmlEditorRef" v-model="pastedHtml" language="html" height="300px" />
         <div v-if="recentHtmls.length > 0" class="recent-row">
           <el-tag
             v-for="r in recentHtmls.slice(0, 4)"
@@ -127,12 +127,8 @@ function locateInHtml(term: string): void {
 
       <div class="panel">
         <div class="panel-title">点击统计 · 三种来源统一进可编辑表格</div>
-        <el-input
-          v-model="pastedStats"
-          type="textarea"
-          :rows="4"
-          placeholder="url,clicks&#10;https://example.com/p/1,12"
-        />
+        <CodeEditor v-model="pastedStats" language="csv" height="110px" />
+        <div class="hint" style="margin-top: 4px">格式：url,clicks,…；粘贴后点「解析文本」进表格。CSV 高亮为共享编辑器 csv 语言。</div>
         <div class="cfg-row" style="margin-top: 8px">
           <el-button size="small" @click="parsePastedStats">解析文本</el-button>
           <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
@@ -222,7 +218,7 @@ function locateInHtml(term: string): void {
           <el-button size="small" @click="addMetric">新增数值列</el-button>
           <span class="muted">表格改动会同步回上方 CSV 文本</span>
         </div>
-        <div class="hint">OCR 常把 5 认成 S、0 认成 O；请在表格里逐格核对后再生成，识别结果不会自动生效。</div>
+        <div class="hint">识别结果可能把 5 认成 S、0 认成 O；请在表格里逐格核对后再生成，识别结果不会自动生效。</div>
       </div>
 
       <div class="panel">
@@ -231,7 +227,6 @@ function locateInHtml(term: string): void {
           <span>识别方式</span>
           <el-radio-group v-model="vision.provider" size="small">
             <el-radio-button value="cloud">云端模型</el-radio-button>
-            <el-radio-button value="paddleocr">本机 PaddleOCR</el-radio-button>
             <el-radio-button value="manual">仅人工校对</el-radio-button>
           </el-radio-group>
         </div>
@@ -268,29 +263,6 @@ function locateInHtml(term: string): void {
             <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
             <span class="muted">端点与密钥来自「模型控制台」的同一份 Provider</span>
           </div>
-        </template>
-
-        <template v-else-if="vision.provider === 'paddleocr'">
-          <div class="cfg-row">
-            <span>命令</span>
-            <div class="path-row" style="flex: 1">
-              <el-input v-model="vision.paddleCommand" size="small" placeholder="Anaconda python.exe 绝对路径（选择或手动填写）" />
-              <el-button size="small" @click="pickPython">选择文件</el-button>
-            </div>
-          </div>
-          <div class="cfg-row">
-            <span>参数</span>
-            <el-input v-model="vision.paddleArgs" size="small" placeholder="{image}（应用自动前置适配器脚本）" style="max-width: 420px" />
-          </div>
-          <div class="cfg-row">
-            <el-button size="small" @click="copySelfCheck">复制自查命令</el-button>
-            <span class="muted">适配器脚本由应用自动托管，参数保持 {image} 即可；Python 路径自查后填入</span>
-          </div>
-          <details>
-            <summary class="muted" style="cursor: pointer">查看自查命令与当前版式</summary>
-            <pre class="raw">{{ selfCheckCommand }}</pre>
-          </details>
-          <div class="hint">版式配置（同行/千分位/合计行/列顺序）会由宿主自动以 --layout 注入适配器；精细版式在「工具配置 → OCR 截图版式」。</div>
         </template>
 
         <div v-else class="hint">
@@ -360,7 +332,7 @@ function locateInHtml(term: string): void {
         <EmptyState v-else description="生成后在此预览 badge 副本" />
       </div>
     </div>
-    <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close :close-on-click-modal="false" :close-on-press-escape="false">
       <CodeEditor :model-value="statsJson" language="json" height="420px" readonly />
     </el-dialog>
   </div>
@@ -482,6 +454,16 @@ function locateInHtml(term: string): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
+/* 搜索计数常驻占位：预留固定宽度，未命中时不可见，命中显示——布局零突变 */
+.search-pos {
+  min-width: 92px;
+  text-align: right;
+  visibility: hidden;
+  white-space: nowrap;
+}
+.search-pos.on {
+  visibility: visible;
+}
 .stat-table {
   margin-top: 8px;
 }
@@ -513,5 +495,13 @@ function locateInHtml(term: string): void {
   white-space: pre-wrap;
   word-break: break-all;
   opacity: 0.75;
+}
+</style>
+
+<style>
+/* Monaco 搜索命中装饰：装饰器类挂在 monaco 内部 DOM，必须非 scoped */
+.badge-search-hit {
+  background: rgba(230, 162, 60, 0.4);
+  outline: 1px solid rgba(230, 162, 60, 0.8);
 }
 </style>

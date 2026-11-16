@@ -7,7 +7,6 @@
     "数据分析"
   ],
   "tags": [
-    "OCR 识别",
     "海报生成"
   ],
   "icon": "auto",
@@ -202,41 +201,6 @@
       ]
     },
     {
-      "id": "config-ocr",
-      "label": "OCR 截图版式",
-      "fields": [
-        {
-          "key": "ocrLayout.linkNumberSameLine",
-          "label": "链接与数字同行",
-          "type": "boolean",
-          "hint": "关掉表示 URL 行的下一行才是数字行"
-        },
-        {
-          "key": "ocrLayout.thousandsSeparator",
-          "label": "数字含千分位",
-          "type": "boolean",
-          "hint": "如 1,234 会清洗成 1234"
-        },
-        {
-          "key": "ocrLayout.skipTotalRow",
-          "label": "跳过合计行",
-          "type": "boolean"
-        },
-        {
-          "key": "ocrLayout.skipKeywords",
-          "label": "跳过关键字",
-          "type": "string",
-          "hint": "逗号分隔，命中即跳过该行"
-        },
-        {
-          "key": "ocrLayout.columnOrder",
-          "label": "列顺序",
-          "type": "string",
-          "hint": "逗号分隔；除 url/clicks/totalClicks 外都作为自定义数值列，如 url,clicks,uv"
-        }
-      ]
-    },
-    {
       "id": "config-poster",
       "label": "海报",
       "fields": [
@@ -308,8 +272,8 @@
       "background": "#e60012",
       "color": "#fff",
       "size": 18,
-      "offsetY": -9,
-      "offsetX": -11
+      "offsetY": 0,
+      "offsetX": 0
     },
     "clicksField": "clicks",
     "urlNorm": {

@@ -27,6 +27,8 @@ export const LANGUAGES: readonly LanguageDef[] = [
   { id: 'markdown', monacoId: 'markdown', extensions: ['.md', '.markdown'], builtin: true },
   { id: 'njk', monacoId: 'html', extensions: ['.njk'], builtin: true },
   { id: 'env', monacoId: 'ini', extensions: ['.env'], builtin: true },
+  { id: 'csv', monacoId: 'csv', extensions: ['.csv'], builtin: false },
+  { id: 'tsv', monacoId: 'tsv', extensions: ['.tsv'], builtin: false },
 ]
 
 export const DEFAULT_LANGUAGE = 'plaintext'

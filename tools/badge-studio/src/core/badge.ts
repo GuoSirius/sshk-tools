@@ -26,17 +26,22 @@ export type BadgePosition =
   | 'left-center' | 'center' | 'right-center'
   | 'bottom-left' | 'bottom-center' | 'bottom-right'
 
-/** 9 位置的绝对定位样式（角标相对 <a> 定位；margin 用 offsetY/offsetX 微调） */
-const POSITION_STYLES: Record<BadgePosition, string> = {
-  'top-left': 'top:0;left:0;transform:translate(-50%,-50%)',
-  'top-center': 'top:0;left:50%;transform:translate(-50%,-50%)',
-  'top-right': 'top:0;right:0;transform:translate(50%,-50%)',
-  'left-center': 'left:0;top:50%;transform:translate(-50%,-50%)',
-  'center': 'left:50%;top:50%;transform:translate(-50%,-50%)',
-  'right-center': 'right:0;top:50%;transform:translate(50%,-50%)',
-  'bottom-left': 'bottom:0;left:0;transform:translate(-50%,50%)',
-  'bottom-center': 'bottom:0;left:50%;transform:translate(-50%,50%)',
-  'bottom-right': 'bottom:0;right:0;transform:translate(50%,50%)',
+/**
+ * 9 位置 = 锚点（相对 <a> 的 top/left 百分比）+ 角标自身 translate(-50%,-50%) 居中。
+ * offset 语义统一为「屏幕方向」：offsetX 正=右移 / offsetY 正=下移，与位置无关；
+ * 通过 transform calc 一次性合成，**不再注入 margin**——margin 与 transform 叠加
+ * 会随位置改变视觉方向（右下角时 -9px 是向内而非向外），导致居中样式错乱（2026-11-16 用户反馈）。
+ */
+const POSITION_POINTS: Record<BadgePosition, string> = {
+  'top-left': 'top:0;left:0',
+  'top-center': 'top:0;left:50%',
+  'top-right': 'top:0;left:100%',
+  'left-center': 'top:50%;left:0',
+  'center': 'top:50%;left:50%',
+  'right-center': 'top:50%;left:100%',
+  'bottom-left': 'top:100%;left:0',
+  'bottom-center': 'top:100%;left:50%',
+  'bottom-right': 'top:100%;left:100%',
 }
 
 export interface InjectResult {
@@ -90,13 +95,14 @@ export function injectBadges(html: string, stats: StatRow[], cfg: BadgeInjectCon
     const hasImage = $(el).find('img').length > 0
     const declared = $(el).attr('data-badge-position') as BadgePosition | undefined
     const fallback = hasImage ? cfg.defaultPositions.image : cfg.defaultPositions.text
-    const position: BadgePosition = declared && POSITION_STYLES[declared] ? declared : fallback
+    const position: BadgePosition = declared && POSITION_POINTS[declared] ? declared : fallback
     $(el).attr('data-badge-position', position)
 
+    const { offsetX, offsetY } = cfg.badgeStyle
     $(el).append(
       '<span ' + cfg.badgeAttr + '="' + value + '" style="position:absolute;' +
-        POSITION_STYLES[position] +
-        ';margin:' + cfg.badgeStyle.offsetY + 'px ' + cfg.badgeStyle.offsetX + 'px;' +
+        POSITION_POINTS[position] +
+        ';transform:translate(calc(-50% + ' + offsetX + 'px), calc(-50% + ' + offsetY + 'px));' +
         'display:inline-block;background:' + cfg.badgeStyle.background +
         ';color:' + cfg.badgeStyle.color + ';font-size:' + cfg.badgeStyle.size + 'px;' +
         'line-height:1;padding:2px 5px;border-radius:9px;white-space:nowrap;z-index:9;">' +

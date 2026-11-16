@@ -25,7 +25,7 @@ export interface RecentHtml {
 
 // ── 角标 / URL 归一 / 海报尺寸：全部来自工具配置，生成页不写死 ──
 export const badgeAttr = ref('data-edm-badge')
-export const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: -9, offsetX: -11 })
+export const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: 0, offsetX: 0 })
 export const posterName = ref('')
 export const badgePositionText = ref('top-right')
 export const badgePositionImage = ref('center')
@@ -56,8 +56,10 @@ export const newMetricKey = ref('')
 // ── 图片识别：模型复用应用级 Provider，工具不再配置 baseURL / apiKey ──
 // 注意：vision / imageThumbs 用 ref 而非 reactive——volar 对「导入的 reactive 对象」
 // 在模板里会错误地做 ref 解包（成员访问被改写成 .value），ref 则一切正常。
+// C-Q1（2026-11-16 拍板）：PaddleOCR 搁置 + 界面抹除——provider 只剩 cloud/manual；
+// 已存的 paddleocr 配置回落 cloud（数据不清，将来恢复零成本，见 plans/06 §五）。
 export const vision = ref({
-  provider: 'cloud' as 'cloud' | 'paddleocr' | 'manual',
+  provider: 'cloud' as 'cloud' | 'manual',
   paddleCommand: '',
   paddleArgs: '{image}',
 })
@@ -79,7 +81,7 @@ export async function loadThumb(file: string): Promise<void> {
 }
 export const recognizing = ref(false)
 export const visionRaw = ref('')
-export const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT })
+export const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT }) // 配置兼容保留（UI 已抹除，恢复零成本）
 export const activeProvider = computed(() => providers.value.find((p) => p._id === visionProviderId.value) ?? null)
 
 // ── 生成结果 / 海报列表 ──
@@ -104,22 +106,7 @@ export const customMetricKeys = computed(() => Array.from(new Set([
 ])))
 export const fieldOptions = computed(() => Array.from(new Set(['clicks', 'totalClicks', ...customMetricKeys.value])))
 
-/** 本机自查命令：三项信息都由用户自己跑出来，宿主不猜 */
-export const selfCheckCommand = computed(() => {
-  const py = `"${vision.value.paddleCommand || '<python.exe 绝对路径>'}"`
-  const adapter = '<paddleocr_adapter.py 绝对路径>'
-  return [
-    '# 1. 确认 Anaconda 环境的 python.exe 绝对路径',
-    'where python',
-    'python -c "import sys; print(sys.executable)"',
-    '',
-    '# 2. 用同一个解释器确认 Paddle / PaddleOCR 版本与实际调用方式',
-    `${py} ${adapter} --self-check`,
-    '',
-    '# 3. 用一张真实截图试跑，把 stdout 原文贴回来校准版式',
-    `${py} ${adapter} "C:\\path\\to\\screenshot.png" --layout '${JSON.stringify(ocrLayout)}'`,
-  ].join('\n')
-})
+/** 本机自查命令已随 C-Q1 UI 抹除下线（保留 ocrLayout 配置兼容，见 plans/06 §五） */
 
 async function textConfig(key: string, fallback: string): Promise<string> {
   const value = await window.api.config.get(configKey(key))
@@ -139,8 +126,9 @@ export async function loadConfigAndRecent(): Promise<void> {
   captureScale.value = Number(await window.api.config.get(configKey('scale'))) || 2
   const recent = (await window.api.config.get(configKey('recentHtmls'))) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
+  // C-Q1：已存的 paddleocr 配置回落 cloud（数据保留，UI 不露出）
   const provider = await textConfig('vision.provider', 'cloud')
-  vision.value.provider = provider === 'paddleocr' || provider === 'manual' ? provider : 'cloud'
+  vision.value.provider = provider === 'manual' ? 'manual' : 'cloud'
   vision.value.paddleCommand = await textConfig('vision.paddleCommand', 'python')
   vision.value.paddleArgs = await textConfig('vision.paddleArgs', '{image}')
   const savedLayout = (await window.api.config.get(configKey('ocrLayout'))) as Partial<OcrLayoutConfig> | null
@@ -329,7 +317,7 @@ export async function recognizeImages(): Promise<void> {
     ElMessage.info('当前为「仅人工校对」模式，请在上方文本框粘贴 CSV')
     return
   }
-  if (vision.value.provider === 'cloud' && !visionProviderId.value) {
+  if (!visionProviderId.value) {
     ElMessage.warning('请先在「模型控制台」配置 Provider，再在这里选择')
     return
   }
@@ -342,11 +330,8 @@ export async function recognizeImages(): Promise<void> {
       const result = await window.api.badge.parseImage({
         file,
         provider: vision.value.provider,
-        providerId: vision.value.provider === 'cloud' ? visionProviderId.value : undefined,
-        model: vision.value.provider === 'cloud' ? visionModel.value : undefined,
-        paddleCommand: vision.value.paddleCommand,
-        paddleArgs: vision.value.paddleArgs,
-        ocrLayout: vision.value.provider === 'paddleocr' ? { ...ocrLayout } : undefined,
+        providerId: visionProviderId.value,
+        model: visionModel.value,
       })
       collected.push(...result.rows)
       warnings.push(...result.warnings)
@@ -369,33 +354,18 @@ export async function recognizeImages(): Promise<void> {
   }
 }
 
-/** 图片识别配置就地保存：不再跳工具配置页，识别方式 / Provider / 模型 / OCR 命令一处改完 */
-/** 路径类配置统一交互：选择 + 可手动修改 */
-export async function pickPython(): Promise<void> {
-  const [file] = await window.api.os.pickFile({
-    filters: [{ name: 'Python 解释器', extensions: ['exe'] }],
-  })
-  if (file) vision.value.paddleCommand = file
-}
-
+/** 图片识别配置就地保存：不再跳工具配置页，识别方式 / Provider / 模型一处改完 */
 export async function saveVisionConfig(): Promise<void> {
   try {
     await window.api.config.set(configKey('vision'), {
       provider: vision.value.provider,
       providerId: visionProviderId.value,
       modelOverride: visionModel.value,
-      paddleCommand: vision.value.paddleCommand,
-      paddleArgs: vision.value.paddleArgs,
     })
-    ElMessage.success('图片识别配置已保存为默认（OCR 版式仍在「工具配置 → OCR 截图版式」）')
+    ElMessage.success('图片识别配置已保存为默认')
   } catch (err) {
     ElMessage.error(`保存失败：${(err as Error).message}`)
   }
-}
-
-export async function copySelfCheck(): Promise<void> {
-  await window.api.os.clipboardWrite(selfCheckCommand.value)
-  ElMessage.success('自查命令已复制，请在 Anaconda 环境执行并把结果填入工具配置')
 }
 
 /** 批量补属性：给命中但未带 badgeAttr 的链接补上（只在生成的副本里生效，原文件不动） */
