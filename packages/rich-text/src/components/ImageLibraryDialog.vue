@@ -13,14 +13,18 @@ import type { IDomEditor } from '@wangeditor/editor'
 import type { RichTextImageItem, RichTextImageLibrary, RichTextImageSource, RichTextImageTarget } from '../types'
 import { toDisplaySrc } from '../display'
 import {
+  buildDirectoryTree,
   defaultSourceId,
-  directoryTree,
+  directoriesFromKeys,
+  expandDirPath,
   loadSettings,
   matchImageKeyword,
+  normalizeDirInput,
   saveSettings,
   sortSourcesByDefault,
+  validateDirInput,
 } from '../image-library-settings'
-import type { DirectoryTreeNode } from '../image-library-settings'
+import type { DirectoryTreeNode, DirValidation } from '../image-library-settings'
 import { contentName, fingerprintKey, hashFile } from '../upload-dedupe'
 
 /** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删）；scope 记录来源/桶/目录归属 */
@@ -48,7 +52,7 @@ interface UploadTask {
   /** 完成时间戳：成功后短暂保留「完成」卡片让用户看到进度结果，到点降级为普通缩略图 */
   doneAt?: number
   size: number
-  /** 去重指纹（目标位置 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
+  /** 去重指纹（目标位置 + 源文件名 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
   fingerprint: string
   /** 实际存储名（原名-hash8.后缀）；UI 显示原名 name，上传用此名，保证同名不同内容不覆盖、重试幂等 */
   uploadName: string
@@ -144,6 +148,19 @@ const items = ref<RichTextImageItem[]>([])
 const loadingList = ref(false)
 /** 目录下拉的候选 key：打开弹窗/切来源时静默列一次，派生级联树 */
 const dirKeys = ref<string[]>([])
+/** 目录列取的三态反馈：加载中 / 失败原因 / 是否已加载完（区分「真没有目录」与「还没加载」） */
+const dirLoading = ref(false)
+const dirError = ref('')
+const dirsLoaded = ref(false)
+/** 把目录路径并入候选集（去重），用于手输/上传后即时出现在下拉 */
+function rememberDirs(dirs: string[]): void {
+  const set = new Set(dirKeys.value.map((d) => normalizeDirInput(d)))
+  for (const d of dirs) {
+    const n = normalizeDirInput(d)
+    if (n) set.add(n)
+  }
+  dirKeys.value = [...set].sort((a, b) => a.localeCompare(b))
+}
 /** 文件名搜索关键词 */
 const keyword = ref('')
 /** 已渲染数量（分批渲染） */
@@ -196,15 +213,42 @@ const showBucket = computed(() => typeOf.value === 'cloud')
 const dirModel = computed({
   get: () => target.value.prefix || target.value.remotePath || target.value.localDir || '',
   set: (v: string) => {
+    // 手输过程中保持原样（逐字输入 a/ 会被立刻归一化成 a，打断输入）；在 @change/blur 时再归一化
     if (typeOf.value === 'cloud') target.value = { ...target.value, prefix: v }
     else if (typeOf.value === 'remote') target.value = { ...target.value, remotePath: v }
     else target.value = { ...target.value, localDir: v }
   },
 })
+/**
+ * 手输目录提交时归一化（本地文件系统路径只 trim，保留 /..、盘符等语义）。
+ * 归一化后把该目录及各父级并入候选，保证下拉里能看到刚输入的目录。
+ */
+function commitDirInput(): void {
+  const raw = dirModel.value
+  const normalized = typeOf.value === 'local' ? String(raw ?? '').trim() : normalizeDirInput(raw)
+  dirModel.value = normalized
+  // 本地是文件系统路径（可能是绝对路径），不并入对象路径候选；靠 listDirectories 列真实子目录
+  if (typeOf.value !== 'local') rememberDirs(expandDirPath(normalized))
+}
+
+/** 恢复持久化设置后归一化目录写法（旧数据可能带首尾斜杠），保持作用域口径一致 */
+function normalizeRestoredDir(): void {
+  const raw = dirModel.value
+  if (!raw) return
+  const normalized = typeOf.value === 'local' ? String(raw).trim() : normalizeDirInput(raw)
+  if (normalized === raw) return
+  if (typeOf.value === 'cloud') target.value = { ...target.value, prefix: normalized }
+  else if (typeOf.value === 'remote') target.value = { ...target.value, remotePath: normalized }
+  else target.value = { ...target.value, localDir: normalized }
+}
+/** 作用域用归一化目录：同一目录的不同写法不应被视为不同位置（影响去重与选择池） */
+const scopeDir = computed(() => (typeOf.value === 'local' ? dirModel.value.trim() : normalizeDirInput(dirModel.value)))
+/** 手输目录实时校验提示（不阻断输入；error 仅提示，仍允许保存后由 Provider 兜底） */
+const dirValidation = computed<DirValidation>(() => validateDirInput(dirModel.value, typeOf.value))
 /** 当前来源+桶+目录的作用域串，构造图库项/上传项时固化进 pool key */
-const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', dirModel.value].join('|'))
-/** 级联目录树：从已列图片 key 派生，每层 value 为完整路径 */
-const dirTree = computed<DirectoryTreeNode[]>(() => directoryTree(dirKeys.value))
+const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', scopeDir.value].join('|'))
+/** 级联目录树：优先真实目录路径，每层 value 为完整路径 */
+const dirTree = computed<DirectoryTreeNode[]>(() => buildDirectoryTree(dirKeys.value))
 
 /** 图库页可见项：本次上传（含旧源上传的）优先，当前源列图按作用域+url 去重补充，再按文件名过滤 */
 const galleryView = computed<PoolItem[]>(() => {
@@ -274,11 +318,35 @@ async function loadSources(): Promise<void> {
 async function loadDirKeys(): Promise<void> {
   const source = activeSource.value
   if (!source) return
+  // 传入当前桶（云列目录用得到），复用同一来源上下文
+  const ctxTarget: RichTextImageTarget = source.type === 'cloud' ? { bucket: target.value.bucket } : {}
+  dirError.value = ''
+  dirLoading.value = true
+  let real: string[] | null = null
+  if (props.library.listDirectories) {
+    try {
+      real = await props.library.listDirectories(source, ctxTarget)
+    } catch (err) {
+      // 列真实目录失败（如 FTP 连不上）：把原因透出给用户，再降级到图片 key 反推
+      dirError.value = (err as Error)?.message || String(err)
+      real = null
+    }
+  }
   try {
-    // 不传专属项：拿到来源根路径的多级目录结构；失败静默（手输仍可用）
-    dirKeys.value = (await props.library.list(source, {})).map((i) => i.key ?? i.name ?? '')
-  } catch {
-    dirKeys.value = []
+    // 真实目录列取成功（含空结果）即视为权威；仅失败时降级为图片 key 反推
+    const fallback = async (): Promise<string[]> => {
+      try {
+        return directoriesFromKeys((await props.library.list(source, {})).map((i) => i.key ?? i.name ?? ''))
+      } catch {
+        return []
+      }
+    }
+    const base = real !== null ? real : await fallback()
+    // 保留当前手输/已选目录，避免重列后被冲掉
+    rememberDirs([...base, ...expandDirPath(dirModel.value)])
+  } finally {
+    dirLoading.value = false
+    dirsLoaded.value = true
   }
 }
 
@@ -302,6 +370,7 @@ watch(
     targetCache[props.stateKey] = saved?.targets ?? {}
     sourceId.value = defaultSourceId(sources.value, saved?.sourceId)
     target.value = { ...(targetCache[props.stateKey]?.[sourceId.value] ?? {}) }
+    normalizeRestoredDir()
     tab.value = saved?.tab ?? 'upload'
     // 设置恢复后再打开写回监听，防止空值落盘覆盖
     await nextTick()
@@ -315,8 +384,11 @@ let sourceWatchBusy = false
 watch(sourceId, async (id) => {
   if (!restored.value || sourceWatchBusy) return
   target.value = { ...(targetCache[props.stateKey]?.[id] ?? {}) }
+  normalizeRestoredDir()
   items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
   dirKeys.value = []
+  dirsLoaded.value = false
+  dirError.value = ''
   renderedCount.value = PAGE_SIZE
   persist()
   void loadDirKeys()
@@ -441,7 +513,8 @@ async function onFilesChosen(e: Event): Promise<void> {
   if (!source || files.length === 0) return
   const scope = currentScope.value
 
-  // 上传前去重：内容 hash（改个名也算同一张）+ 目标位置。已在传/已成功的不重复上传，失败的可重选。
+  // 上传前去重：目标位置 + 源文件名（带后缀）+ 内容 hash。三者全同才算重复；
+  // 同一内容改不同名字视为不同文件，都允许上传。已在传/已成功的不重复上传，失败的可重选。
   const existing = new Set(
     uploadTasks.value.filter((t) => t.status !== 'failed').map((t) => t.fingerprint),
   )
@@ -474,7 +547,12 @@ async function onFilesChosen(e: Event): Promise<void> {
   stopProgressTimer()
   const ok = results.filter(Boolean).length
   const failed = results.length - ok
-  if (ok > 0) ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
+  if (ok > 0) {
+    // 上传成功后：目标目录立即进候选，并重列真实目录（新目录能被发现），避免下拉里看不到刚传的目录
+    rememberDirs(expandDirPath(dirModel.value))
+    void loadDirKeys()
+    ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
+  }
   if (failed > 0) ElMessage.warning(`${failed} 张上传失败，可在上传列表中重试或删除`)
 }
 
@@ -586,24 +664,40 @@ function onPaneScroll(e: Event): void {
               v-model="dirModel"
               :options="dirTree"
               :props="{ checkStrictly: true, emitPath: false, expandTrigger: 'hover' }"
+              :loading="dirLoading"
               filterable
               clearable
               class="dir-cascader"
               :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
             />
-            <el-input v-model="dirModel" clearable class="dir-manual" placeholder="或手输目录" />
+            <el-input
+              v-model="dirModel"
+              clearable
+              class="dir-manual"
+              :class="{ 'dir-invalid': dirValidation.level === 'error' }"
+              placeholder="或手输目录"
+              @change="commitDirInput"
+            />
+          </div>
+          <div v-if="dirValidation.level !== 'ok'" class="dir-validation" :class="`dir-validation--${dirValidation.level}`">
+            {{ dirValidation.message }}
+          </div>
+          <!-- 目录下拉状态反馈：让「没有目录 / 还在加载 / 加载失败」可区分，而不是一片空白 -->
+          <div v-if="dirError" class="dir-validation dir-validation--warning">目录列表加载失败：{{ dirError }}（仍可手输目录）</div>
+          <div v-else-if="!dirLoading && dirsLoaded && dirTree.length === 0" class="dir-validation dir-validation--info">
+            该来源根目录下暂无子目录：直接手输目录名即可，上传后会自动创建并出现在下拉里
           </div>
           <div class="lib-row lib-row-actions">
             <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
             <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
-            <el-button size="small" @click="selectAllVisible(true)">全选本页</el-button>
-            <el-button size="small" @click="selectAllVisible(false)">全不选</el-button>
-            <el-button size="small" @click="invertVisible">反选本页</el-button>
-            <el-button v-if="tab === 'gallery'" size="small" :loading="loadingList" @click="loadGallery">刷新</el-button>
-            <el-button v-else-if="tab === 'selected'" size="small" type="danger" :disabled="poolCount === 0" @click="clearPool">清空</el-button>
-            <el-button v-else size="small" :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
+            <el-button size="small" type="primary" plain @click="selectAllVisible(true)">全选本页</el-button>
+            <el-button size="small" type="info" plain @click="selectAllVisible(false)">全不选</el-button>
+            <el-button size="small" type="info" plain @click="invertVisible">反选本页</el-button>
+            <el-button v-if="tab === 'gallery'" size="small" type="success" plain :loading="loadingList" @click="loadGallery">刷新</el-button>
+            <el-button v-else-if="tab === 'selected'" size="small" type="danger" plain :disabled="poolCount === 0" @click="clearPool">清空</el-button>
+            <el-button v-else size="small" type="danger" plain :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
             <span class="lib-action-gap" />
-            <el-button size="small" @click="uploadMore">继续上传</el-button>
+            <el-button size="small" type="primary" plain @click="uploadMore">继续上传</el-button>
             <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
           </div>
         </div>
@@ -611,7 +705,7 @@ function onPaneScroll(e: Event): void {
         <div v-if="uploadTotal" class="upload-progress-bar">
           <div class="up-summary">
             <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
-            <el-button size="small" text @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
+            <el-button size="small" text type="info" @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
           </div>
           <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
         </div>
@@ -709,6 +803,7 @@ function onPaneScroll(e: Event): void {
             v-if="tab === 'selected'"
             size="small"
             text
+            type="danger"
             class="thumb-remove"
             @click.stop="removePoolKey(itemKey(item))"
           >移除</el-button>
@@ -716,6 +811,7 @@ function onPaneScroll(e: Event): void {
             v-else-if="item.origin === 'upload'"
             size="small"
             text
+            type="danger"
             class="thumb-remove"
             @click.stop="removeUploaded(item)"
           >删除</el-button>
@@ -732,7 +828,7 @@ function onPaneScroll(e: Event): void {
     </div>
 
     <template #footer>
-      <el-button @click="close">关闭</el-button>
+      <el-button type="info" plain @click="close">关闭</el-button>
     </template>
   </el-dialog>
 </template>
@@ -748,6 +844,12 @@ function onPaneScroll(e: Event): void {
 .bucket-input { flex: 0 0 220px; }
 .dir-cascader { flex: 0 1 240px; min-width: 0; }
 .dir-manual { flex: 1 1 auto; min-width: 0; }
+.dir-validation { font-size: 12px; line-height: 1.4; margin-top: -2px; }
+.dir-validation--warn { color: #e6a23c; }
+.dir-validation--warning { color: #e6a23c; }
+.dir-validation--error { color: #f56c6c; }
+.dir-validation--info { color: var(--el-text-color-secondary); }
+.dir-invalid :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px #f56c6c inset; }
 .search-input { flex: 0 0 150px; }
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }

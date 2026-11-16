@@ -80,6 +80,12 @@ export interface UploadProvider {
   uploadBatch?(files: UploadFile[], ctx: UploadContext): Promise<UploadResult[]>
   /** 可选扩展点：列出该来源已有图片（富文本「从图床选择插入」用）；不支持时 Service 抛错 */
   listImages?(ctx: UploadContext & { limit?: number }): Promise<UploadedImageInfo[]>
+  /**
+   * 可选扩展点：列出该来源的真实目录（富文本图片库下拉用）。
+   * 返回相对当前前缀的子目录路径段（不含尾斜杠，可多级），不去重图片文件；
+   * 与 listImages 从图片 key 反推目录不同，这里能列出空目录。不支持时 Service 抛错。
+   */
+  listDirectories?(ctx: UploadContext): Promise<string[]>
 }
 
 export interface UploadBatchOptions {

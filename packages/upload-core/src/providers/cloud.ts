@@ -1,6 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { byNewestFirst, isImageFileName } from '../image-files'
+import {
+  collectPrefixes,
+  MAX_DIRECTORIES,
+  MAX_DIRECTORY_DEPTH,
+  normalizeDirPath,
+  relativeDir,
+} from '../directories'
 import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /**
@@ -162,6 +169,91 @@ function strOf(obj: Record<string, unknown>, keys: string[]): string {
     if (v != null && v !== '') return String(v)
   }
   return ''
+}
+
+/**
+ * delimiter 列目录：拿某前缀下的直接子目录前缀（各家 SDK 字段/参数不同，逐家适配）。
+ * 返回原始响应，交给 collectPrefixes 统一抽前缀；失败向上抛，由 listDirectories 兜底。
+ */
+async function listPrefixesRaw(
+  profile: CloudProfile,
+  mod: SdkModule,
+  q: { bucket: string; prefix: string; limit: number },
+): Promise<unknown> {
+  const ep = profile.endpoint?.trim() ?? ''
+  const prefix = q.prefix || undefined
+  switch (profile.provider) {
+    case 'aliyun-oss': {
+      const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
+        listV2(q: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
+      return await client.listV2({ 'max-keys': q.limit, prefix, delimiter: '/' })
+    }
+    case 'tencent-cos': {
+      const COS = ctorOf(mod, ['default', 'COS'], 'cos-nodejs-sdk-v5') as new (o: Record<string, unknown>) => {
+        listObjects(p: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void
+      }
+      const client = new COS({ SecretId: profile.accessKeyId, SecretKey: profile.accessKeySecret })
+      return await new Promise((resolve, reject) => {
+        client.listObjects({ Bucket: q.bucket, Region: profile.region, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      })
+    }
+    case 'qiniu': {
+      const qn = nsOf(mod) as unknown as {
+        auth: { digest: { Mac: new (ak: string, sk: string) => unknown } }
+        conf: { Config: new (o: Record<string, unknown>) => unknown }
+        rs: { BucketManager: new (mac: unknown, c: unknown) => { listPrefix(b: string, o: Record<string, unknown>, cb: (e: Error | null, d?: unknown) => void): void } }
+        zone: Record<string, unknown>
+      }
+      const mac = new qn.auth.digest.Mac(profile.accessKeyId, profile.accessKeySecret)
+      const config = new qn.conf.Config({ zone: qn.zone[`Zone_${profile.region || 'z0'}`] ?? qn.zone['Zone_z0'] })
+      const manager = new qn.rs.BucketManager(mac, config)
+      return await new Promise((resolve, reject) => {
+        manager.listPrefix(q.bucket, { prefix, delimiter: '/', limit: q.limit }, (e, d) => e ? reject(e) : resolve(d))
+      })
+    }
+    case 'aws-s3': {
+      const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => { send(cmd: unknown): Promise<unknown> }
+      const ListCommand = mod['ListObjectsV2Command'] as new (o: Record<string, unknown>) => unknown
+      const client = new S3Client({
+        region: profile.region || 'auto', endpoint: ep ? withScheme(ep) : undefined, forcePathStyle: Boolean(ep),
+        credentials: { accessKeyId: profile.accessKeyId, secretAccessKey: profile.accessKeySecret },
+      })
+      return await client.send(new ListCommand({ Bucket: q.bucket, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit }))
+    }
+    case 'huawei-obs': {
+      const ObsClient = ctorOf(mod, ['default', 'ObsClient'], 'esdk-obs-nodejs') as new (o: Record<string, unknown>) => {
+        listObjects(p: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new ObsClient({ access_key_id: profile.accessKeyId, secret_access_key: profile.accessKeySecret, server: withScheme(ep) })
+      return await client.listObjects({ Bucket: q.bucket, Prefix: prefix, Delimiter: '/', MaxKeys: q.limit })
+    }
+    case 'baidu-bos': {
+      const BosClient = ctorOf(mod, ['BosClient', 'default'], 'bce-sdk-js') as new (o: Record<string, unknown>) => {
+        listObjects(b: string, o?: Record<string, unknown>): Promise<unknown>
+      }
+      const client = new BosClient({ endpoint: withScheme(ep || 'bj.bcebos.com'), credentials: { ak: profile.accessKeyId, sk: profile.accessKeySecret } })
+      return await client.listObjects(q.bucket, { prefix, delimiter: '/', limit: q.limit })
+    }
+    case 'azure-blob': {
+      const BlobServiceClient = mod['BlobServiceClient'] as new (url: string, cred: unknown) => {
+        getContainerClient(name: string): {
+          listBlobsByHierarchy(d: string, o: Record<string, unknown>): { byPage(o: Record<string, unknown>): { next(): Promise<unknown> } }
+        }
+      }
+      const Credential = mod['StorageSharedKeyCredential'] as new (account: string, key: unknown) => unknown
+      const service = new BlobServiceClient(withScheme(ep), new Credential(profile.bucket, profile.accessKeySecret))
+      const page = (await service
+        .getContainerClient(q.bucket)
+        .listBlobsByHierarchy('/', { prefix })
+        .byPage({ pageSize: q.limit })
+        .next()) as { value?: { blobPrefixes?: { name: string }[] } }
+      return { prefixes: (page.value?.blobPrefixes ?? []).map((p) => p.name) }
+    }
+    default:
+      throw new Error(`不支持的云厂商：${profile.provider}`)
+  }
 }
 
 async function listObjects(
@@ -490,5 +582,33 @@ export class CloudUploadProvider implements UploadProvider {
       prefix: (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, ''),
       limit: ctx.limit ?? 200,
     })
+  }
+
+  /** 富文本图片库：用 delimiter 递归列出真实目录（含空目录）；单层失败静默跳过，整体不阻断 */
+  async listDirectories(ctx: UploadContext): Promise<string[]> {
+    // 没有 delimiter 能力的厂商（列表里显式关掉）直接抛，交由上层降级到图片 key 反推
+    const mod = await loadSdk(specOf(this.profile))
+    const bucket = ctx.overrides?.bucket || this.profile.bucket
+    const base = (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, '')
+    const out = new Set<string>()
+    const queue: { prefix: string; depth: number }[] = [{ prefix: base, depth: 0 }]
+    while (queue.length > 0 && out.size < MAX_DIRECTORIES) {
+      const cur = queue.shift()!
+      if (cur.depth > MAX_DIRECTORY_DEPTH) continue
+      let raw: unknown
+      try {
+        raw = await listPrefixesRaw(this.profile, mod, { bucket, prefix: cur.prefix, limit: MAX_DIRECTORIES })
+      } catch {
+        continue
+      }
+      for (const full of collectPrefixes(raw)) {
+        if (out.size >= MAX_DIRECTORIES) break
+        const rel = relativeDir(full, base)
+        if (!rel || out.has(rel)) continue
+        out.add(rel)
+        queue.push({ prefix: normalizeDirPath(full), depth: cur.depth + 1 })
+      }
+    }
+    return [...out].sort((a, b) => a.localeCompare(b))
   }
 }

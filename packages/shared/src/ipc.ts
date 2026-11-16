@@ -56,6 +56,8 @@ export const IPC_CHANNELS = {
   uploadTest: 'upload:test',
   /** 富文本图片库：按来源（本地/远程/云）列出已有图片，供「从图床选择插入」 */
   uploadListImages: 'upload:images:list',
+  /** 富文本图片库：按来源列出真实目录（含空目录），供目录下拉；只读 */
+  uploadListDirectories: 'upload:directories:list',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

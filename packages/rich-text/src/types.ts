@@ -65,4 +65,9 @@ export interface RichTextImageLibrary {
   ): Promise<string>
   /** 列出某来源已有图片（新在前由实现方保证）；limit 为期望一次拉取上限，实现方可按后端能力截断 */
   list(source: RichTextImageSource, target?: RichTextImageTarget, limit?: number): Promise<RichTextImageItem[]>
+  /**
+   * 列出某来源的真实目录（相对目标位置的完整路径，可多级，含空目录）。
+   * 可选：未实现时图片库会降级用「已列图片 key」反推目录。
+   */
+  listDirectories?(source: RichTextImageSource, target?: RichTextImageTarget): Promise<string[]>
 }

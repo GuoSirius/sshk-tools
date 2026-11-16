@@ -7,5 +7,5 @@ import { createSafeHost } from '@sshk/ui-kit'
  */
 export const host = createSafeHost({
   os: { clipboardWrite: C.osClipboardWrite, readDataUri: C.osReadDataUri, pickFile: C.osPickFile },
-  upload: { single: C.uploadSingle, batch: C.uploadBatch, profiles: C.uploadProfiles, listImages: C.uploadListImages },
+  upload: { single: C.uploadSingle, batch: C.uploadBatch, profiles: C.uploadProfiles, listImages: C.uploadListImages, listDirectories: C.uploadListDirectories },
 })

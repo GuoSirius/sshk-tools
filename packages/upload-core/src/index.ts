@@ -21,6 +21,16 @@ export type {
 export { DEFAULT_VALIDATION, mergeValidation, validateFile } from './validation'
 export type { ValidationFailure, ValidationOutcome, ValidationSuccess } from './validation'
 export { mapWithConcurrency, withRetry } from './concurrency'
+export {
+  collectPrefixes,
+  joinDir,
+  normalizeDirPath,
+  relativeDir,
+  MAX_DIRECTORIES,
+  MAX_DIRECTORY_DEPTH,
+  DIRECTORY_CONCURRENCY,
+} from './directories'
+export { isImageFileName, byNewestFirst } from './image-files'
 export { UploadService } from './service'
 export type { UploadServiceOptions } from './service'
 export { LocalUploadProvider, RemoteUploadProvider, CloudUploadProvider } from './providers'

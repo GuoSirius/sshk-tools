@@ -29,6 +29,21 @@ export function settingsKey(stateKey: string): string {
   return `sshk:rich-text:image-library:${stateKey || 'default'}`
 }
 
+/**
+ * 手输目录归一化：统一正斜杠、去首尾斜杠、压掉重复段。
+ * - 对象存储前缀 / 远程路径：`/a/b/c`、`a/b/c/`、`a//b/c` → 统一 `a/b/c`，避免同一目录被当成不同作用域；
+ * - 本地目录是文件系统路径，语义不同（绝对路径 /../、盘符），**不在此归一化**，由调用方原样保留。
+ * 例：'/a/b/c' → 'a/b/c'；'a/b/c/' → 'a/b/c'；'//a//b//' → 'a/b'。
+ */
+export function normalizeDirInput(raw: string): string {
+  return String(raw ?? '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('/')
+}
+
 /** localStorage 不可用（隐私模式/受限 webview）时静默降级为内存态，不阻断编辑 */
 export function loadSettings(store: Storage | null | undefined, stateKey: string): ImageLibrarySettings | null {
   if (!store) return null
@@ -84,14 +99,20 @@ export interface DirectoryTreeNode {
 }
 
 /**
- * 把完整路径列表转成级联树（el-cascader 用），每一级都可被选中（checkStrictly）。
- * 例 ['blog/2026/06', 'blog/2025'] → blog → {2025, 2026 → 06}；value 始终是完整路径。
+ * 把「完整目录路径」列表转成级联树（el-cascader 用），每一级都可被选中（checkStrictly）。
+ * 输入应是目录本身（不是文件 key）。例 ['blog/2026/06', 'blog/2025'] → blog → {2025, 2026 → 06}；
+ * value 始终是完整路径。
  */
-export function directoryTree(keys: string[]): DirectoryTreeNode[] {
+export function buildDirectoryTree(dirs: string[]): DirectoryTreeNode[] {
   const roots: DirectoryTreeNode[] = []
   const byValue = new Map<string, DirectoryTreeNode>()
-  for (const full of directoriesFromKeys(keys)) {
-    const segs = full.split('/').filter(Boolean)
+  // 先按规范化完整路径排序，保证各级子节点顺序稳定（与旧的 directoriesFromKeys→directoryTree 一致）
+  const sorted = dirs
+    .map((d) => normalizeDirInput(d))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+  for (const raw of sorted) {
+    const segs = normalizeDirInput(raw).split('/').filter(Boolean)
     let prefix = ''
     let siblings = roots
     for (const seg of segs) {
@@ -115,6 +136,72 @@ export function directoryTree(keys: string[]): DirectoryTreeNode[] {
   }
   prune(roots)
   return roots
+}
+
+/** 从已列图片 key 反推目录树（列目录能力不可用时的降级路径） */
+export function directoryTree(keys: string[]): DirectoryTreeNode[] {
+  return buildDirectoryTree(directoriesFromKeys(keys))
+}
+
+export type DirValidationLevel = 'ok' | 'warn' | 'error'
+export interface DirValidation {
+  level: DirValidationLevel
+  /** 可直接展示给用户的中文提示；ok 时为空 */
+  message: string
+}
+
+/**
+ * 手输目录的实时合法性校验（不阻断输入，只给提示）。
+ * - 对象存储 / 远程路径：拦截控制字符、'.'/'..' 段；对反斜杠、首尾/重复斜杠、URL 敏感字符给归一化提示；
+ * - 本地文件系统路径：拦截控制字符与 Windows 保留字符（盘符 ':' 例外），其余交给 Provider 的 path.resolve。
+ */
+export function validateDirInput(raw: string, type: 'local' | 'remote' | 'cloud'): DirValidation {
+  const value = String(raw ?? '')
+  if (!value.trim()) return { level: 'ok', message: '' }
+
+  // 控制字符（含换行/制表/NUL）：任何来源都不合法
+  if (/[\u0000-\u001f\u007f]/.test(value)) {
+    return { level: 'error', message: '目录不能包含换行或不可见控制字符' }
+  }
+
+  if (type === 'local') {
+    // Windows 保留字符 < > : " | ? *（盘符 C:\ 里的冒号放行）
+    const body = value.replace(/^[A-Za-z]:/, '')
+    if (/[<>"|?*]/.test(body)) {
+      return { level: 'error', message: '本地路径不能包含 < > : " | ? * 等字符' }
+    }
+    return { level: 'ok', message: '' }
+  }
+
+  const segments = value.split(/[\\/]/).filter((s) => s !== '')
+  if (segments.includes('.') || segments.includes('..')) {
+    return { level: 'error', message: '目录不能包含 . 或 .. 这一级' }
+  }
+  if (value.includes('\\')) {
+    return { level: 'warn', message: '反斜杠会在确认时自动转为 /' }
+  }
+  if (/[?#]/.test(value)) {
+    return { level: 'warn', message: '包含 ? 或 # 可能影响图片访问链接，建议避免使用' }
+  }
+  if (value.startsWith('/') || value.endsWith('/') || /\/{2,}/.test(value) || /\s/.test(value)) {
+    return { level: 'warn', message: '首尾/重复斜杠与空格会在确认时自动清理' }
+  }
+  return { level: 'ok', message: '' }
+}
+
+/**
+ * 把一个目录路径展开成它自己 + 各级父目录（完整路径），用于把手输/已选目录并入候选集。
+ * 例 'a/b/c' → ['a', 'a/b', 'a/b/c']；归一化后去重。
+ */
+export function expandDirPath(raw: string): string[] {
+  const segs = normalizeDirInput(raw).split('/').filter(Boolean)
+  const out: string[] = []
+  let prefix = ''
+  for (const seg of segs) {
+    prefix = prefix ? `${prefix}/${seg}` : seg
+    out.push(prefix)
+  }
+  return out
 }
 
 /**

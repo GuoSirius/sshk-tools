@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { RichTextImageSource } from './types'
 import {
+  buildDirectoryTree,
   defaultSourceId,
   directoriesFromKeys,
   directoryTree,
+  expandDirPath,
   loadSettings,
   matchImageKeyword,
+  normalizeDirInput,
   saveSettings,
   settingsKey,
   sortSourcesByDefault,
+  validateDirInput,
 } from './image-library-settings'
 
 const sources: RichTextImageSource[] = [
@@ -90,5 +94,74 @@ describe('image-library-settings', () => {
     expect(matchImageKeyword(img, '2026')).toBe(true)
     expect(matchImageKeyword(img, 'img_001')).toBe(true)
     expect(matchImageKeyword(img, 'nope')).toBe(false)
+  })
+})
+
+describe('normalizeDirInput', () => {
+  it('首尾斜杠/重复斜杠/反斜杠统一为规范路径', () => {
+    expect(normalizeDirInput('/a/b/c')).toBe('a/b/c')
+    expect(normalizeDirInput('a/b/c/')).toBe('a/b/c')
+    expect(normalizeDirInput('//a//b//c//')).toBe('a/b/c')
+    expect(normalizeDirInput('a\\b\\c')).toBe('a/b/c')
+  })
+  it('三种写法归一后完全一致（作用域不再因写法不同而分裂）', () => {
+    expect(normalizeDirInput('/a/b/c')).toBe(normalizeDirInput('a/b/c'))
+    expect(normalizeDirInput('a/b/c')).toBe(normalizeDirInput('a/b/c/'))
+  })
+  it('空串与全斜杠归一为空', () => {
+    expect(normalizeDirInput('')).toBe('')
+    expect(normalizeDirInput('/')).toBe('')
+  })
+})
+
+describe('buildDirectoryTree / expandDirPath', () => {
+  it('真实目录路径直接成树（末段不再被当成文件名丢弃）', () => {
+    expect(buildDirectoryTree(['blog/2026/06', 'blog/2025'])).toEqual([
+      { value: 'blog', label: 'blog', children: [
+        { value: 'blog/2025', label: '2025' },
+        { value: 'blog/2026', label: '2026', children: [{ value: 'blog/2026/06', label: '06' }] },
+      ] },
+    ])
+  })
+  it('空目录也能进树（无法从图片反推时的核心能力）', () => {
+    expect(buildDirectoryTree(['Down_tmp', 'PDF']).map((n) => n.value)).toEqual(['Down_tmp', 'PDF'])
+  })
+  it('展开目录为自身+各级父路径', () => {
+    expect(expandDirPath('a/b/c')).toEqual(['a', 'a/b', 'a/b/c'])
+    expect(expandDirPath('/a/b/c/')).toEqual(['a', 'a/b', 'a/b/c'])
+  })
+})
+
+describe('validateDirInput', () => {
+  it('空串合法', () => {
+    expect(validateDirInput('', 'cloud').level).toBe('ok')
+    expect(validateDirInput('   ', 'remote').level).toBe('ok')
+  })
+  it('控制字符在任何来源都报错', () => {
+    expect(validateDirInput('a\nb', 'cloud').level).toBe('error')
+    expect(validateDirInput('a\u0000b', 'local').level).toBe('error')
+  })
+  it('对象路径的 . / .. 段报错', () => {
+    expect(validateDirInput('a/../b', 'cloud').level).toBe('error')
+    expect(validateDirInput('./a', 'remote').level).toBe('error')
+    expect(validateDirInput('a/./b', 'cloud').level).toBe('error')
+  })
+  it('反斜杠与首尾/重复斜杠给归一化提示（warn 不阻断）', () => {
+    expect(validateDirInput('a\\b', 'cloud').level).toBe('warn')
+    expect(validateDirInput('/a/b/', 'cloud').level).toBe('warn')
+    expect(validateDirInput('a//b', 'cloud').level).toBe('warn')
+  })
+  it('URL 敏感字符 ? # 给提示', () => {
+    expect(validateDirInput('a?b', 'cloud').level).toBe('warn')
+    expect(validateDirInput('a#b', 'cloud').level).toBe('warn')
+  })
+  it('本地路径：保留字符报错，盘符冒号放行', () => {
+    expect(validateDirInput('D:\\a\\b', 'local').level).toBe('ok')
+    expect(validateDirInput('/home/a/b', 'local').level).toBe('ok')
+    expect(validateDirInput('a|b', 'local').level).toBe('error')
+    expect(validateDirInput('a*b', 'local').level).toBe('error')
+  })
+  it('合法对象路径通过', () => {
+    expect(validateDirInput('a/b/c', 'cloud')).toEqual({ level: 'ok', message: '' })
   })
 })

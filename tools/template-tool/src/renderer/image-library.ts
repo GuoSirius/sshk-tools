@@ -74,5 +74,8 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
       }[]
       return items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified, key: i.key }))
     },
+    async listDirectories(source, target) {
+      return (await host.upload.listDirectories(requestOf(source, target ?? {}))) as string[]
+    },
   }
 }

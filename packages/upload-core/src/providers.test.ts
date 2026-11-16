@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -48,6 +48,30 @@ describe('T3 LocalUploadProvider', () => {
     const provider = new LocalUploadProvider({ defaultDir: out })
     await provider.upload({ name: 'c.css', size: 4, data: new TextEncoder().encode('.a{}') }, { targetType: 'local' })
     expect(readFileSync(path.join(out, 'c.css'), 'utf8')).toBe('.a{}')
+  })
+
+  it('listDirectories 列出多级真实子目录（含空目录），忽略点开头目录与文件', async () => {
+    const out = tempDir()
+    mkdirSync(path.join(out, 'demo', 'nested'), { recursive: true })
+    mkdirSync(path.join(out, 'empty-dir'), { recursive: true })
+    mkdirSync(path.join(out, '.hidden'), { recursive: true })
+    writeFileSync(path.join(out, 'a.png'), 'PNG')
+    const provider = new LocalUploadProvider({ defaultDir: out })
+    const dirs = await provider.listDirectories({ targetType: 'local' })
+    expect(dirs).toContain('demo')
+    expect(dirs).toContain('demo/nested')
+    expect(dirs).toContain('empty-dir')
+    expect(dirs).not.toContain('.hidden')
+    expect(dirs.every((d) => !d.includes('\\'))).toBe(true)
+  })
+
+  it('listDirectories：根目录不存在返回空；localDir 覆盖生效', async () => {
+    const provider = new LocalUploadProvider({ defaultDir: path.join(tempDir(), 'no-such') })
+    expect(await provider.listDirectories({ targetType: 'local' })).toEqual([])
+    const override = tempDir()
+    mkdirSync(path.join(override, 'ov'))
+    const dirs = await provider.listDirectories({ targetType: 'local', overrides: { localDir: override } })
+    expect(dirs).toEqual(['ov'])
   })
 })
 

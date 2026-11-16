@@ -70,6 +70,13 @@ export class UploadService {
     return provider.listImages(ctx)
   }
 
+  /** 富文本图片库：列出某来源的真实目录（含空目录）；Provider 不支持时给出明确错误 */
+  async listDirectories(ctx: UploadContext): Promise<string[]> {
+    const provider = this.providerFor(ctx.targetType)
+    if (!provider.listDirectories) throw new Error(`${ctx.targetType} 来源不支持列出目录`)
+    return provider.listDirectories(ctx)
+  }
+
   /** 批量：先整批校验（避免部分上传后才发现不合规），再按并发上限上传，逐个重试 */
   async uploadBatch(
     files: UploadFile[],

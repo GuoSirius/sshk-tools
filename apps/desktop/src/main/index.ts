@@ -649,6 +649,8 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.uploadTest, (_event, req: UploadTestRequest) => uploads.test(req))
   // 富文本图片库：按来源列出已有图片（上传 runtime 内部解析 profile 与密钥）
   handleOk(IPC_CHANNELS.uploadListImages, (_event, req: UploadListRequest) => uploads.listImages(req))
+  // 富文本图片库：按来源列出真实目录（含空目录），供目录下拉
+  handleOk(IPC_CHANNELS.uploadListDirectories, (_event, req: UploadListRequest) => uploads.listDirectories(req))
 
   // ── OS 能力（宿主提供） ──
   handleOk(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }) => {

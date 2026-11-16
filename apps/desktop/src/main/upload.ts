@@ -178,8 +178,8 @@ export class UploadRuntime {
     return service.upload(file, ctx)
   }
 
-  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件） */
-  async listImages(req: UploadListRequest): Promise<UploadedImageInfo[]> {
+  /** 只读场景（列表/列目录）共用的 service + ctx 组装，避免两处重复且保证口径一致 */
+  private readonlyList(req: UploadListRequest): { service: UploadService; ctx: UploadContext } {
     const global = this.globalConfig()
     const toolId = String(req?.toolId ?? '').trim()
     const tool = resolveUploadTool(toolId ? this.opts.services.config.get(`tools.${toolId}.upload`) : undefined)
@@ -229,7 +229,19 @@ export class UploadRuntime {
       }))
       ctx.profileId = p.id
     }
+    return { service, ctx }
+  }
+
+  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件） */
+  async listImages(req: UploadListRequest): Promise<UploadedImageInfo[]> {
+    const { service, ctx } = this.readonlyList(req)
     return service.listImages({ ...ctx, limit: req?.limit })
+  }
+
+  /** 富文本图片库：按来源列出真实目录（只读）；失败原样抛出，由前端降级并提示原因 */
+  async listDirectories(req: UploadListRequest): Promise<string[]> {
+    const { service, ctx } = this.readonlyList(req)
+    return service.listDirectories(ctx)
   }
 
   /** 批量共用第一个请求解析出的工具级配置（同一批文件应属同一工具） */

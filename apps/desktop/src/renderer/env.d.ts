@@ -119,6 +119,8 @@ interface Window {
       test(req: { type: 'remote' | 'cloud'; profile: Record<string, unknown>; secret?: string }): Promise<{ ok: boolean; message: string }>
       /** 富文本图片库：按来源列出已有图片 */
       listImages(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string }; limit?: number }): Promise<{ url: string; key: string; name: string; size?: number; modified?: number }[]>
+      /** 富文本图片库：按来源列出真实目录（含空目录），返回相对路径数组 */
+      listDirectories(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string } }): Promise<string[]>
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>

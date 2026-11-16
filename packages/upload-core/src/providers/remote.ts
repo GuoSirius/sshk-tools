@@ -4,6 +4,7 @@ import { Readable } from 'node:stream'
 import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import { byNewestFirst, isImageFileName } from '../image-files'
+import { joinDir, MAX_DIRECTORIES, MAX_DIRECTORY_DEPTH, DIRECTORY_LIST_BUDGET_MS } from '../directories'
 import type { UploadedImageInfo, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /** T4：远程 profile（ftp | sftp 合并，protocol 区分）。连接信息由 main 进程从 settings/safeStorage 解析后注入 */
@@ -101,6 +102,93 @@ export class RemoteUploadProvider implements UploadProvider {
                 .sort(byNewestFirst),
             )
           })
+        })
+      })
+      conn.on('error', reject)
+      conn.connect({
+        host: this.profile.host,
+        port: this.profile.port ?? 22,
+        username: this.profile.username,
+        password: this.profile.password,
+      })
+    })
+  }
+
+  /** 列出远端根目录下所有真实子目录的完整相对路径（可多级，含空目录），带深度/数量上限 */
+  async listDirectories(ctx: UploadContext): Promise<string[]> {
+    const root = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
+    if (this.profile.protocol === 'ftp') {
+      const client = new FtpClient()
+      try {
+        await client.access({
+          host: this.profile.host,
+          port: this.profile.port ?? 21,
+          user: this.profile.username,
+          password: this.profile.password,
+          secure: false,
+        })
+        return await this.ftpWalkDirs(client, root)
+      } finally {
+        client.close()
+      }
+    }
+    return await this.sftpWalkDirs(root)
+  }
+
+  /** FTP 递归列目录（BFS，串行，带上限与时间预算：超时先返回已收集的部分结果） */
+  private async ftpWalkDirs(client: FtpClient, root: string): Promise<string[]> {
+    const out: string[] = []
+    const deadline = Date.now() + DIRECTORY_LIST_BUDGET_MS
+    const queue: { dir: string; rel: string; depth: number }[] = [{ dir: root, rel: '', depth: 0 }]
+    while (queue.length && out.length < MAX_DIRECTORIES && Date.now() < deadline) {
+      const cur = queue.shift()!
+      if (cur.depth > MAX_DIRECTORY_DEPTH) continue
+      let list: Awaited<ReturnType<FtpClient['list']>>
+      try { list = await client.list(cur.dir) } catch { continue }
+      for (const e of list) {
+        if (out.length >= MAX_DIRECTORIES) break
+        if (!e.isDirectory || e.name === '.' || e.name === '..') continue
+        const full = joinDir(cur.rel, e.name)
+        out.push(full)
+        queue.push({ dir: `${cur.dir.replace(/\/+$/, '')}/${e.name}`, rel: full, depth: cur.depth + 1 })
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b))
+  }
+
+  /** SFTP 递归列目录（BFS，单连接，带上限与时间预算：超时先返回已收集的部分结果） */
+  private sftpWalkDirs(root: string): Promise<string[]> {
+    return new Promise<string[]>((resolve, reject) => {
+      const conn = new SshClient()
+      const out: string[] = []
+      const deadline = Date.now() + DIRECTORY_LIST_BUDGET_MS
+      conn.on('ready', () => {
+        conn.sftp(async (err, sftp) => {
+          if (err) { conn.end(); reject(err); return }
+          const read = (dir: string): Promise<{ filename: string; attrs: { isDirectory(): boolean } }[]> =>
+            new Promise((res) => sftp.readdir(dir, (e, list) => res(e ? [] : (list ?? []) as never)))
+          const queue: { dir: string; rel: string; depth: number }[] = [{ dir: root, rel: '', depth: 0 }]
+          try {
+            while (queue.length && out.length < MAX_DIRECTORIES && Date.now() < deadline) {
+              const cur = queue.shift()!
+              if (cur.depth > MAX_DIRECTORY_DEPTH) continue
+              const list = await read(cur.dir)
+              for (const e of list) {
+                if (out.length >= MAX_DIRECTORIES) break
+                let isDir = false
+                try { isDir = e.attrs?.isDirectory?.() ?? false } catch { isDir = false }
+                if (!isDir || e.filename === '.' || e.filename === '..') continue
+                const full = joinDir(cur.rel, e.filename)
+                out.push(full)
+                queue.push({ dir: `${cur.dir.replace(/\/+$/, '')}/${e.filename}`, rel: full, depth: cur.depth + 1 })
+              }
+            }
+            conn.end()
+            resolve(out.sort((a, b) => a.localeCompare(b)))
+          } catch (e) {
+            conn.end()
+            reject(e)
+          }
         })
       })
       conn.on('error', reject)

@@ -123,6 +123,9 @@ const api = {
     /** 富文本图片库：按来源（本地/远程/云）列出已有图片 */
     listImages: (req: unknown): Promise<{ url: string; key: string; name: string; size?: number; modified?: number }[]> =>
       invoke(IPC_CHANNELS.uploadListImages, req),
+    /** 富文本图片库：按来源列出真实目录（含空目录），返回相对路径数组 */
+    listDirectories: (req: unknown): Promise<string[]> =>
+      invoke(IPC_CHANNELS.uploadListDirectories, req),
   },
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
