@@ -69,6 +69,8 @@ watch(() => props.group, (value) => { if (value) activeGroup.value = value })
 const currentHint = () => groups.find((group) => group.id === activeGroup.value)?.hint ?? ''
 
 const version = ref('0.1.0')
+/** 穿插⑦-3：关于页「运行环境」（版本+commit / Electron / Chrome / Node） */
+const runtime = ref<{ version: string; commit: string; electron: string; chrome: string; node: string } | null>(null)
 const cfg = reactive({
   outputDir: '',
   launchOnBoot: false,
@@ -162,6 +164,7 @@ async function loadAppConfig(): Promise<void> {
   cfg.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   cfg.developerMode = await bool('app.developerMode', false)
   version.value = await window.api.app.version().catch(() => '0.1.0')
+  runtime.value = await window.api.app.runtime().catch(() => null)
 }
 onMounted(() => { void loadAppConfig() })
 
@@ -194,6 +197,11 @@ function openDataDir(): void { void window.api.app.openDataDir() }
 
 // ── H3 日志：目录信息 / 打开 / 清空 ──
 const logInfo = ref<{ dir: string; sizeBytes: number; files: { name: string; sizeBytes: number }[] } | null>(null)
+/** 穿插⑦-2：日志行只显示体积/文件数（完整目录问号悬浮），避免长路径把「日志」标签挤换行 */
+const logSummary = computed(() => {
+  if (!logInfo.value) return '加载中…'
+  return `${(logInfo.value.sizeBytes / 1024).toFixed(1)} KB · ${logInfo.value.files.length} 个文件，保留 7 天`
+})
 async function refreshLogInfo(): Promise<void> {
   try { logInfo.value = await window.api.logs.getDir() } catch { /* 忽略 */ }
 }
@@ -704,8 +712,10 @@ async function cleanupOrphans(): Promise<void> {
               <div class="kv-line"><span>应用版本</span><strong>v{{ version }}</strong></div>
               <div class="kv-line"><span>数据目录</span><el-button size="small" type="primary" text @click="openDataDir">打开</el-button></div>
               <div class="kv-line">
-                <span>日志</span>
-                <span class="hint">{{ logInfo ? `${logInfo.dir}（${(logInfo.sizeBytes / 1024).toFixed(1)} KB · ${logInfo.files.length} 个文件，保留 7 天）` : '加载中…' }}</span>
+                <span class="kv-label">日志</span>
+                <el-tooltip :content="logInfo?.dir || ''" placement="top" :disabled="!logInfo">
+                  <span class="hint log-summary">{{ logSummary }} ⓘ</span>
+                </el-tooltip>
                 <div class="btn-group">
                   <el-button size="small" type="primary" text :disabled="!logInfo" @click="openLogDir">打开</el-button>
                   <el-button size="small" text type="danger" :disabled="!logInfo" @click="cleanLogs">清空</el-button>
@@ -774,6 +784,16 @@ async function cleanupOrphans(): Promise<void> {
 
           <!-- 关于 -->
           <template v-else>
+            <section class="settings-card">
+              <div class="card-title">运行环境</div>
+              <template v-if="runtime">
+                <div class="kv-line"><span>版本</span><strong>v{{ runtime.version }}（{{ runtime.commit }}）</strong></div>
+                <div class="kv-line"><span>Electron</span><span class="hint">{{ runtime.electron }}</span></div>
+                <div class="kv-line"><span>Chrome</span><span class="hint">{{ runtime.chrome }}</span></div>
+                <div class="kv-line"><span>Node.js</span><span class="hint">{{ runtime.node }}</span></div>
+              </template>
+              <div v-else class="hint">运行环境信息加载中…</div>
+            </section>
             <section class="settings-card">
               <div class="card-title">配置分层约定</div>
               <table class="about-table">
@@ -849,4 +869,7 @@ async function cleanupOrphans(): Promise<void> {
 </template>
 
 <style scoped>
+/* 穿插⑦-2：日志行标签不换行、摘要单行省略（完整目录 tooltip 悬浮） */
+.kv-label { flex: none; white-space: nowrap; }
+.log-summary { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

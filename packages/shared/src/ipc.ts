@@ -128,6 +128,8 @@ export const IPC_CHANNELS = {
   /** D-Q1 模型用量日志：统计（分组+最近明细）/ 清空 */
   usageStats: 'usage:stats',
   usageClear: 'usage:clear',
+  /** 关于页运行环境信息（版本/commit/Electron/Chrome/Node） */
+  appRuntime: 'app:runtime',
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

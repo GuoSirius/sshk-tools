@@ -2,15 +2,19 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Alias } from 'vite'
 
-// 开发态：主进程改动 -> 自动重启；preload 改动 -> 自动重载渲染进程；
-// 渲染进程改动 -> Vite HMR，三者都由 electron-vite dev 统一处理。
-// workspace 包全部从源码打进产物（exports 指向 .ts 源码，Node 运行时无法直接执行）。
 const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const pkg = (rel: string): string => fileURLToPath(new URL(`../../${rel}`, import.meta.url))
+
+/** 构建期注入 git 短 commit（关于页「运行环境」展示）；非仓库环境回退 dev */
+function gitCommit(): string {
+  try { return execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim() } catch { return 'dev' }
+}
+const APP_COMMIT_DEFINE = { __APP_COMMIT__: JSON.stringify(gitCommit()) }
 
 /**
  * 构建期动态发现 workspace 包：扫描 packages/* 与 tools/* 的 package.json。
@@ -58,6 +62,7 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
+    define: APP_COMMIT_DEFINE,
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是

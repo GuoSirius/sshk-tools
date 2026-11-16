@@ -551,12 +551,35 @@ export async function confirmDelete(): Promise<void> {
 export const previewFrame = ref<HTMLIFrameElement | null>(null)
 
 /** snapdom 截长图 → dataUrl（保存 / 下载共用） */
+/**
+ * 截图前等待：iframe 内所有 <img> 完成（load/error 都算就绪）+ 字体就绪 + 一帧渲染。
+ * 否则外链图片未加载完就 snapdom，导出 PNG 全是灰占位（2026-11-16 用户实测反馈）。
+ * 整体 15s 超时兜底：个别图片挂了不阻断截图（该图位置灰块，用户可感知重试）。
+ */
+async function waitForAssets(doc: Document, timeoutMs = 15_000): Promise<void> {
+  const imgs = Array.from(doc.images ?? [])
+  const settle = Promise.all(imgs.map((img) => {
+    if (img.complete) return Promise.resolve()
+    return new Promise<void>((res) => {
+      img.addEventListener('load', () => res(), { once: true })
+      img.addEventListener('error', () => res(), { once: true })
+    })
+  }))
+  const fonts: Promise<unknown> = (doc as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready ?? Promise.resolve()
+  await Promise.race([
+    Promise.all([settle, fonts]),
+    new Promise<void>((res) => setTimeout(res, timeoutMs)),
+  ])
+  await new Promise<void>((res) => requestAnimationFrame(() => res()))
+}
+
 async function captureDataUrl(): Promise<string> {
   const frame = previewFrame.value
   if (!frame) throw new Error('预览未就绪')
   const doc = frame.contentDocument
   const target = doc?.body
   if (!target || target.children.length === 0) throw new Error('预览内容为空')
+  await waitForAssets(doc!)
   const capture = await (snapdom as unknown as (el: Element, opts?: Record<string, unknown>) => Promise<unknown>)(target, { scale: captureScale.value })
   const out = await (capture as { toPng?: () => Promise<unknown> }).toPng?.()
   const dataUrl = typeof out === 'string' ? out : ((out as { src?: string })?.src ?? '')

@@ -60,6 +60,7 @@ interface Window {
     }
     app: {
       version(): Promise<string>
+      runtime(): Promise<{ version: string; commit: string; electron: string; chrome: string; node: string }>
       openDataDir(): Promise<void>
       reload(force?: boolean): Promise<boolean>
       toggleDevTools(key?: string): Promise<boolean>

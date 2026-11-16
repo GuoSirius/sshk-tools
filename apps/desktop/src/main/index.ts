@@ -306,6 +306,14 @@ async function registerIpc(): Promise<void> {
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
 
   handleOk(IPC_CHANNELS.appVersion, () => app.getVersion())
+  // 关于页运行环境信息（__APP_COMMIT__ 由 electron-vite define 注入，打包/dev 一致）
+  handleOk(IPC_CHANNELS.appRuntime, () => ({
+    version: app.getVersion(),
+    commit: String(__APP_COMMIT__ ?? 'dev'),
+    electron: process.versions.electron ?? '',
+    chrome: process.versions.chrome ?? '',
+    node: process.versions.node ?? '',
+  }))
   handleOk(IPC_CHANNELS.appOpenDataDir, () => shell.openPath(app.getPath('userData')))
   handleOk(IPC_CHANNELS.appReload, (_event, force?: boolean) => {
     const wc = mainWindow?.webContents

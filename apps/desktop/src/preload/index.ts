@@ -41,6 +41,9 @@ const api = {
   },
   app: {
     version: (): Promise<string> => invoke(IPC_CHANNELS.appVersion),
+    /** 关于页运行环境（版本/commit/Electron/Chrome/Node） */
+    runtime: (): Promise<{ version: string; commit: string; electron: string; chrome: string; node: string }> =>
+      invoke(IPC_CHANNELS.appRuntime),
     openDataDir: (): Promise<void> => invoke(IPC_CHANNELS.appOpenDataDir),
     /** force=true 走 reloadIgnoringCache（等价 Ctrl+F5） */
     reload: (force?: boolean): Promise<boolean> =>

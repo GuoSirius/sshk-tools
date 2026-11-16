@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:http'
 import { networkInterfaces } from 'node:os'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { extname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { resolveSafe } from '@sshk/repository'
 
@@ -96,10 +97,22 @@ export class ShareServer {
     this._expiresAt = 0
   }
 
-  /** 分享某产物的完整链接（rel 相对 serveRoot；容忍旧调用传 outputs/ 前缀） */
+  /**
+   * 分享某产物的完整链接（rel 相对 serveRoot）。
+   * 前缀裁决（2026-11-16 修复 badge 分享 404）：badge 的 serveRoot=产物根、rel 自带
+   * `outputs/` 前缀且真实存在——必须保留；EDM 旧调用传的 outputs/ 前缀相对
+   * serveRoot=<root>/outputs 不存在，剥掉后才命中。按「剥掉后文件是否存在」判定，
+   * 两种形态共存不冲突。
+   */
   linkFor(rel: string): string {
     if (!this.server) throw new Error('分享服务未启动')
-    const clean = rel.replaceAll('\\', '/').replace(/^\/?outputs\//, '').replace(/^\//, '')
+    const clean = rel.replaceAll('\\', '/').replace(/^\//, '')
+    const stripped = clean.replace(/^outputs\//, '')
+    if (stripped !== clean) {
+      const fullExists = existsSync(join(this.serveRoot, ...clean.split('/')))
+      const strippedExists = existsSync(join(this.serveRoot, ...stripped.split('/')))
+      if (!fullExists && strippedExists) return `${this.urls()[0]}/${stripped}`
+    }
     return `${this.urls()[0]}/${clean}`
   }
 
