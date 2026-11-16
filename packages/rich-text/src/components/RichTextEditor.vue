@@ -218,35 +218,37 @@ onBeforeUnmount(() => {
 
 /**
  * 弹层与下拉的暗色补丁（用户反馈 2026-11-16：codeBlock 查看源码 textarea 白底看不清、
- * 「选择语言」下拉 hover 配色错乱）。选择列表/弹层可能挂载到 .rich 作用域之外，
- * 故不能用 .rich 前缀的作用域变量兜底，必须在 html.dark 下全局显式配色。
+ * 「选择语言」下拉 hover 配色错乱）。选择列表/弹层由 wangEditor 动态挂载到 body，
+ * 没有 scoped 属性——必须把【整个选择器】包进 :global()，否则 scoped 编译会往
+ * 弹层选择器上拼 data-v 属性导致永远匹配不上（scoped 局部变量那条 .rich 能中，
+ * 只是因为 .rich 是本组件自己的节点）。
  */
-:global(html.dark) .w-e-modal {
+:global(html.dark .w-e-modal) {
   background-color: #1f1f1f;
   color: #d4d4d4;
   border-color: #333;
 }
-:global(html.dark) .w-e-modal textarea,
-:global(html.dark) .w-e-modal input[type='text'],
-:global(html.dark) .w-e-modal input[type='number'],
-:global(html.dark) .w-e-modal select {
+:global(html.dark .w-e-modal textarea),
+:global(html.dark .w-e-modal input[type='text']),
+:global(html.dark .w-e-modal input[type='number']),
+:global(html.dark .w-e-modal select) {
   background-color: #181818;
   color: #d4d4d4;
   border-color: #444;
 }
-:global(html.dark) .w-e-modal button {
+:global(html.dark .w-e-modal button) {
   background-color: #2a2a2a;
   border-color: #444;
   color: #d4d4d4;
 }
-:global(html.dark) .w-e-select-list {
+:global(html.dark .w-e-select-list) {
   background-color: #1f1f1f;
   border-color: #333;
   color: #d4d4d4;
 }
-:global(html.dark) .w-e-select-list li { color: #d4d4d4; }
-:global(html.dark) .w-e-select-list li:hover,
-:global(html.dark) .w-e-select-list li.selected {
+:global(html.dark .w-e-select-list li) { color: #d4d4d4; }
+:global(html.dark .w-e-select-list li:hover),
+:global(html.dark .w-e-select-list li.selected) {
   background-color: #333;
   color: #e5e5e5;
 }
