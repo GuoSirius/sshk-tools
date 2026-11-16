@@ -18,6 +18,7 @@ import ToolIcon from './components/ToolIcon.vue'
 import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
+import VerifyGuidePage from './components/VerifyGuidePage.vue'
 import logoUrl from '../../build/icon.svg'
 
 const { mode, setMode } = useTheme()
@@ -210,12 +211,19 @@ function onMoreCommand(command: string): void {
   else if (command === 'system') openSettings('system')
   else if (command === 'about') openSettings('about')
   else if (command === 'createTool') createToolOpen.value = true
+  else if (command === 'verify') verifyGuideOpen.value = true
   else openSettings('general')
 }
 
 /** N16 创建工具向导（仅 dev 显示入口）：创建成功后刷新目录让新工具立即可见 */
 const isDev = import.meta.env.DEV
 const createToolOpen = ref(false)
+
+/** U2 验证引导（dev 恒显示；打包版 developerMode 开启后显示） */
+const verifyGuideOpen = ref(false)
+const developerModeOn = ref(false)
+void window.api.config.get('app.developerMode').then((v: unknown) => { developerModeOn.value = Boolean(v) })
+const canShowVerifyGuide = computed(() => isDev || developerModeOn.value)
 function onToolCreated(catalog: unknown): void {
   if (catalog) acceptCatalog(catalog as ToolCatalogPayload)
   else void refreshCatalog()
@@ -360,6 +368,7 @@ onMounted(async () => {
             <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
             <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
             <el-dropdown-item v-if="isDev" command="createTool">创建工具（开发者）</el-dropdown-item>
+            <el-dropdown-item v-if="canShowVerifyGuide" command="verify">验证引导</el-dropdown-item>
             <el-dropdown-item command="system">系统与数据</el-dropdown-item>
             <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
             <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
@@ -511,6 +520,8 @@ onMounted(async () => {
     </footer>
 
     <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" @create-tool="createToolOpen = true" />
+    <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
+    <VerifyGuidePage v-model="verifyGuideOpen" @open-settings="(g) => openSettings(String(g).includes('工具') ? 'tools' : 'system')" />
     <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
   </div>
 </template>

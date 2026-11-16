@@ -24,7 +24,9 @@ import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
-import { collectToolHealth } from './health'
+import { collectToolHealth, toolRecentErrors } from './health'
+import { listSessions, loadSession, runAutoCheck, saveSession } from './verify-sessions'
+import type { VerifySession } from '@sshk/shared'
 import { exportPreset, importPreset } from './presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { exportBackup } from '@sshk/backup'
@@ -706,6 +708,25 @@ async function registerIpc(): Promise<void> {
 
   // ── N2 工具健康度面板：目录裁决 + 插件状态 + 日志 error 检索 ──
   handleOk(IPC_CHANNELS.toolsHealth, () => collectToolHealth(buildCatalog(), allManifests()))
+
+  // ── U2 验证引导：会话存储（userData/verify-sessions）+ main 侧自动判定（fileExists/catalogState/logScan）──
+  const verifyDir = join(app.getPath('userData'), 'verify-sessions')
+  handleOk(IPC_CHANNELS.verifySessionLoad, (_event, date?: string) => loadSession(verifyDir, date ? String(date) : undefined))
+  handleOk(IPC_CHANNELS.verifySessionSave, (_event, session: unknown) => saveSession(verifyDir, session as VerifySession))
+  handleOk(IPC_CHANNELS.verifySessionList, () => listSessions(verifyDir))
+  handleOk(IPC_CHANNELS.verifyAutoCheck, (_event, req: { kind?: string; spec?: string }) => {
+    const catalog = buildCatalog()
+    const catalogMap: Record<string, { enabled: boolean; visible: boolean }> = {}
+    for (const t of catalog.tools) catalogMap[t.id] = { enabled: t.enabled, visible: t.visible }
+    const channelCounts: Record<string, number> = {}
+    for (const m of allManifests()) channelCounts[m.id] = m.plugin?.channels?.length ?? 0
+    return runAutoCheck(String(req?.kind ?? ''), String(req?.spec ?? ''), {
+      catalog: catalogMap,
+      channelCounts,
+      lastErrors: (toolId) => toolRecentErrors(toolId),
+      packagedResourceRoot: app.isPackaged ? process.resourcesPath : null,
+    })
+  })
 
   // ── N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并）──
   handleOk(IPC_CHANNELS.presetExport, (_event, outPath: string) => exportPreset(services!.config, String(outPath ?? '')))

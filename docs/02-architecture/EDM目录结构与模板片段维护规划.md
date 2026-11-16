@@ -2,7 +2,7 @@
 
 - 状态：**R1–R11 全部落地**（2026-11-15；R3 解析+浏览、R10 UI 只读标识/派生、R7/R8/R11 当日完成）；黑白名单已收敛为仅 fragment 侧
 - 最后更新：2026-11-15
-- 关联：D8（版本不可变）/ D14（名单粒度=版本 ID）/ D29（品牌管理独立页）/ 需求 5（系统只读+复制、自定义 CRUD）/ 数据契约 §2（领域模型）/ 选型稿 L71 / 工具包开发打包分发工作流 / D49（优先第三方包）/ D50（UI 视觉铁律）
+- 关联：D8（版本不可变）/ D14（名单粒度=版本 ID）/ D29（品牌管理独立页）/ 需求 5（系统只读+复制、自定义 CRUD）/ 数据契约 §2（领域模型）/ 选型稿 L71 / 工具包开发打包分发工作流 / D51（优先第三方包）/ D50（UI 视觉铁律）
 - 参考结构：`D:\workspace\code\juice-cli\edm`（仅参考**目录形态**与「每目录自带元数据+示例」，语法按本项目约定）
 - 冲突裁决：本文与 `docs/00-index.md` 决策看板冲突时以看板为准；与 `../requirement.txt` 冲突时以快照为准。
 
@@ -152,7 +152,7 @@ tools/edm-studio/assets/edm/                ← 系统内容根（随工具包�
 | 数据契约 §2 | 领域模型映射为文件结构（YAML 元数据 + 版本目录） |
 | 选型稿 L71 | 原 `resources/system/` 误置；更正为 `tools/edm-studio/assets/edm/` |
 | D4 模板引擎 | 源文件用 `.njk`（Nunjucks），非参考项目的 `.html` |
-| D49 优先第三方包 | 编辑器用 Monaco、YAML 解析用 js-yaml、校验用 ajv/monaco-yaml，不自研 |
+| D51 优先第三方包 | 编辑器用 Monaco、YAML 解析用 js-yaml、校验用 ajv/monaco-yaml，不自研 |
 | 品牌隔离（用户规则 #2） | 片段仅本品牌可用，黑白名单同品牌内细控 |
 | 元数据一等公民（用户修正） | 元数据文件 `meta.yaml`（不带下划线） |
 
@@ -189,7 +189,7 @@ tools/edm-studio/assets/edm/                ← 系统内容根（随工具包�
 | R6 | 系统内容双模解析：`resolveEdmRoot(manifest)=baseDir+'assets/edm'`，按 `plugin.source` 自动切换 builtin / external（无需额外配置） | 运行时解析 | ✅ 已完成（batch2：`ipc.ts` `resolveEdmRoot` packed→`process.resourcesPath/edm-studio/assets/edm`，dev→源码 `tools/edm-studio/assets/edm`） |
 | R7 | 备份/迁移：系统内容只导出引用关系；自定义内容随 `assets/` 迁移（数据契约 §4.1） | 备份 | ✅ 已完成（导出剔除 `origin=system` 实体，邮件引用 ID 原样保留；导入端播种按相同确定性 ID 重建后引用恢复） |
 | R8 | 首次运行播种（catalog 或目录扫描）将系统内容注册进 NeDB 查询索引 | 初始化 | ✅ 已完成（`edm-seed.ts` 确定性 ID `<前缀>_sys_<code>`、逐实体存在即跳过幂等、激活即补种；系统实体只读守卫；3 单测） |
-| R9 | 编辑器选型集成：Monaco + monaco-yaml + js-yaml + nunjucks 检测，配 worker（不自研内核，D49） | 编辑器/依赖 | ✅ 已完成（batch4：依赖 `@guolao/vue-monaco-editor`/`monaco-editor`/`monaco-yaml`/`ajv`/`js-yaml`，worker 经 `?worker` 注入） |
+| R9 | 编辑器选型集成：Monaco + monaco-yaml + js-yaml + nunjucks 检测，配 worker（不自研内核，D51） | 编辑器/依赖 | ✅ 已完成（batch4：依赖 `@guolao/vue-monaco-editor`/`monaco-editor`/`monaco-yaml`/`ajv`/`js-yaml`，worker 经 `?worker` 注入） |
 | R10 | 品牌隔离：模板片段候选仅限同品牌，黑白名单同品牌内细控（用户规则 #2） | 约束/策略 | ✅ 已完成（运行时 `policyAllows` 两道过滤 + UI 黑白名单编辑 + 系统实体只读标识/另存为派生） |
 | R11 | 内建工具 `assets/edm` 随包发布：electron-builder `extraResources` 或构建期 copy，确保打包后 `assets/edm` 在运行时目录（discovery.ts 当前仅 glob 清单+入口） | 打包/构建 | ✅ 已完成（electron-builder.yml `extraResources`：`tools/edm-studio/assets/edm` → `resources/edm-studio/assets/edm`，与 `resolveEdmRoot` packed 路径严格对应） |
 

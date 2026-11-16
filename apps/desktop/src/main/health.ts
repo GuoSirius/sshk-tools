@@ -43,6 +43,12 @@ function safeLogDir(): string {
   }
 }
 
+/** 供 U2 自动判定（logScan）复用：某工具最近日志的 error 行文本（已脱敏；无则空数组） */
+export function toolRecentErrors(toolId: string): string[] {
+  const hit = lastToolError(recentLogLines(LOG_SCAN_FILES), toolId)
+  return hit ? [hit.text] : []
+}
+
 /** 清单最小投影：只取主进程插件通道数 */
 interface ManifestLite {
   id: string

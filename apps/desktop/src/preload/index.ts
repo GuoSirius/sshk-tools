@@ -219,6 +219,16 @@ const api = {
     /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
     health: (): Promise<import('@sshk/shared').ToolHealthPayload> => invoke(IPC_CHANNELS.toolsHealth),
   },
+  /** U2 验证引导：会话存取 + main 侧自动判定 */
+  verify: {
+    load: (date?: string): Promise<import('@sshk/shared').VerifySession | null> =>
+      invoke(IPC_CHANNELS.verifySessionLoad, date),
+    save: (session: import('@sshk/shared').VerifySession): Promise<string> =>
+      invoke(IPC_CHANNELS.verifySessionSave, session),
+    list: (): Promise<string[]> => invoke(IPC_CHANNELS.verifySessionList),
+    autoCheck: (req: { kind: string; spec: string }): Promise<{ state: string; detail: string }> =>
+      invoke(IPC_CHANNELS.verifyAutoCheck, req),
+  },
   presets: {
     /** N3 导出配置预设（Provider 无密钥 + 上传 profile 无密钥），路径必须来自 pickSave */
     export: (outPath: string): Promise<{ file: string; providers: number; uploadProfiles: number }> =>

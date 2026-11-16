@@ -141,6 +141,11 @@ export const IPC_CHANNELS = {
   snapshotClear: 'snapshot:clear',
   /** N2 工具健康度面板：聚合目录裁决 + 插件状态 + 日志 error 检索 */
   toolsHealth: 'tools:health',
+  /** U2 验证引导：会话读/写/列表（userData/verify-sessions/<日期>.json）+ main 侧自动判定 */
+  verifySessionLoad: 'verify:sessionLoad',
+  verifySessionSave: 'verify:sessionSave',
+  verifySessionList: 'verify:sessionList',
+  verifyAutoCheck: 'verify:autoCheck',
   /** 关于页运行环境信息（版本/commit/Electron/Chrome/Node） */
   appRuntime: 'app:runtime',
 } as const

@@ -38,6 +38,7 @@
 | **数据契约 v0.2** | `04-api/2026-11-12-数据契约.md` | 历史基线（**门禁强依赖，勿删**） | 品牌树、黑白名单、北京时间、配置、zip + 加密密钥、IPC、组件、目录迁移；实际以代码为准 |
 | **发布流程与本机提交钩子** | `05-release/2026-11-12-发布流程与本机提交钩子.md` | 已落（§二 husky 结论已更新） | 按 juice-email-cli 发布流、Git 铁律、lockfile、无签名发布、Electron 配置与缺失项清单；`.git/cph` 为历史方案已废弃 |
 | **首次安装指引** | `05-release/2026-11-12-首次安装指引.md` | 已落 | Windows SmartScreen / macOS Gatekeeper / deb·rpm·AppImage 无签名安装说明 |
+| **依赖升级 SOP** | `05-release/依赖升级SOP.md` | 已落（A-T4） | 触发条件/升级步骤/verify+audit 必跑/breaking 处理/lockfile 单独提交/台账登记 |
 | **发布工作流** | `.github/workflows/release.yml` | 已落 | tag 触发三平台矩阵（win-x64 / mac-universal / linux-x64），`--publish never` + GH Release notes |
 | **打包配置** | `apps/desktop/electron-builder.yml` | 已接入 | NSIS 允许选择安装目录；图标已配置；签名位留注释 |
 | **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
@@ -88,7 +89,7 @@ docs/
 | 共享包 | ✅ `packages/shared`（北京时间 `time.ts` + 常量/类型/IPC 契约 + 工具注册表/裁决 + 单测） |
 | 校验脚本 | ✅ `check-latest` / `check-boundaries` / `verify-structure` / **generate-icons.py** |
 | CI | ✅ `.github/workflows/ci.yml`（`--frozen-lockfile` + `pnpm verify`） |
-| 本机钩子 | ✅ `.git/cph/{pre-commit,commit-msg}` 实跑通过 |
+| 本机钩子 | ✅ husky（`.husky/pre-commit` = `pnpm verify` + desktop build）；原 `.git/cph` 方案已废弃删除（A-Q1） |
 | **M1 应用壳** | ✅ `apps/desktop/`：main / preload / renderer、四层布局、三态换肤、3 个工具注册、UnoCSS、`electron.vite.config.ts`（三端热更新）、`electron-builder.yml` |
 | **图标资源** | ✅ 已生成并接入打包配置（纯标准库脚本，零依赖） |
 | TS 6 切换 | ✅ `typescript: "6"` → 6.0.3，lockfile 已同步 |
@@ -104,7 +105,7 @@ docs/
 |---|---|---|
 | D1 | 首页布局 | C 混合；左侧菜单可折叠展开 |
 | D2 / D3 | 模板引擎 / UI 库 | Nunjucks / Vue 3 + Element Plus |
-| D4 | 构建/更新/changelog | 方案 A；按 juice-email-cli 复用（含本机 `.git/cph` 钩子） |
+| D4 | 构建/更新/changelog | 方案 A；按 juice-email-cli 复用（本机钩子现行为 husky，`.git/cph` 已废弃删除） |
 | D5 / D6 | 国产 OS / 签名 | x64 + arm64 / 无证书不签名，留开关 |
 | D7 / D8 / D9 | 绑定 / 版本 / 数值列 | 槽位声明式 / 不可变+两种复制 / `Clicks` |
 | D10 | 输入组合 | 图片/excel/csv/json 四种上传 + 邮件 HTML「选择已生成 / 上传外部」→ 生成 |
@@ -143,7 +144,7 @@ docs/
 | **D47** | **模型预设与真实模型列表下拉** | 常用 OpenAI 兼容端点（含 Agnes AI `/v1`）由 `model-console` manifest 自带，用户只填 Key；模型名 `el-select allow-create` + 「拉取模型列表」真实请求 `/models`；保存前可用临时 key 探测且不落盘；预设不含任何密钥 |
 | **D48** | **IDE 项目归属收口** | 三套 tsconfig 全 0 错误即证明代码无误；根 `tsconfig.json` 刻意排除 apps，让 `apps/desktop/tsconfig.json` 独占 `.vue`；显式 `types: ["node","vite/client"]`；新增 `electron` paths；去掉反向作用的 Volar takeover 设置；`cspell.json` 消除拼写波浪线；换电脑后须按架构文档 §7.3 重载窗口 / 切工作区 TS 版本 / 重启 TS Server |
 | **D49** | **创建工具向导 + 开发指南 + 清单表单化** | 骨架生成单一事实源 @sshk/shared/tool-skeleton（预览=落盘）；dev:toolCreate 主进程落盘（目录冲突拒绝）；双入口仅 dev 可见（更多下拉 + 设置抽屉）；清单编辑器 configGroups/configDeps/defaults/channels/dependsOn 全表单化 + JSON 预览 tab；指南 docs/02-architecture/工具开发指南.md |
-| **D49** | **依赖选型反转（强化）** | **推翻旧「优先不新增依赖」倾向**：设计方案时**优先使用成熟第三方 / npm 包，不造轮子**；图标、字体、日期、工具库等常见需求先查成熟包。`@element-plus/icons-vue` 与 **Font Awesome**（`@fortawesome/fontawesome-free`）已批准直接用；仅零依赖校验脚本 / icon 生成脚本等无合适包时自研（与 D30 同源，措辞强化） |
+| **D51** | **依赖选型反转（强化）** | **推翻旧「优先不新增依赖」倾向**：设计方案时**优先使用成熟第三方 / npm 包，不造轮子**；图标、字体、日期、工具库等常见需求先查成熟包。`@element-plus/icons-vue` 与 **Font Awesome**（`@fortawesome/fontawesome-free`）已批准直接用；仅零依赖校验脚本 / icon 生成脚本等无合适包时自研（与 D30 同源，措辞强化） |
 | **D50** | **UI 视觉铁律** | **后续所有界面开发，能用图标处尽量用图标**（按钮 / 状态 / 操作列等）；界面须**美观大方、吸引用户、增强视觉体验**，不将就纯文字或裸箭头（`↓`/`▾` 等一律换图标库）。触发：自动更新按钮曾用 Unicode `↓` 被纠正 |
 
 > **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
@@ -186,6 +187,8 @@ docs/
 | **v1.3** | 11-16 | **进入收尾打磨阶段**：全量梳理 docs 并落档「遗留事项与收尾总账」「优化建议与开发计划」；3 份决策已固化文档移入 99-archive；EDM v5/v6 明确主从（v6 权威）；修订发布流程 husky 过时结论与多处测试数字失真 | 文档治理，零代码改动；技术选型/数据契约/00-index 是门禁强依赖，未动路径 |
 
 ## 六、ADR 记录格式（按主题）
+
+> **编号规则（M2，2026-11-16）**：新决策编号一律顺延当前最大号；被推翻的决策编号不回收（保历史可追溯），引用旧编号的历史记录不改写，需加「已推翻」标注指向新结论。
 
 ```
 # ADR-0001 <主题标题>
