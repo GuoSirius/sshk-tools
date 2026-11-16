@@ -25,11 +25,12 @@ import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
 import { collectToolHealth } from './health'
+import { exportPreset, importPreset } from './presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
-import { defaultConfigPath } from '@sshk/repository'
+import { defaultConfigPath, listSnapshots, restoreSnapshot, clearSnapshots } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
 import { MANIFESTS, reloadManifestFile } from './discovery'
 import { registerDevTools } from './dev-tools'
@@ -705,6 +706,16 @@ async function registerIpc(): Promise<void> {
 
   // ── N2 工具健康度面板：目录裁决 + 插件状态 + 日志 error 检索 ──
   handleOk(IPC_CHANNELS.toolsHealth, () => collectToolHealth(buildCatalog(), allManifests()))
+
+  // ── N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并）──
+  handleOk(IPC_CHANNELS.presetExport, (_event, outPath: string) => exportPreset(services!.config, String(outPath ?? '')))
+  handleOk(IPC_CHANNELS.presetImport, (_event, filePath: string) => importPreset(services!.config, String(filePath ?? '')))
+
+  // ── N4 回滚快照：列表 / 恢复 / 清空（开关 app.outputSnapshot 在设置页）──
+  const snapshotRoot = join(app.getPath('userData'), '.snapshots')
+  handleOk(IPC_CHANNELS.snapshotList, () => listSnapshots(snapshotRoot))
+  handleOk(IPC_CHANNELS.snapshotRestore, (_event, id: string) => restoreSnapshot(snapshotRoot, String(id ?? '')))
+  handleOk(IPC_CHANNELS.snapshotClear, () => ({ removed: clearSnapshots(snapshotRoot) }))
 
   // ── N1 一键诊断：采集（预览）+ 导出 zip（report.md + 近 3 天日志）──
   handleOk(IPC_CHANNELS.diagCollect, () => collectDiagnostics(services!, pluginStatus, buildCatalog()))

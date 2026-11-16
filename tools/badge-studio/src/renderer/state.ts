@@ -208,6 +208,7 @@ export async function pickHtml(): Promise<void> {
   const { html } = await host.badge.readHtml(file)
   pastedHtml.value = html
   htmlPath.value = file
+  sourceMailId.value = null
   await rememberRecent(file)
 }
 
@@ -216,10 +217,56 @@ export async function useRecent(item: RecentHtml): Promise<void> {
     const { html } = await host.badge.readHtml(item.path)
     htmlPath.value = item.path
     pastedHtml.value = html
+    sourceMailId.value = null
   } catch {
     ElMessage.warning('该文件已不存在或被移动，已从最近使用中移除')
     await removeRecent(item)
   }
+}
+
+// ── N5 源邮件衍生：从 EDM 邮件选择源 HTML，打标时记录 mailId + sourceHash ──
+export interface EdmMailOption {
+  _id: string
+  name: string
+  lastGeneratedAt?: string
+  outputs?: { final?: string }
+}
+export const edmMails = ref<EdmMailOption[]>([])
+export const edmMailsLoading = ref(false)
+/** 已选源邮件 id：非空时生成的海报与该邮件建立衍生关系（源重生成后提示重新打标） */
+export const sourceMailId = ref<string | null>(null)
+
+export async function loadEdmMails(): Promise<void> {
+  edmMailsLoading.value = true
+  try {
+    edmMails.value = ((await host.edm.api('mail:list')) as EdmMailOption[]) ?? []
+  } catch (err) {
+    ElMessage.warning(`EDM 邮件列表获取失败：${(err as Error).message}`)
+  } finally {
+    edmMailsLoading.value = false
+  }
+}
+
+export async function pickEdmMail(mail: EdmMailOption): Promise<void> {
+  if (!mail.outputs?.final) {
+    ElMessage.warning('该邮件尚未生成产物，请先在 EDM 内容管理里「生成」')
+    return
+  }
+  try {
+    const { html } = await host.badge.readHtml(mail.outputs.final)
+    pastedHtml.value = html
+    htmlPath.value = `edm:${mail.outputs.final}`
+    sourceMailId.value = mail._id
+    if (!posterName.value.trim()) posterName.value = mail.name
+    ElMessage.success(`已载入源邮件「${mail.name}」（源邮件重新生成后会提示重新打标）`)
+  } catch (err) {
+    ElMessage.error(`源邮件产物读取失败：${(err as Error).message}`)
+  }
+}
+
+/** 清除衍生关系（选择器清空 / 改用外部文件） */
+export function clearSourceMail(): void {
+  sourceMailId.value = null
 }
 
 export async function removeRecent(item: RecentHtml): Promise<void> {
@@ -414,6 +461,7 @@ export async function generate(): Promise<void> {
       stats: statRows.value,
       statsFileRel: statsFile.value,
       posterId: currentPosterId.value || undefined,
+      mailId: sourceMailId.value ?? undefined,
       config: {
         badgeAttr: badgeAttr.value,
         clicksField: clicksField.value,
@@ -452,8 +500,53 @@ export async function loadPosters(): Promise<void> {
   listLoading.value = true
   try {
     posters.value = ((await host.badge.listPosters()) as PosterRecord[]).filter((p) => !p.archived)
+    // N5 源更新检测：mail 型海报对比源邮件当前 sourceHash
+    try {
+      const res = (await host.badge.sourceState({})) as { rows: { posterId: string; stale: boolean; sourceRel: string | null }[] }
+      const map: Record<string, { stale: boolean; sourceRel: string | null }> = {}
+      for (const row of res.rows) map[row.posterId] = { stale: row.stale, sourceRel: row.sourceRel }
+      sourceStates.value = map
+    } catch {
+      sourceStates.value = {}
+    }
   } finally {
     listLoading.value = false
+  }
+}
+
+/** N5 行级源状态（stale=源邮件已重新生成）与一键重新打标 */
+export const sourceStates = ref<Record<string, { stale: boolean; sourceRel: string | null }>>({})
+export const staleCount = computed(() => Object.values(sourceStates.value).filter((s) => s.stale).length)
+
+export async function regeneratePoster(row: PosterRecord): Promise<void> {
+  const state = sourceStates.value[row._id]
+  if (!state?.sourceRel) {
+    ElMessage.warning('该海报未关联源邮件，无法自动重新打标（请在生成页重新载入源后生成）')
+    return
+  }
+  try {
+    const { html } = await host.badge.readHtml(state.sourceRel)
+    const snap = row.configSnapshot
+    await host.badge.generate({
+      name: row.name,
+      sourceHtml: html,
+      stats: toStatRows(row.statsSnapshot ?? [], []),
+      statsFileRel: row.datasources[0]?.file,
+      posterId: row._id,
+      mailId: row.source.mailId,
+      config: {
+        badgeAttr: snap.badgeAttr,
+        clicksField: snap.clicksField,
+        urlNorm: { ...urlNorm },
+        badgeStyle: { ...badgeStyle },
+        defaultPositions: { text: snap.badgePositionText as never, image: snap.badgePositionImage as never },
+        customCss: { common: badgeStyleCss.common, positions: { ...badgeStyleCss.positions } },
+      },
+    })
+    ElMessage.success(`已用新源重新打标「${row.name}」`)
+    await loadPosters()
+  } catch (err) {
+    ElMessage.error(`重新打标失败：${(err as Error).message}`)
   }
 }
 
@@ -515,6 +608,7 @@ export function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === 'copy') void copyCode(row)
   else if (cmd === 'download-png') void downloadPosterPng(row)
   else if (cmd === 'share') void sharePoster(row)
+  else if (cmd === 'regenerate') void regeneratePoster(row)
   else if (cmd === 'delete') { deleteTarget.value = row; deleteOpen.value = true }
 }
 
@@ -677,6 +771,8 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
   badgePositionImage.value = String(row.configSnapshot.badgePositionImage ?? '') || badgePositionImage.value
   currentPosterId.value = row._id
   htmlPath.value = ''
+  // N5：编辑 mail 型海报时保持衍生关系，重生成不丢 mailId
+  sourceMailId.value = row.source.type === 'mail' ? (row.source.mailId ?? null) : null
   if (row.outputs.badged) {
     try {
       // 点击编辑即展示该海报的 badge 预览

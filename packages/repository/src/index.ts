@@ -1,5 +1,6 @@
 export * from './id'
 export * from './entities'
 export * from './paths'
+export * from './snapshots'
 export * from './config'
 export * from './db'

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { pruneSnapshots, snapshotBeforeWrite } from './snapshots'
 
 /** 目录名常量：产物根下的固定布局（数据契约 §7 / §8） */
 export const OUTPUT_DIRS = ['outputs/edm', 'outputs/poster', 'assets/uploads', 'assets/brands', 'assets/templates', 'assets/edm/css'] as const
@@ -72,9 +73,19 @@ export function listOutputFiles(root: string, subdirs: readonly string[] = OUTPU
 /**
  * 覆盖式写产物（需求 17 / D19）：固定路径、直接覆盖、不留历史副本。
  * 自动创建父目录（先检测后创建）；只允许产物布局内的相对路径。
+ * N4 回滚快照：传入 snapshotDir（outputSnapshotOptions 计算）时，覆盖前把旧文件
+ * 复制进快照目录（每文件保留最近 1 份 + 50MB 上限自动清理）；不传则行为与 D19 完全一致。
  */
-export function writeOutput(root: string, rel: string, content: string | Uint8Array): string {
+export function writeOutput(root: string, rel: string, content: string | Uint8Array, opts?: { snapshotDir?: string }): string {
   const abs = resolveSafe(root, rel)
+  if (opts?.snapshotDir) {
+    snapshotBeforeWrite(opts.snapshotDir, abs, rel, basename(opts.snapshotDir))
+    try {
+      pruneSnapshots(join(opts.snapshotDir, '..', '..'))
+    } catch {
+      // 快照清理失败不阻断写产物
+    }
+  }
   mkdirSync(dirname(abs), { recursive: true })
   writeFileSync(abs, content)
   return toRelPath(root, abs)

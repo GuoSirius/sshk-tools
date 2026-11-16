@@ -2,13 +2,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from
 import { zipSync, type Zippable } from 'fflate'
 import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { app } from 'electron'
 import { ShareServer } from '@sshk/share-core'
 import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
   posterOutputRel,
+  readOutput,
   resolveSafe,
   writeOutput,
+  outputSnapshotOptions,
+  type Mail,
   type Poster,
   type Repository,
 } from '@sshk/repository'
@@ -113,6 +117,8 @@ export interface GenerateInput {
   /** stats 来源文件（已落 assets 的相对路径，用于重生成） */
   statsFileRel?: string
   posterId?: string
+  /** N5 源邮件衍生关系：传了则 poster.source={type:'mail',mailId}，sourceHash 取邮件指纹 */
+  mailId?: string
 }
 
 export interface ParseImageInput {
@@ -135,6 +141,8 @@ export interface BadgeIpcDeps {
   outputRoot: string
   /** 宿主能力（密钥 / 云端视觉 / 本机 OCR）；可选便于单测用最小依赖构造 */
   host?: ToolHostCapabilities
+  /** 应用配置（只读）；N4 回滚快照开关（app.outputSnapshot）读取用 */
+  config?: { get(key: string): unknown }
 }
 
 function kindOf(file: string): 'xlsx' | 'csv' | 'json' {
@@ -225,6 +233,32 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     return { html, hash: hashHtml(html) }
   }))
 
+  // ②-b N5 源更新检测：mail 型海报对比源邮件当前 sourceHash；返回行级 stale + 当前源产物 rel
+  ipc.handle(IPC_CHANNELS.badgeSourceState, wrap(async (payload?: { posterIds?: string[] }) => {
+    const posters = await deps.repository.list<Poster>('posters', { archived: false })
+    const wanted = Array.isArray(payload?.posterIds) && payload!.posterIds.length > 0
+      ? new Set(payload!.posterIds.map(String))
+      : null
+    const rows: { posterId: string; stale: boolean; sourceRel: string | null; mailId: string | null }[] = []
+    for (const poster of posters) {
+      if (wanted && !wanted.has(poster._id)) continue
+      if (poster.source.type !== 'mail' || !poster.source.mailId) {
+        rows.push({ posterId: poster._id, stale: false, sourceRel: null, mailId: null })
+        continue
+      }
+      const mail = await deps.repository.get<Mail>('mails', poster.source.mailId)
+      const currentHash = mail?.sourceHash
+        ?? (mail?.outputs?.final ? hashHtml(readOutput(deps.outputRoot, mail.outputs.final)) : undefined)
+      rows.push({
+        posterId: poster._id,
+        stale: Boolean(poster.sourceHash && currentHash && currentHash !== poster.sourceHash),
+        sourceRel: mail?.outputs?.final ?? null,
+        mailId: poster.source.mailId,
+      })
+    }
+    return { rows }
+  }))
+
   // ③ 批量补属性：给命中但未带属性的 <a> 补 badgeAttr（只在副本上，原文件不动）
   ipc.handle(IPC_CHANNELS.badgeMarkBadges, wrap((payload: { html: string; stats: StatRow[]; badgeAttr: string }) =>
     markBadges(payload.html, payload.stats, { badgeAttr: payload.badgeAttr, urlNorm: DEFAULT_URL_NORM })))
@@ -236,7 +270,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     // 穿插⑦-6：外链图片 main 侧下载内联转 dataURL（snapdom 截图内联像素被 CORS 拦 → 灰占位的根因）
     const { html: finalHtml, inlined } = await inlineRemoteImages(badged)
     if (inlined > 0) console.log(`[badge] 已内联外链图片 ${inlined} 张（${posterId}）`)
-    const badgedRel = writeOutput(deps.outputRoot, posterOutputRel(posterId, 'badged'), finalHtml)
+    const badgedRel = writeOutput(deps.outputRoot, posterOutputRel(posterId, 'badged'), finalHtml, outputSnapshotOptions(deps.config, deps.toolId, app.getPath('userData')))
 
     // 源 HTML 落 assets（可复现；原上传文件也不动）
     const srcRel = writeOutput(deps.outputRoot, `assets/uploads/${posterId}-source.html`, input.sourceHtml)
@@ -255,10 +289,23 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       : []
 
     const existing = await deps.repository.get<Poster>('posters', posterId)
+    // N5 衍生关系：显式传 mailId 优先；重生成既有 mail 型海报时保留原 mailId
+    const mailId = input.mailId?.trim()
+      || (existing?.source.type === 'mail' ? existing.source.mailId : undefined)
+    // 源指纹：mail 型取源邮件 sourceHash（契约 §7 对比口径）；upload 型存源 HTML 内容哈希
+    let sourceHash = hashHtml(input.sourceHtml)
+    if (mailId) {
+      const mail = await deps.repository.get<Mail>('mails', mailId)
+      sourceHash = mail?.sourceHash ?? sourceHash
+    }
+    const source: Poster['source'] = mailId
+      ? { type: 'mail', mailId, htmlPath: srcRel }
+      : { type: 'upload', htmlPath: srcRel }
     if (existing) {
       await deps.repository.update<Poster>('posters', posterId, {
         name: input.name,
-        source: { type: 'upload', htmlPath: srcRel },
+        source,
+        sourceHash,
         datasources,
         configSnapshot: snapshot,
         statsSnapshot: input.stats,
@@ -269,7 +316,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     } else {
       await deps.repository.insert<Poster>('posters', {
         name: input.name,
-        source: { type: 'upload', htmlPath: srcRel },
+        source,
+        sourceHash,
         statsSnapshot: input.stats,
         datasources,
         configSnapshot: snapshot,

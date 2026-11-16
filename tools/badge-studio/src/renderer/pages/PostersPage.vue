@@ -8,6 +8,7 @@ import {
   posters, listLoading, pagedPosters, currentPage, pageSize,
   onSelectionChange,
   loadPosterIntoWorkspace, onPosterCommand, exportPosterHtml,
+  sourceStates, staleCount,
 } from '../state'
 import { host } from '../host'
 
@@ -87,6 +88,16 @@ onBeforeUnmount(() => { batchProgress.active = false })
 
 <template>
   <div class="panel poster-list-panel">
+    <!-- N5 源更新提示：源邮件重新生成后，行级标黄 + 一键重新打标 -->
+    <el-alert
+      v-if="staleCount > 0"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="stale-banner"
+      :title="`有 ${staleCount} 个海报的源邮件已重新生成，产物仍是旧数据`"
+      description="点对应行「重新打标」即可用新源覆盖重生成（统计与角标配置沿用该海报已存的快照）。"
+    />
     <div class="upload-bar">
       <el-button size="small" :icon="Upload" :loading="uploading" @click="uploadArtifacts">上传产物文件</el-button>
       <span class="muted" :title="lastUpload">{{ lastUpload ? `最近上传：${lastUpload}` : '复用应用级「上传配置」的全局 profile，本工具只覆盖少量非固定信息' }}</span>
@@ -105,7 +116,12 @@ onBeforeUnmount(() => { batchProgress.active = false })
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="index" label="#" width="46" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
         <el-table-column type="selection" width="40" reserve-selection />
-        <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.name }}
+            <el-tag v-if="sourceStates[row._id]?.stale" size="small" type="warning" class="stale-tag">源已更新</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="生成时间" width="160">
           <template #default="{ row }">
             <TimeText :value="row.lastGeneratedAt ?? row.updatedAt" />
@@ -130,6 +146,7 @@ onBeforeUnmount(() => { batchProgress.active = false })
                     <el-dropdown-item command="copy">复制代码</el-dropdown-item>
                     <el-dropdown-item v-if="row.outputs.poster" command="download-png">下载图片</el-dropdown-item>
                     <el-dropdown-item command="share">分享页面（72h）</el-dropdown-item>
+                    <el-dropdown-item v-if="sourceStates[row._id]?.stale" command="regenerate">重新打标（用新源覆盖）</el-dropdown-item>
                     <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -145,6 +162,8 @@ onBeforeUnmount(() => { batchProgress.active = false })
 
 <style scoped>
 .poster-list-panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.stale-banner { margin-bottom: 10px; }
+.stale-tag { margin-left: 6px; }
 .upload-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .upload-bar .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-flex-wrap { flex: 1; min-height: 0; }

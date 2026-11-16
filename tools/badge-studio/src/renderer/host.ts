@@ -14,10 +14,13 @@ export const host = createSafeHost({
     clipboardWrite: C.osClipboardWrite,
   },
   llm: { providers: C.llmProviders, providerModels: C.llmProviderModels },
+  /** N5：从 EDM 邮件选择源 HTML（mail:list 单通道） */
+  edm: { api: C.edmApi },
   upload: { batch: C.uploadBatch },
   badge: {
     generate: C.badgeGenerate,
     regenerate: C.badgeRegenerate,
+    sourceState: C.badgeSourceState,
     parseDatasource: C.badgeParseDatasource,
     readHtml: C.badgeReadHtml,
     markBadges: C.badgeMarkBadges,

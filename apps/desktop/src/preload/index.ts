@@ -145,6 +145,9 @@ const api = {
     markBadges: (payload: unknown): Promise<string> => invoke(IPC_CHANNELS.badgeMarkBadges, payload),
     generate: (payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string; matchCounts: Record<string, number> }> =>
       invoke(IPC_CHANNELS.badgeGenerate, payload),
+    /** N5 源更新检测：对比 poster.sourceHash 与源邮件当前指纹 */
+    sourceState: (payload?: { posterIds?: string[] }): Promise<{ rows: { posterId: string; stale: boolean; sourceRel: string | null; mailId: string | null }[] }> =>
+      invoke(IPC_CHANNELS.badgeSourceState, payload),
     savePosterPng: (payload: { posterId: string; base64: string }): Promise<string> =>
       invoke(IPC_CHANNELS.badgeSavePosterPng, payload),
     listPosters: (): Promise<unknown[]> => invoke(IPC_CHANNELS.badgeListPosters),
@@ -215,6 +218,23 @@ const api = {
       invoke(IPC_CHANNELS.toolsCleanupOrphans),
     /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
     health: (): Promise<import('@sshk/shared').ToolHealthPayload> => invoke(IPC_CHANNELS.toolsHealth),
+  },
+  presets: {
+    /** N3 导出配置预设（Provider 无密钥 + 上传 profile 无密钥），路径必须来自 pickSave */
+    export: (outPath: string): Promise<{ file: string; providers: number; uploadProfiles: number }> =>
+      invoke(IPC_CHANNELS.presetExport, outPath),
+    /** N3 导入配置预设（按 id 合并），路径必须来自 pickFile */
+    import: (filePath: string): Promise<{ providersMerged: number; uploadProfilesMerged: number }> =>
+      invoke(IPC_CHANNELS.presetImport, filePath),
+  },
+  snapshots: {
+    /** N4 回滚快照：列表（时间倒序） */
+    list: (): Promise<import('@sshk/repository').OutputSnapshotEntry[]> =>
+      invoke(IPC_CHANNELS.snapshotList),
+    /** 恢复快照到原路径（覆盖当前产物） */
+    restore: (id: string): Promise<string> => invoke(IPC_CHANNELS.snapshotRestore, id),
+    /** 清空全部快照 */
+    clear: (): Promise<{ removed: number }> => invoke(IPC_CHANNELS.snapshotClear),
   },
   backup: {
     export: (zipPath: string, passphrase?: string): Promise<unknown> =>

@@ -79,6 +79,7 @@ const cfg = reactive({
   autoUpdate: true,
   autoInstallOnAppQuit: false,
   developerMode: false,
+  outputSnapshot: false,
 })
 const saving = ref(false)
 
@@ -163,6 +164,7 @@ async function loadAppConfig(): Promise<void> {
   cfg.autoUpdate = await bool('app.autoUpdate', true)
   cfg.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   cfg.developerMode = await bool('app.developerMode', false)
+  cfg.outputSnapshot = await bool('app.outputSnapshot', false)
   version.value = await window.api.app.version().catch(() => '0.1.0')
   runtime.value = await window.api.app.runtime().catch(() => null)
 }
@@ -290,6 +292,87 @@ function healthStateTag(state: ToolHealthRow['state']): 'success' | 'warning' | 
   if (state === 'ok') return 'success'
   if (state === 'warn' || state === 'disabled') return 'info'
   return 'danger'
+}
+
+// ── N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并，密钥不随预设走） ──
+const PRESET_EXPORT_SPEC: HostApiSpec = { group: 'presets', method: 'export', channel: IPC_CHANNELS.presetExport, label: '配置预设导出' }
+const PRESET_IMPORT_SPEC: HostApiSpec = { group: 'presets', method: 'import', channel: IPC_CHANNELS.presetImport, label: '配置预设导入' }
+async function exportPresetFile(): Promise<void> {
+  const save = await window.api.os.pickSave({
+    fileName: `sshk-preset-${new Date().toLocaleDateString('sv-SE')}.json`,
+    extensions: ['json'],
+  })
+  if (!save) return
+  try {
+    const r = await callHostApi<{ file: string; providers: number; uploadProfiles: number }>(PRESET_EXPORT_SPEC, save)
+    ElMessage.success(`预设已导出：Provider ${r.providers} / 上传 Profile ${r.uploadProfiles}`)
+  } catch (err) {
+    ElMessage.error(`导出失败：${(err as Error).message}`)
+  }
+}
+async function importPresetFile(): Promise<void> {
+  const [file] = await window.api.os.pickFile({ filters: [{ name: '配置预设', extensions: ['json'] }] })
+  if (!file) return
+  try {
+    const r = await callHostApi<{ providersMerged: number; uploadProfilesMerged: number }>(PRESET_IMPORT_SPEC, file)
+    ElMessage.success(`预设已导入：Provider ${r.providersMerged} / 上传 Profile ${r.uploadProfilesMerged}（按 id 合并）`)
+  } catch (err) {
+    ElMessage.error(`导入失败：${(err as Error).message}`)
+  }
+}
+
+// ── N4 回滚快照：开关 + 查看 / 恢复 / 清空 ──
+const SNAPSHOT_LIST_SPEC: HostApiSpec = { group: 'snapshots', method: 'list', channel: IPC_CHANNELS.snapshotList, label: '回滚快照' }
+const SNAPSHOT_RESTORE_SPEC: HostApiSpec = { group: 'snapshots', method: 'restore', channel: IPC_CHANNELS.snapshotRestore, label: '快照恢复' }
+const SNAPSHOT_CLEAR_SPEC: HostApiSpec = { group: 'snapshots', method: 'clear', channel: IPC_CHANNELS.snapshotClear, label: '快照清空' }
+type SnapshotEntry = import('@sshk/repository').OutputSnapshotEntry
+const snapshots = ref<SnapshotEntry[]>([])
+const snapshotTime = (iso: string): string => String(iso ?? '').slice(0, 19).replace('T', ' ')
+async function refreshSnapshots(): Promise<void> {
+  try {
+    snapshots.value = await callHostApi<SnapshotEntry[]>(SNAPSHOT_LIST_SPEC)
+  } catch {
+    /* 旧宿主快照兜底失败保持空列表 */
+  }
+}
+async function saveSnapshotSwitch(): Promise<void> {
+  try {
+    await window.api.config.set('app.outputSnapshot', cfg.outputSnapshot)
+    ElMessage.success(cfg.outputSnapshot ? '回滚快照已开启（重新生成产物时生效）' : '回滚快照已关闭')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  }
+}
+async function restoreSnapshotEntry(entry: SnapshotEntry): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `把「${entry.rel}」恢复为快照时的旧版本？当前文件将被覆盖。`,
+      '恢复快照',
+      { type: 'warning', confirmButtonText: '恢复', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const path = await callHostApi<string>(SNAPSHOT_RESTORE_SPEC, entry.id)
+    ElMessage.success(`已恢复：${path}`)
+  } catch (err) {
+    ElMessage.error(`恢复失败：${(err as Error).message}`)
+  }
+}
+async function clearSnapshotAll(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('清空全部回滚快照？被覆盖的旧产物将无法再恢复。', '清空快照', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    const { removed } = await callHostApi<{ removed: number }>(SNAPSHOT_CLEAR_SPEC)
+    ElMessage.success(`已清空 ${removed} 份快照`)
+    await refreshSnapshots()
+  } catch (err) {
+    ElMessage.error(`清空失败：${(err as Error).message}`)
+  }
 }
 
 // ── 访问密钥（只写 safeStorage，明文不回传） ──
@@ -421,7 +504,7 @@ async function removeRuntime(id: string): Promise<void> {
     ElMessage.error(`卸载失败：${(err as Error).message}`)
   }
 }
-onMounted(() => { void refreshRuntime(); void refreshKeys(); void refreshLogInfo(); void refreshHealth() })
+onMounted(() => { void refreshRuntime(); void refreshKeys(); void refreshLogInfo(); void refreshHealth(); void refreshSnapshots() })
 
 // ── 工具启用 / 权限 / 元数据覆盖 ──
 const editing = ref<string | null>(null)
@@ -813,6 +896,35 @@ async function cleanupOrphans(): Promise<void> {
             </section>
 
             <section class="settings-card">
+              <div class="card-title">配置预设</div>
+              <div class="kv-line">
+                <span>导出 / 导入</span>
+                <div class="btn-group">
+                  <el-button size="small" type="primary" @click="exportPresetFile">导出预设</el-button>
+                  <el-button size="small" @click="importPresetFile">导入预设</el-button>
+                </div>
+              </div>
+              <div class="hint">导出模型 Provider 与上传 Profile 为 JSON 预设（密钥字段强校验剔除、本机默认目录不带入）；导入按 id 合并（同名覆盖、新增追加），密钥需在对端各自重新配置。</div>
+            </section>
+
+            <section class="settings-card">
+              <div class="card-title">
+                回滚快照
+                <el-switch v-model="cfg.outputSnapshot" size="small" @change="saveSnapshotSwitch" />
+              </div>
+              <div class="hint">开启后（默认关，D19 覆盖行为不变）：badge / EDM 重新生成产物前自动把旧文件留一份快照（每文件最近 1 份，总量上限 50MB 自动清最旧）。恢复会覆盖当前产物。</div>
+              <div v-for="s in snapshots" :key="s.id" class="kv-line">
+                <span class="snap-name">{{ s.toolId }} · {{ s.rel }}</span>
+                <span class="hint">{{ (s.sizeBytes / 1024).toFixed(1) }} KB · {{ snapshotTime(s.time) }}</span>
+                <el-button size="small" text type="primary" @click="restoreSnapshotEntry(s)">恢复</el-button>
+              </div>
+              <div v-if="snapshots.length === 0" class="kv-line"><span class="hint">暂无快照（开启开关后重新生成产物即产生）</span></div>
+              <div v-if="snapshots.length" class="card-actions">
+                <el-button size="small" type="danger" plain @click="clearSnapshotAll">清空快照</el-button>
+              </div>
+            </section>
+
+            <section class="settings-card">
               <div class="card-title">诊断与反馈</div>
               <div class="kv-line">
                 <span>一键诊断</span>
@@ -955,4 +1067,7 @@ async function cleanupOrphans(): Promise<void> {
 .health-row-bad { background: var(--el-fill-color-light); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
 .health-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .health-log-btn { margin-left: auto; }
+
+/* N4 快照行：长路径单行省略 */
+.snap-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

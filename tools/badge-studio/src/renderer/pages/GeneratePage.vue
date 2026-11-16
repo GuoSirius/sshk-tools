@@ -6,6 +6,7 @@ import { CodeEditor } from '@sshk/code-editor'
 import { Document } from '@element-plus/icons-vue'
 import {
   recentHtmls, clearRecent, htmlPath, useRecent, removeRecent,
+  edmMails, edmMailsLoading, sourceMailId, loadEdmMails, pickEdmMail, clearSourceMail,
   pastedHtml, pastedStats, parsePastedStats, pickImages,
   addRow, hasStats, clearRows, statRows, statsFile,
   imageFiles, imageThumbs, previewList, loadThumb, recognizing, vision, visionRaw,
@@ -79,6 +80,23 @@ function locateInHtml(term: string): void {
     <div class="col">
       <div class="panel">
         <div class="panel-title">邮件 HTML（只读，不修改原文件）</div>
+        <!-- N5 源邮件衍生：从 EDM 选择源 HTML，打标后源邮件重生成会提示「重新打标」 -->
+        <div class="cfg-row" style="margin-bottom: 8px">
+          <el-select
+            size="small"
+            clearable
+            filterable
+            placeholder="从 EDM 邮件选择源（源邮件重新生成后提示重新打标）"
+            style="flex: 1"
+            :model-value="sourceMailId ?? ''"
+            :loading="edmMailsLoading"
+            @visible-change="(v: boolean) => { if (v && edmMails.length === 0) void loadEdmMails() }"
+            @change="(v: string) => { const m = edmMails.find((x) => x._id === v); if (m) void pickEdmMail(m); else clearSourceMail() }"
+          >
+            <el-option v-for="m in edmMails" :key="m._id" :label="m.name" :value="m._id" />
+          </el-select>
+          <el-button size="small" :loading="edmMailsLoading" @click="void loadEdmMails()">刷新邮件</el-button>
+        </div>
         <div v-if="recentHtmls.length > 0" class="recent-head">
           <span>最近使用 · 记录在本机配置，刷新后保留</span>
           <el-button size="small" text @click="clearRecent">清空全部</el-button>

@@ -99,6 +99,8 @@ export const IPC_CHANNELS = {
   runtimeKeysRevoke: 'runtime:keysRevoke',
   badgeGenerate: 'badge:generate',
   badgeRegenerate: 'badge:regenerate',
+  /** N5 源更新检测：对比 poster.sourceHash 与源邮件当前 sourceHash（mail 型衍生关系） */
+  badgeSourceState: 'badge:sourceState',
   badgeParseDatasource: 'badge:parseDatasource',
   badgeReadHtml: 'badge:readHtml',
   badgeMarkBadges: 'badge:markBadges',
@@ -128,6 +130,13 @@ export const IPC_CHANNELS = {
   /** D-Q1 模型用量日志：统计（分组+最近明细）/ 清空 */
   usageStats: 'usage:stats',
   usageClear: 'usage:clear',
+  /** N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并，密钥不随预设走） */
+  presetExport: 'preset:export',
+  presetImport: 'preset:import',
+  /** N4 回滚快照：列表 / 恢复 / 清空（开关 app.outputSnapshot 默认关，D19 行为零变化） */
+  snapshotList: 'snapshot:list',
+  snapshotRestore: 'snapshot:restore',
+  snapshotClear: 'snapshot:clear',
   /** N2 工具健康度面板：聚合目录裁决 + 插件状态 + 日志 error 检索 */
   toolsHealth: 'tools:health',
   /** 关于页运行环境信息（版本/commit/Electron/Chrome/Node） */

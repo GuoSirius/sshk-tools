@@ -128,6 +128,8 @@ interface Window {
       readHtml(file: string): Promise<{ html: string; hash: string }>
       markBadges(payload: unknown): Promise<string>
       generate(payload: unknown): Promise<{ posterId: string; badgedRel: string; html: string; matchCounts: Record<string, number> }>
+      /** N5 源更新检测：对比 poster.sourceHash 与源邮件当前指纹 */
+      sourceState(payload?: { posterIds?: string[] }): Promise<{ rows: { posterId: string; stale: boolean; sourceRel: string | null; mailId: string | null }[] }>
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
       savePosterMeta(payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean>
@@ -177,6 +179,18 @@ interface Window {
       cleanupOrphans(): Promise<import('@sshk/shared').ToolCatalogPayload>
       /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
       health(): Promise<import('@sshk/shared').ToolHealthPayload>
+    }
+    presets: {
+      /** N3 导出配置预设（Provider 无密钥 + 上传 profile 无密钥） */
+      export(outPath: string): Promise<{ file: string; providers: number; uploadProfiles: number }>
+      /** N3 导入配置预设（按 id 合并） */
+      import(filePath: string): Promise<{ providersMerged: number; uploadProfilesMerged: number }>
+    }
+    snapshots: {
+      /** N4 回滚快照：列表（时间倒序） */
+      list(): Promise<import('@sshk/repository').OutputSnapshotEntry[]>
+      restore(id: string): Promise<string>
+      clear(): Promise<{ removed: number }>
     }
     backup: {
       export(zipPath: string, passphrase?: string): Promise<{ counts: Record<string, number>; file: string }>

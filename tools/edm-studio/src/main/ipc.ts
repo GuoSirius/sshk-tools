@@ -11,6 +11,7 @@ import {
   edmOutputRel,
   readOutput,
   writeOutput,
+  outputSnapshotOptions,
   type Brand,
   type Fragment,
   type FragmentVersion,
@@ -411,10 +412,11 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
           outputRoot: deps.outputRoot,
           unoEnabled: true,
         })
+        const snap = outputSnapshotOptions(deps.config, 'edm-studio', app.getPath('userData'))
         const outputs = {
-          assembled: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled),
-          inlined: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'inlined'), stages.inlined),
-          final: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'final'), stages.final),
+          assembled: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled, snap),
+          inlined: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'inlined'), stages.inlined, snap),
+          final: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'final'), stages.final, snap),
         }
         return repo.update<Mail>('mails', mail._id, {
           outputs,

@@ -154,6 +154,12 @@ export interface Poster extends BaseEntity {
   /** 生成时的点击统计（可编辑重生成） */
   statsSnapshot?: StatsSnapshot
   lastGeneratedAt?: string
+  /**
+   * 打标时的源指纹（数据契约 §7「源已更新」检测）：
+   * mail 型海报存源邮件的 sourceHash，mail:generate 后对比变化提示「重新打标」；
+   * upload 型存源 HTML 内容哈希（仅追溯，不参与提示）。
+   */
+  sourceHash?: string
 }
 
 /** zip 包内 data/ 目录与实体的对应关系（@sshk/backup 使用） */
