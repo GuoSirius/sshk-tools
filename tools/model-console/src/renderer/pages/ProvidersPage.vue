@@ -269,7 +269,7 @@ async function revealKey(): Promise<void> {
       :close-on-click-modal="false"
       :close-on-press-escape="false"
     >
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px" size="small">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="auto" size="small">
         <el-form-item v-if="presets.length" label="快速预设">
           <el-select
             v-model="presetId"

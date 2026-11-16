@@ -134,7 +134,7 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
     </div>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgOpen" :title="frgForm._id ? '编辑片段' : '新增片段'" width="460px">
-      <el-form label-width="70px" size="small">
+      <el-form label-width="auto" size="small">
         <el-form-item label="品牌">
           <el-select v-model="frgForm.brandId" style="width: 100%">
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />

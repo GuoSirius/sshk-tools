@@ -46,6 +46,8 @@ withDefaults(defineProps<{ cols?: 2 | 3 }>(), { cols: 2 })
    换行到下方时落在行首、无间隙，与输入框精确左对齐。两种场景一次覆盖。
    因此提示 span 自身不要再写 margin-left。 */
 .sshk-form-grid .el-form-item__content { column-gap: 8px; }
+/* FormHint inline 自带 12px margin（非栅格场景用），栅格内由 column-gap 统一管间距，避免叠加成 20px */
+.sshk-form-grid .sshk-form-hint.inline { margin-left: 0; }
 /* 输入框 + 按钮组合：等高居中 */
 .sshk-form-grid .combo { display: flex; align-items: center; gap: 8px; }
 .sshk-form-grid .combo > .el-input,

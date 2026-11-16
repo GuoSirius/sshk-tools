@@ -101,7 +101,7 @@ async function onRowCommand(cmd: string, row: BrandRow): Promise<void> {
     </div>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="brandOpen" :title="brandForm._id ? '编辑品牌' : '新增品牌'" width="400px">
-      <el-form label-width="70px" size="small">
+      <el-form label-width="auto" size="small">
         <el-form-item label="code"><el-input v-model="brandForm.code" placeholder="procell" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="brandForm.name" placeholder="Procell" /></el-form-item>
       </el-form>

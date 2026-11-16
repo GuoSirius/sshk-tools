@@ -158,7 +158,7 @@ function selField(): FieldDef | undefined {
     <div class="prop-pane">
       <template v-if="selField()">
         <div class="prop-title">字段属性</div>
-        <el-form label-width="92px" size="small" class="prop-form">
+        <el-form label-width="auto" size="small" class="prop-form">
           <el-form-item label="key">
             <el-input :model-value="selField()!.key" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { key: v })" />
           </el-form-item>

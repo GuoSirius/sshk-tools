@@ -393,7 +393,7 @@ onMounted(() => {
 
       <section class="panel">
         <div class="panel-head"><el-icon><Upload /></el-icon><span>全局默认校验</span></div>
-        <el-form label-width="120px" size="small">
+        <el-form label-width="auto" size="small">
           <el-form-item label="允许扩展名">
             <el-input v-model="acceptText" placeholder=".png, .jpg, .webp（留空 = 不限制）" />
           </el-form-item>

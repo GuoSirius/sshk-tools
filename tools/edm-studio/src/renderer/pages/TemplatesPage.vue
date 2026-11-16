@@ -193,7 +193,7 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
     </div>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplOpen" :title="tplForm._id ? '编辑模板' : '新增模板'" width="460px">
-      <el-form label-width="70px" size="small">
+      <el-form label-width="auto" size="small">
         <el-form-item label="品牌">
           <el-select v-model="tplForm.brandId" style="width: 100%">
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />

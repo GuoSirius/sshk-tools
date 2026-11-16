@@ -1264,7 +1264,7 @@ async function confirmSaveAs(): Promise<void> {
               </el-radio-group>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveMeta">保存</el-button>
             </div>
-            <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="90px" class="meta-form">
+            <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
               <el-form-item label="名称"><el-input v-model="form.name" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.brandBase" label="code"><el-input v-model="form.code" :disabled="!canEdit" /></el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
@@ -1338,7 +1338,7 @@ async function confirmSaveAs(): Promise<void> {
 
     <!-- 另存为弹框（一屏简化版） -->
     <el-dialog v-model="saveAsState.visible" title="另存为" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-form label-width="130px">
+      <el-form label-width="auto">
         <template v-if="saveAsIsEntity">
           <el-form-item label="新名称"><el-input v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
           <el-form-item v-if="saveAsState.node?.kind !== 'version' && saveAsState.origin === 'system'" label="code（目录名）">
