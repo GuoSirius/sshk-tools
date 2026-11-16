@@ -40,6 +40,10 @@ const options = computed(() => ({
   scrollBeyondLastLine: false,
   wordWrap: 'on' as const,
   tabSize: 2,
+  // 代码折叠（2026-11-16 用户反馈）：gutter 常显 chevron，点击行尾后自动展开下一行
+  folding: true,
+  showFoldingControls: 'always' as const,
+  unfoldOnClickAfterEndOfLine: true,
 }))
 
 /** 编辑器实例暴露：供页面级搜索定位（setSelection / revealRangeInCenter）等高级用法 */
