@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { BrowserWindow, app, dialog } from 'electron'
 import {
   CloudFsDriver,
@@ -49,6 +50,21 @@ import { logger } from './logger'
 
 const SECRET_TOOL_ID = TOOL_IDS.uploadManager
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+
+let elevatedCache: boolean | null = null
+/** 是否以管理员运行（仅 Windows 有此问题：管理员进程收不到资源管理器的拖拽事件，UIPI 拦截） */
+function isElevated(): boolean {
+  if (process.platform !== 'win32') return false
+  if (elevatedCache === null) {
+    try {
+      elevatedCache = spawnSync('net', ['session'], { timeout: 3000, windowsHide: true }).status === 0
+    } catch {
+      elevatedCache = false
+    }
+  }
+  return elevatedCache
+}
+
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
 const MAX_TASKS = 2000
 /** 本地目录展平的文件数上限 */
@@ -739,7 +755,7 @@ export class FsRuntime {
 
   /** fs:profiles 响应：通道清单 + EDM 产物目录 */
   profilesPayload(): FsProfilesPayload {
-    return { channels: this.channels(), outputRoot: this.opts.services.outputRoot }
+    return { channels: this.channels(), outputRoot: this.opts.services.outputRoot, elevated: isElevated() }
   }
 
   /** EDM 产物目录（「上传到此处」联动用；渲染层据此打开产物目录选择） */

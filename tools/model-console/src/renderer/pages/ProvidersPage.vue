@@ -286,7 +286,7 @@ async function revealKey(): Promise<void> {
               <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
             </el-form-item>
             <el-form-item label="名称" prop="name">
-              <el-input v-model="form.name" placeholder="如：本地 Ollama" />
+              <el-input clearable v-model="form.name" placeholder="如：本地 Ollama" />
             </el-form-item>
             <el-form-item label="类型">
               <el-radio-group v-model="form.kind">
@@ -295,7 +295,7 @@ async function revealKey(): Promise<void> {
               </el-radio-group>
             </el-form-item>
             <el-form-item label="baseURL" prop="baseURL" class="full">
-              <el-input v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
+              <el-input clearable v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
             </el-form-item>
             <el-form-item label="模型名" prop="model" class="full">
               <div class="model-row">
@@ -329,7 +329,7 @@ async function revealKey(): Promise<void> {
               <div class="form-hint">调用优先级：工具自选 → 默认 → 回退模型；全链失败才报错</div>
             </el-form-item>
             <el-form-item label="重试次数">
-              <el-input-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
+              <el-input clearable-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
               <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
             </el-form-item>
             <el-form-item label="apiKey" prop="apiKey" class="full">

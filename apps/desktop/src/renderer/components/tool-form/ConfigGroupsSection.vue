@@ -61,21 +61,21 @@ function addPage(): void { props.pages?.push({ id: `config-page-${props.pages.le
       </div>
       <div v-show="!collapsed.has(group.id)" class="group-body">
         <div class="row-item">
-          <el-input v-model="group.id" size="small" placeholder="分组 id" style="width: 160px" />
-          <el-input v-model="group.label" size="small" placeholder="分组名称" style="width: 170px" />
+          <el-input clearable v-model="group.id" size="small" placeholder="分组 id" style="width: 160px" />
+          <el-input clearable v-model="group.label" size="small" placeholder="分组名称" style="width: 170px" />
         </div>
         <div v-for="(field, fi) in group.fields" :key="fi" class="row-item field-row">
-          <el-input v-model="field.key" size="small" placeholder="key（a.b.c）" style="width: 150px" />
-          <el-input v-model="field.label" size="small" placeholder="名称" style="width: 120px" />
+          <el-input clearable v-model="field.key" size="small" placeholder="key（a.b.c）" style="width: 150px" />
+          <el-input clearable v-model="field.label" size="small" placeholder="名称" style="width: 120px" />
           <el-select v-model="field.type" size="small" style="width: 130px">
             <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
           </el-select>
-          <el-input v-if="field.type === 'select'" v-model="field.optionsText" size="small" placeholder="选项 标签:值, 标签:值" style="width: 170px" />
+          <el-input clearable v-if="field.type === 'select'" v-model="field.optionsText" size="small" placeholder="选项 标签:值, 标签:值" style="width: 170px" />
           <template v-else-if="field.type === 'number'">
-            <el-input v-model.number="field.min" size="small" placeholder="最小值" style="width: 100px" />
-            <el-input v-model.number="field.max" size="small" placeholder="最大值" style="width: 100px" />
+            <el-input clearable v-model.number="field.min" size="small" placeholder="最小值" style="width: 100px" />
+            <el-input clearable v-model.number="field.max" size="small" placeholder="最大值" style="width: 100px" />
           </template>
-          <el-input v-model="field.hint" size="small" placeholder="提示语" style="flex: 1; min-width: 120px" />
+          <el-input clearable v-model="field.hint" size="small" placeholder="提示语" style="flex: 1; min-width: 120px" />
           <el-button size="small" type="danger" plain :icon="Delete" @click="group.fields.splice(fi, 1)" />
         </div>
         <div v-if="group.fields.length === 0" class="empty-hint">暂无字段——点下方「加字段」添加</div>
@@ -88,8 +88,8 @@ function addPage(): void { props.pages?.push({ id: `config-page-${props.pages.le
     <template v-if="showPages && pages">
       <div class="pages-hint">形态 2：配置页（二级菜单），每页引用多个分组；id 以 config- 开头。</div>
       <div v-for="(page, pi) in pages" :key="pi" class="row-item">
-        <el-input v-model="page.id" size="small" placeholder="config-model" style="width: 160px" />
-        <el-input v-model="page.label" size="small" placeholder="页名称" style="width: 140px" />
+        <el-input clearable v-model="page.id" size="small" placeholder="config-model" style="width: 160px" />
+        <el-input clearable v-model="page.label" size="small" placeholder="页名称" style="width: 140px" />
         <el-select v-model="page.groups" multiple collapse-tags size="small" placeholder="引用分组" style="flex: 1">
           <el-option v-for="g in groupOptions" :key="g.value" :label="g.label" :value="g.value" />
         </el-select>

@@ -371,11 +371,11 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
               <el-option label="external（外部包）" value="external" />
             </el-select>
           </el-form-item>
-          <el-form-item label="main 入口"><el-input v-model="form.plugin.main" placeholder="内建 src/main/index.ts / 外部 dist/main.js" /></el-form-item>
-          <el-form-item label="renderer 入口"><el-input v-model="form.plugin.renderer" placeholder="内建 .vue / 外部 dist/page.js" /></el-form-item>
+          <el-form-item label="main 入口"><el-input clearable v-model="form.plugin.main" placeholder="内建 src/main/index.ts / 外部 dist/main.js" /></el-form-item>
+          <el-form-item label="renderer 入口"><el-input clearable v-model="form.plugin.renderer" placeholder="内建 .vue / 外部 dist/page.js" /></el-form-item>
           <el-form-item label="工具自有通道">
             <div v-for="(_channel, ci) in channelRows" :key="ci" class="inline-form">
-              <el-input v-model="channelRows[ci]" size="small" placeholder="如 toolId:list" style="width: 260px" />
+              <el-input clearable v-model="channelRows[ci]" size="small" placeholder="如 toolId:list" style="width: 260px" />
               <el-button size="small" type="danger" plain :icon="Delete" @click="channelRows.splice(ci, 1)" />
             </div>
             <div v-if="channelRows.length === 0" class="empty-hint">暂无自有通道——多数纯前端工具不需要；宿主白名单在「契约」页维护</div>
@@ -386,9 +386,9 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
 
         <div v-else-if="t.id === 'contract'" class="contract-pane">
           <el-form label-width="130px" size="small">
-            <el-form-item label="schemaVersion"><el-input :model-value="String(TOOL_PACKAGE_SCHEMA_VERSION)" disabled /></el-form-item>
-            <el-form-item label="requiresHost.api"><el-input :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
-            <el-form-item label="版本号"><el-input v-model="form.pkg.version" /></el-form-item>
+            <el-form-item label="schemaVersion"><el-input clearable :model-value="String(TOOL_PACKAGE_SCHEMA_VERSION)" disabled /></el-form-item>
+            <el-form-item label="requiresHost.api"><el-input clearable :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
+            <el-form-item label="版本号"><el-input clearable v-model="form.pkg.version" /></el-form-item>
             <el-form-item label="沙箱">
               <el-select v-model="form.pkg.sandbox" style="width: 220px">
                 <el-option label="utility（默认）" value="utility" />
@@ -426,8 +426,8 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
             <el-select v-model="dep.toolId" size="small" filterable placeholder="依赖工具" style="width: 180px">
               <el-option v-for="id in toolIdOptions" :key="id" :label="id" :value="id" />
             </el-select>
-            <el-input v-model="dep.key" size="small" placeholder="配置 key" style="width: 180px" />
-            <el-input v-model="dep.label" size="small" placeholder="展示名称" style="width: 180px" />
+            <el-input clearable v-model="dep.key" size="small" placeholder="配置 key" style="width: 180px" />
+            <el-input clearable v-model="dep.label" size="small" placeholder="展示名称" style="width: 180px" />
             <el-button size="small" type="danger" plain :icon="Delete" @click="depRows.splice(di, 1)" />
           </div>
           <div v-if="depRows.length === 0" class="empty-hint">暂无软依赖——软依赖缺失只预警不隐藏（硬依赖在上方「dependsOn」）</div>
@@ -438,16 +438,16 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <el-button size="small" plain @click="rescanDefaults">重扫默认值</el-button>
           <div v-if="defaultRows.length === 0" class="empty-hint">暂无默认值行——配置分组加字段后点「重扫默认值」生成</div>
           <div v-for="row in defaultRows" :key="row.key" class="inline-form">
-            <el-input :model-value="row.key" size="small" disabled style="width: 200px" />
+            <el-input clearable :model-value="row.key" size="small" disabled style="width: 200px" />
             <el-switch v-if="row.type === 'boolean'" v-model="row.value" />
-            <el-input-number v-else-if="row.type === 'number'" v-model="row.value" size="small" style="width: 150px" />
+            <el-input clearable-number v-else-if="row.type === 'number'" v-model="row.value" size="small" style="width: 150px" />
             <el-select v-else-if="row.type === 'select'" v-model="row.value" size="small" style="width: 180px">
               <el-option
                 v-for="opt in parseOptions(groupRows.flatMap((g) => g.fields).find((f) => f.key === row.key)?.optionsText ?? '')"
                 :key="opt.value" :label="opt.label" :value="opt.value"
               />
             </el-select>
-            <el-input v-else v-model="row.value" size="small" style="width: 240px" />
+            <el-input clearable v-else v-model="row.value" size="small" style="width: 240px" />
             <span class="hint">{{ row.label }}</span>
           </div>
         </div>

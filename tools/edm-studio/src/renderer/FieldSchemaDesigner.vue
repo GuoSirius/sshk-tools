@@ -160,10 +160,10 @@ function selField(): FieldDef | undefined {
         <div class="prop-title">字段属性</div>
         <el-form label-width="auto" size="small" class="prop-form">
           <el-form-item label="key">
-            <el-input :model-value="selField()!.key" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { key: v })" />
+            <el-input clearable :model-value="selField()!.key" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { key: v })" />
           </el-form-item>
           <el-form-item label="标签">
-            <el-input :model-value="selField()!.label" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { label: v })" />
+            <el-input clearable :model-value="selField()!.label" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { label: v })" />
           </el-form-item>
           <el-form-item label="类型">
             <el-select :model-value="selField()!.type" :disabled="readonly" style="width: 100%" @update:model-value="(v: unknown) => onTypeChange(selected, v as FieldType)">
@@ -174,27 +174,27 @@ function selField(): FieldDef | undefined {
             <el-switch :model-value="!!selField()!.required" :disabled="readonly" @update:model-value="(v: boolean) => patchField(selected, { required: v })" />
           </el-form-item>
           <el-form-item label="占位提示">
-            <el-input :model-value="selField()!.placeholder ?? ''" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { placeholder: v || undefined })" />
+            <el-input clearable :model-value="selField()!.placeholder ?? ''" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { placeholder: v || undefined })" />
           </el-form-item>
 
           <template v-if="['input', 'textarea', 'richtext'].includes(selField()!.type)">
             <el-form-item label="最小长度">
-              <el-input-number :model-value="selField()!.minLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minLength: v || undefined })" />
+              <el-input clearable-number :model-value="selField()!.minLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minLength: v || undefined })" />
             </el-form-item>
             <el-form-item label="最大长度">
-              <el-input-number :model-value="selField()!.maxLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxLength: v || undefined })" />
+              <el-input clearable-number :model-value="selField()!.maxLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxLength: v || undefined })" />
             </el-form-item>
           </template>
           <el-form-item v-if="selField()!.type === 'input'" label="正则校验">
-            <el-input :model-value="selField()!.pattern ?? ''" :disabled="readonly" placeholder="如 ^https?://" @update:model-value="(v: string) => patchField(selected, { pattern: v || undefined })" />
+            <el-input clearable :model-value="selField()!.pattern ?? ''" :disabled="readonly" placeholder="如 ^https?://" @update:model-value="(v: string) => patchField(selected, { pattern: v || undefined })" />
           </el-form-item>
 
           <template v-if="CHOICE.includes(selField()!.type)">
             <el-form-item label="选项">
               <div class="opts">
                 <div v-for="(o, oi) in selField()!.options ?? []" :key="oi" class="opt-row">
-                  <el-input :model-value="o.label" size="small" placeholder="显示" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { label: v })" />
-                  <el-input :model-value="o.value" size="small" placeholder="值" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { value: v })" />
+                  <el-input clearable :model-value="o.label" size="small" placeholder="显示" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { label: v })" />
+                  <el-input clearable :model-value="o.value" size="small" placeholder="值" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { value: v })" />
                   <el-button v-if="!readonly" size="small" type="danger" text :icon="Delete" @click="removeOption(selected, oi)" />
                 </div>
                 <el-button v-if="!readonly" size="small" plain :icon="Plus" @click="addOption(selected)">添加选项</el-button>
@@ -202,21 +202,21 @@ function selField(): FieldDef | undefined {
             </el-form-item>
           </template>
           <el-form-item v-if="selField()!.type === 'checkbox'" label="最多选">
-            <el-input-number :model-value="selField()!.maxChecked ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxChecked: v || undefined })" />
+            <el-input clearable-number :model-value="selField()!.maxChecked ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxChecked: v || undefined })" />
           </el-form-item>
           <el-form-item v-if="selField()!.type === 'select-multi'" label="最多选">
-            <el-input-number :model-value="selField()!.maxSelected ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxSelected: v || undefined })" />
+            <el-input clearable-number :model-value="selField()!.maxSelected ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxSelected: v || undefined })" />
           </el-form-item>
           <el-form-item v-if="selField()!.type === 'image-list'" label="最多张">
-            <el-input-number :model-value="selField()!.max ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { max: v || undefined })" />
+            <el-input clearable-number :model-value="selField()!.max ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { max: v || undefined })" />
           </el-form-item>
 
           <template v-if="selField()!.type === 'list'">
             <el-form-item label="最少行">
-              <el-input-number :model-value="selField()!.minRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minRows: v || undefined })" />
+              <el-input clearable-number :model-value="selField()!.minRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minRows: v || undefined })" />
             </el-form-item>
             <el-form-item label="最多行">
-              <el-input-number :model-value="selField()!.maxRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxRows: v || undefined })" />
+              <el-input clearable-number :model-value="selField()!.maxRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxRows: v || undefined })" />
             </el-form-item>
             <el-form-item label="子字段">
               <div class="nested">

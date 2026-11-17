@@ -31,7 +31,7 @@ function onCategorySelect(value: string): void {
   <el-form size="small" label-position="top">
     <FormGrid>
       <el-form-item class="full" label="工具 id" :required="mode === 'create'">
-        <el-input
+        <el-input clearable
           v-model="form.id"
           :disabled="mode === 'edit'"
           :placeholder="mode === 'create' ? '如 my-tool；= 目录名，创建后不可改' : ''"
@@ -39,8 +39,8 @@ function onCategorySelect(value: string): void {
         <FormHint v-if="mode === 'edit'">唯一真相源，必须与目录名一致，不可改</FormHint>
         <FormHint v-else-if="idError" class="id-error">{{ idError }}</FormHint>
       </el-form-item>
-      <el-form-item label="名称" required><el-input v-model="form.name" placeholder="桌面上显示的工具名" /></el-form-item>
-      <el-form-item v-if="mode === 'edit'" label="入口菜单"><el-input v-model="form.entryRoute" /></el-form-item>
+      <el-form-item label="名称" required><el-input clearable v-model="form.name" placeholder="桌面上显示的工具名" /></el-form-item>
+      <el-form-item v-if="mode === 'edit'" label="入口菜单"><el-input clearable v-model="form.entryRoute" /></el-form-item>
       <el-form-item label="分类">
         <el-autocomplete
           v-model="form.category"
@@ -51,11 +51,11 @@ function onCategorySelect(value: string): void {
         />
       </el-form-item>
       <el-form-item label="标签">
-        <el-input v-model="form.tags" placeholder="逗号分隔；标签内可含空格" />
+        <el-input clearable v-model="form.tags" placeholder="逗号分隔；标签内可含空格" />
         <FormHint>标签内可含空格，如 OCR 识别</FormHint>
       </el-form-item>
       <el-form-item v-if="mode === 'edit'" label="图标">
-        <el-input v-model="form.icon" placeholder="auto = assets/icon.svg" />
+        <el-input clearable v-model="form.icon" placeholder="auto = assets/icon.svg" />
       </el-form-item>
       <el-form-item v-if="mode === 'edit'" label="配置布局">
         <el-select v-model="form.configLayout">
@@ -71,7 +71,7 @@ function onCategorySelect(value: string): void {
         </el-select>
       </el-form-item>
       <el-form-item class="full" label="描述">
-        <el-input v-model="form.description" type="textarea" :rows="2" />
+        <el-input clearable v-model="form.description" type="textarea" :rows="2" />
       </el-form-item>
     </FormGrid>
   </el-form>

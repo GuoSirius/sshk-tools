@@ -255,15 +255,15 @@ watch(() => props.section, (section) => {
                   :label="field.label"
                   :class="{ full: field.full || field.type === 'textarea' || field.type === 'dir' || field.type === 'file' }"
                 >
-                  <el-input-number
+                  <el-input clearable-number
                     v-if="field.type === 'number'"
                     v-model="values[field.key]"
                     :min="field.min"
                     :max="field.max"
                   />
-                  <el-input v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
+                  <el-input clearable v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
                   <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">
-                    <el-input v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
+                    <el-input clearable v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
                     <el-button size="small" @click="pickPath(field)">
                       {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
                     </el-button>
@@ -271,7 +271,7 @@ watch(() => props.section, (section) => {
                   <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" filterable clearable>
                     <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
-                  <el-input v-else v-model="values[field.key]" />
+                  <el-input clearable v-else v-model="values[field.key]" />
                   <FormHint v-if="field.hint">{{ field.hint }}</FormHint>
                 </el-form-item>
               </FormGrid>

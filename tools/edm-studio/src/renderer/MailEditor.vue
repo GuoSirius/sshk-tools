@@ -234,7 +234,7 @@ function savePlacementData(): void {
       <div class="left">
         <!-- ① 基本信息 -->
         <el-form v-show="step === 1" label-width="90px">
-          <el-form-item label="名称"><el-input v-model="draft.name" placeholder="邮件名称" /></el-form-item>
+          <el-form-item label="名称"><el-input clearable v-model="draft.name" placeholder="邮件名称" /></el-form-item>
           <el-form-item label="来源">
             <el-radio-group v-model="draft.origin">
               <el-radio value="custom">自定义</el-radio>

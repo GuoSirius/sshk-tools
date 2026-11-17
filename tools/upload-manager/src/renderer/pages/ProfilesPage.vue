@@ -383,7 +383,7 @@ onMounted(() => {
       <section class="panel">
         <div class="panel-head"><el-icon><FolderOpened /></el-icon><span>本地默认目录</span></div>
         <div class="path-row">
-          <el-input v-model="cfg.local.defaultDir" size="small" placeholder="留空则使用应用当前目录" />
+          <el-input clearable v-model="cfg.local.defaultDir" size="small" placeholder="留空则使用应用当前目录" />
           <el-button size="small" :icon="FolderOpened" @click="pickLocalDir">选择目录</el-button>
         </div>
         <div class="hint">工具可在自己的「上传通道」配置里覆盖此目录；未覆盖时统一落到这里。</div>
@@ -393,10 +393,10 @@ onMounted(() => {
         <div class="panel-head"><el-icon><Upload /></el-icon><span>全局默认校验</span></div>
         <el-form label-width="auto" size="small">
           <el-form-item label="允许扩展名">
-            <el-input v-model="acceptText" placeholder=".png, .jpg, .webp（留空 = 不限制）" />
+            <el-input clearable v-model="acceptText" placeholder=".png, .jpg, .webp（留空 = 不限制）" />
           </el-form-item>
           <el-form-item label="单文件大小(MB)">
-            <el-input-number v-model="maxSizeMb" :min="0" :max="2048" :step="1" />
+            <el-input clearable-number v-model="maxSizeMb" :min="0" :max="2048" :step="1" />
             <span class="hint-inline">0 = 不限制；工具只能设得更严，不能放宽</span>
           </el-form-item>
         </el-form>

@@ -81,7 +81,7 @@ async function copyUrl(): Promise<void> {
       </template>
     </el-image>
     <el-button v-if="!readonly" :icon="Upload" :loading="uploading" @click="pick">上传</el-button>
-    <el-input
+    <el-input clearable
       :model-value="modelValue"
       placeholder="图片 URL，或点「上传」选本地图片"
       :disabled="readonly"

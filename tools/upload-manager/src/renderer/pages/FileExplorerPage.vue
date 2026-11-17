@@ -52,6 +52,8 @@ import { CodeEditor } from '@sshk/code-editor'
 // ── 通道与目录状态 ──
 const channels = ref<FsChannelInfo[]>([])
 const outputRoot = ref('')
+/** 应用以管理员运行时 Windows 会拦截资源管理器拖拽（UIPI），给出明确提示而不是让用户猜 */
+const elevated = ref(false)
 const profileId = ref('')
 const path = ref('')
 const pathInput = ref('')
@@ -161,6 +163,7 @@ async function loadChannels(): Promise<void> {
     const payload = await window.api.fs.profiles()
     channels.value = payload.channels
     outputRoot.value = payload.outputRoot
+    elevated.value = Boolean(payload.elevated)
     const saved = localStorage.getItem('sshk.fs.profileId') ?? ''
     const ok = payload.channels.find((c) => c.id === saved) ?? payload.channels[0]
     profileId.value = ok?.id ?? ''
@@ -515,8 +518,17 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
   dragOver.value = false
   if (!isFsTarget(e)) return
   const files = [...(e.dataTransfer?.files ?? [])]
-  if (!files.length) return
-  const paths = files.map((f) => window.api.fs.pathForFile(f)).filter(Boolean)
+  if (!files.length) {
+    ElMessage.warning('未从系统拖拽事件中拿到文件（可能拖的是网页元素或纯文本）；文件请从资源管理器拖入')
+    return
+  }
+  // webUtils.getPathForFile 为主，File.path 兜底（个别 Electron 版本 contextBridge 传 File 后 webUtils 取不到）
+  const paths = files.map((f) => {
+    const viaWebUtils = window.api.fs.pathForFile(f)
+    if (viaWebUtils) return viaWebUtils
+    const legacy = (f as File & { path?: string }).path
+    return typeof legacy === 'string' ? legacy : ''
+  }).filter(Boolean)
   if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传」按钮选择'); return }
   if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道'); return }
   const flat = await window.api.fs.flattenLocal(paths)
@@ -910,18 +922,18 @@ onMounted(() => {
     for (const t of list0) tasks.value.set(t.id, t)
     tasks.value = new Map(tasks.value)
   })
-  // 拖拽上传：window 级监听（见 onWindowDrop 注释）
-  window.addEventListener('dragenter', onWindowDragEnter)
-  window.addEventListener('dragover', onWindowDragOver)
-  window.addEventListener('dragleave', onWindowDragLeave)
-  window.addEventListener('drop', onWindowDrop)
+  // 拖拽上传：window 级监听（见 onWindowDrop 注释）；capture 相位保证先于任何子元素拿到事件
+  window.addEventListener('dragenter', onWindowDragEnter, { capture: true })
+  window.addEventListener('dragover', onWindowDragOver, { capture: true })
+  window.addEventListener('dragleave', onWindowDragLeave, { capture: true })
+  window.addEventListener('drop', onWindowDrop, { capture: true })
 })
 onBeforeUnmount(() => {
   if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
-  window.removeEventListener('dragenter', onWindowDragEnter)
-  window.removeEventListener('dragover', onWindowDragOver)
-  window.removeEventListener('dragleave', onWindowDragLeave)
-  window.removeEventListener('drop', onWindowDrop)
+  window.removeEventListener('dragenter', onWindowDragEnter, { capture: true } as EventListenerOptions)
+  window.removeEventListener('dragover', onWindowDragOver, { capture: true } as EventListenerOptions)
+  window.removeEventListener('dragleave', onWindowDragLeave, { capture: true } as EventListenerOptions)
+  window.removeEventListener('drop', onWindowDrop, { capture: true } as EventListenerOptions)
 })
 
 // ── 键盘（§3.3） ──
@@ -944,6 +956,16 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <div ref="rootRef" class="fs-page" tabindex="0" @keydown="onKeydown">
+    <!-- 拖拽诊断：管理员进程收不到资源管理器拖拽（Windows UIPI），明示原因避免反复试错 -->
+    <el-alert
+      v-if="elevated"
+      class="fs-elevated-alert"
+      type="warning"
+      :closable="true"
+      title="应用正以管理员身份运行：Windows 会拦截资源管理器的文件拖拽（拖入无任何反应属正常现象）"
+      description="请用普通权限重启应用（关闭管理员终端 / 右键属性取消「以管理员身份运行」）后再试拖拽；当前仍可用「上传 ▾」按钮选择文件。"
+      show-icon
+    />
     <!-- 通道切换条 -->
     <div class="fs-channel-bar">
       <el-select v-model="profileId" size="small" class="fs-channel-select" placeholder="选择上传通道" filterable>
@@ -977,7 +999,7 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-crumb" @click="gotoCrumb(i)">{{ seg }}</span>
         </template>
       </div>
-      <el-input
+      <el-input clearable
         v-else
         v-model="pathInput"
         size="small"
@@ -1148,7 +1170,7 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 新建目录 -->
     <el-dialog v-model="mkdirOpen" title="新建文件夹" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input v-model="mkdirName" placeholder="目录名（不含斜杠）" autofocus @keyup.enter="submitMkdir" />
+      <el-input clearable v-model="mkdirName" placeholder="目录名（不含斜杠）" autofocus @keyup.enter="submitMkdir" />
       <template #footer>
         <el-button @click="mkdirOpen = false">取消</el-button>
         <el-button type="primary" @click="submitMkdir">创建</el-button>
@@ -1157,7 +1179,7 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 重命名 -->
     <el-dialog v-model="renameOpen" title="重命名" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input v-model="renameName" autofocus @keyup.enter="submitRename" />
+      <el-input clearable v-model="renameName" autofocus @keyup.enter="submitRename" />
       <template #footer>
         <el-button @click="renameOpen = false">取消</el-button>
         <el-button type="primary" @click="submitRename">确定</el-button>
@@ -1174,7 +1196,7 @@ function onKeydown(event: KeyboardEvent): void {
           </el-select>
         </template>
         <div class="hint" style="margin-bottom: 8px">目标目录（通道根相对路径，如 a/b；留空为根目录）：</div>
-        <el-input v-model="moveDirInput" placeholder="a/b，也可从下方目录树选择" @keyup.enter="submitMove" />
+        <el-input clearable v-model="moveDirInput" placeholder="a/b，也可从下方目录树选择" @keyup.enter="submitMove" />
         <el-cascader
           ref="moveCascaderRef"
           :key="moveDestProfile || profileId || ''"
@@ -1287,6 +1309,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 <style scoped>
 .fs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; gap: 8px; padding: 10px 20px 14px; }
+.fs-elevated-alert { flex: none; --el-alert-padding: 6px 10px; }
 .fs-spacer { flex: 1; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.5; }
 

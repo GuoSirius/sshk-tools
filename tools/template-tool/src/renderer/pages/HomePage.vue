@@ -127,7 +127,7 @@ const activeCap = ref<string>('providers')
       <!-- ③ ChatByProvider -->
       <template v-else-if="activeCap === 'chat-provider'">
         <div class="panel-head">按 Provider 对话（chatByProvider）</div>
-        <el-input v-model="chatInput" type="textarea" :rows="3" placeholder="输入消息" />
+        <el-input clearable v-model="chatInput" type="textarea" :rows="3" placeholder="输入消息" />
         <el-button type="primary" style="margin-top:8px" @click="runChatByProvider">发送（密钥由主进程注入）</el-button>
         <pre class="result">{{ chatOutput || '（返回将显示在此）' }}</pre>
       </template>
@@ -145,8 +145,8 @@ const activeCap = ref<string>('providers')
       <!-- ⑤⑥ Secret -->
       <template v-else-if="activeCap === 'secret'">
         <div class="panel-head">工具专属密钥（set/getToolSecret）</div>
-        <el-input v-model="secretName" placeholder="密钥名" style="margin-bottom:6px" />
-        <el-input v-model="secretValue" placeholder="密钥值" style="margin-bottom:6px" />
+        <el-input clearable v-model="secretName" placeholder="密钥名" style="margin-bottom:6px" />
+        <el-input clearable v-model="secretValue" placeholder="密钥值" style="margin-bottom:6px" />
         <el-button type="success" @click="setSecret">写入 safeStorage</el-button>
         <el-button type="info" @click="getSecret">读取回显</el-button>
         <pre class="result">{{ secretReadback || '（回显将显示在此）' }}</pre>
@@ -155,8 +155,8 @@ const activeCap = ref<string>('providers')
       <!-- ⑦ OCR -->
       <template v-else-if="activeCap === 'ocr'">
         <div class="panel-head">本机 OCR（runLocalOcr）</div>
-        <el-input v-model="ocrCommand" placeholder="OCR 命令" style="margin-bottom:6px" />
-        <el-input v-model="ocrImage" placeholder="图片绝对路径" style="margin-bottom:6px" />
+        <el-input clearable v-model="ocrCommand" placeholder="OCR 命令" style="margin-bottom:6px" />
+        <el-input clearable v-model="ocrImage" placeholder="图片绝对路径" style="margin-bottom:6px" />
         <el-button type="primary" @click="runOcr">执行识别</el-button>
         <pre class="result">{{ ocrResult || '（识别结果将显示在此）' }}</pre>
       </template>

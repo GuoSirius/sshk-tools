@@ -194,14 +194,14 @@ function acceptPolish(): void {
         <div class="field-label">{{ f.label }}<span v-if="f.required" class="req">*</span></div>
         <div class="field-control">
           <!-- 文本类 -->
-          <el-input
+          <el-input clearable
             v-if="f.type === 'input'"
             :model-value="strVal(f.key)"
             :placeholder="f.placeholder"
             :disabled="readonly"
             @update:model-value="(v: string) => set(f.key, v)"
           />
-          <el-input
+          <el-input clearable
             v-else-if="f.type === 'textarea'"
             :model-value="strVal(f.key)"
             type="textarea"

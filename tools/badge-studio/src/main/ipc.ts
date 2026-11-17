@@ -152,6 +152,22 @@ function kindOf(file: string): 'xlsx' | 'csv' | 'json' {
   return 'csv'
 }
 
+/** 标记核对 CSV（BOM 头，Excel 直接打开不乱码）：url/点击/自定义指标列 + 生成后回填的实际标记数 */
+function buildMarkCsv(stats: StatRow[], matchCounts: Record<string, number>): string {
+  const metricKeys = [...new Set(stats.flatMap((r) => Object.keys(r.metrics ?? {})))]
+  const esc = (v: unknown) => {
+    const t = String(v ?? '')
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+  }
+  const head = ['url', 'clicks', 'totalClicks', ...metricKeys, '实际标记数']
+  const rows = stats.map((r) =>
+    [r.url, r.clicks, r.totalClicks, ...metricKeys.map((k) => r.metrics?.[k] ?? ''), matchCounts[r.url] ?? 0]
+      .map(esc)
+      .join(','),
+  )
+  return `\uFEFF${[head.join(','), ...rows].join('\n')}\n`
+}
+
 /**
  * Badge Studio IPC（数据契约 §5 badge 命名空间）。
  * 原 HTML 全程只读；badge 副本与海报产物覆盖式写入（D19）。
@@ -267,6 +283,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   ipc.handle(IPC_CHANNELS.badgeGenerate, wrap(async (input: GenerateInput) => {
     const posterId = input.posterId ?? entityId('pst')
     const { html: badged, matchCounts } = injectBadges(input.sourceHtml, input.stats, input.config)
+    // 标记核对报告（用户 2026-11-17：标记数据随海报保存）：CSV 落 assets，url→实际标记数
+    const markReportRel = writeOutput(deps.outputRoot, `assets/uploads/${posterId}-marks.csv`, buildMarkCsv(input.stats, matchCounts))
     // 穿插⑦-6：外链图片 main 侧下载内联转 dataURL（snapdom 截图内联像素被 CORS 拦 → 灰占位的根因）
     const { html: finalHtml, inlined } = await inlineRemoteImages(badged)
     if (inlined > 0) console.log(`[badge] 已内联外链图片 ${inlined} 张（${posterId}）`)
@@ -309,6 +327,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         datasources,
         configSnapshot: snapshot,
         statsSnapshot: input.stats,
+        markCounts: matchCounts,
+        markReport: markReportRel,
         outputs: { ...existing.outputs, badged: badgedRel },
         status: 'generated',
         lastGeneratedAt: now(),
@@ -319,6 +339,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         source,
         sourceHash,
         statsSnapshot: input.stats,
+        markCounts: matchCounts,
+        markReport: markReportRel,
         datasources,
         configSnapshot: snapshot,
         outputs,

@@ -59,6 +59,8 @@ export interface FsChannelInfo {
 export interface FsProfilesPayload {
   channels: FsChannelInfo[]
   outputRoot: string
+  /** 应用是否以管理员运行（Windows 管理员进程收不到资源管理器拖拽事件，UIPI 拦截；拖拽上传诊断用） */
+  elevated: boolean
 }
 
 /** main 侧 stat 结果：文件级冲突检测 / 存在性判断用 */

@@ -25,7 +25,7 @@ import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
 import { collectToolHealth, toolRecentErrors } from './health'
-import { listSessions, loadSession, runAutoCheck, saveSession } from './verify-sessions'
+import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoCheck, saveSession } from './verify-sessions'
 import type { VerifySession } from '@sshk/shared'
 import { exportPreset, importPreset } from './presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
@@ -766,8 +766,9 @@ async function registerIpc(): Promise<void> {
   // ── N2 工具健康度面板：目录裁决 + 插件状态 + 日志 error 检索 ──
   handleOk(IPC_CHANNELS.toolsHealth, () => collectToolHealth(buildCatalog(), allManifests()))
 
-  // ── U2 验证引导：会话存储（userData/verify-sessions）+ main 侧自动判定（fileExists/catalogState/logScan）──
-  const verifyDir = join(app.getPath('userData'), 'verify-sessions')
+  // ── U2 验证引导：会话存储 + main 侧自动判定（fileExists/catalogState/logScan）──
+  // dev 落 <repo>/docs/verify-sessions（随 git 提交同步，跨设备/多人增量累计）；打包版落 userData
+  const verifyDir = resolveSessionsDir(app.getPath('userData'), findRepoRoot(app.getAppPath()))
   handleOk(IPC_CHANNELS.verifySessionLoad, (_event, date?: string) => loadSession(verifyDir, date ? String(date) : undefined))
   handleOk(IPC_CHANNELS.verifySessionSave, (_event, session: unknown) => saveSession(verifyDir, session as VerifySession))
   handleOk(IPC_CHANNELS.verifySessionList, () => listSessions(verifyDir))

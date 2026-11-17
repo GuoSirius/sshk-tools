@@ -141,6 +141,8 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H10', group: 'H', title: '跨通道互拷（二期）', guide: '「复制到…」选其它通道 → 目录自动递归展开入队（超 1500 文件截断提示）；剪贴板跨通道粘贴按复制执行（剪切跨通道降级为复制，源保留）；传输队列显示「源 → 目标」；同名冲突待确认可覆盖', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
   { id: 'H11', group: 'H', title: '递归搜索（二期）', guide: '搜索框回车触发递归搜索（当前路径前缀内，根=整个通道）；结果横幅显示数量与截断提示，「返回目录」还原；云侧扫描上限 5 万 key、远程限深 6 层', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
   { id: 'H12', group: 'H', title: '目录容量统计（二期）', guide: '目录行「统计」或选中单个目录后工具栏「统计」：弹窗显示总大小与文件数；超大目录达扫描上限时明确标注「数值为已扫部分」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
+  { id: 'H13', group: 'H', title: '拖拽上传与管理员拦截诊断', guide: '资源管理器拖文件进文件系统页出遮罩、松手入队上传；若应用以管理员运行，页面顶部出现橙色警示（Windows UIPI 拦截拖拽），普通权限重启后拖拽恢复', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
+  { id: 'H14', group: 'H', title: '验证标记随代码同步', guide: '验证引导里标记 pass/fail + 填备注 → dev 下会话文件落在 docs/verify-sessions/<日期>.json（git status 可见，随代码提交同步到其它设备/成员；打包版本地留存）', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
 ]
 
 /** 步骤总数（页脚展示用） */

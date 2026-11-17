@@ -981,7 +981,7 @@ function onPaneScroll(e: Event): void {
             </el-radio-group>
           </div>
           <div class="lib-row lib-row-target">
-            <el-input v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
+            <el-input clearable v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
             <el-cascader
               ref="cascaderRef"
               :key="dirPanelKey"

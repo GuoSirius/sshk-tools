@@ -153,6 +153,10 @@ export interface Poster extends BaseEntity {
   status: EntityStatus
   /** 生成时的点击统计（可编辑重生成） */
   statsSnapshot?: StatsSnapshot
+  /** 生成后的标记核对数据：url → 实际被标记次数（用户 2026-11-17：随海报保存，重开可回显） */
+  markCounts?: Record<string, number>
+  /** 标记核对报告（CSV，相对 app.outputDir） */
+  markReport?: string
   lastGeneratedAt?: string
   /**
    * 打标时的源指纹（数据契约 §7「源已更新」检测）：

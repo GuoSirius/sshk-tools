@@ -4,12 +4,33 @@
  * 自动判定四类中 main 侧负责三类：fileExists / catalogState / logScan（hostCapability 渲染层自判）。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { VerifySession } from '@sshk/shared'
 
 /** 会话目录（userData/verify-sessions） */
 export function verifySessionsDir(userDataDir: string): string {
   return join(userDataDir, 'verify-sessions')
+}
+
+/** 自 startDir 向上找仓库根（pnpm-workspace.yaml 标记），8 层内找不到返回 null */
+export function findRepoRoot(startDir: string): string | null {
+  let dir = startDir
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * 会话落点（用户 2026-11-17：验证标记/备注要随代码提交同步）：
+ * dev（找到仓库根）= <repo>/docs/verify-sessions/<日期>.json —— 进 git，跨设备/多人增量累计；
+ * 打包版（无仓库）= userData/verify-sessions/（本机留存，行为同旧）
+ */
+export function resolveSessionsDir(userDataDir: string, repoRoot: string | null): string {
+  return repoRoot ? join(repoRoot, 'docs', 'verify-sessions') : join(userDataDir, 'verify-sessions')
 }
 
 /** 校验会话结构（防御 JSON 篡改/损坏） */

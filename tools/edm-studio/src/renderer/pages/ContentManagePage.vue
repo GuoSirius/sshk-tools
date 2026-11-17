@@ -1265,17 +1265,17 @@ async function confirmSaveAs(): Promise<void> {
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveMeta">保存</el-button>
             </div>
             <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
-              <el-form-item label="名称"><el-input v-model="form.name" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="showForm.brandBase" label="code"><el-input v-model="form.code" :disabled="!canEdit" /></el-form-item>
-              <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
+              <el-form-item label="名称"><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.brandBase" label="code"><el-input clearable v-model="form.code" :disabled="!canEdit" /></el-form-item>
+              <el-form-item label="描述"><el-input clearable v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input clearable v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
               <template v-if="showForm.policy">
-                <el-form-item label="类型"><el-input v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
-                <el-form-item label="黑名单"><el-input v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
-                <el-form-item label="白名单"><el-input v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
+                <el-form-item label="类型"><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
+                <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
+                <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>
-              <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.version" label="版本号"><el-input clearable-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.version" label="变更说明"><el-input clearable v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
             <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
           </el-tab-pane>
@@ -1340,9 +1340,9 @@ async function confirmSaveAs(): Promise<void> {
     <el-dialog v-model="saveAsState.visible" title="另存为" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
       <el-form label-width="auto">
         <template v-if="saveAsIsEntity">
-          <el-form-item label="新名称"><el-input v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
+          <el-form-item label="新名称"><el-input clearable v-model="saveAsState.name" placeholder="默认带 -copy 后缀" /></el-form-item>
           <el-form-item v-if="saveAsState.node?.kind !== 'version' && saveAsState.origin === 'system'" label="code（目录名）">
-            <el-input v-model="saveAsState.code" placeholder="留空则用新名称" />
+            <el-input clearable v-model="saveAsState.code" placeholder="留空则用新名称" />
           </el-form-item>
           <el-form-item v-if="saveAsState.node?.kind === 'family' || saveAsState.node?.kind === 'version'" label="目标位置">
             <el-select v-model="saveAsState.target" filterable style="width: 100%">
@@ -1374,7 +1374,7 @@ async function confirmSaveAs(): Promise<void> {
               <el-option v-for="d in allCssDirs.filter((x) => x.source === saveAsState.origin)" :key="d.path" :value="d.path" :label="d.label" />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="saveAsIsCssFile" label="新文件名"><el-input v-model="saveAsState.name" /></el-form-item>
+          <el-form-item v-if="saveAsIsCssFile" label="新文件名"><el-input clearable v-model="saveAsState.name" /></el-form-item>
           <el-form-item v-else label="携带内容"><span class="hint">目录下全部 css 文件（目录名恒为 css，文件名不变，冲突时询问）</span></el-form-item>
         </template>
       </el-form>

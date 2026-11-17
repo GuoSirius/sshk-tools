@@ -140,7 +140,7 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="名称"><el-input v-model="frgForm.name" /></el-form-item>
+        <el-form-item label="名称"><el-input clearable v-model="frgForm.name" /></el-form-item>
         <el-form-item label="类型">
           <el-select v-model="frgForm.type" style="width: 100%">
             <el-option label="banner（头图）" value="banner" />
@@ -156,10 +156,10 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
     </el-dialog>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgvOpen" title="新建片段版本（含黑白名单）" width="640px">
-      <el-input v-model="frgvForm.html" type="textarea" :rows="8" placeholder="njk 源码" />
+      <el-input clearable v-model="frgvForm.html" type="textarea" :rows="8" placeholder="njk 源码" />
       <div style="margin-top: 8px; display: flex; gap: 8px">
-        <el-input v-model="frgvForm.blacklistText" size="small" placeholder="黑名单（模板/版本 ID，逗号分隔）" />
-        <el-input v-model="frgvForm.whitelistText" size="small" placeholder="白名单（空 = 不限制）" />
+        <el-input clearable v-model="frgvForm.blacklistText" size="small" placeholder="黑名单（模板/版本 ID，逗号分隔）" />
+        <el-input clearable v-model="frgvForm.whitelistText" size="small" placeholder="白名单（空 = 不限制）" />
       </div>
       <template #footer>
         <el-button size="small" @click="frgvOpen = false">取消</el-button>

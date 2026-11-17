@@ -19,6 +19,7 @@ import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
 import VerifyGuidePage from './components/VerifyGuidePage.vue'
+import { promptSecret } from './components/secret-prompt'
 import logoUrl from '../../build/icon.svg'
 
 const { mode, setMode } = useTheme()
@@ -41,6 +42,15 @@ const settingsOpen = ref(false)
 const settingsGroup = ref('general')
 const query = ref('')
 const version = ref('0.1.0')
+/** 状态栏实时时钟（用户 2026-11-17：年月日 时分秒+星期） */
+const clockText = ref('')
+let clockTimer: number | undefined
+const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六']
+function tickClock(): void {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  clockText.value = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} 星期${WEEK_CN[d.getDay()]}`
+}
 const { state: updater } = useUpdater()
 let hoverTimer: number | undefined
 
@@ -58,6 +68,8 @@ function measureMarquee(): void {
 }
 watch([currentTool, sidebarCollapsed], () => measureMarquee(), { immediate: true })
 onMounted(() => { void nextTick(measureMarquee) })
+onMounted(() => { tickClock(); clockTimer = window.setInterval(tickClock, 1000) })
+onBeforeUnmount(() => { if (clockTimer !== undefined) window.clearInterval(clockTimer) })
 
 // 关闭前确认：主进程在窗口关闭时通知渲染层，用主题色 ElMessageBox 替代原生系统 dialog
 function showCloseConfirm(): void {
@@ -207,12 +219,8 @@ async function openDevTools(): Promise<void> {
     return
   } catch { /* 打包版需要密钥 */ }
   try {
-    const { value } = await ElMessageBox.prompt('打开开发者工具需要访问密钥', '开发者工具', {
-      inputPlaceholder: '访问密钥',
-      inputType: 'password',
-      closeOnClickModal: false,
-    })
-    await window.api.app.toggleDevTools(String(value ?? ''))
+    const secret = await promptSecret('开发者工具', '打开开发者工具需要访问密钥', '验证并开启')
+    await window.api.app.toggleDevTools(String(secret ?? ''))
   } catch (err) {
     const message = (err as Error).message
     if (message && message !== 'cancel') ElMessage.error(message)
@@ -389,7 +397,7 @@ onMounted(async () => {
             <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
             <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
             <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
-            <el-dropdown-item command="about" divided>关于</el-dropdown-item>
+            <el-dropdown-item command="about" divided>关于应用</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -522,10 +530,8 @@ onMounted(async () => {
     </div>
 
     <footer class="status-bar">
-      <span>v{{ version }}</span>
-      <span>产物目录：默认（可在应用设置中修改）</span>
       <span class="app-spacer" />
-      <span>北京时间</span>
+      <span>{{ clockText }}</span>
       <span>就绪</span>
     </footer>
 

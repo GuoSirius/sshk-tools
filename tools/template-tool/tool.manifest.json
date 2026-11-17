@@ -148,7 +148,7 @@
     {
       "id": "config-model",
       "label": "模型与调用",
-      "icon": "M4 4h16v11H9l-5 4z",
+      "icon": "M8 3v2M16 3v2M8 19v2M16 19v2M3 8h2M3 16h2M19 8h2M19 16h2M6 6h12v12H6zM10 10.5h4v3h-4z",
       "groups": [
         "config-llm",
         "config-ocr"
@@ -157,7 +157,7 @@
     {
       "id": "config-io",
       "label": "路径与输出",
-      "icon": "M3 5h6l2 2h10v12H3z",
+      "icon": "M3 6a1 1 0 011-1h5l2 2h9a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V6zM12 16v-5M9.5 13.5L12 11l2.5 2.5",
       "groups": [
         "config-path",
         "config-output"

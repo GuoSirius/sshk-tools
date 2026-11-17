@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ACCESS_GRANT, IPC_CHANNELS } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState, InstallPreview, ToolCatalogPayload } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
+import { promptSecret } from './secret-prompt'
 
 /** 开发协助配置（分发白名单 / 图标覆盖 / 硬依赖）只在 dev 展示，发布版隐藏 */
 const isDev = import.meta.env.DEV
@@ -59,10 +60,10 @@ async function installUpdate(): Promise<void> {
 
 /** 后期新增应用级菜单：只加一个分组 + 一个 section，不挤占顶部栏 */
 const groups = [
-  { id: 'general', label: '常规', hint: '主题、产物目录、启动行为与分享' },
+  { id: 'general', label: '常规设置', hint: '主题、产物目录、启动行为与分享' },
   { id: 'tools', label: '工具与权限', hint: '启用禁用、访问密钥、分发白名单、卡片信息' },
   { id: 'system', label: '系统与数据', hint: '版本、数据目录、密钥与备份策略' },
-  { id: 'about', label: '关于', hint: '配置分层与扩展约定' },
+  { id: 'about', label: '关于应用', hint: '配置分层与扩展约定' },
 ] as const
 const activeGroup = ref<string>(props.group ?? 'general')
 watch(() => props.group, (value) => { if (value) activeGroup.value = value })
@@ -95,19 +96,12 @@ async function onDeveloperModeChange(next: unknown): Promise<void> {
   const wanted = Boolean(next)
   if (!wanted || isDev) { cfg.developerMode = wanted; return }
   try {
-    const { value } = await ElMessageBox.prompt(
-      '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
+    const secret = await promptSecret(
       '开发者模式',
-      {
-        inputPlaceholder: '访问密钥',
-        inputType: 'password',
-        confirmButtonText: '验证并开启',
-        cancelButtonText: '取消',
-        closeOnClickModal: false,
-        closeOnPressEscape: false,
-      },
+      '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
+      '验证并开启',
     )
-    await callHostApi<boolean>(DEV_KEY_SPEC, String(value ?? ''))
+    await callHostApi<boolean>(DEV_KEY_SPEC, String(secret ?? ''))
     cfg.developerMode = true
     ElMessage.success('验证通过，点「保存应用配置」后生效')
   } catch (err) {
@@ -633,26 +627,48 @@ async function cleanupOrphans(): Promise<void> {
                     </el-select>
                   </el-form-item>
                   <el-form-item label="分享有效期">
-                    <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" />
+                    <el-input clearable-number v-model="cfg.ttlHours" :min="1" :max="720" />
                     <FormHint inline>小时（到期即失效）</FormHint>
                   </el-form-item>
-                  <el-form-item label="开机自启"><el-switch v-model="cfg.launchOnBoot" /></el-form-item>
-                  <el-form-item label="系统托盘"><el-switch v-model="cfg.tray" /></el-form-item>
+                  <el-form-item label="开机自启">
+                    <div class="switch-row">
+                      <span class="switch-label">开机自启</span>
+                      <el-switch v-model="cfg.launchOnBoot" />
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="系统托盘">
+                    <div class="switch-row">
+                      <span class="switch-label">系统托盘</span>
+                      <el-switch v-model="cfg.tray" />
+                    </div>
+                  </el-form-item>
                   <el-form-item label="自动更新">
-                    <el-switch v-model="cfg.autoUpdate" />
-                    <FormHint inline detail="新版本仅在后台下载，完成后点「立即安装」重启生效">默认开</FormHint>
+                    <div class="switch-row">
+                      <span class="switch-label">自动更新
+                        <FormHint inline detail="新版本仅在后台下载，完成后点「立即安装」重启生效">默认开</FormHint>
+                      </span>
+                      <el-switch v-model="cfg.autoUpdate" />
+                    </div>
                   </el-form-item>
                   <el-form-item label="自动安装更新">
-                    <el-switch v-model="cfg.autoInstallOnAppQuit" />
-                    <FormHint inline detail="默认关：新版本仅在后台下载，可在「系统与数据 → 更新」点「立即安装」；开启后退出应用时自动安装">默认关；开启后退出即自动安装</FormHint>
+                    <div class="switch-row">
+                      <span class="switch-label">自动安装更新
+                        <FormHint inline detail="默认关：新版本仅在后台下载，可在「系统与数据 → 更新」点「立即安装」；开启后退出应用时自动安装">默认关</FormHint>
+                      </span>
+                      <el-switch v-model="cfg.autoInstallOnAppQuit" />
+                    </div>
                   </el-form-item>
                   <el-form-item label="开发者模式">
-                    <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
-                    <FormHint inline detail="开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥；源码 dev 运行时开发功能始终开启，不受此开关影响">仅打包版生效；源码 dev 恒开</FormHint>
+                    <div class="switch-row">
+                      <span class="switch-label">开发者模式
+                        <FormHint inline detail="开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥；源码 dev 运行时开发功能始终开启，不受此开关影响">仅打包版生效；源码 dev 恒开</FormHint>
+                      </span>
+                      <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
+                    </div>
                   </el-form-item>
                   <el-form-item class="full" label="产物目录">
                     <div class="combo">
-                      <el-input v-model="cfg.outputDir" placeholder="留空 = 默认 userData/sshk-data" />
+                      <el-input clearable v-model="cfg.outputDir" placeholder="留空 = 默认 userData/sshk-data" />
                       <el-button @click="pickDir">选择</el-button>
                     </div>
                     <FormHint>变更需重启生效；路径不进备份包</FormHint>
@@ -793,13 +809,13 @@ async function cleanupOrphans(): Promise<void> {
                 <div v-if="editing === tool.id" class="tool-manage-body">
                   <el-form size="small" label-position="top">
                     <FormGrid>
-                      <el-form-item label="显示名称"><el-input v-model="form.name" /></el-form-item>
+                      <el-form-item label="显示名称"><el-input clearable v-model="form.name" /></el-form-item>
                       <el-form-item label="分类 / 标签">
-                        <el-input v-model="form.category" />
+                        <el-input clearable v-model="form.category" />
                         <FormHint>逗号 / 顿号分隔；标签内可含空格</FormHint>
                       </el-form-item>
                       <el-form-item class="full" label="描述">
-                        <el-input v-model="form.description" type="textarea" :rows="2" />
+                        <el-input clearable v-model="form.description" type="textarea" :rows="2" />
                       </el-form-item>
                       <el-form-item v-if="isDev" class="full" label="图标">
                         <el-select v-model="form.icon" filterable allow-create default-first-option>
@@ -959,8 +975,8 @@ async function cleanupOrphans(): Promise<void> {
               </div>
               <div v-if="publicKeys.length === 0" class="kv-line"><span class="hint">未导入第三方公钥（官方公钥内置，无需导入）</span></div>
               <el-dialog v-model="keyImportOpen" title="导入第三方公钥" width="520px" :close-on-click-modal="false" :close-on-press-escape="false">
-                <el-input v-model="keyLabel" placeholder="发布者名称（如：合作方 A）" style="margin-bottom: 10px" />
-                <el-input v-model="keyPem" type="textarea" :rows="8" placeholder="粘贴 PEM 公钥内容（-----BEGIN PUBLIC KEY----- ...）" />
+                <el-input clearable v-model="keyLabel" placeholder="发布者名称（如：合作方 A）" style="margin-bottom: 10px" />
+                <el-input clearable v-model="keyPem" type="textarea" :rows="8" placeholder="粘贴 PEM 公钥内容（-----BEGIN PUBLIC KEY----- ...）" />
                 <template #footer>
                   <el-button size="small" @click="keyImportOpen = false">取消</el-button>
                   <el-button size="small" type="primary" @click="importKey">导入</el-button>

@@ -274,7 +274,7 @@ watch(visible, (v) => {
                 <el-radio-button :value="'fail'">未通过</el-radio-button>
                 <el-radio-button :value="'skip'">跳过</el-radio-button>
               </el-radio-group>
-              <el-input
+              <el-input clearable
                 :model-value="session.results[s.id]?.note ?? ''"
                 size="small"
                 placeholder="备注（可选：现象 / 截图路径 / 编号）"

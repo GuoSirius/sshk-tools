@@ -510,6 +510,27 @@ body {
 }
 .app-settings-btn .el-icon { flex: none; }
 
+/* ── 开关一行布局（2026-11-17 全项目标准）：label 左 + 开关右同一行；
+      描述用 FormHint 放 label 右侧（inline）或问号弹出；引用：.switch-row > .switch-label + .el-switch ── */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+  text-align: left;
+}
+.switch-label .sshk-form-hint { width: auto; }
+/* el-form-item 内含开关时同样强制一行（兼容 label-position=top 的表单） */
+.el-form-item:has(> .el-form-item__content .switch-row) .el-form-item__label { display: none; }
+
 /* ── 应用设置中心：左侧分组导航 + 右侧内容，分组可无限扩展 ── */
 .el-drawer__body { padding: 0 !important; overflow: hidden; }
 .settings-shell { display: flex; height: 100%; background: var(--sshk-bg); color: var(--sshk-text); }

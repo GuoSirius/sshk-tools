@@ -199,8 +199,8 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="名称"><el-input v-model="tplForm.name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="tplForm.description" /></el-form-item>
+        <el-form-item label="名称"><el-input clearable v-model="tplForm.name" /></el-form-item>
+        <el-form-item label="描述"><el-input clearable v-model="tplForm.description" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button size="small" @click="tplOpen = false">取消</el-button>
@@ -209,8 +209,8 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
     </el-dialog>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplvOpen" title="新建模板版本（不可变）" width="640px">
-      <el-input v-model="tplvForm.html" type="textarea" :rows="10" placeholder="njk 源码；槽位用 {{ slot_header | safe }} 等引用" />
-      <el-input v-model="tplvForm.sampleDataText" type="textarea" :rows="4" style="margin-top: 8px" placeholder="sampleData JSON" />
+      <el-input clearable v-model="tplvForm.html" type="textarea" :rows="10" placeholder="njk 源码；槽位用 {{ slot_header | safe }} 等引用" />
+      <el-input clearable v-model="tplvForm.sampleDataText" type="textarea" :rows="4" style="margin-top: 8px" placeholder="sampleData JSON" />
       <template #footer>
         <el-button size="small" @click="tplvOpen = false">取消</el-button>
         <el-button size="small" type="primary" @click="saveTplv">创建版本</el-button>

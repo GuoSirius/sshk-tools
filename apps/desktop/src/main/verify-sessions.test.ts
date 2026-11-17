@@ -1,9 +1,9 @@
-import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { VerifySession } from '@sshk/shared'
-import { listSessions, loadSession, runAutoCheck, saveSession, type AutoCheckDeps } from './verify-sessions'
+import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoCheck, saveSession, type AutoCheckDeps } from './verify-sessions'
 
 let dir: string
 
@@ -19,6 +19,19 @@ function makeSession(date: string): VerifySession {
 }
 
 describe('verify 会话存储', () => {
+  it('会话落点：dev 落仓库 docs/verify-sessions（随 git 同步），打包版落 userData', () => {
+    // 构造伪仓库根：tmp/a/b + pnpm-workspace.yaml，从孙子目录向上找
+    const repo = mkdtempSync(join(tmpdir(), 'verify-repo-'))
+    const nested = join(repo, 'apps', 'desktop')
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(join(repo, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n')
+    expect(findRepoRoot(nested)).toBe(repo)
+    expect(findRepoRoot(tmpdir())).toBeNull()
+    expect(resolveSessionsDir('u', repo)).toBe(join(repo, 'docs', 'verify-sessions'))
+    expect(resolveSessionsDir('u', null)).toBe(join('u', 'verify-sessions'))
+    rmSync(repo, { recursive: true, force: true })
+  })
+
   it('保存后可按日期读回；结构非法拒绝写入', () => {
     const path = saveSession(dir, makeSession('2026-11-16'))
     expect(existsSync(path)).toBe(true)

@@ -28,8 +28,8 @@ function errorOf(index: number): string {
   <div>
     <div v-for="(row, i) in menus" :key="i" class="menu-item">
       <div class="menu-row">
-        <el-input v-model="row.id" size="small" placeholder="菜单 id（home）" style="width: 170px" />
-        <el-input v-model="row.label" size="small" placeholder="显示名称（首页）" style="width: 190px" />
+        <el-input clearable v-model="row.id" size="small" placeholder="菜单 id（home）" style="width: 170px" />
+        <el-input clearable v-model="row.label" size="small" placeholder="显示名称（首页）" style="width: 190px" />
         <code v-if="fileFor" class="file-chip">{{ fileFor(row.id) }}</code>
         <el-button size="small" type="danger" plain :icon="Delete" :disabled="minRows ? menus.length <= minRows : false" @click="remove(i)" />
       </div>

@@ -196,17 +196,17 @@ function locateInHtml(term: string): void {
         <el-table v-if="hasStats" :data="statRows" size="small" max-height="260" class="stat-table">
           <el-table-column label="URL" min-width="180">
             <template #default="{ row }">
-              <el-input v-model="row.url" size="small" @input="syncCsvFromRows" />
+              <el-input clearable v-model="row.url" size="small" @input="syncCsvFromRows" />
             </template>
           </el-table-column>
           <el-table-column label="clicks" width="112">
             <template #default="{ row }">
-              <el-input-number v-model="row.clicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
+              <el-input clearable-number v-model="row.clicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
             </template>
           </el-table-column>
           <el-table-column label="totalClicks" width="120">
             <template #default="{ row }">
-              <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
+              <el-input clearable-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
             </template>
           </el-table-column>
           <el-table-column label="标记" width="78">
@@ -224,7 +224,7 @@ function locateInHtml(term: string): void {
               <el-button size="small" text type="danger" title="移除该列" @click="removeMetric(key)">×</el-button>
             </template>
             <template #default="{ row }">
-              <el-input
+              <el-input clearable
                 :model-value="metricOf(row, key)"
                 size="small"
                 @input="(v: string) => setMetric(row, key, v)"
@@ -238,7 +238,7 @@ function locateInHtml(term: string): void {
           </el-table-column>
         </el-table>
         <div class="cfg-row" style="margin-top: 8px">
-          <el-input v-model="newMetricKey" size="small" placeholder="自定义数值列名，如 uv / 下单数" style="max-width: 200px" />
+          <el-input clearable v-model="newMetricKey" size="small" placeholder="自定义数值列名，如 uv / 下单数" style="max-width: 200px" />
           <el-button size="small" @click="addMetric">新增数值列</el-button>
           <span class="muted">表格改动会同步回上方 CSV 文本</span>
         </div>
@@ -319,10 +319,10 @@ function locateInHtml(term: string): void {
             <el-form label-width="auto" size="small" class="badge-cfg-form">
               <div class="form-inline-row">
                 <el-form-item label="海报名" class="grow-item">
-                  <el-input v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
+                  <el-input clearable v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
                 </el-form-item>
                 <el-form-item label="属性名" class="grow-item">
-                  <el-input v-model="badgeAttr" />
+                  <el-input clearable v-model="badgeAttr" />
                 </el-form-item>
               </div>
               <div class="form-inline-row">

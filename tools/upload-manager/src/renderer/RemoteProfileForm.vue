@@ -22,9 +22,9 @@ const emit = defineEmits<{
 <template>
   <el-form label-width="auto" size="small">
     <FormGrid>
-      <el-form-item label="名称"><el-input v-model="profile.name" /></el-form-item>
+      <el-form-item label="名称"><el-input clearable v-model="profile.name" /></el-form-item>
       <el-form-item label="ID">
-        <el-input :model-value="profile.id" disabled />
+        <el-input clearable :model-value="profile.id" disabled />
         <span class="hint-inline">密钥按此 ID 关联，勿随意修改</span>
       </el-form-item>
       <el-form-item label="协议">
@@ -35,13 +35,13 @@ const emit = defineEmits<{
       </el-form-item>
       <el-form-item label="主机 / 端口">
         <div class="combo">
-          <el-input v-model="profile.host" placeholder="192.168.1.10" />
-          <el-input-number v-model="profile.port" :min="1" :max="65535" />
+          <el-input clearable v-model="profile.host" placeholder="192.168.1.10" />
+          <el-input clearable-number v-model="profile.port" :min="1" :max="65535" />
         </div>
       </el-form-item>
-      <el-form-item label="用户名"><el-input v-model="profile.username" /></el-form-item>
-      <el-form-item label="远端位置"><el-input v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
-      <el-form-item label="访问域名"><el-input v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
+      <el-form-item label="用户名"><el-input clearable v-model="profile.username" /></el-form-item>
+      <el-form-item label="远端位置"><el-input clearable v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
+      <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
       <el-form-item label="被动模式">
         <el-switch v-model="profile.passive" />
         <span class="hint-inline">仅 FTP 生效</span>

@@ -766,6 +766,11 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
     const { html } = await host.badge.readHtml(row.source.htmlPath)
     pastedHtml.value = html
     statRows.value = toStatRows(row.statsSnapshot ?? [], [])
+    // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）
+    const savedMarks = (row as PosterRecord & { markCounts?: Record<string, number> }).markCounts
+    if (savedMarks) {
+      for (const r of statRows.value) r.matched = savedMarks[r.url] ?? 0
+    }
   } catch (err) {
     ElMessage.error('载入海报失败：' + (err as Error).message)
     return

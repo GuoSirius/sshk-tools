@@ -233,6 +233,41 @@ function rollbackBump() {
   } catch { /* 未暂存时 restore 为 no-op，可忽略 */ }
   console.error(RED('已回滚版本号与 CHANGELOG（未提交未推送），同版本号可直接重新发布'))
 }
+
+/* ── 中断回退（用户 2026-11-17 问 Ctrl+C / 终止是否有回退）：构建失败 / 提交推送失败 / SIGINT 三路共用，幂等 ──
+ * 阶段：idle（未写任何文件）→ bumped（已写版本号+CHANGELOG）→ committing（已建 release 提交，可能已打 tag）→ pushed（远端确认）
+ * 远端若已推成功（ls-remote 查到 tag）则不回滚——本地保持 release 提交，避免本地/远程脱节 */
+const releasePhase = { v: 'idle', tag: '', preSha: '' }
+let rolledBack = false
+function doRollback() {
+  if (rolledBack) return
+  rolledBack = true
+  try {
+    if (releasePhase.v === 'committing') {
+      let remoteTagged = false
+      try { remoteTagged = git(['ls-remote', 'origin', `refs/tags/${releasePhase.tag}`]).includes(releasePhase.tag) } catch { /* 网络不可用按未推送处理 */ }
+      if (remoteTagged) { ok(`远端已存在 ${releasePhase.tag}（推送实际已完成），本地不回滚，保持 release 提交`); return }
+      try { git(['tag', '-d', releasePhase.tag], { stdio: 'inherit' }) } catch { /* tag 未创建 */ }
+      git(['reset', '--hard', releasePhase.preSha], { stdio: 'inherit' })
+      console.error(RED('已撤回 release 提交与本地 tag（远程未推送部分不受影响），同版本号可直接重新发布'))
+      return
+    }
+    if (releasePhase.v === 'bumped') rollbackBump()
+  } catch (e) {
+    console.error(RED('自动回滚异常，请手动检查 git 状态与 package.json/CHANGELOG.md：'), e?.message ?? e)
+  }
+}
+process.on('SIGINT', () => {
+  if (releasePhase.v === 'idle' || releasePhase.v === 'pushed') process.exit(130)
+  console.error(RED('\n收到 Ctrl+C，正在回滚本次发布写入…'))
+  doRollback()
+  process.exit(130)
+})
+process.on('SIGTERM', () => {
+  if (releasePhase.v === 'idle' || releasePhase.v === 'pushed') process.exit(130)
+  doRollback()
+  process.exit(130)
+})
 if (!DRY_RUN) {
   const pkgPaths = ['package.json', 'apps/desktop/package.json']
   for (const rel of pkgPaths) {
@@ -245,6 +280,8 @@ if (!DRY_RUN) {
   // 新版本条目置顶（倒序）：保留头部，entry 在前、旧内容在后；原写法 old+entry 会追加到末尾导致顺序反
   const oldBody = String(old).replace(/^# Changelog\n\n?/, '')
   writeFileSync(clPath, `# Changelog\n\n${entry}${oldBody}`)
+  releasePhase.v = 'bumped'
+  releasePhase.tag = next
   ok('版本号与 changelog 已写入')
 } else {
   console.log(DIM(`  [dry-run] 将写入 ${changedFiles.join(' / ')}；CHANGELOG 顶部新增 ${next} 段`))
@@ -276,32 +313,28 @@ if (!DRY_RUN) {
     ok(`产物就绪：${artifacts.join(', ')}`)
   } catch (err) {
     step('构建失败，回滚本次写入')
-    rollbackBump()
+    doRollback()
     die(String(err.message || err))
   }
 }
 
-/* ── 5. 提交 + tag + 推送（任一步失败：回滚提交/tag/文件，同版本可重发） ── */
+/* ── 5. 提交 + tag + 推送（失败 / Ctrl+C 中断：远端已推成功则不回滚，否则撤提交+tag，同版本可重发） ── */
 if (!DRY_RUN) {
   step('提交 release 与 tag')
   const preSha = git(['rev-parse', 'HEAD'])
-  let committed = false
-  let tagged = false
+  releasePhase.preSha = preSha
+  releasePhase.v = 'committing'
   try {
     // add/commit/tag/push 的输出（含钩子与推送进度）直接透传控制台，过程可见
     git(['add', 'package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml'], { stdio: 'inherit' })
     git(['-c', 'core.hooksPath=.git/cph', 'commit', '-m', `chore(release): ${next}`], { stdio: 'inherit' })
-    committed = true
     git(['tag', next])
-    tagged = true
     git(['push', 'origin', 'HEAD:refs/heads/main', next], { stdio: 'inherit' })
+    releasePhase.v = 'pushed'
     ok(`已推送 ${next}（提交 + tag）`)
   } catch (err) {
     step('提交/推送失败，回滚本次发布写入')
-    // 起步时门禁已保证树干净，reset --hard preSha 只会丢弃脚本刚创建的 release 提交
-    if (tagged) git(['tag', '-d', next])
-    if (committed) git(['reset', '--hard', preSha])
-    else rollbackBump()
+    doRollback()
     die(`发布失败：${err instanceof Error ? err.message : err}`)
   }
 }
