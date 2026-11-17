@@ -39,6 +39,7 @@ import { registerDevTools } from './dev-tools'
 import { UploadRuntime, type UploadListRequest, type UploadRequest, type UploadTestRequest } from './upload'
 import { FsRuntime } from './fs'
 import { installLocalResHandler, registerLocalResScheme } from './local-res'
+import { allowWindowDrop } from './win32-drop'
 
 /** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
 registerLocalResScheme()
@@ -52,8 +53,20 @@ const trayIconFile = path.join(here, '../../build/tray.png')
 
 const isDev = !app.isPackaged
 /** dev 更新测试（用户验收项7）：仅 dev 生效，走真实 GitHub 更新源验证全流程，下载后不自动安装。
- *  用法：本地 package.json 版本号改成旧值（如 1.1.0），dev 启动即可复现「发现新版 → 下载 → 待安装」；验完改回。 */
+ *  版本号来源二选一（都不用改 package.json）：
+ *   - SSHK_UPDATE_DEV_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
+ *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
 const updateDevCheck = isDev && ['1', 'true'].includes(String(process.env.SSHK_UPDATE_DEV_CHECK ?? '').toLowerCase())
+if (updateDevCheck) {
+  const fakeVersion = String(process.env.SSHK_UPDATE_DEV_VERSION ?? '').trim()
+  if (fakeVersion) {
+    const realGetVersion = app.getVersion.bind(app)
+    // electron-updater 用 app.getVersion() 与线上 latest.yml 对比；dev 测试期改返回值即可伪装旧版本，
+    // 不动任何 package.json（版本号只在 dev + 显式 env 时被覆盖，打包版零影响）。
+    app.getVersion = () => fakeVersion
+    console.log(`[sshk] dev 更新测试：版本号覆盖为 ${fakeVersion}（真实 ${realGetVersion()}），仅影响本次 dev 进程`)
+  }
+}
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let services: AppServices | null = null
@@ -94,6 +107,9 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+    // 管理员模式拖放放行：应用清单强制 requireAdministrator，UIPI 会拦截 Explorer 的拖入消息；
+    // 对窗口放行 WM_DROPFILES / WM_COPYGLOBALDATA 后普通权限资源管理器可拖文件进窗口（非 Windows 静默跳过）
+    void allowWindowDrop(mainWindow)
     if (isDev) mainWindow?.webContents.openDevTools()
   })
   mainWindow.on('closed', () => { mainWindow = null })

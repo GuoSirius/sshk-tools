@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { VueDraggable } from 'vue-draggable-plus'
 import {
   ArrowDown,
   Check,
@@ -9,6 +10,7 @@ import {
   Edit,
   FolderOpened,
   Plus,
+  Rank,
   Refresh,
   Star,
   Upload,
@@ -120,6 +122,32 @@ const rows = computed<ProfileRow[]>(() => [
 ])
 const visibleRows = computed(() =>
   filter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === filter.value))
+
+/**
+ * 用户验收项4：通道列表拖拽排序。
+ * - 远程 / 云各自一组独立可写副本（dragRemoteRows / dragCloudRows），只在同类型内换序；
+ *   跨类型混排会在 rows 重算时按 remote→cloud 分组弹回，故用两个 draggable 隔离。
+ * - onDragEnd 按副本新顺序重建对应 profiles 数组（保存配置后落盘）。
+ */
+const dragRemoteRows = ref<ProfileRow[]>([])
+const dragCloudRows = ref<ProfileRow[]>([])
+watch(visibleRows, (v) => {
+  dragRemoteRows.value = v.filter((r) => r.kind === 'remote')
+  dragCloudRows.value = v.filter((r) => r.kind === 'cloud')
+}, { immediate: true })
+
+function reorder(kind: RowKind): void {
+  if (kind === 'remote') {
+    const order = dragRemoteRows.value.map((r) => r.id)
+    const src = cfg.value.remote.profiles
+    cfg.value.remote.profiles = order.map((id) => src.find((p) => p.id === id)).filter((p): p is UploadRemoteProfile => Boolean(p))
+  } else {
+    const order = dragCloudRows.value.map((r) => r.id)
+    const src = cfg.value.cloud.profiles
+    cfg.value.cloud.profiles = order.map((id) => src.find((p) => p.id === id)).filter((p): p is UploadCloudProfile => Boolean(p))
+  }
+  ElMessage.success('顺序已调整，点「保存配置」后生效')
+}
 
 function isOpen(key: string): boolean {
   return expandedKeys.value.includes(key)
@@ -426,51 +454,94 @@ onMounted(() => {
 
         <el-empty v-if="!visibleRows.length" description="还没有上传通道，点右上角「新增」开始" :image-size="60" />
 
-        <div v-for="row in visibleRows" :key="row.key" class="profile" :class="{ 'is-open': isOpen(row.key) }">
-          <div class="profile-head">
-            <el-tag size="small" :type="row.kind === 'remote' ? 'warning' : 'primary'" effect="plain">
-              {{ row.kind === 'remote' ? '远程' : '云' }}
-            </el-tag>
-            <span class="item-title">{{ row.name }}</span>
-            <el-tag v-if="row.isDefault" size="small" type="success" effect="plain">默认</el-tag>
-            <span class="row-detail">{{ row.detail }}</span>
-            <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
-            <el-tag size="small" :type="secretState[row.id] ? 'success' : 'info'" effect="plain">
-              {{ secretState[row.id] ? '密钥已配置' : '未配置密钥' }}
-            </el-tag>
-            <div class="row-ops">
-              <el-button size="small" :icon="Connection" :loading="testingId === row.id" @click="testProfile(row.kind, row.id)">测试</el-button>
-              <el-button size="small" :icon="Edit" @click="toggle(row.key)">{{ isOpen(row.key) ? '收起' : '编辑' }}</el-button>
-              <el-button size="small" :icon="Delete" @click="askRemove(row)" />
+        <!-- 项4：拖拽排序——远程 / 云各自一组，左侧 Rank 手柄拖动；保存配置后落盘 -->
+        <VueDraggable
+          v-if="filter !== 'cloud' && dragRemoteRows.length"
+          v-model="dragRemoteRows"
+          :handle="'.drag-handle'"
+          :animation="180"
+          ghost-class="drag-ghost"
+          class="profile-list"
+          @end="reorder('remote')"
+        >
+          <div v-for="row in dragRemoteRows" :key="row.key" class="profile" :class="{ 'is-open': isOpen(row.key) }">
+            <div class="profile-head">
+              <span class="drag-handle" title="拖拽排序"><el-icon><Rank /></el-icon></span>
+              <el-tag size="small" :type="row.kind === 'remote' ? 'warning' : 'primary'" effect="plain">
+                {{ row.kind === 'remote' ? '远程' : '云' }}
+              </el-tag>
+              <span class="item-title">{{ row.name }}</span>
+              <el-tag v-if="row.isDefault" size="small" type="success" effect="plain">默认</el-tag>
+              <span class="row-detail">{{ row.detail }}</span>
+              <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
+              <el-tag size="small" :type="secretState[row.id] ? 'success' : 'info'" effect="plain">
+                {{ secretState[row.id] ? '密钥已配置' : '未配置密钥' }}
+              </el-tag>
+              <div class="row-ops">
+                <el-button size="small" :icon="Connection" :loading="testingId === row.id" @click="testProfile(row.kind, row.id)">测试</el-button>
+                <el-button size="small" :icon="Edit" @click="toggle(row.key)">{{ isOpen(row.key) ? '收起' : '编辑' }}</el-button>
+                <el-button size="small" :icon="Delete" @click="askRemove(row)" />
+              </div>
             </div>
+            <RemoteProfileForm
+              v-if="row.remote"
+              v-show="isOpen(row.key)"
+              :profile="row.remote"
+              :has-secret="Boolean(secretState[row.id])"
+              :secret-value="secretInputs[row.id] ?? ''"
+              :testing="testingId === row.id"
+              :test-result="testResults[row.id]"
+              @update-secret="setSecretInput"
+              @clear-secret="clearSecret"
+              @reveal-secret="revealSecret"
+              @test="(id: string) => testProfile('remote', id)"
+            />
           </div>
-          <RemoteProfileForm
-            v-if="row.kind === 'remote' && row.remote"
-            v-show="isOpen(row.key)"
-            :profile="row.remote"
-            :has-secret="Boolean(secretState[row.id])"
-            :secret-value="secretInputs[row.id] ?? ''"
-            :testing="testingId === row.id"
-            :test-result="testResults[row.id]"
-            @update-secret="setSecretInput"
-            @clear-secret="clearSecret"
-            @reveal-secret="revealSecret"
-            @test="(id: string) => testProfile('remote', id)"
-          />
-          <CloudProfileForm
-            v-else-if="row.cloud"
-            v-show="isOpen(row.key)"
-            :profile="row.cloud"
-            :has-secret="Boolean(secretState[row.id])"
-            :secret-value="secretInputs[row.id] ?? ''"
-            :testing="testingId === row.id"
-            :test-result="testResults[row.id]"
-            @update-secret="setSecretInput"
-            @clear-secret="clearSecret"
-            @reveal-secret="revealSecret"
-            @test="(id: string) => testProfile('cloud', id)"
-          />
-        </div>
+        </VueDraggable>
+
+        <VueDraggable
+          v-if="filter !== 'remote' && dragCloudRows.length"
+          v-model="dragCloudRows"
+          :handle="'.drag-handle'"
+          :animation="180"
+          ghost-class="drag-ghost"
+          class="profile-list"
+          @end="reorder('cloud')"
+        >
+          <div v-for="row in dragCloudRows" :key="row.key" class="profile" :class="{ 'is-open': isOpen(row.key) }">
+            <div class="profile-head">
+              <span class="drag-handle" title="拖拽排序"><el-icon><Rank /></el-icon></span>
+              <el-tag size="small" :type="row.kind === 'remote' ? 'warning' : 'primary'" effect="plain">
+                {{ row.kind === 'remote' ? '远程' : '云' }}
+              </el-tag>
+              <span class="item-title">{{ row.name }}</span>
+              <el-tag v-if="row.isDefault" size="small" type="success" effect="plain">默认</el-tag>
+              <span class="row-detail">{{ row.detail }}</span>
+              <el-button v-if="!row.isDefault" size="small" :icon="Star" @click="setDefault(row)">设为默认</el-button>
+              <el-tag size="small" :type="secretState[row.id] ? 'success' : 'info'" effect="plain">
+                {{ secretState[row.id] ? '密钥已配置' : '未配置密钥' }}
+              </el-tag>
+              <div class="row-ops">
+                <el-button size="small" :icon="Connection" :loading="testingId === row.id" @click="testProfile(row.kind, row.id)">测试</el-button>
+                <el-button size="small" :icon="Edit" @click="toggle(row.key)">{{ isOpen(row.key) ? '收起' : '编辑' }}</el-button>
+                <el-button size="small" :icon="Delete" @click="askRemove(row)" />
+              </div>
+            </div>
+            <CloudProfileForm
+              v-if="row.cloud"
+              v-show="isOpen(row.key)"
+              :profile="row.cloud"
+              :has-secret="Boolean(secretState[row.id])"
+              :secret-value="secretInputs[row.id] ?? ''"
+              :testing="testingId === row.id"
+              :test-result="testResults[row.id]"
+              @update-secret="setSecretInput"
+              @clear-secret="clearSecret"
+              @reveal-secret="revealSecret"
+              @test="(id: string) => testProfile('cloud', id)"
+            />
+          </div>
+        </VueDraggable>
         <div class="hint">
           7 家常见云厂商与 S3 兼容服务均已支持；地域 / Endpoint 可下拉预选也可直接手输。
           可同时展开多个通道逐项对照修改；删除通道需二次确认，保存配置后生效。
@@ -514,6 +585,11 @@ onMounted(() => {
 .path-row > :last-child { flex: none; }
 .profile { border: 1px dashed var(--sshk-border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
 .profile.is-open { border-style: solid; border-color: var(--el-color-primary-light-5); }
+/* 拖拽排序：手柄常驻示意可拖，拖动中的占位半透明 */
+.drag-handle { flex: none; display: inline-flex; align-items: center; cursor: grab; color: var(--el-text-color-placeholder); font-size: 15px; }
+.drag-handle:active { cursor: grabbing; }
+.drag-handle:hover { color: var(--el-color-primary); }
+.drag-ghost { opacity: 0.4; background: var(--el-color-primary-light-9); }
 .profile-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* 展开时头部与表单拉开间距；收起态保持紧凑 */
 .is-open .profile-head { margin-bottom: 10px; }

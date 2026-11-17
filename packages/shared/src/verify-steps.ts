@@ -154,7 +154,8 @@ export const VERIFY_STEPS_TOTAL = VERIFY_STEPS.length
 
 /** 单条会话内某步骤的结果 */
 export interface VerifyStepResult {
-  state: 'pass' | 'fail' | 'skip'
+  /** 判定状态；清除判定后可缺省（仅保留 note/at），表示回到未判定 */
+  state?: 'pass' | 'fail' | 'skip'
   note?: string
   at: string
 }

@@ -48,7 +48,12 @@ const config = {
     buildResources: 'build',
   },
 
-  extraResources: TOOL_ASSETS.filter((a) => included(a.id)).map(({ from, to }) => ({ from, to })),
+  extraResources: [
+    ...TOOL_ASSETS.filter((a) => included(a.id)).map(({ from, to }) => ({ from, to })),
+    // 管理员模式拖放放行（win32-drop.ts）：koffi 是 N-API 原生模块，无法内联进 JS bundle，
+    // 放 asar 外的 resources/koffi，运行时从 process.resourcesPath 动态 require（仅 Windows 用到）。
+    { from: 'node_modules/koffi', to: 'koffi' },
+  ],
 
   // electron-vite 的产物目录是 out/，不是 dist/（dist 只放安装包）
   files: [

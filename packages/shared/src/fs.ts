@@ -108,6 +108,8 @@ export interface FsMvRequest {
   profileId: string
   sources: { path: string; kind: FsEntryKind }[]
   destDir: string
+  /** 重命名专用：给单个源指定新文件名（destDir 为原父目录时避免 dest===src 校验）；多源移动留空 */
+  renameTo?: string
 }
 
 /** 传输队列任务方向（cross = 跨通道复制：源通道下载到临时文件后写入目标通道） */

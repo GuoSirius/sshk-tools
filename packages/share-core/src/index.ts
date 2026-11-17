@@ -29,6 +29,8 @@ interface PersistedShare {
   token: string
   expiresAt: number
   port: number
+  /** 业务自定义元数据（如 badge 当前分享的海报 id/name），随会话持久化，重启后原样回填 */
+  meta?: Record<string, unknown>
 }
 
 export class ShareServer {
@@ -36,6 +38,7 @@ export class ShareServer {
   private token = ''
   private _expiresAt = 0
   private port = 0
+  private _meta: Record<string, unknown> = {}
 
   /** stateFile：分享会话持久化路径（userData 下）。null 表示不持久化（向后兼容既有调用）。 */
   constructor(private readonly serveRoot: string, private readonly stateFile: string | null = null) {}
@@ -47,7 +50,7 @@ export class ShareServer {
   /** 应用启动时恢复未过期的分享会话（项11：72h 内跨重启仍可访问，token 不变 → 链接不变）。
    *  - 状态文件不存在 / 已过期 / 结构非法 → 返回 null（不启动）；
    *  - 重新 start 会生成新 token 并覆盖状态文件 → 旧链接自动失效。 */
-  async resume(requestedPort = 0): Promise<{ port: number; token: string; expiresAt: number; urls: string[] } | null> {
+  async resume(requestedPort = 0): Promise<{ port: number; token: string; expiresAt: number; urls: string[]; meta: Record<string, unknown> } | null> {
     if (!this.stateFile || !existsSync(this.stateFile) || this.running) return null
     let saved: PersistedShare
     try {
@@ -58,8 +61,9 @@ export class ShareServer {
     }
     this.token = saved.token
     this._expiresAt = saved.expiresAt
+    this._meta = saved.meta ?? {}
     await this.listen(saved.port || requestedPort)
-    return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls() }
+    return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls(), meta: this._meta }
   }
 
   private async listen(requestedPort: number): Promise<void> {
@@ -96,7 +100,7 @@ export class ShareServer {
 
   private async persistState(): Promise<void> {
     if (!this.stateFile) return
-    const state: PersistedShare = { token: this.token, expiresAt: this._expiresAt, port: this.port }
+    const state: PersistedShare = { token: this.token, expiresAt: this._expiresAt, port: this.port, meta: this._meta }
     await writeFile(this.stateFile, JSON.stringify(state), 'utf8').catch(() => { /* 落盘失败不影响当次分享 */ })
   }
 
@@ -105,11 +109,22 @@ export class ShareServer {
     return this._expiresAt
   }
 
-  async start(ttlHours: number, requestedPort: number): Promise<{ port: number; token: string; expiresAt: number; urls: string[] }> {
+  /** 会话业务元数据（重启后由状态文件回填） */
+  get meta(): Record<string, unknown> {
+    return this._meta
+  }
+
+  /** 已启动但已过期（token 失效，需重新生成；server 仍在占用端口） */
+  get expired(): boolean {
+    return this.running && this._expiresAt > 0 && Date.now() > this._expiresAt
+  }
+
+  async start(ttlHours: number, requestedPort: number, meta: Record<string, unknown> = {}): Promise<{ port: number; token: string; expiresAt: number; urls: string[] }> {
     await this.stop()
     // 项11：每次「重新生成」都换新 token → 旧链接自动失效
     this.token = randomBytes(12).toString('base64url')
     this._expiresAt = Date.now() + ttlHours * 3600_000
+    this._meta = meta
     await this.listen(requestedPort)
     await this.persistState()
     return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls() }

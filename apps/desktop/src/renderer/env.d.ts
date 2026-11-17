@@ -176,7 +176,7 @@ interface Window {
       downloadPng(payload: { posterId: string; outPath: string }): Promise<{ outPath: string }>
       shareStart(payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }>
       shareStop(): Promise<boolean>
-      shareStatus(): Promise<{ running: boolean; expiresAt: number }>
+      shareStatus(): Promise<{ running: boolean; expiresAt: number; expired: boolean; posterId: string; posterName: string }>
       templateDownload(fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }>
       exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {

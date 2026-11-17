@@ -423,17 +423,26 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   ipc.handle(IPC_CHANNELS.badgeShareStart, wrap(async (payload: { posterId: string; ttlHours?: number }) => {
     const poster = await deps.repository.get<Poster>('posters', payload.posterId)
     if (!poster?.outputs.badged) throw new Error('海报尚未生成，无法分享')
-    const res = await share.start(Number(payload.ttlHours ?? 72), 0)
+    const res = await share.start(Number(payload.ttlHours ?? 72), 0, {
+      posterId: payload.posterId,
+      posterName: poster.name,
+    })
     return { url: share.linkFor(poster.outputs.badged), expiresAt: res.expiresAt, urls: res.urls }
   }))
   ipc.handle(IPC_CHANNELS.badgeShareStop, wrap(async () => {
     await share.stop()
     return true
   }))
-  ipc.handle(IPC_CHANNELS.badgeShareStatus, wrap(() => ({
-    running: share.running,
-    expiresAt: share.expiresAt,
-  })))
+  ipc.handle(IPC_CHANNELS.badgeShareStatus, wrap(() => {
+    const meta = share.meta
+    return {
+      running: share.running,
+      expiresAt: share.expiresAt,
+      expired: share.expired,
+      posterId: typeof meta.posterId === 'string' ? meta.posterId : '',
+      posterName: typeof meta.posterName === 'string' ? meta.posterName : '',
+    }
+  }))
 
   // ⑩ 数据源模板下载（用户验收项4）：空表头 + 示例行；xlsx 含「填写说明」sheet；返回 base64 由渲染层落盘
   ipc.handle(IPC_CHANNELS.badgeTemplateDownload, wrap(async (fmt: 'xlsx' | 'csv' | 'json') => {

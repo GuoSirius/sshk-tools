@@ -83,8 +83,14 @@ async function persist(): Promise<void> {
 }
 
 function setResult(stepId: string, state: VerifyStepResult['state'] | null): void {
-  if (state === null) delete session.results[stepId]
-  else session.results[stepId] = { state, note: session.results[stepId]?.note ?? '', at: now() }
+  if (state === null) {
+    // 清除判定≠清空记录：保留用户已填备注，仅移除 state 使其回到未判定
+    const cur = session.results[stepId]
+    if (cur?.note) session.results[stepId] = { note: cur.note, at: now() }
+    else delete session.results[stepId]
+  } else {
+    session.results[stepId] = { state, note: session.results[stepId]?.note ?? '', at: now() }
+  }
   scheduleSave()
 }
 
@@ -162,7 +168,7 @@ async function exportReport(): Promise<void> {
       for (const s of stepsOf(g)) {
         const r = session.results[s.id]
         const auto = autoResults[s.id]
-        const stateText = r ? { pass: '✅ 通过', fail: '❌ 未通过', skip: '⏭️ 跳过' }[r.state] : '⬜ 未判定'
+        const stateText = r?.state ? { pass: '✅ 通过', fail: '❌ 未通过', skip: '⏭️ 跳过' }[r.state] : '⬜ 未判定'
         const autoText = auto && auto.state !== 'unknown' ? `（自动判定 ${auto.state === 'pass' ? '✓' : '✗'}：${auto.detail}）` : ''
         lines.push(`- **${s.id}** ${s.title} — ${stateText}${autoText}`)
         if (r?.note) lines.push(`  - 备注：${r.note}`)
@@ -274,6 +280,15 @@ watch(visible, (v) => {
                 <el-radio-button :value="'fail'">未通过</el-radio-button>
                 <el-radio-button :value="'skip'">跳过</el-radio-button>
               </el-radio-group>
+              <!-- 误选取消：radio 选中后无法再次点击取消，提供显式「清除判定」回到未判定（备注保留） -->
+              <el-button
+                v-if="session.results[s.id]"
+                size="small"
+                text
+                type="info"
+                title="清除本项判定，重新选择（备注会保留）"
+                @click="setResult(s.id, null)"
+              >清除判定</el-button>
               <el-input clearable
                 :model-value="session.results[s.id]?.note ?? ''"
                 size="small"

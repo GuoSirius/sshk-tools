@@ -17,31 +17,32 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "@fortawesome/fontawesome-free": "latest",
     "@sshk/badge-studio": "workspace:*",
     "@sshk/edm-studio": "workspace:*",
     "@sshk/llm-gateway": "workspace:*",
     "@sshk/model-console": "workspace:*",
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
-    "@sshk/upload-core": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
+    "@sshk/upload-core": "workspace:*",
     "dayjs": "latest",
     "electron-updater": "^6",
     "element-plus": "latest",
-    "@element-plus/icons-vue": "latest",
-    "@fortawesome/fontawesome-free": "latest",
     "fflate": "latest",
+    "koffi": "latest",
     "unocss": "latest",
     "vue": "latest",
     "vue-router": "latest"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
     "electron": "latest",
     "electron-builder": "latest",
     "electron-vite": "latest",
-    "vite": "latest",
-    "@vitejs/plugin-vue": "latest",
     "typescript": "6",
+    "vite": "latest",
     "vitest": "latest"
   },
   "engines": {

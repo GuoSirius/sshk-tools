@@ -13,6 +13,8 @@ allowBuilds:
   electron: true
   esbuild: true
   electron-winstaller: true
+  # koffi：install 脚本从包内预编译二进制复制到 build/koffi（无需 node-gyp / 联网）
+  koffi: true
   # es5-ext 的 postinstall 仅打印赞助横幅，无实际构建，显式拒绝（2026-11-15 wangeditor 依赖链引入）
   es5-ext: false
   # ssh2 / cpu-features（2026-11-15 B0 引入 ssh2 时由 cph 门禁实测发现 ERR_PNPM_IGNORED_BUILDS）：

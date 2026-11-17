@@ -17,7 +17,8 @@
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "element-plus": "latest",
-    "vue": "latest"
+    "vue": "latest",
+    "vue-draggable-plus": "latest"
   },
   "devDependencies": {
     "typescript": "6"

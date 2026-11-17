@@ -582,12 +582,19 @@ export class FsRuntime {
     const { driver, channel } = this.resolve(req?.profileId)
     if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const destDir = this.assertPath(req?.destDir)
+    // 重命名：新文件名单独指定（仅单源有意义），目标 = 父目录/新名
+    const renameTo = String(req?.renameTo ?? '').trim()
+    if (renameTo && (/[\\/]/.test(renameTo) || renameTo === '.' || renameTo === '..')) {
+      throw new Error('新名称不能包含斜杠或为 . / ..')
+    }
     const MV_DIR_CAP = 1500
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
       if (!src) throw new Error('根目录不可移动')
-      const dest = fsDestPath(destDir, src)
-      if (dest === src || dest.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
+      // 重命名时 dest 用新名（与 src 同父目录）；普通移动沿用原文件名
+      const dest = renameTo ? (destDir ? `${destDir}/${renameTo}` : renameTo) : fsDestPath(destDir, src)
+      if (!renameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录')
+      if (renameTo && dest === src) return true // 名称未变，无需操作
       if (item.kind === 'dir' && channel.type === 'cloud') {
         // 云目录「移动」= 逐文件 copy+delete（copyObject 不接受目录路径），最后删源 marker（项19）
         let moved = 0

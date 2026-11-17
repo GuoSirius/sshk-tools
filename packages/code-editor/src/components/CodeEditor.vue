@@ -47,6 +47,11 @@ const options = computed(() => ({
   // 压缩后的 HTML 常是单行超长文本：Monaco 默认 stopRenderingLineAfter=10000 会暂停该行渲染，
   // 表现为「压缩 HTML 没有高亮 + 顶部提示 Rendering paused for long line」。设为 -1 关闭限制。
   stopRenderingLineAfter: -1,
+  // 关键（用户复核）：即使渲染不暂停，Monaco 默认 maxTokenizationLineLength=20000 会跳过超长行的
+  // 语法着色（tokenize），压缩 HTML 单行常几十万字符 → 整行纯白无高亮。设为 -1 不限制，恢复着色。
+  maxTokenizationLineLength: -1,
+  // 大文件优化默认会在超大内容上关闭 tokenization / 折叠等特性，压缩产物场景需关闭以保证高亮
+  largeFileOptimizations: false,
 }))
 
 /** 编辑器实例暴露：供页面级搜索定位（setSelection / revealRangeInCenter）等高级用法 */

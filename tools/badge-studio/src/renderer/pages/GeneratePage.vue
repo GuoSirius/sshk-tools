@@ -168,10 +168,13 @@ function askClearRows(): void {
         </div>
         <CodeEditor ref="htmlEditorRef" v-model="pastedHtml" language="html" height="300px" />
         <!-- 项3：压缩 HTML 单行无高亮 → 一键格式化 / 压缩，仅改编辑区内容，不落盘原文件 -->
-        <div class="cfg-row" style="margin-top: 6px">
-          <el-button size="small" type="primary" plain :disabled="!pastedHtml" @click="applyFormat">格式化</el-button>
-          <el-button size="small" type="warning" plain :disabled="!pastedHtml" @click="applyCompact">压缩</el-button>
+        <!-- 用户约定：工具栏按钮统一居右——说明文字占左侧剩余空间，按钮组贴右 -->
+        <div class="cfg-row editor-tool-row" style="margin-top: 6px">
           <span class="muted">压缩 HTML 换行后即可正常高亮编辑；仅影响编辑区，不修改原文件</span>
+          <div class="editor-tool-btns">
+            <el-button size="small" type="primary" plain :disabled="!pastedHtml" @click="applyFormat">格式化</el-button>
+            <el-button size="small" type="warning" plain :disabled="!pastedHtml" @click="applyCompact">压缩</el-button>
+          </div>
         </div>
       </div>
 
@@ -519,6 +522,9 @@ function askClearRows(): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
+/* 编辑器工具行：说明文字占左，按钮组统一居右 */
+.editor-tool-row .muted { flex: 1; min-width: 0; }
+.editor-tool-btns { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 /* badge 配置折叠面板：去 el-collapse 默认分隔线，标题行放关键配置摘要，收起时仍可见。
    header/wrap 在暗色下自带 #141414 实底，标题与内容统一留 12px 内边距，
    否则标题贴左缘、展开箭头贴右缘、表单内容贴边（2026-11-17 用户反馈） */

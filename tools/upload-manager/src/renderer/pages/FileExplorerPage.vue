@@ -215,6 +215,9 @@ function friendlyError(err: unknown): string {
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(msg)) return '连接失败：无法连通主机（检查地址/端口/网络）'
   if (/530|532|认证|Authentication|password|All authentication/i.test(msg)) return '认证失败：检查用户名与密码/密钥'
   if (/NoSuchBucket|The specified bucket|not exist/i.test(msg)) return '路径不存在：检查 Bucket 与目录'
+  if (/no right to access|bucket acl|AccessDenied|403|permission|Forbidden|无权|权限/i.test(msg)) {
+    return '权限不足：当前密钥对该 Bucket 无删除/写入权限，请在云控制台检查 Bucket ACL 与子账号授权（原始：' + msg + '）'
+  }
   if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「上传管理 · 通道配置」填写并保存'
   return msg
 }
@@ -519,10 +522,20 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
   e.preventDefault()
   dragDepth = 0
   dragOver.value = false
-  // 文件拖到窗口任意位置（顶栏/侧栏/空白）都接受——工具页本身占满主体，严格限制 target 只会漏拖
-  const files = [...(e.dataTransfer?.files ?? [])]
+  const dt = e.dataTransfer
+  // 文件拖到窗口任意位置（顶栏/侧栏/空白）都接受——工具页本身占满主体，严格限制 target 只会漏拖。
+  // files 优先；个别 Chromium 场景 files 为空但 items 里带 kind='file'，兜底用 getAsFile()。
+  let files = [...(dt?.files ?? [])]
+  if (!files.length && dt?.items?.length) {
+    for (const it of dt.items) {
+      if (it.kind === 'file') {
+        const f = it.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+  }
   if (!files.length) {
-    ElMessage.warning('未从系统拖拽事件中拿到文件（可能拖的是网页元素或纯文本）；文件请从资源管理器拖入')
+    ElMessage.warning('未从系统拖拽事件中拿到文件（拖的是网页元素/纯文本，或拖放消息被系统拦截）；文件请从资源管理器拖入，或用工具栏「上传文件」')
     return
   }
   // webUtils.getPathForFile 为主，File.path 兜底（个别 Electron 版本 contextBridge 传 File 后 webUtils 取不到）
@@ -532,8 +545,8 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
     const legacy = (f as File & { path?: string }).path
     return typeof legacy === 'string' ? legacy : ''
   }).filter(Boolean)
-  if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传」按钮选择'); return }
-  if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道'); return }
+  if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传文件」按钮选择'); return }
+  if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道，再拖入文件'); return }
   const flat = await window.api.fs.flattenLocal(paths)
   await enqueueUploads(flat)
 }
@@ -609,7 +622,7 @@ async function submitRename(): Promise<void> {
   if (!target || !name || /[\\/]/.test(name) || name === target.name) { renameOpen.value = false; return }
   const parent = target.path.includes('/') ? target.path.slice(0, target.path.lastIndexOf('/')) : ''
   try {
-    await window.api.fs.mv({ profileId: profileId.value, sources: [{ path: target.path, kind: target.kind }], destDir: parent })
+    await window.api.fs.mv({ profileId: profileId.value, sources: [{ path: target.path, kind: target.kind }], destDir: parent, renameTo: name })
     renameOpen.value = false
     void list(false)
   } catch (err) {
@@ -1301,7 +1314,7 @@ function onKeydown(event: KeyboardEvent): void {
               :status="t.status === 'success' ? 'success' : t.status === 'conflict' ? 'warning' : undefined"
               :stroke-width="5"
             />
-            <div v-if="t.error" class="fs-task-error">{{ t.error }}</div>
+            <div v-if="t.error" class="fs-task-error">{{ friendlyError(t.error) }}</div>
           </div>
         </div>
       </div>
