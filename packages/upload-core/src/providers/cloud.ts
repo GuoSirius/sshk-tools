@@ -1,15 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { mapWithConcurrency } from '../concurrency'
 import { byNewestFirst, isImageFileName } from '../image-files'
-import {
-  collectPrefixes,
-  DIRECTORY_CONCURRENCY,
-  MAX_DIRECTORIES,
-  MAX_DIRECTORY_DEPTH,
-  normalizeDirPath,
-  relativeDir,
-} from '../directories'
+import { collectPrefixes, MAX_DIRECTORIES, normalizeDirPath } from '../directories'
 import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /**
@@ -565,44 +557,28 @@ export class CloudUploadProvider implements UploadProvider {
     })
   }
 
-  /** 富文本图片库：用 delimiter 逐层列出真实目录（含空目录）；层内并发 + 跟随翻页，单目录失败打印告警并跳过 */
+  /** 富文本图片库：列出某前缀下的直接子目录（单级，配合前端懒加载逐级下钻），跟随翻页取全 */
   async listDirectories(ctx: UploadContext): Promise<string[]> {
     const mod = await loadSdk(specOf(this.profile))
     const bucket = ctx.overrides?.bucket || this.profile.bucket
     const base = (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, '')
     const out = new Set<string>()
-    // 逐层 BFS：每层并发列取、单目录内跟随翻页；层数受 MAX_DIRECTORY_DEPTH 限制，总量受 MAX_DIRECTORIES 限制
-    // frontier 存完整前缀（含 base），rel 只在写入结果集时计算
-    let frontier = [base]
-    for (let depth = 0; depth <= MAX_DIRECTORY_DEPTH && frontier.length > 0 && out.size < MAX_DIRECTORIES; depth++) {
-      const perDir = await mapWithConcurrency(frontier, DIRECTORY_CONCURRENCY, async (prefix): Promise<string[]> => {
-        const fulls: string[] = []
-        let cursor: string | null = null
-        for (let page = 0; page < 50; page++) {
-          try {
-            const p = await listCloudPage(this.profile, mod, { bucket, prefix, pageSize: MAX_DIRECTORIES, cursor, delimiter: true })
-            for (const full of collectPrefixes(p.raw)) {
-              if (!fulls.includes(full)) fulls.push(full)
-            }
-            cursor = p.nextCursor
-            if (!cursor) break
-          } catch (err) {
-            console.warn(`[upload-core] 列云目录失败（prefix=${prefix || '(根)'}）：${(err as Error).message}`)
-            break
-          }
-        }
-        return fulls
-      })
-      const nextFrontier: string[] = []
-      for (const fulls of perDir) {
-        for (const full of fulls) {
-          const rel = relativeDir(full, base)
-          if (!rel || out.has(rel) || out.size >= MAX_DIRECTORIES) continue
-          out.add(rel)
-          nextFrontier.push(normalizeDirPath(full))
-        }
+    let cursor: string | null = null
+    for (let page = 0; page < 20 && out.size < MAX_DIRECTORIES; page++) {
+      let p: CloudPage
+      try {
+        p = await listCloudPage(this.profile, mod, { bucket, prefix: base, pageSize: MAX_DIRECTORIES, cursor, delimiter: true })
+      } catch (err) {
+        console.warn(`[upload-core] 列云目录失败（prefix=${base || '(根)'}）：${(err as Error).message}`)
+        throw err
       }
-      frontier = nextFrontier
+      for (const full of collectPrefixes(p.raw)) {
+        // 单级语义：返回桶根相对的完整前缀（根调用 → 一级目录；深层调用 → 同样是桶根相对路径）
+        const rel = normalizeDirPath(full)
+        if (rel) out.add(rel)
+      }
+      cursor = p.nextCursor
+      if (!cursor) break
     }
     return [...out].sort((a, b) => a.localeCompare(b))
   }

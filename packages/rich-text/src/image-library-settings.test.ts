@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { RichTextImageSource } from './types'
 import {
-  buildDirectoryTree,
   defaultSourceId,
-  directoriesFromKeys,
-  directoryTree,
-  expandDirPath,
   loadSettings,
   matchImageKeyword,
   normalizeDirInput,
@@ -65,28 +61,6 @@ describe('image-library-settings', () => {
     expect(loadSettings(store, 'x')).toBeNull()
   })
 
-  it('目录从图片 key 派生多级完整前缀，末段文件名不算目录', () => {
-    expect(directoriesFromKeys(['blog/2026/06/a.png', 'blog/2026/b.jpg', 'root.png', '\\win\\deep\\c.png']))
-      .toEqual(['blog', 'blog/2026', 'blog/2026/06', 'win', 'win/deep'])
-  })
-
-  it('目录树：每层 value 为完整路径，叶子无空 children，可逐级展开', () => {
-    const tree = directoryTree(['blog/2026/06/a.png', 'blog/2025/x.jpg', 'root.png'])
-    expect(tree).toHaveLength(1)
-    const blog = tree[0]!
-    expect(blog).toMatchObject({ value: 'blog', label: 'blog' })
-    expect(blog.children?.map((n) => n.value)).toEqual(['blog/2025', 'blog/2026'])
-    const y2026 = blog.children?.find((n) => n.value === 'blog/2026')!
-    expect(y2026.children?.map((n) => n.value)).toEqual(['blog/2026/06'])
-    expect(y2026.children?.[0]).not.toHaveProperty('children') // 叶子不挂空 children
-    expect(blog.children?.find((n) => n.value === 'blog/2025')).not.toHaveProperty('children')
-  })
-
-  it('目录树：仅根图无目录时返回空树；反斜杠路径按目录段处理', () => {
-    expect(directoryTree(['root.png'])).toEqual([])
-    expect(directoryTree(['\\win\\a.png'])).toEqual([{ value: 'win', label: 'win' }])
-  })
-
   it('文件名搜索：忽略大小写，命中 name / key / url 任一，空关键词全通过', () => {
     const img = { url: 'https://cdn/x/IMG_001.png', name: 'Banner.png', key: 'blog/2026/Banner.png' }
     expect(matchImageKeyword(img, '')).toBe(true)
@@ -111,24 +85,6 @@ describe('normalizeDirInput', () => {
   it('空串与全斜杠归一为空', () => {
     expect(normalizeDirInput('')).toBe('')
     expect(normalizeDirInput('/')).toBe('')
-  })
-})
-
-describe('buildDirectoryTree / expandDirPath', () => {
-  it('真实目录路径直接成树（末段不再被当成文件名丢弃）', () => {
-    expect(buildDirectoryTree(['blog/2026/06', 'blog/2025'])).toEqual([
-      { value: 'blog', label: 'blog', children: [
-        { value: 'blog/2025', label: '2025' },
-        { value: 'blog/2026', label: '2026', children: [{ value: 'blog/2026/06', label: '06' }] },
-      ] },
-    ])
-  })
-  it('空目录也能进树（无法从图片反推时的核心能力）', () => {
-    expect(buildDirectoryTree(['Down_tmp', 'PDF']).map((n) => n.value)).toEqual(['Down_tmp', 'PDF'])
-  })
-  it('展开目录为自身+各级父路径', () => {
-    expect(expandDirPath('a/b/c')).toEqual(['a', 'a/b', 'a/b/c'])
-    expect(expandDirPath('/a/b/c/')).toEqual(['a', 'a/b', 'a/b/c'])
   })
 })
 

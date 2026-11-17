@@ -24,12 +24,11 @@ export type { ValidationFailure, ValidationOutcome, ValidationSuccess } from './
 export { mapWithConcurrency, withRetry } from './concurrency'
 export {
   collectPrefixes,
-  joinDir,
   normalizeDirPath,
-  relativeDir,
   MAX_DIRECTORIES,
-  MAX_DIRECTORY_DEPTH,
-  DIRECTORY_CONCURRENCY,
+  MAX_LIST_DEPTH,
+  MAX_LIST_FILES,
+  LIST_BUDGET_MS,
 } from './directories'
 export { isImageFileName, byNewestFirst } from './image-files'
 export { UploadService } from './service'

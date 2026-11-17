@@ -71,78 +71,6 @@ export function saveSettings(store: Storage | null | undefined, stateKey: string
   }
 }
 
-/**
- * 从已列图片 key 派生多级目录选项：
- * 每个路径段生成一条完整前缀（a / a/b / a/b/c），去重、排序，供下拉选择；
- * 不存在的目录仍可在下拉里手输（filterable + allow-create）。
- */
-export function directoriesFromKeys(keys: string[]): string[] {
-  const out = new Set<string>()
-  for (const raw of keys) {
-    const key = raw.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-    const segments = key.split('/').filter(Boolean)
-    segments.pop() // 末段是文件名
-    let prefix = ''
-    for (const seg of segments) {
-      prefix = prefix ? `${prefix}/${seg}` : seg
-      out.add(prefix)
-    }
-  }
-  return [...out].sort((a, b) => a.localeCompare(b))
-}
-
-/** 级联目录节点：label 是本级名，value 是完整路径（可直接写回 target），children 为子级 */
-export interface DirectoryTreeNode {
-  value: string
-  label: string
-  children?: DirectoryTreeNode[]
-}
-
-/**
- * 把「完整目录路径」列表转成级联树（el-cascader 用），每一级都可被选中（checkStrictly）。
- * 输入应是目录本身（不是文件 key）。例 ['blog/2026/06', 'blog/2025'] → blog → {2025, 2026 → 06}；
- * value 始终是完整路径。
- */
-export function buildDirectoryTree(dirs: string[]): DirectoryTreeNode[] {
-  const roots: DirectoryTreeNode[] = []
-  const byValue = new Map<string, DirectoryTreeNode>()
-  // 先按规范化完整路径排序，保证各级子节点顺序稳定（与旧的 directoriesFromKeys→directoryTree 一致）
-  const sorted = dirs
-    .map((d) => normalizeDirInput(d))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b))
-  for (const raw of sorted) {
-    const segs = normalizeDirInput(raw).split('/').filter(Boolean)
-    let prefix = ''
-    let siblings = roots
-    for (const seg of segs) {
-      prefix = prefix ? `${prefix}/${seg}` : seg
-      let node = byValue.get(prefix)
-      if (!node) {
-        node = { value: prefix, label: seg }
-        byValue.set(prefix, node)
-        siblings.push(node)
-      }
-      // 下一层的父节点可能是刚建的，children 延迟创建
-      siblings = node.children ?? (node.children = [])
-    }
-  }
-  // el-cascader 遇到空 children 数组会显示「无数据的下一级」箭头，叶子删掉
-  const prune = (nodes: DirectoryTreeNode[]): void => {
-    for (const n of nodes) {
-      if (n.children && n.children.length) prune(n.children)
-      else delete n.children
-    }
-  }
-  prune(roots)
-  return roots
-}
-
-/** 从已列图片 key 反推目录树（列目录能力不可用时的降级路径） */
-export function directoryTree(keys: string[]): DirectoryTreeNode[] {
-  return buildDirectoryTree(directoriesFromKeys(keys))
-}
-
 export type DirValidationLevel = 'ok' | 'warn' | 'error'
 export interface DirValidation {
   level: DirValidationLevel
@@ -190,23 +118,7 @@ export function validateDirInput(raw: string, type: 'local' | 'remote' | 'cloud'
 }
 
 /**
- * 把一个目录路径展开成它自己 + 各级父目录（完整路径），用于把手输/已选目录并入候选集。
- * 例 'a/b/c' → ['a', 'a/b', 'a/b/c']；归一化后去重。
- */
-export function expandDirPath(raw: string): string[] {
-  const segs = normalizeDirInput(raw).split('/').filter(Boolean)
-  const out: string[] = []
-  let prefix = ''
-  for (const seg of segs) {
-    prefix = prefix ? `${prefix}/${seg}` : seg
-    out.push(prefix)
-  }
-  return out
-}
-
-/**
  * 关键词匹配图片（文件名搜索）：忽略大小写，命中 name / key / url 任一即可。
- * 搜索只作用于已加载项，不额外发起列图请求（后端 limit 已保证一次拿足）。
  */
 export function matchImageKeyword<T extends { name?: string; key?: string; url: string }>(
   item: T,

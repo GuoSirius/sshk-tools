@@ -50,7 +50,7 @@ describe('T3 LocalUploadProvider', () => {
     expect(readFileSync(path.join(out, 'c.css'), 'utf8')).toBe('.a{}')
   })
 
-  it('listDirectories 列出多级真实子目录（含空目录），忽略点开头目录与文件', async () => {
+  it('listDirectories 单级列出直接子目录（绝对路径），忽略点开头目录与文件', async () => {
     const out = tempDir()
     mkdirSync(path.join(out, 'demo', 'nested'), { recursive: true })
     mkdirSync(path.join(out, 'empty-dir'), { recursive: true })
@@ -58,11 +58,23 @@ describe('T3 LocalUploadProvider', () => {
     writeFileSync(path.join(out, 'a.png'), 'PNG')
     const provider = new LocalUploadProvider({ defaultDir: out })
     const dirs = await provider.listDirectories({ targetType: 'local' })
-    expect(dirs).toContain('demo')
-    expect(dirs).toContain('demo/nested')
-    expect(dirs).toContain('empty-dir')
-    expect(dirs).not.toContain('.hidden')
-    expect(dirs.every((d) => !d.includes('\\'))).toBe(true)
+    // 懒加载级联语义：只列本级，子级由前端逐级下钻再列
+    expect(dirs).toEqual([path.join(out, 'demo'), path.join(out, 'empty-dir')])
+    expect(dirs.some((d) => d.includes('nested'))).toBe(false)
+    expect(dirs.every((d) => path.isAbsolute(d))).toBe(true)
+  })
+
+  it('listImages 递归聚合本级与全部子目录图片（与云前缀列举语义一致）', async () => {
+    const out = tempDir()
+    mkdirSync(path.join(out, 'sub', 'deep'), { recursive: true })
+    writeFileSync(path.join(out, 'root.png'), 'PNG')
+    writeFileSync(path.join(out, 'sub', 'mid.png'), 'PNG')
+    writeFileSync(path.join(out, 'sub', 'deep', 'leaf.png'), 'PNG')
+    writeFileSync(path.join(out, 'sub', 'ignored.txt'), 'TXT')
+    const provider = new LocalUploadProvider({ defaultDir: out })
+    const page = await provider.listImages({ targetType: 'local' })
+    expect(page.items.map((i) => i.name).sort()).toEqual(['leaf.png', 'mid.png', 'root.png'])
+    expect(page.nextCursor).toBeNull()
   })
 
   it('listDirectories：根目录不存在返回空；localDir 覆盖生效', async () => {
@@ -71,7 +83,7 @@ describe('T3 LocalUploadProvider', () => {
     const override = tempDir()
     mkdirSync(path.join(override, 'ov'))
     const dirs = await provider.listDirectories({ targetType: 'local', overrides: { localDir: override } })
-    expect(dirs).toEqual(['ov'])
+    expect(dirs).toEqual([path.join(override, 'ov')])
   })
 })
 

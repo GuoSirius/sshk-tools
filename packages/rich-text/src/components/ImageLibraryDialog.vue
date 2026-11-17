@@ -9,14 +9,12 @@
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { CascaderInstance } from 'element-plus'
 import type { IDomEditor } from '@wangeditor/editor'
 import type { RichTextImageItem, RichTextImageLibrary, RichTextImageSource, RichTextImageTarget } from '../types'
 import { toDisplaySrc } from '../display'
 import {
-  buildDirectoryTree,
   defaultSourceId,
-  directoriesFromKeys,
-  expandDirPath,
   loadSettings,
   matchImageKeyword,
   normalizeDirInput,
@@ -24,7 +22,7 @@ import {
   sortSourcesByDefault,
   validateDirInput,
 } from '../image-library-settings'
-import type { DirectoryTreeNode, DirValidation } from '../image-library-settings'
+import type { DirValidation } from '../image-library-settings'
 import { contentName, fingerprintKey, hashFile } from '../upload-dedupe'
 
 /** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删）；scope 记录来源/桶/目录归属 */
@@ -146,21 +144,11 @@ const activeUploadTasks = computed(() => {
 /** 图库已列图片 */
 const items = ref<RichTextImageItem[]>([])
 const loadingList = ref(false)
-/** 目录下拉的候选 key：打开弹窗/切来源时静默列一次，派生级联树 */
-const dirKeys = ref<string[]>([])
-/** 目录列取的三态反馈：加载中 / 失败原因 / 是否已加载完（区分「真没有目录」与「还没加载」） */
-const dirLoading = ref(false)
+/** 目录懒加载失败原因（仍可手输目录） */
 const dirError = ref('')
-const dirsLoaded = ref(false)
-/** 把目录路径并入候选集（去重），用于手输/上传后即时出现在下拉 */
-function rememberDirs(dirs: string[]): void {
-  const set = new Set(dirKeys.value.map((d) => normalizeDirInput(d)))
-  for (const d of dirs) {
-    const n = normalizeDirInput(d)
-    if (n) set.add(n)
-  }
-  dirKeys.value = [...set].sort((a, b) => a.localeCompare(b))
-}
+/** 级联面板序号：换源/换桶/上传成功后自增重挂载，清掉已加载的懒加载缓存 */
+const dirPanelKey = ref(0)
+const cascaderRef = ref<CascaderInstance | null>(null)
 /** 文件名搜索关键词 */
 const keyword = ref('')
 /** 已渲染数量（分批渲染） */
@@ -221,14 +209,11 @@ const dirModel = computed({
 })
 /**
  * 手输目录提交时归一化（本地文件系统路径只 trim，保留 /..、盘符等语义）。
- * 归一化后把该目录及各父级并入候选，保证下拉里能看到刚输入的目录。
  */
 function commitDirInput(): void {
   const raw = dirModel.value
   const normalized = typeOf.value === 'local' ? String(raw ?? '').trim() : normalizeDirInput(raw)
   dirModel.value = normalized
-  // 本地是文件系统路径（可能是绝对路径），不并入对象路径候选；靠 listDirectories 列真实子目录
-  if (typeOf.value !== 'local') rememberDirs(expandDirPath(normalized))
 }
 
 /** 恢复持久化设置后归一化目录写法（旧数据可能带首尾斜杠），保持作用域口径一致 */
@@ -247,8 +232,47 @@ const scopeDir = computed(() => (typeOf.value === 'local' ? dirModel.value.trim(
 const dirValidation = computed<DirValidation>(() => validateDirInput(dirModel.value, typeOf.value))
 /** 当前来源+桶+目录的作用域串，构造图库项/上传项时固化进 pool key */
 const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', scopeDir.value].join('|'))
-/** 级联目录树：优先真实目录路径，每层 value 为完整路径 */
-const dirTree = computed<DirectoryTreeNode[]>(() => buildDirectoryTree(dirKeys.value))
+
+/** ── 目录级联懒加载：展开某级时才列该级子目录（三种源统一），Provider 返回该源语义下的完整路径 ── */
+function targetForDir(dir: string): RichTextImageTarget {
+  if (typeOf.value === 'cloud') return { ...target.value, prefix: dir }
+  if (typeOf.value === 'remote') return { ...target.value, remotePath: dir }
+  return { ...target.value, localDir: dir }
+}
+
+const cascaderProps = {
+  /** 逐级懒加载：点文字下钻（触发 lazyLoad），圈单选（checkStrictly）选中即回显 */
+  lazy: true,
+  checkStrictly: true,
+  emitPath: false,
+  lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
+    const source = activeSource.value
+    if (!source || !props.library.listDirectories) {
+      resolve([])
+      return
+    }
+    const parent = node.level === 0 ? '' : String(node.value ?? '')
+    try {
+      const children = await props.library.listDirectories(source, targetForDir(parent))
+      dirError.value = ''
+      resolve(
+        children.map((seg) => {
+          const last = seg.slice(seg.lastIndexOf('/') + 1) || seg
+          return { value: seg, label: last, leaf: false }
+        }),
+      )
+    } catch (err) {
+      dirError.value = (err as Error)?.message || String(err)
+      resolve([])
+    }
+  },
+}
+
+/** 点单选圈选中：回显 + 关闭面板（checkStrictly 下 EP 不会自动收起）；点文字由 EP 下钻 */
+function onDirChange(v: string | null): void {
+  cascaderRef.value?.togglePopperVisible(false)
+  dirModel.value = v ?? ''
+}
 
 /** 图库页可见项：本次上传（含旧源上传的）优先，当前源列图按作用域+url 去重补充，再按文件名过滤 */
 const galleryView = computed<PoolItem[]>(() => {
@@ -315,41 +339,6 @@ async function loadSources(): Promise<void> {
   }
 }
 
-async function loadDirKeys(): Promise<void> {
-  const source = activeSource.value
-  if (!source) return
-  // 传入当前桶（云列目录用得到），复用同一来源上下文
-  const ctxTarget: RichTextImageTarget = source.type === 'cloud' ? { bucket: target.value.bucket } : {}
-  dirError.value = ''
-  dirLoading.value = true
-  let real: string[] | null = null
-  if (props.library.listDirectories) {
-    try {
-      real = await props.library.listDirectories(source, ctxTarget)
-    } catch (err) {
-      // 列真实目录失败（如 FTP 连不上）：把原因透出给用户，再降级到图片 key 反推
-      dirError.value = (err as Error)?.message || String(err)
-      real = null
-    }
-  }
-  try {
-    // 真实目录列取成功（含空结果）即视为权威；仅失败时降级为图片 key 反推
-    const fallback = async (): Promise<string[]> => {
-      try {
-        return directoriesFromKeys((await props.library.list(source, {})).items.map((i) => i.key ?? i.name ?? ''))
-      } catch {
-        return []
-      }
-    }
-    const base = real !== null ? real : await fallback()
-    // 保留当前手输/已选目录，避免重列后被冲掉
-    rememberDirs([...base, ...expandDirPath(dirModel.value)])
-  } finally {
-    dirLoading.value = false
-    dirsLoaded.value = true
-  }
-}
-
 watch(
   () => props.open,
   async (open) => {
@@ -375,7 +364,6 @@ watch(
     // 设置恢复后再打开写回监听，防止空值落盘覆盖
     await nextTick()
     restored.value = true
-    void loadDirKeys()
     if (tab.value === 'gallery') await loadGallery()
   },
 )
@@ -386,12 +374,10 @@ watch(sourceId, async (id) => {
   target.value = { ...(targetCache[props.stateKey]?.[id] ?? {}) }
   normalizeRestoredDir()
   items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
-  dirKeys.value = []
-  dirsLoaded.value = false
   dirError.value = ''
+  dirPanelKey.value++ // 换源重挂级联：清掉上一来源的懒加载缓存
   renderedCount.value = PAGE_SIZE
   persist()
-  void loadDirKeys()
   if (tab.value === 'gallery') await loadGallery()
 })
 
@@ -407,21 +393,40 @@ watch(target, () => {
   persist()
   scheduleGalleryReload()
 }, { deep: true })
+/** 换桶：根目录列取随桶变化，重挂级联清缓存（目录手输不触发——只动 prefix/remotePath/localDir） */
+watch(() => target.value.bucket, () => {
+  dirError.value = ''
+  dirPanelKey.value++
+})
 watch(tab, async (v) => {
   persist()
   renderedCount.value = PAGE_SIZE
   if (v === 'gallery' && props.open && restored.value) await loadGallery()
 })
-watch(keyword, () => { renderedCount.value = PAGE_SIZE })
+watch(keyword, (kw) => {
+  renderedCount.value = PAGE_SIZE
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = null
+  if (!kw) {
+    cancelScan() // 清空关键词：终止扫描，回到分页浏览
+    return
+  }
+  // 仅图库 tab 需要跨页扫描（上传/已选择数据全在内存）；防抖 400ms 避免逐字触发
+  if (tab.value !== 'gallery') return
+  searchTimer = setTimeout(() => { searchTimer = null; void runSearchScan() }, 400)
+})
 
 function close(): void {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
   galleryReloadTimer = null
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = null
   emit('update:open', false)
 }
 
 onBeforeUnmount(() => {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
+  if (searchTimer) clearTimeout(searchTimer)
   stopProgressTimer()
   stopDoneWindowTimer()
   for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
@@ -429,6 +434,29 @@ onBeforeUnmount(() => {
 
 function esc(url: string): string {
   return url.replace(/"/g, '%22')
+}
+
+/** 复制图片完整链接：优先 Clipboard API，失败回退 execCommand（file:// 等非安全上下文） */
+async function copyLink(item: PoolItem): Promise<void> {
+  const url = item.url
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url)
+      ElMessage.success('链接已复制')
+      return
+    }
+    const ta = document.createElement('textarea')
+    ta.value = url
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    ElMessage.success('链接已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 /** 插入图片：显示层用 localres（本地 file:// 预览契约），回写存储由 onChange 统一转回 */
@@ -548,9 +576,8 @@ async function onFilesChosen(e: Event): Promise<void> {
   const ok = results.filter(Boolean).length
   const failed = results.length - ok
   if (ok > 0) {
-    // 上传成功后：目标目录立即进候选，并重列真实目录（新目录能被发现），避免下拉里看不到刚传的目录
-    rememberDirs(expandDirPath(dirModel.value))
-    void loadDirKeys()
+    // 上传成功后重挂级联：清掉懒加载缓存，下次展开即可看到新目录
+    dirPanelKey.value++
     ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
   }
   if (failed > 0) ElMessage.warning(`${failed} 张上传失败，可在上传列表中重试或删除`)
@@ -611,9 +638,52 @@ function insertSelected(): void {
 const galleryCursor = ref<string | null>(null)
 const loadingMore = ref(false)
 
+/** ── 搜索跨页全量扫描：来源侧还有未加载页时自动分块续拉，保证关键词能命中后面页的图 ── */
+const SEARCH_SCAN_CHUNK = 2000
+/** 扫描上限：防异常超大桶无限拉取（达到即提示「结果可能不全」） */
+const SEARCH_SCAN_MAX = 10_000
+const scanning = ref(false)
+const scanTotal = ref(0)
+const scanCapped = ref(false)
+let scanSeq = 0
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelScan(): void {
+  scanSeq++
+  scanning.value = false
+}
+
+/** 从已加载页的游标开始分块续拉，直到扫完/达上限/被新上下文取代；匹配结果随 items 增长即时过滤呈现 */
+async function runSearchScan(): Promise<void> {
+  const source = activeSource.value
+  if (!source || !keyword.value || !galleryCursor.value || scanning.value) return
+  const seq = ++scanSeq
+  scanning.value = true
+  scanTotal.value = items.value.length
+  scanCapped.value = false
+  try {
+    let cursor: string | null = galleryCursor.value
+    while (cursor && scanTotal.value < SEARCH_SCAN_MAX) {
+      const page = await props.library.list(source, target.value, { limit: SEARCH_SCAN_CHUNK, cursor })
+      if (seq !== scanSeq) return // 关键词/目录/来源已变，本轮结果丢弃
+      items.value = [...items.value, ...page.items]
+      scanTotal.value = items.value.length
+      cursor = page.nextCursor ?? null
+      galleryCursor.value = cursor
+    }
+    if (cursor) scanCapped.value = true
+  } catch (err) {
+    if (seq === scanSeq) ElMessage.error(`搜索扫描失败：${(err as Error).message}`)
+  } finally {
+    if (seq === scanSeq) scanning.value = false
+  }
+}
+
 async function loadGallery(): Promise<void> {
   const source = activeSource.value
   if (!source) return
+  scanSeq++ // 上下文重置：进行中的搜索扫描立即失效
+  scanning.value = false
   loadingList.value = true
   renderedCount.value = PAGE_SIZE
   try {
@@ -628,6 +698,8 @@ async function loadGallery(): Promise<void> {
   } finally {
     loadingList.value = false
   }
+  // 带关键词进入/刷新图库：来源侧还有未加载页时自动续扫，保证搜索能命中后面页
+  if (keyword.value && galleryCursor.value) void runSearchScan()
 }
 
 /** 「加载更多」续拉下一页（大目录 1000/10000+ 张时按页取，不一次列爆） */
@@ -685,14 +757,14 @@ function onPaneScroll(e: Event): void {
           <div class="lib-row lib-row-target">
             <el-input v-if="showBucket" v-model="target.bucket" placeholder="桶 / 容器（留空用 profile 默认）" class="bucket-input" />
             <el-cascader
+              ref="cascaderRef"
+              :key="dirPanelKey"
               v-model="dirModel"
-              :options="dirTree"
-              :props="{ checkStrictly: true, emitPath: false, expandTrigger: 'hover' }"
-              :loading="dirLoading"
-              filterable
+              :props="cascaderProps"
               clearable
               class="dir-cascader"
-              :placeholder="dirLoading ? '目录加载中…' : showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
+              :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
+              @change="onDirChange"
             />
             <el-input
               v-model="dirModel"
@@ -706,11 +778,8 @@ function onPaneScroll(e: Event): void {
           <div v-if="dirValidation.level !== 'ok'" class="dir-validation" :class="`dir-validation--${dirValidation.level}`">
             {{ dirValidation.message }}
           </div>
-          <!-- 目录下拉状态反馈：让「没有目录 / 还在加载 / 加载失败」可区分，而不是一片空白 -->
+          <!-- 目录懒加载失败：透出原因，仍可手输 -->
           <div v-if="dirError" class="dir-validation dir-validation--warning">目录列表加载失败：{{ dirError }}（仍可手输目录）</div>
-          <div v-else-if="!dirLoading && dirsLoaded && dirTree.length === 0" class="dir-validation dir-validation--info">
-            该来源根目录下暂无子目录：直接手输目录名即可，上传后会自动创建并出现在下拉里
-          </div>
           <div class="lib-row lib-row-actions">
             <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
             <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
@@ -820,7 +889,20 @@ function onPaneScroll(e: Event): void {
               </div>
             </template>
           </el-image>
-          <div class="thumb-name">{{ item.name || item.key }}</div>
+          <div class="thumb-name" :title="item.url">
+            <span class="thumb-name-text">{{ item.name || item.key }}</span>
+            <button
+              type="button"
+              class="copy-link"
+              title="复制链接"
+              @click.stop="copyLink(item)"
+            >
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+              </svg>
+            </button>
+          </div>
           <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
           <span v-else-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
           <el-button
@@ -848,8 +930,13 @@ function onPaneScroll(e: Event): void {
             ? (keyword ? '无匹配图片' : (poolCount ? '无匹配图片' : '尚未选择图片；在「上传图片」或「从图库选择」里勾选，会汇总到这里'))
             : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
       </div>
-      <div v-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
-      <div v-else-if="galleryCursor" class="load-more load-more--action">
+      <div v-if="scanning" class="load-more load-more--action">
+        正在搜索全部图片：已扫描 {{ scanTotal }} 张…
+        <el-button size="small" type="danger" plain @click="cancelScan">取消</el-button>
+      </div>
+      <div v-else-if="scanCapped" class="load-more">已扫描 {{ scanTotal }} 张（达扫描上限，更深的图片未纳入搜索）</div>
+      <div v-else-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
+      <div v-else-if="galleryCursor && tab === 'gallery'" class="load-more load-more--action">
         已加载 {{ items.length }} 张，来源侧可能还有更多
         <el-button size="small" type="primary" plain :loading="loadingMore" @click="loadMoreGallery">加载更多</el-button>
       </div>
@@ -925,9 +1012,12 @@ function onPaneScroll(e: Event): void {
   text-align: center;
 }
 .thumb-cell.picked { border-color: var(--el-color-primary); background: rgba(64, 158, 255, 0.08); }
-/* 悬浮复选框：半透明暗色毛玻璃背板 + 白描边，避免纯白方块浮在深色/失败占位上突兀（明暗主题通用） */
+/* 悬浮复选框：半透明暗色毛玻璃背板 + 白描边，避免纯白方块浮在深色/失败占位上突兀（明暗主题通用）。
+   EP 的 .el-checkbox 默认 height:32px（theme.css 又把内芯定为 15px）——背板会上下多出灰色，
+   必须让 wrapper 高度塌到内芯 + 2px padding（用户反馈 2026-11-17） */
 .thumb-check {
   position: absolute; top: 5px; left: 5px; z-index: 2;
+  height: auto;
   margin: 0; padding: 2px; line-height: 0;
   background: rgba(0, 0, 0, 0.34);
   border-radius: 5px;
@@ -963,7 +1053,17 @@ function onPaneScroll(e: Event): void {
 .img-fallback-icon { width: 26px; height: 26px; opacity: 0.7; }
 .img-fallback-slash { opacity: 0.45; }
 .img-fallback-text { font-size: 11px; line-height: 1; }
-.thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
+.thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.thumb-name-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 复制链接 icon：悬浮缩略图时浮现，点击复制完整 URL（title 已带完整链接可悬停查看） */
+.copy-link {
+  flex: none; display: none; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: inherit; cursor: pointer;
+}
+.thumb-cell:hover .copy-link { display: inline-flex; opacity: 0.85; }
+.thumb-cell:hover .thumb-name { opacity: 1; }
+.copy-link:hover { background: color-mix(in srgb, var(--sshk-accent, #4f8cff) 22%, transparent); color: var(--sshk-accent, #4f8cff); opacity: 1; }
 .thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
 .thumb-remove { margin-top: -4px; }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }

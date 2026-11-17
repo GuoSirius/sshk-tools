@@ -2,16 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { CloudUploadProvider } from './providers/cloud'
 
 /**
- * 云列目录多级展开的实证测试：mock ali-oss，按 prefix 返回嵌套 CommonPrefixes，
- * 跑真实的 listDirectories 全路径（loadSdk → listPrefixesRaw → collectPrefixes → BFS）。
- * 目录树：根 → {blog → {2026 → 06, 2025}, news（空目录）}。
+ * 云列目录的实证测试（mock ali-oss）：delimiter 列举，prefix 无尾斜杠会返回「目录自身」
+ * 而非子级（真实 OSS 行为）；listCloudPage 对非空前缀补尾斜杠后单级列取正常。
+ * 语义（2026-11-17 定版）：listDirectories 单级返回直接子目录、桶根相对路径；多级下钻由前端懒加载逐级发起。
  */
 const TREE: Record<string, string[]> = {
   '': ['blog/', 'news/'],
   blog: ['blog/2026/', 'blog/2025/'],
   'blog/2026': ['blog/2026/06/'],
-  'blog/2025': [],
-  news: [],
 }
 
 vi.mock('ali-oss', () => {
@@ -41,23 +39,22 @@ function makeProvider(): CloudUploadProvider {
   })
 }
 
-describe('CloudUploadProvider.listDirectories 多级展开（mock ali-oss 实证）', () => {
-  it('从根逐级 BFS，列出全部多级目录与空目录', async () => {
+describe('CloudUploadProvider.listDirectories 单级列取（mock ali-oss 实证）', () => {
+  it('从根列出一级目录（桶根相对路径，无尾斜杠）', async () => {
     const dirs = await makeProvider().listDirectories({ targetType: 'cloud', overrides: { bucket: 'bkt' } })
-    expect(dirs).toEqual(['blog', 'blog/2025', 'blog/2026', 'blog/2026/06', 'news'])
-    // 递归确实发生了：根 + blog + blog/2026 + news 各一次（blog/2025 是空目录也查了）
-    // delimiter 列子目录带尾斜杠（OSS/S3 系无尾斜杠只会返回目录自身，列不出第二层）
+    expect(dirs).toEqual(['blog', 'news'])
+    // delimiter 列子目录带尾斜杠（OSS/S3 系无尾斜杠只会返回目录自身，列不出子级）
     const calls = (await import('ali-oss') as unknown as { default: { calls: string[] } }).default.calls
     expect(calls).toContain('')
-    expect(calls).toContain('blog/')
-    expect(calls).toContain('blog/2026/')
   })
 
-  it('带 base prefix 时相对路径正确', async () => {
+  it('带 base prefix 时返回该级直接子目录，仍是桶根相对路径', async () => {
     const dirs = await makeProvider().listDirectories({
       targetType: 'cloud',
       overrides: { bucket: 'bkt', prefix: 'blog' },
     })
-    expect(dirs).toEqual(['2025', '2026', '2026/06'])
+    expect(dirs).toEqual(['blog/2025', 'blog/2026'])
+    const calls = (await import('ali-oss') as unknown as { default: { calls: string[] } }).default.calls
+    expect(calls).toContain('blog/')
   })
 })

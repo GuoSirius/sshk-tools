@@ -8,12 +8,12 @@
 
 /** 目录数量上限：防止超大 bucket 一次列爆弹窗（与 rich-text FETCH_LIMIT 同量级） */
 export const MAX_DIRECTORIES = 500
-/** 递归深度上限：目录树过深时对体验无益，且会放大请求数 */
-export const MAX_DIRECTORY_DEPTH = 6
-/** 逐层并发：目录多时仍能较快列全 */
-export const DIRECTORY_CONCURRENCY = 5
-/** 远程递归列目录的时间预算（毫秒）：超时先返回已收集的部分结果，避免用户干等 */
-export const DIRECTORY_LIST_BUDGET_MS = 12_000
+/** 递归列图的文件数上限：超出后停止下钻（分页游标基于本次收集结果） */
+export const MAX_LIST_FILES = 10_000
+/** 远程递归列图的时间预算（毫秒）：超时先返回已收集的部分结果，避免用户干等 */
+export const LIST_BUDGET_MS = 12_000
+/** 递归列图的深度上限：目录树过深对体验无益，且放大请求数 */
+export const MAX_LIST_DEPTH = 6
 
 /** 统一斜杠、去首尾斜杠、压掉空段；返回 '' 表示根 */
 export function normalizeDirPath(raw: string): string {
@@ -23,27 +23,6 @@ export function normalizeDirPath(raw: string): string {
     .map((s) => s.trim())
     .filter(Boolean)
     .join('/')
-}
-
-/** 拼接父路径与子段（任一为空时返回另一段） */
-export function joinDir(parent: string, child: string): string {
-  const p = normalizeDirPath(parent)
-  const c = normalizeDirPath(child)
-  return p && c ? `${p}/${c}` : p || c
-}
-
-/**
- * 把 SDK 返回的完整前缀转成相对 base 的完整目录路径（无尾斜杠）。
- * 例：full='blog/2026/', base='blog/' → '2026'；base='' → 'blog/2026'。
- */
-export function relativeDir(full: string, base: string): string {
-  let p = String(full ?? '').replace(/\\/g, '/').replace(/\/+$/, '').replace(/^\/+/, '')
-  const b = normalizeDirPath(base)
-  if (b) {
-    if (p === b) return ''
-    if (p.startsWith(`${b}/`)) p = p.slice(b.length + 1)
-  }
-  return normalizeDirPath(p)
 }
 
 /**

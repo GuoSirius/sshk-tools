@@ -4,7 +4,7 @@ import { Readable } from 'node:stream'
 import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import { byNewestFirst, isImageFileName } from '../image-files'
-import { joinDir, MAX_DIRECTORIES, MAX_DIRECTORY_DEPTH, DIRECTORY_LIST_BUDGET_MS } from '../directories'
+import { LIST_BUDGET_MS, MAX_DIRECTORIES, MAX_LIST_DEPTH, MAX_LIST_FILES } from '../directories'
 import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
 
 /** T4：远程 profile（ftp | sftp 合并，protocol 区分）。连接信息由 main 进程从 settings/safeStorage 解析后注入 */
@@ -41,8 +41,10 @@ export class RemoteUploadProvider implements UploadProvider {
   }
 
   /**
-   * 列出远端目录下已有图片（新在前）；无 baseUrl 时回填 protocol://host 形式 URL。
-   * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉。
+   * 递归列出远端目录（含全部子目录）下的已有图片（新在前）；无 baseUrl 时回填 protocol://host URL。
+   * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的图。
+   * 单连接 BFS 下钻，带目录数/文件数/深度上限与时间预算（超时先返回已收集部分）。
+   * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉（每次调用重新下钻）。
    */
   async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
     const dir = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
@@ -58,8 +60,8 @@ export class RemoteUploadProvider implements UploadProvider {
     return { items, nextCursor }
   }
 
-  /** FTP 列一个目录的全部图片（一次连接拉全量，分页在 listImages 统一做） */
-  private async ftpListImages(dir: string): Promise<UploadedImageInfo[]> {
+  /** FTP 递归列图（单连接 BFS，带目录/文件/深度上限与时间预算） */
+  private async ftpListImages(root: string): Promise<UploadedImageInfo[]> {
     const client = new FtpClient()
     try {
       await client.access({
@@ -69,23 +71,42 @@ export class RemoteUploadProvider implements UploadProvider {
         password: this.profile.password,
         secure: false,
       })
-      const list = await client.list(dir)
-      return list
-        .filter((i) => !i.isDirectory && isImageFileName(i.name))
-        .map((i) => ({
-          url: this.urlFor(dir, i.name),
-          key: `${dir}/${i.name}`,
-          name: i.name,
-          size: i.size ?? 0,
-          modified: i.modifiedAt ? i.modifiedAt.getTime() : 0,
-        }))
+      const out: UploadedImageInfo[] = []
+      const deadline = Date.now() + LIST_BUDGET_MS
+      const seen = new Set<string>([root])
+      const queue: { dir: string; depth: number }[] = [{ dir: root, depth: 0 }]
+      while (queue.length > 0 && out.length < MAX_LIST_FILES && Date.now() < deadline) {
+        const cur = queue.shift()!
+        if (cur.depth > MAX_LIST_DEPTH) continue
+        let list: Awaited<ReturnType<FtpClient['list']>>
+        try { list = await client.list(cur.dir) } catch { continue }
+        for (const i of list) {
+          if (i.name === '.' || i.name === '..') continue
+          const full = `${cur.dir === '/' ? '' : cur.dir}/${i.name}`
+          if (i.isDirectory) {
+            if (!seen.has(full) && cur.depth < MAX_LIST_DEPTH) {
+              seen.add(full)
+              queue.push({ dir: full, depth: cur.depth + 1 })
+            }
+          } else if (isImageFileName(i.name) && out.length < MAX_LIST_FILES) {
+            out.push({
+              url: this.urlFor(cur.dir, i.name),
+              key: full,
+              name: i.name,
+              size: i.size ?? 0,
+              modified: i.modifiedAt ? i.modifiedAt.getTime() : 0,
+            })
+          }
+        }
+      }
+      return out
     } finally {
       client.close()
     }
   }
 
-  /** SFTP 列一个目录的全部图片（单连接拉全量，分页在 listImages 统一做） */
-  private sftpListImages(dir: string): Promise<UploadedImageInfo[]> {
+  /** SFTP 递归列图（单连接 BFS，带目录/文件/深度上限与时间预算） */
+  private sftpListImages(root: string): Promise<UploadedImageInfo[]> {
     return new Promise<UploadedImageInfo[]>((resolve, reject) => {
       const conn = new SshClient()
       conn.on('ready', () => {
@@ -95,27 +116,41 @@ export class RemoteUploadProvider implements UploadProvider {
             reject(err)
             return
           }
-          sftp.readdir(dir, (e, list) => {
-            conn.end()
-            if (e) {
-              reject(e)
-              return
-            }
-            resolve(
-              (list ?? [])
-                .filter((i) => isImageFileName(i.filename))
-                .map((i) => {
-                  const attrs = i.attrs as { size?: number; mtime?: number } | undefined
-                  return {
-                    url: this.urlFor(dir, i.filename),
-                    key: `${dir}/${i.filename}`,
-                    name: i.filename,
-                    size: Number(attrs?.size ?? 0) || 0,
-                    modified: Number(attrs?.mtime ?? 0) ? Number(attrs?.mtime) * 1000 : 0,
+          const deadline = Date.now() + LIST_BUDGET_MS
+          const out: UploadedImageInfo[] = []
+          const seen = new Set<string>([root])
+          const queue: { dir: string; depth: number }[] = [{ dir: root, depth: 0 }]
+          const read = (dir: string): Promise<{ filename: string; attrs: { isDirectory(): boolean; size?: number; mtime?: number } }[]> =>
+            new Promise((res) => sftp.readdir(dir, (e, list) => res(e ? [] : (list ?? []) as never)))
+          const walk = async (): Promise<void> => {
+            while (queue.length > 0 && out.length < MAX_LIST_FILES && Date.now() < deadline) {
+              const cur = queue.shift()!
+              const list = await read(cur.dir)
+              for (const i of list) {
+                if (i.filename === '.' || i.filename === '..') continue
+                const full = `${cur.dir === '/' ? '' : cur.dir}/${i.filename}`
+                let isDir = false
+                try { isDir = i.attrs?.isDirectory?.() ?? false } catch { isDir = false }
+                if (isDir) {
+                  if (!seen.has(full) && cur.depth < MAX_LIST_DEPTH) {
+                    seen.add(full)
+                    queue.push({ dir: full, depth: cur.depth + 1 })
                   }
-                }),
-            )
-          })
+                } else if (isImageFileName(i.filename) && out.length < MAX_LIST_FILES) {
+                  out.push({
+                    url: this.urlFor(cur.dir, i.filename),
+                    key: full,
+                    name: i.filename,
+                    size: Number(i.attrs?.size ?? 0) || 0,
+                    modified: Number(i.attrs?.mtime ?? 0) ? Number(i.attrs?.mtime) * 1000 : 0,
+                  })
+                }
+              }
+            }
+          }
+          walk()
+            .then(() => { conn.end(); resolve(out) })
+            .catch((e) => { conn.end(); reject(e) })
         })
       })
       conn.on('error', reject)
@@ -128,7 +163,7 @@ export class RemoteUploadProvider implements UploadProvider {
     })
   }
 
-  /** 列出远端根目录下所有真实子目录的完整相对路径（可多级，含空目录），带深度/数量上限 */
+  /** 列出某目录下的直接子目录（单级，配合前端懒加载逐级下钻）；返回绝对远程路径 */
   async listDirectories(ctx: UploadContext): Promise<string[]> {
     const root = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
     if (this.profile.protocol === 'ftp') {
@@ -141,68 +176,47 @@ export class RemoteUploadProvider implements UploadProvider {
           password: this.profile.password,
           secure: false,
         })
-        return await this.ftpWalkDirs(client, root)
+        const list = await client.list(root)
+        return list
+          .filter((i) => i.isDirectory && i.name !== '.' && i.name !== '..')
+          .map((i) => `${root === '/' ? '' : root}/${i.name}`)
+          .sort((a, b) => a.localeCompare(b))
+          .slice(0, MAX_DIRECTORIES)
       } finally {
         client.close()
       }
     }
-    return await this.sftpWalkDirs(root)
+    const list = await this.sftpReadDir(root)
+    return list
+      .filter((e) => {
+        let isDir = false
+        try { isDir = e.attrs?.isDirectory?.() ?? false } catch { isDir = false }
+        return isDir && e.filename !== '.' && e.filename !== '..'
+      })
+      .map((e) => `${root === '/' ? '' : root}/${e.filename}`)
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, MAX_DIRECTORIES)
   }
 
-  /** FTP 递归列目录（BFS，串行，带上限与时间预算：超时先返回已收集的部分结果） */
-  private async ftpWalkDirs(client: FtpClient, root: string): Promise<string[]> {
-    const out: string[] = []
-    const deadline = Date.now() + DIRECTORY_LIST_BUDGET_MS
-    const queue: { dir: string; rel: string; depth: number }[] = [{ dir: root, rel: '', depth: 0 }]
-    while (queue.length && out.length < MAX_DIRECTORIES && Date.now() < deadline) {
-      const cur = queue.shift()!
-      if (cur.depth > MAX_DIRECTORY_DEPTH) continue
-      let list: Awaited<ReturnType<FtpClient['list']>>
-      try { list = await client.list(cur.dir) } catch { continue }
-      for (const e of list) {
-        if (out.length >= MAX_DIRECTORIES) break
-        if (!e.isDirectory || e.name === '.' || e.name === '..') continue
-        const full = joinDir(cur.rel, e.name)
-        out.push(full)
-        queue.push({ dir: `${cur.dir.replace(/\/+$/, '')}/${e.name}`, rel: full, depth: cur.depth + 1 })
-      }
-    }
-    return out.sort((a, b) => a.localeCompare(b))
-  }
-
-  /** SFTP 递归列目录（BFS，单连接，带上限与时间预算：超时先返回已收集的部分结果） */
-  private sftpWalkDirs(root: string): Promise<string[]> {
-    return new Promise<string[]>((resolve, reject) => {
+  /** SFTP 读单级目录条目；读失败返回空（目录不存在等），仅连接级错误向上抛 */
+  private sftpReadDir(root: string): Promise<{ filename: string; attrs: { isDirectory(): boolean } }[]> {
+    return new Promise((resolve, reject) => {
       const conn = new SshClient()
-      const out: string[] = []
-      const deadline = Date.now() + DIRECTORY_LIST_BUDGET_MS
       conn.on('ready', () => {
-        conn.sftp(async (err, sftp) => {
-          if (err) { conn.end(); reject(err); return }
-          const read = (dir: string): Promise<{ filename: string; attrs: { isDirectory(): boolean } }[]> =>
-            new Promise((res) => sftp.readdir(dir, (e, list) => res(e ? [] : (list ?? []) as never)))
-          const queue: { dir: string; rel: string; depth: number }[] = [{ dir: root, rel: '', depth: 0 }]
-          try {
-            while (queue.length && out.length < MAX_DIRECTORIES && Date.now() < deadline) {
-              const cur = queue.shift()!
-              if (cur.depth > MAX_DIRECTORY_DEPTH) continue
-              const list = await read(cur.dir)
-              for (const e of list) {
-                if (out.length >= MAX_DIRECTORIES) break
-                let isDir = false
-                try { isDir = e.attrs?.isDirectory?.() ?? false } catch { isDir = false }
-                if (!isDir || e.filename === '.' || e.filename === '..') continue
-                const full = joinDir(cur.rel, e.filename)
-                out.push(full)
-                queue.push({ dir: `${cur.dir.replace(/\/+$/, '')}/${e.filename}`, rel: full, depth: cur.depth + 1 })
-              }
-            }
+        conn.sftp((err, sftp) => {
+          if (err) {
             conn.end()
-            resolve(out.sort((a, b) => a.localeCompare(b)))
-          } catch (e) {
-            conn.end()
-            reject(e)
+            reject(err)
+            return
           }
+          sftp.readdir(root, (e, list) => {
+            conn.end()
+            if (e) {
+              resolve([])
+              return
+            }
+            resolve((list ?? []) as never)
+          })
         })
       })
       conn.on('error', reject)

@@ -133,7 +133,8 @@ if (hook) {
  * 工具栏：以 wangEditor 默认 toolbarKeys 为基线（用户拍板：保持原始默认分组顺序）。
  * - 无上传钩子：剔除 uploadImage / uploadVideo，其余默认项原样保留；
  * - insertKeys 在默认 group-image（下标 22，对照 5.1.23 默认数组核实）前插入
- *   「查看源码」（恒有）与「图片库」（有图片库桥接时），其余不动。
+ *   一个独立分组「扩展」（下拉，含「查看源码」恒有 + 「图片库」有桥接时），
+ *   其余不动。（用户反馈 2026-11-17：新加的两个按钮单独放一个分组中）
  */
 const toolbarConfig: Partial<IToolbarConfig> = {}
 if (!hook) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
@@ -143,7 +144,20 @@ if (props.imageLibrary) {
   registerImageLibraryMenu()
   extraKeys.push(IMAGE_LIBRARY_MENU_KEY)
 }
-toolbarConfig.insertKeys = { index: DEFAULT_GROUP_IMAGE_INDEX, keys: extraKeys }
+// IToolbarConfig.insertKeys.keys 类型声明为 string[]，但实现是原样 splice 进 toolbarKeys，
+// group 对象（{ key, title, iconSvg, menuKeys }）与官方自定义工具栏写法一致，可正常渲染为下拉分组
+toolbarConfig.insertKeys = {
+  index: DEFAULT_GROUP_IMAGE_INDEX,
+  keys: [
+    {
+      key: 'group-sshk-extra',
+      title: '扩展',
+      iconSvg:
+        '<svg viewBox="0 0 1024 1024"><path d="M204.8 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path><path d="M505.6 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path><path d="M806.4 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path></svg>',
+      menuKeys: extraKeys,
+    } as unknown as string,
+  ],
+}
 
 onMounted(() => {
   const box = editorBoxEl.value
