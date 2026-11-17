@@ -317,21 +317,26 @@ function locateInHtml(term: string): void {
               </span>
             </template>
             <el-form label-width="auto" size="small" class="badge-cfg-form">
-              <el-form-item label="属性名">
-                <el-input v-model="badgeAttr" />
-              </el-form-item>
-              <el-form-item label="海报名">
-                <el-input v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
-              </el-form-item>
-              <el-form-item label="文本位置">
-                <el-select v-model="badgePositionText" class="pos-select">
-                  <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-                <span class="pos-gap">图片位置</span>
-                <el-select v-model="badgePositionImage" class="pos-select">
-                  <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-              </el-form-item>
+              <div class="form-inline-row">
+                <el-form-item label="海报名" class="grow-item">
+                  <el-input v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
+                </el-form-item>
+                <el-form-item label="属性名" class="grow-item">
+                  <el-input v-model="badgeAttr" />
+                </el-form-item>
+              </div>
+              <div class="form-inline-row">
+                <el-form-item label="文本位置" class="grow-item">
+                  <el-select v-model="badgePositionText">
+                    <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="图片位置" class="grow-item">
+                  <el-select v-model="badgePositionImage">
+                    <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                  </el-select>
+                </el-form-item>
+              </div>
               <el-form-item label=" ">
                 <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
               </el-form-item>
@@ -494,11 +499,13 @@ function locateInHtml(term: string): void {
 .cfg-title { margin-bottom: 0; }
 .cfg-summary { margin-left: 10px; visibility: hidden; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .cfg-summary.on { visibility: visible; }
-.badge-cfg-form { width: 100%; }
+.badge-cfg-form { width: 100%; padding: 0 6px; }
 .badge-cfg-form :deep(.el-form-item) { margin-bottom: 10px; }
 .badge-cfg-form :deep(.el-select) { width: 100%; }
-.pos-select { width: calc(50% - 24px) !important; flex: none; }
-.pos-gap { flex: none; margin: 0 4px; }
+/* 两个字段并排一行：各占一半，不换行（2026-11-17 用户反馈） */
+.form-inline-row { display: flex; gap: 12px; width: 100%; }
+.grow-item { flex: 1 1 0; min-width: 0; }
+.grow-item :deep(.el-form-item__content) { flex-wrap: nowrap; min-width: 0; }
 .pos-note { width: 100%; margin-top: 2px; }
 /* 搜索计数常驻占位：预留固定宽度，未命中时不可见，命中显示——布局零突变 */
 .search-pos {
