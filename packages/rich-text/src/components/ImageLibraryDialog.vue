@@ -148,6 +148,9 @@ const loadingList = ref(false)
 const dirError = ref('')
 /** 级联面板序号：换源/换桶/上传成功后自增重挂载，清掉已加载的懒加载缓存 */
 const dirPanelKey = ref(0)
+/** 面板交互代次：用户显式选择或面板重挂时自增，作废在途的「空目录自动选中」，防止覆盖用户新选择 */
+const dirPanelGen = ref(0)
+watch(dirPanelKey, () => { dirPanelGen.value++ })
 const cascaderRef = ref<CascaderInstance | null>(null)
 /** 文件名搜索关键词 */
 const keyword = ref('')
@@ -240,6 +243,12 @@ function targetForDir(dir: string): RichTextImageTarget {
   return { ...target.value, localDir: dir }
 }
 
+/** EP cascader-panel 实例的最小类型面（expose 的 Ref 运行时已解包，按实际形态取用） */
+interface CascaderPanelApi {
+  getFlattedNodes(leafOnly: boolean): { value: unknown }[]
+  handleCheckChange(node: { value: unknown }, checked: boolean, emitClose?: boolean): void
+}
+
 const cascaderProps = {
   /** 逐级懒加载：点文字下钻（触发 lazyLoad），圈单选（checkStrictly）选中即回显 */
   lazy: true,
@@ -252,15 +261,26 @@ const cascaderProps = {
       return
     }
     const parent = node.level === 0 ? '' : String(node.value ?? '')
+    // 捕获交互代次与已选值：在途期间用户另做选择/面板重挂则放弃自动选中；值已选中说明是回显同步加载
+    const gen = dirPanelGen.value
+    const echoing = dirModel.value === parent
     try {
       const children = await props.library.listDirectories(source, targetForDir(parent))
       dirError.value = ''
+      // 不写 leaf 字段：EP 在「已加载且无子数据」时自动推断叶子；显式 leaf:false 会把节点永久钉死为
+      // 非叶子（isLeaf 直接取 data.leaf，不再走推断），导致空目录不被标记为叶子、点文字永远不能选中
       resolve(
         children.map((seg) => {
           const last = seg.slice(seg.lastIndexOf('/') + 1) || seg
-          return { value: seg, label: last, leaf: false }
+          return { value: seg, label: last }
         }),
       )
+      // 点文字下钻发现该级无子目录：视为叶子，第一次点击即按选中走（回显+关闭），不让用户点两次（2026-11-17）
+      if (node.level > 0 && children.length === 0 && !echoing && gen === dirPanelGen.value) {
+        const panel = (cascaderRef.value as unknown as { cascaderPanelRef?: CascaderPanelApi } | null)?.cascaderPanelRef
+        const target = panel?.getFlattedNodes(false).find((n) => String(n.value) === parent)
+        if (panel && target) panel.handleCheckChange(target, true, false)
+      }
     } catch (err) {
       dirError.value = (err as Error)?.message || String(err)
       resolve([])
@@ -270,6 +290,7 @@ const cascaderProps = {
 
 /** 点单选圈选中：回显 + 关闭面板（checkStrictly 下 EP 不会自动收起）；点文字由 EP 下钻 */
 function onDirChange(v: string | null): void {
+  dirPanelGen.value++
   cascaderRef.value?.togglePopperVisible(false)
   dirModel.value = v ?? ''
 }
