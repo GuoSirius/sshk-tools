@@ -41,6 +41,7 @@ import {
   type FsTransferTask,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
+import { ShareDialog } from '@sshk/ui-kit'
 
 /**
  * X6 文件系统页（plans/08 §3）：进入上传管理工具默认展示。
@@ -577,6 +578,30 @@ async function rowLink(entry: FsEntry): Promise<void> {
   const url = `${base}/${entry.path.split('/').map(encodeURIComponent).join('/')}`
   await window.api.os.clipboardWrite(url)
   ElMessage.success(`链接已复制：${url}`)
+}
+
+// ── ShareHub 安全分享（plans/09 S15）：裸外链之外并存的一种「有 TTL、可撤销」分享 ──
+// 仅本地通道可用（文件真实落在本地目录，ShareHub 才能 serve）；远程/云通道请继续用上面的裸外链。
+const shareDialog = ref({
+  open: false, root: '', entry: '', label: '',
+})
+function rowShare(entry: FsEntry): void {
+  if (activeChannel.value?.type !== 'local') {
+    ElMessage.warning('ShareHub 安全分享仅支持本地通道；远程/云通道请使用「链接」（裸外链）')
+    return
+  }
+  void loadConfigForShare(entry)
+}
+async function loadConfigForShare(entry: FsEntry): Promise<void> {
+  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
+  const root = cfg.local.defaultDir?.trim()
+  if (!root) { ElMessage.warning('本地通道未配置默认目录，请到「上传配置」填写'); return }
+  Object.assign(shareDialog.value, {
+    root,
+    entry: entry.path,
+    label: `文件：${entry.name}`,
+    open: true,
+  })
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
@@ -1147,6 +1172,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-button size="small" text :type="entry.kind === 'dir' ? 'primary' : 'primary'" @click.stop="rowOpen(entry)">打开</el-button>
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="rowLink(entry)">链接</el-button>
+            <el-button v-if="activeChannel?.type === 'local'" size="small" text type="primary" @click.stop="rowShare(entry)">安全分享</el-button>
             <el-button size="small" text type="warning" v-if="hasWritable" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
             <el-button v-if="entry.kind === 'dir'" size="small" text type="success" @click.stop="showUsage(entry)">统计</el-button>
@@ -1335,6 +1361,16 @@ function onKeydown(event: KeyboardEvent): void {
         </div>
       </div>
     </el-drawer>
+
+    <!-- ShareHub 安全分享（plans/09 S15）：本地通道文件的 TTL/可撤销分享 -->
+    <ShareDialog
+      v-model:open="shareDialog.open"
+      tool-id="upload-manager"
+      :label="shareDialog.label"
+      :default-root="shareDialog.root"
+      :default-entry="shareDialog.entry"
+      :default-ttl-hours="72"
+    />
   </div>
 </template>
 

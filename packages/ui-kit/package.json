@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 公共渲染层组件：页面布局、空态、二次确认、跨页选择、时间展示",
+  "description": "sshk-tools 公共渲染层组件：页面布局、空态、二次确认、跨页选择、时间展示、统一分享",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,10 +11,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sshk/shared": "workspace:*",
     "element-plus": "latest",
+    "qrcode": "latest",
     "vue": "latest"
   },
   "devDependencies": {
+    "@types/qrcode": "latest",
     "typescript": "6"
   },
   "engines": {

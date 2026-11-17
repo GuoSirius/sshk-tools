@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 局域网只读分享内核（C-T1）：token 路径 + TTL + 内网网卡绑定，EDM/badge 共用",
+  "description": "sshk-tools 常驻分享服务内核（plans/09）：单端口多路由 + TTL + 内网优选 + Range，宿主与各工具共用",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@sshk/repository": "workspace:*"
+    "@sshk/repository": "workspace:*",
+    "@sshk/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "latest",

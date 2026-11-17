@@ -166,11 +166,6 @@ const api = {
       invoke(IPC_CHANNELS.badgeDeletePoster, posterId),
     downloadPng: (payload: { posterId: string; outPath: string }): Promise<{ outPath: string }> =>
       invoke(IPC_CHANNELS.badgeDownloadPng, payload),
-    shareStart: (payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }> =>
-      invoke(IPC_CHANNELS.badgeShareStart, payload),
-    shareStop: (): Promise<boolean> => invoke(IPC_CHANNELS.badgeShareStop),
-    shareStatus: (): Promise<{ running: boolean; expiresAt: number }> =>
-      invoke(IPC_CHANNELS.badgeShareStatus),
     templateDownload: (fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }> =>
       invoke(IPC_CHANNELS.badgeTemplateDownload, fmt),
     parseImage: (payload: {
@@ -356,6 +351,25 @@ const api = {
     /** 当前通道的下载落点目录（不存在会自动创建） */
     downloadDir: (profileId: string): Promise<string> => invoke(IPC_CHANNELS.fsDownloadDir, profileId),
     setDownloadDir: (dir: string): Promise<string> => invoke(IPC_CHANNELS.fsSetDownloadDir, dir),
+  },
+  /** ShareHub 常驻分享服务（plans/09）：工具侧路由管理。toolId 由调用方传入做归属鉴权 */
+  shareHub: {
+    create: (input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket> =>
+      invoke(IPC_CHANNELS.shareHubCreate, input),
+    list: (toolId?: string): Promise<import('@sshk/shared').ShareRouteInfo[]> =>
+      invoke(IPC_CHANNELS.shareHubList, toolId),
+    revoke: (id: string, toolId?: string): Promise<boolean> =>
+      invoke(IPC_CHANNELS.shareHubRevoke, id, toolId),
+    renew: (id: string, ttlHours: number, toolId?: string): Promise<import('@sshk/shared').ShareRouteTicket> =>
+      invoke(IPC_CHANNELS.shareHubRenew, id, ttlHours, toolId),
+    status: (): Promise<import('@sshk/shared').HubStatus> => invoke(IPC_CHANNELS.shareHubStatus),
+  },
+  /** 生命周期控制：仅宿主「分享服务」tab 可用 */
+  shareHubControl: {
+    start: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'start'),
+    restart: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'restart'),
+    stop: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'stop'),
+    clear: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'clear'),
   },
 }
 

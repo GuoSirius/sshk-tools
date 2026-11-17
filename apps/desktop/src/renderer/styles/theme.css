@@ -614,6 +614,28 @@ body {
 .inline-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
 .orphan-box { border-color: #ff9f43; }
 
+/* 应用设置各 tab 通用语义类（原 AppSettingsDrawer scoped 提升为全局，拆 tab 后共享） */
+.tip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px;
+  border: 1px solid var(--el-text-color-placeholder); border-radius: 50%;
+  font-size: 10px; line-height: 1; color: var(--el-text-color-placeholder); cursor: help;
+}
+.danger-text { color: var(--el-color-danger); }
+.kv-label { flex: none; white-space: nowrap; }
+.log-summary { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.health-row { padding: 8px 0; border-bottom: 1px dashed var(--el-border-color-lighter); }
+.health-row:last-child { border-bottom: none; }
+.health-row-bad { background: var(--el-fill-color-light); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+.health-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.health-log-btn { margin-left: auto; }
+.snap-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.share-actions { justify-content: flex-start; gap: 8px; }
+.share-ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.share-route-filter { margin-bottom: 10px; }
+.expired-text { color: var(--el-color-danger); }
+
 .tool-manage-row {
   border: 1px solid var(--sshk-border); border-radius: 10px; padding: 12px; margin-bottom: 10px;
   background: color-mix(in srgb, var(--sshk-accent) 3%, transparent);

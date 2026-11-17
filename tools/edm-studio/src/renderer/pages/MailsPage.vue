@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, TimeText } from '@sshk/ui-kit'
+import { EmptyState, TimeText, ShareDialog } from '@sshk/ui-kit'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
 import { api, confirmRemove, osApi, type MailRow } from '../shared'
 import MailEditor from '../MailEditor.vue'
@@ -110,32 +110,16 @@ async function batchRemove(): Promise<void> {
   ElMessage.success(`已删除 ${rows.length} 封邮件`)
 }
 
-// ── 分享（局域网 token，状态可见可停止） ──
-const share = ref<{ running: boolean; urls: string[] }>({ running: false, urls: [] })
-async function refreshShare(): Promise<void> {
-  try { share.value = (await api('share:status')) as { running: boolean; urls: string[] } } catch { /* 忽略 */ }
-}
-async function shareStart(): Promise<void> {
+// ── 分享（plans/09 ShareHub）：工具只解析产物根目录，分享本体交给宿主 ShareHub + ShareDialog ──
+const shareDialog = reactive({ open: false, root: '', entry: '', label: '邮件产物', loading: false })
+async function openShare(): Promise<void> {
+  shareDialog.loading = true
   try {
-    const res = (await api('share:start', { ttlHours: 72 })) as { urls: string[] }
-    await osApi().clipboardWrite(res.urls[0] ?? '')
-    await refreshShare()
-    ElMessage.success(`分享已启动：${res.urls[0]}（已复制，72h 有效）`)
+    const resolved = await api('share:resolve') as { root: string; entry: string; label: string }
+    Object.assign(shareDialog, { open: true, root: resolved.root, entry: resolved.entry, label: resolved.label })
   } catch (err) { ElMessage.error((err as Error).message) }
+  finally { shareDialog.loading = false }
 }
-async function shareStop(): Promise<void> {
-  try {
-    await api('share:stop')
-    await refreshShare()
-    ElMessage.success('分享已停止')
-  } catch (err) { ElMessage.error((err as Error).message) }
-}
-async function copyShareUrl(url: string): Promise<void> {
-  await osApi().clipboardWrite(url)
-  ElMessage.success('分享链接已复制')
-}
-
-onMounted(refreshShare)
 
 /** 行内「更多」命令分发 */
 async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
@@ -153,12 +137,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
       <el-button size="small" type="success" plain :disabled="selectedMails.length === 0" @click="batchExport">批量导出（{{ selectedMails.length }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selectedMails.length === 0" @click="batchRemove">批量删除（{{ selectedMails.length }}）</el-button>
       <span class="spacer" />
-      <template v-if="share.running">
-        <el-tag type="success" size="small" effect="dark">分享中 · {{ share.urls.length }} 个链接</el-tag>
-        <el-button size="small" plain @click="copyShareUrl(share.urls[0] ?? '')">复制链接</el-button>
-        <el-button size="small" type="warning" plain @click="shareStop">停止分享</el-button>
-      </template>
-      <el-button v-else size="small" type="success" @click="shareStart">启动分享</el-button>
+      <el-button size="small" type="success" :loading="shareDialog.loading" @click="openShare">分享产物</el-button>
     </div>
 
     <div class="table-wrap">
@@ -218,10 +197,21 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
         layout="total, sizes, prev, pager, next"
         small
       />
-      <span class="muted">产物覆盖式（D19）· 分享 final.html（72h token）· 导出 zip 含各形态 html</span>
+      <span class="muted">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
     </div>
 
     <MailEditor v-model:visible="editorOpen" :mail="editorMail" @saved="onEditorSaved" />
+
+    <!-- 统一分享对话框（plans/09 ShareHub） -->
+    <ShareDialog
+      v-model:open="shareDialog.open"
+      tool-id="edm-studio"
+      :label="shareDialog.label"
+      :default-root="shareDialog.root"
+      :default-entry="shareDialog.entry"
+      :default-ttl-hours="72"
+      show-mine
+    />
   </div>
 </template>
 

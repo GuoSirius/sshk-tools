@@ -1,9 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import { zipSync, type Zippable } from 'fflate'
-import { dirname, extname, isAbsolute, join } from 'node:path'
+import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { app } from 'electron'
-import { ShareServer } from '@sshk/share-core'
 import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
@@ -179,12 +178,6 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     if (!deps.host) throw new Error('宿主未提供图片识别能力')
     return deps.host
   }
-  // C-T1：海报分享复用宿主级 share-core 内核（serve 产物根，html + assets 同源可访问）
-  // 项11：会话状态落 userData，重启后 resume 恢复未过期链接（token 不变 → 链接不变）
-  const shareStateFile = join(app.getPath('userData'), 'badge-share-state.json')
-  const share = new ShareServer(deps.outputRoot, shareStateFile)
-  void share.resume().catch(() => { /* 端口占用/状态损坏：本次不恢复，用户重新分享即可 */ })
-
   // ① 数据源解析：按扩展名分派（xlsx/csv/json）
   //    支持文件选择器给出的绝对路径（用户主动选择）与产物系统相对路径
   ipc.handle(IPC_CHANNELS.badgeParseDatasource, wrap((file: string) => {
@@ -419,29 +412,17 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     return { outPath: payload.outPath }
   }))
 
-  // ⑨ 海报分享（C-T1）：share:start { posterId, ttlHours? } → { url, expiresAt }
-  ipc.handle(IPC_CHANNELS.badgeShareStart, wrap(async (payload: { posterId: string; ttlHours?: number }) => {
+  // ⑨ 海报分享解析（plans/09）：posterId → { root, entry, label } 绝对路径。
+  //    分享服务本体（token/TTL/状态/二维码/续期/撤销）统一由宿主 ShareHub + ShareDialog 承担，
+  //    工具 main 只做「业务 id → 产物绝对路径」解析（这里最清楚 outputRoot 布局）。
+  ipc.handle(IPC_CHANNELS.badgeShareResolve, wrap(async (payload: { posterId: string }) => {
     const poster = await deps.repository.get<Poster>('posters', payload.posterId)
     if (!poster?.outputs.badged) throw new Error('海报尚未生成，无法分享')
-    const res = await share.start(Number(payload.ttlHours ?? 72), 0, {
-      posterId: payload.posterId,
-      posterName: poster.name,
-    })
-    return { url: share.linkFor(poster.outputs.badged), expiresAt: res.expiresAt, urls: res.urls }
-  }))
-  ipc.handle(IPC_CHANNELS.badgeShareStop, wrap(async () => {
-    await share.stop()
-    return true
-  }))
-  ipc.handle(IPC_CHANNELS.badgeShareStatus, wrap(() => {
-    const meta = share.meta
-    return {
-      running: share.running,
-      expiresAt: share.expiresAt,
-      expired: share.expired,
-      posterId: typeof meta.posterId === 'string' ? meta.posterId : '',
-      posterName: typeof meta.posterName === 'string' ? meta.posterName : '',
-    }
+    // serve 产物根（html + assets 同源可访问）；entry 为 badged 相对路径
+    const entry = poster.outputs.badged.replaceAll('\\', '/').replace(/^\/+/, '')
+    const abs = resolveSafe(deps.outputRoot, entry)
+    if (!existsSync(abs)) throw new Error('海报产物文件不存在：' + entry)
+    return { root: deps.outputRoot, entry, label: `海报：${poster.name}` }
   }))
 
   // ⑩ 数据源模板下载（用户验收项4）：空表头 + 示例行；xlsx 含「填写说明」sheet；返回 base64 由渲染层落盘

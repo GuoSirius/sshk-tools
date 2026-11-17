@@ -607,7 +607,7 @@ export async function savePosterMeta(): Promise<void> {
 export function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === 'copy') void copyCode(row)
   else if (cmd === 'download-png') void downloadPosterPng(row)
-  else if (cmd === 'share') void sharePoster(row)
+  else if (cmd === 'share') void openShare(row)
   else if (cmd === 'regenerate') void regeneratePoster(row)
   else if (cmd === 'delete') { deleteTarget.value = row; deleteOpen.value = true }
 }
@@ -759,50 +759,32 @@ export async function downloadPosterPng(row: PosterRecord): Promise<void> {
   ElMessage.success('已下载：' + outPath)
 }
 
-// ── 海报分享（C-T1 @sshk/share-core）：表格行与生成页共用，72h token 局域网只读 ──
-// 状态含当前分享的海报 id/name：重启恢复后由 IPC 回填 posterId，供「重新生成」沿用同一海报
-export const shareState = reactive({ running: false, expiresAt: 0, posterId: '', posterName: '' })
-/** 分享已过期（server 仍在跑但 token 已失效 → 访问 404），需重新生成 */
-export const shareExpired = computed(() =>
-  shareState.running && shareState.expiresAt > 0 && Date.now() > shareState.expiresAt)
-/** 剩余分钟（未启动 / 已过期为 0） */
-export const shareMinutesLeft = computed(() =>
-  shareState.running && !shareExpired.value
-    ? Math.max(1, Math.round((shareState.expiresAt - Date.now()) / 60000))
-    : 0)
+// ── 海报分享（plans/09 ShareHub）：工具只解析产物绝对路径，分享本体交给宿主 ShareHub + ui-kit ShareDialog ──
+/** ShareDialog 参数状态：open 控制显隐，其余为当前海报解析出的绝对路径/标签。 */
+export const shareDialog = reactive({
+  open: false,
+  root: '',
+  entry: '',
+  label: '',
+  loading: false,
+})
 
-export async function refreshShareStatus(): Promise<void> {
-  try { Object.assign(shareState, await host.badge.shareStatus()) } catch { /* 忽略 */ }
-}
-/** 初次分享：启动分享并复制链接 */
-export async function sharePoster(poster: Pick<PosterRecord, '_id' | 'name'>): Promise<void> {
-  const res = await host.badge.shareStart({ posterId: poster._id, ttlHours: 72 })
-  await host.os.clipboardWrite(res.url)
-  Object.assign(shareState, { running: true, expiresAt: res.expiresAt, posterId: poster._id, posterName: poster.name })
-  ElMessage.success(`「${poster.name}」分享已启动（72h 有效），链接已复制：${res.url}`)
-}
-/**
- * 重新生成（用户验收项1）：覆盖两种场景，共用同一入口。
- * - 已过期后再次生成：token 早已失效，强调整改结果为「已恢复」；
- * - 未过期主动重新生成：换 token → 旧链接立即失效，明确提示避免误以为旧链接还能用。
- * shareStart 内部会先 stop 再换新 token，两种场景语义一致，仅提示文案与状态判断不同。
- */
-export async function regenerateShare(poster?: Pick<PosterRecord, '_id' | 'name'>): Promise<void> {
-  const id = poster?._id || shareState.posterId
-  if (!id) { ElMessage.warning('未识别当前分享的海报，请在海报列表重新点「分享页面」'); return }
-  const wasExpired = shareExpired.value
-  const name = poster?.name || shareState.posterName || '海报'
-  const res = await host.badge.shareStart({ posterId: id, ttlHours: 72 })
-  await host.os.clipboardWrite(res.url)
-  Object.assign(shareState, { running: true, expiresAt: res.expiresAt, posterId: id, posterName: name })
-  ElMessage.success(wasExpired
-    ? `「${name}」旧链接已过期，已重新生成并复制：${res.url}`
-    : `「${name}」已重新生成新链接（旧链接立即失效），已复制：${res.url}`)
-}
-export async function stopPosterShare(): Promise<void> {
-  await host.badge.shareStop()
-  Object.assign(shareState, { running: false, expiresAt: 0, posterId: '', posterName: '' })
-  ElMessage.success('分享已停止')
+/** 打开分享对话框：先经 badge main 把 posterId 解析为产物绝对路径（工具最清楚 outputRoot 布局）。 */
+export async function openShare(poster: Pick<PosterRecord, '_id' | 'name'>): Promise<void> {
+  shareDialog.loading = true
+  try {
+    const resolved = await host.badge.shareResolve({ posterId: poster._id }) as { root: string; entry: string; label: string }
+    Object.assign(shareDialog, {
+      open: true,
+      root: resolved.root,
+      entry: resolved.entry,
+      label: resolved.label || `海报：${poster.name}`,
+    })
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    shareDialog.loading = false
+  }
 }
 
 /** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */

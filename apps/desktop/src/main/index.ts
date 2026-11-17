@@ -42,6 +42,7 @@ import { UploadRuntime, type UploadListRequest, type UploadRequest, type UploadT
 import { FsRuntime } from './fs'
 import { installLocalResHandler, registerLocalResScheme } from './local-res'
 import { allowWindowDrop } from './win32-drop'
+import { createShareHubHost, registerShareHubIpc, type ShareHubHost } from './share-hub'
 
 /** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
 registerLocalResScheme()
@@ -80,6 +81,8 @@ let quitting = false
 /** 开发者模式提权闸门（2026-11-17 起走 dev-access 按操作缓存：isDevOpAuthorized('developerMode')） */
 /** 插件加载结果：单个插件失败不影响宿主与其它工具 */
 let pluginStatus: Record<string, ToolPluginStatus> = {}
+/** ShareHub 常驻分享服务单例（plans/09）：whenReady 初始化，退出前停止落盘 */
+let shareHubHost: ShareHubHost | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -125,6 +128,8 @@ function createWindow(): void {
     quitting = true
     // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
     killUtilityTools()
+    // ShareHub：停止监听 + 未过期路由落盘（plans/09）
+    if (shareHubHost) void shareHubHost.dispose()
     // H6：退出兜底压缩（fire-and-forget；NeDB compact 原子替换，中断安全）
     void compactDatabase('quit')
   })
@@ -330,6 +335,9 @@ async function registerIpc(): Promise<void> {
   })
   const themeMode = cfg.get('app.themeMode')
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
+
+  // ── ShareHub 常驻分享服务（plans/09）：6 通道，单例由 whenReady 初始化 ──
+  if (shareHubHost) registerShareHubIpc(shareHubHost)
 
   handleOk(IPC_CHANNELS.appVersion, () => app.getVersion())
   // 关于页运行环境信息（__APP_COMMIT__ 由 electron-vite define 注入，打包/dev 一致）
@@ -962,6 +970,12 @@ void app.whenReady().then(async () => {
   migrateLegacyUserData()
   services = setupServices()
   installLocalResHandler(services.config)
+  // ShareHub 常驻分享服务（plans/09）：单例创建 + 自动启动 + 旧状态文件清理 + powerMonitor
+  shareHubHost = createShareHubHost(services.config, {
+    userDataDir: app.getPath('userData'),
+    isDev,
+  })
+  await shareHubHost.init()
   seedDefaultProviders()
   migrateLegacyVisionConfig()
   await registerIpc()

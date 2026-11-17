@@ -1,11 +1,25 @@
 import { createServer, type Server } from 'node:http'
 import { networkInterfaces } from 'node:os'
-import { existsSync, readFileSync } from 'node:fs'
-import { readFile, writeFile, unlink } from 'node:fs/promises'
-import { extname, join } from 'node:path'
-import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync, statSync, createReadStream, mkdirSync, readdirSync } from 'node:fs'
+import { writeFile, unlink, stat } from 'node:fs/promises'
+import { extname, join, dirname } from 'node:path'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { resolveSafe } from '@sshk/repository'
+import type {
+  ShareRouteInput,
+  ShareRouteTicket,
+  ShareRouteInfo,
+  ShareIpInfo,
+  ShareAccessLog,
+  HubStatus,
+} from '@sshk/shared'
 
+/** 局域网只读分享内核（plans/09 从零重写）：单端口、多路由、TTL 双保险、可撤销可续期。
+ *  - 一个 HTTP server（0.0.0.0），路由表 Map<token, ShareRoute>，每条路由独立 root/TTL/口令/计数
+ *  - 静态内核：MIME + 目录列表页 + Range（音视频拖进度）+ 防目录穿越
+ *  - 状态持久化 hub-state.json（重启 resume 未过期路由）；访问日志环形缓冲（最近 500 条）
+ *  - IP 策略：0.0.0.0 监听 + 全网卡枚举 + virtual 判定 + 自动优选 + 用户手输展示 IP
+ */
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.htm': 'text/html; charset=utf-8',
@@ -14,175 +28,465 @@ const MIME: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.zip': 'application/zip',
 }
 
-/**
- * 局域网只读分享内核（C-T1 由 edm-studio/src/main/share.ts 抽取）：
- * - 绑定内网网卡 IP，随机 token 路径 + TTL；token 过期即 404
- * - 只读 serveRoot 下文件；路径穿越受 resolveSafe 保护
- * - EDM：serveRoot = <root>/outputs；badge：serveRoot = 产物根（html + assets 同源可访问）
- */
-interface PersistedShare {
+/** 判定网卡是否为虚拟网卡（虚拟机/容器/代理/蓝牙等）——只影响「自动优选」排序与展示标记，不阻止选择。 */
+const VIRTUAL_NIC_RE = /vEthernet|VMware|VirtualBox|Loopback|Docker|WSL|TAP|TUN|Tailscale|蓝牙|Bluetooth|Hyper-V|Virtual|VMnet|ireth|Wi-Fi Direct/i
+
+interface ShareRoute {
+  id: string
   token: string
+  toolId: string
+  label: string
+  root: string
+  entry: string
+  ttlHours: number
+  createdAt: number
   expiresAt: number
-  port: number
-  /** 业务自定义元数据（如 badge 当前分享的海报 id/name），随会话持久化，重启后原样回填 */
-  meta?: Record<string, unknown>
+  password: string
+  /** 命中计数（访问入口 + 资源） */
+  hits: number
 }
 
-export class ShareServer {
-  private server: Server | null = null
-  private token = ''
-  private _expiresAt = 0
-  private port = 0
-  private _meta: Record<string, unknown> = {}
+interface PersistedHub {
+  version: 1
+  routes: ShareRoute[]
+}
 
-  /** stateFile：分享会话持久化路径（userData 下）。null 表示不持久化（向后兼容既有调用）。 */
-  constructor(private readonly serveRoot: string, private readonly stateFile: string | null = null) {}
+const DEFAULT_TTL_HOURS = 72
+const LOG_LIMIT = 500
+const CLEAN_INTERVAL_MS = 60_000
+
+export class ShareHub {
+  private server: Server | null = null
+  private port = 0
+  private routes = new Map<string, ShareRoute>()
+  private logs: ShareAccessLog[] = []
+  private cleanTimer: ReturnType<typeof setInterval> | null = null
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
+  /** 用户配置的展示 IP；'' = 每次生成链接时按 §4.3 自动优选 */
+  private preferredIp = ''
+  /** 端口回落提示回调（固定端口被占时由宿主 ElMessage 告警） */
+  private onPortFallback: ((requested: number, actual: number) => void) | null = null
+
+  constructor(private readonly stateFile: string) {}
+
+  /** 注入宿主回调：固定端口被占回落时告警 */
+  setPortFallbackHandler(fn: (requested: number, actual: number) => void): void {
+    this.onPortFallback = fn
+  }
+
+  /** 设置展示 IP（配置变更即时生效，已发链接不追溯改写） */
+  setPreferredIp(ip: string): void {
+    this.preferredIp = String(ip ?? '').trim()
+  }
 
   get running(): boolean {
     return this.server !== null
   }
 
-  /** 应用启动时恢复未过期的分享会话（项11：72h 内跨重启仍可访问，token 不变 → 链接不变）。
-   *  - 状态文件不存在 / 已过期 / 结构非法 → 返回 null（不启动）；
-   *  - 重新 start 会生成新 token 并覆盖状态文件 → 旧链接自动失效。 */
-  async resume(requestedPort = 0): Promise<{ port: number; token: string; expiresAt: number; urls: string[]; meta: Record<string, unknown> } | null> {
-    if (!this.stateFile || !existsSync(this.stateFile) || this.running) return null
-    let saved: PersistedShare
-    try {
-      saved = JSON.parse(readFileSync(this.stateFile, 'utf8')) as PersistedShare
-      if (!saved?.token || !saved.expiresAt || Date.now() > saved.expiresAt) return null
-    } catch {
-      return null
+  getPort(): number {
+    return this.port
+  }
+
+  /** 启动 HTTP 服务并 resume 状态文件；requestedPort 缺省读配置。返回实际监听端口。
+   *  固定端口被占 → 回落随机并触发 onPortFallback 告警（never throw 端口占用）。 */
+  async start(requestedPort = 0): Promise<{ port: number }> {
+    if (this.running) return { port: this.port }
+    await this.listen(requestedPort)
+    this.resumeRoutes()
+    this.cleanTimer = setInterval(() => this.sweepExpired(), CLEAN_INTERVAL_MS)
+    this.cleanTimer.unref?.()
+    return { port: this.port }
+  }
+
+  /** 停止服务，保留路由表与 token（再 start 即恢复）。状态落盘。 */
+  async stop(): Promise<void> {
+    if (this.cleanTimer) { clearInterval(this.cleanTimer); this.cleanTimer = null }
+    const srv = this.server
+    if (srv) {
+      srv.closeAllConnections?.()
+      await new Promise<void>((resolve) => {
+        srv.close(() => resolve())
+        const t = setTimeout(resolve, 1500)
+        srv.once('close', () => clearTimeout(t))
+      })
+      this.server = null
+      this.port = 0
     }
-    this.token = saved.token
-    this._expiresAt = saved.expiresAt
-    this._meta = saved.meta ?? {}
-    await this.listen(saved.port || requestedPort)
-    return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls(), meta: this._meta }
+    await this.flushPersist()
+  }
+
+  /** 停止并清空全部路由 + 删除状态文件（所有链接永久失效）。 */
+  async clear(): Promise<void> {
+    await this.stop()
+    this.routes.clear()
+    this.logs = []
+    if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null }
+    await unlink(this.stateFile).catch(() => { /* 本就不存在，忽略 */ })
+  }
+
+  /** 重启监听：保留全部路由与 token（token 属于路由不属于进程）。 */
+  async restart(requestedPort = 0): Promise<{ port: number }> {
+    const port = this.port || requestedPort
+    await this.stop()
+    return this.start(port)
+  }
+
+  /** 创建一条分享路由。root 必须是存在的绝对路径（主进程校验），token 12B base64url。 */
+  async create(input: ShareRouteInput): Promise<ShareRouteTicket> {
+    const root = String(input?.root ?? '').trim()
+    if (!root) throw new Error('分享根目录不能为空')
+    if (!existsSync(root) || !statSync(root).isDirectory()) throw new Error(`分享根目录不存在或不是目录：${root}`)
+    if (!String(input?.toolId ?? '')) throw new Error('toolId 不能为空')
+    // 防穿越：入口若给出，必须在 root 内
+    const entry = String(input?.entry ?? '').replaceAll('\\', '/').replace(/^\/+/, '')
+    if (entry) resolveSafe(root, entry)
+
+    const ttlHours = Number.isFinite(input.ttlHours) && Number(input.ttlHours) > 0
+      ? Number(input.ttlHours) : DEFAULT_TTL_HOURS
+    const now = Date.now()
+    const route: ShareRoute = {
+      id: randomUUID(),
+      token: randomBytes(12).toString('base64url'),
+      toolId: String(input.toolId),
+      label: String(input.label ?? '分享'),
+      root,
+      entry,
+      ttlHours,
+      createdAt: now,
+      expiresAt: now + ttlHours * 3600_000,
+      password: String(input.password ?? ''),
+      hits: 0,
+    }
+    this.routes.set(route.token, route)
+    this.schedulePersist()
+    return this.ticket(route)
+  }
+
+  /** 撤销一条路由（按 id 或 token 均可）。 */
+  async revoke(idOrToken: string): Promise<boolean> {
+    const route = this.findBy(idOrToken)
+    if (!route) return false
+    this.routes.delete(route.token)
+    this.schedulePersist()
+    return true
+  }
+
+  /** 续期一条路由（重算 expiresAt），返回新 ticket。 */
+  async renew(idOrToken: string, ttlHours: number): Promise<ShareRouteTicket> {
+    const route = this.findBy(idOrToken)
+    if (!route) throw new Error('分享路由不存在或已过期')
+    const hours = Number.isFinite(ttlHours) && ttlHours > 0 ? ttlHours : DEFAULT_TTL_HOURS
+    route.ttlHours = hours
+    route.expiresAt = Date.now() + hours * 3600_000
+    this.schedulePersist()
+    return this.ticket(route)
+  }
+
+  /** 路由列表（可按 toolId 过滤），时间倒序。 */
+  listRoutes(toolId?: string): ShareRouteInfo[] {
+    return [...this.routes.values()]
+      .filter((r) => !toolId || r.toolId === toolId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((r) => ({
+        id: r.id, toolId: r.toolId, label: r.label, entry: r.entry,
+        ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, hits: r.hits,
+      }))
+  }
+
+  /** 服务状态快照（status IPC 返回）。 */
+  status(): HubStatus {
+    return {
+      running: this.running,
+      port: this.port,
+      displayIp: this.displayIp(),
+      ips: this.listIps(),
+      routes: this.listRoutes(),
+      logs: [...this.logs].reverse(),
+    }
+  }
+
+  /** 枚举本机 IPv4 候选（含虚拟网卡标记）；不在此处过滤禁用项——UI 需要展示「虚拟但可选」。 */
+  listIps(): ShareIpInfo[] {
+    const seen = new Set<string>()
+    const result: ShareIpInfo[] = []
+    for (const [nic, list] of Object.entries(networkInterfaces())) {
+      for (const ni of list ?? []) {
+        if (ni.family !== 'IPv4' || ni.internal || seen.has(ni.address)) continue
+        if (ni.address.startsWith('127.') || ni.address.startsWith('169.254.')) continue
+        seen.add(ni.address)
+        result.push({ ip: ni.address, nic, virtual: VIRTUAL_NIC_RE.test(nic) })
+      }
+    }
+    // 排序：以太网/WLAN 优先，然后 10.* > 192.168.* > 172.*，其余最后
+    const rank = (ip: string): number => ip.startsWith('10.') ? 0 : ip.startsWith('192.168.') ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3
+    result.sort((a, b) => {
+      const an = /以太网|Ethernet|WLAN|Wi-Fi/i.test(a.nic) ? 0 : 1
+      const bn = /以太网|Ethernet|WLAN|Wi-Fi/i.test(b.nic) ? 0 : 1
+      return an - bn || rank(a.ip) - rank(b.ip)
+    })
+    return result
+  }
+
+  /** 当前生效的展示 IP：手输优先；否则按 §4.3 规则自动优选。 */
+  displayIp(): string {
+    if (this.preferredIp) return this.preferredIp
+    const ips = this.listIps().filter((x) => !x.virtual)
+    const pick = (prefix: (ip: string) => boolean): string | undefined =>
+      ips.find((x) => prefix(x.ip))?.ip
+    return pick((ip) => ip.startsWith('10.'))
+      ?? pick((ip) => ip.startsWith('192.168.'))
+      ?? pick((ip) => /^172\.(1[6-9]|2\d|3[01])\./.test(ip))
+      ?? ips[0]?.ip
+      ?? '127.0.0.1'
+  }
+
+  private findBy(idOrToken: string): ShareRoute | undefined {
+    if (!idOrToken) return undefined
+    const direct = this.routes.get(idOrToken)
+    if (direct) return direct
+    return [...this.routes.values()].find((r) => r.id === idOrToken)
+  }
+
+  private ticket(route: ShareRoute): ShareRouteTicket {
+    return { id: route.id, token: route.token, urls: this.urls(route.token), expiresAt: route.expiresAt }
+  }
+
+  /** 生成展示链接：展示 IP 排第一，其余有效候选兜底（去重）。 */
+  private urls(token: string): string[] {
+    if (!this.running || !this.port) return []
+    const display = this.displayIp()
+    const candidates = [display, ...this.listIps().map((x) => x.ip), '127.0.0.1']
+    const urls: string[] = []
+    const seen = new Set<string>()
+    for (const ip of candidates) {
+      if (!ip || seen.has(ip)) continue
+      seen.add(ip)
+      urls.push(`http://${ip}:${this.port}/${token}/`)
+    }
+    return urls
   }
 
   private async listen(requestedPort: number): Promise<void> {
-    const root = this.serveRoot
-    this.server = createServer(async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', 'http://local')
-        // 路径首段必须是有效 token
-        const token = url.pathname.split('/')[1] ?? ''
-        if (token !== this.token || Date.now() > this._expiresAt) {
-          res.writeHead(404).end('Not Found')
-          return
-        }
-        const rel = decodeURIComponent(url.pathname.slice(this.token.length + 2))
-        if (rel === '') {
-          res.writeHead(400).end('缺少产物相对路径')
-          return
-        }
-        const abs = resolveSafe(root, rel)
-        const data = await readFile(abs)
-        res.writeHead(200, { 'content-type': MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream' })
-        res.end(data)
-      } catch {
-        res.writeHead(404).end('Not Found')
-      }
-    })
+    const server = createServer((req, res) => { void this.handle(req, res) })
     await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', reject)
-      this.server!.listen(requestedPort === 0 ? 0 : requestedPort, () => resolve())
+      server.once('error', reject)
+      server.listen(requestedPort === 0 ? 0 : requestedPort, '0.0.0.0', () => resolve())
     })
-    const addr = this.server.address()
+    const addr = server.address()
     this.port = typeof addr === 'object' && addr ? addr.port : requestedPort
-  }
-
-  private async persistState(): Promise<void> {
-    if (!this.stateFile) return
-    const state: PersistedShare = { token: this.token, expiresAt: this._expiresAt, port: this.port, meta: this._meta }
-    await writeFile(this.stateFile, JSON.stringify(state), 'utf8').catch(() => { /* 落盘失败不影响当次分享 */ })
-  }
-
-  /** 当前会话过期时间戳（未启动时为 0） */
-  get expiresAt(): number {
-    return this._expiresAt
-  }
-
-  /** 会话业务元数据（重启后由状态文件回填） */
-  get meta(): Record<string, unknown> {
-    return this._meta
-  }
-
-  /** 已启动但已过期（token 失效，需重新生成；server 仍在占用端口） */
-  get expired(): boolean {
-    return this.running && this._expiresAt > 0 && Date.now() > this._expiresAt
-  }
-
-  async start(ttlHours: number, requestedPort: number, meta: Record<string, unknown> = {}): Promise<{ port: number; token: string; expiresAt: number; urls: string[] }> {
-    await this.stop()
-    // 项11：每次「重新生成」都换新 token → 旧链接自动失效
-    this.token = randomBytes(12).toString('base64url')
-    this._expiresAt = Date.now() + ttlHours * 3600_000
-    this._meta = meta
-    await this.listen(requestedPort)
-    await this.persistState()
-    return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls() }
-  }
-
-  async stop(): Promise<void> {
-    const srv = this.server
-    if (!srv) return
-    // keep-alive 长连接会让 close 回调一直不触发（表现为「停止分享」无反应）：
-    // 主动断开全部连接，并加 1.5s 兜底超时保证 resolve
-    srv.closeAllConnections?.()
-    await new Promise<void>((resolve) => {
-      srv.close(() => resolve())
-      const t = setTimeout(resolve, 1500)
-      srv.once('close', () => clearTimeout(t))
-    })
-    this.server = null
-    this.token = ''
-    this._expiresAt = 0
-    if (this.stateFile) await unlink(this.stateFile).catch(() => { /* 文件本就不存在，忽略 */ })
-  }
-
-  /**
-   * 分享某产物的完整链接（rel 相对 serveRoot）。
-   * 前缀裁决（2026-11-16 修复 badge 分享 404）：badge 的 serveRoot=产物根、rel 自带
-   * `outputs/` 前缀且真实存在——必须保留；EDM 旧调用传的 outputs/ 前缀相对
-   * serveRoot=<root>/outputs 不存在，剥掉后才命中。按「剥掉后文件是否存在」判定，
-   * 两种形态共存不冲突。
-   */
-  linkFor(rel: string): string {
-    if (!this.server) throw new Error('分享服务未启动')
-    const clean = rel.replaceAll('\\', '/').replace(/^\//, '')
-    const stripped = clean.replace(/^outputs\//, '')
-    if (stripped !== clean) {
-      const fullExists = existsSync(join(this.serveRoot, ...clean.split('/')))
-      const strippedExists = existsSync(join(this.serveRoot, ...stripped.split('/')))
-      if (!fullExists && strippedExists) return `${this.urls()[0]}/${stripped}`
+    if (requestedPort > 0 && this.port !== requestedPort) {
+      this.onPortFallback?.(requestedPort, this.port)
     }
-    return `${this.urls()[0]}/${clean}`
+    this.server = server
   }
 
-  urls(): string[] {
-    if (!this.server) return []
-    const urls: string[] = []
-    for (const list of Object.values(networkInterfaces())) {
-      for (const ni of list ?? []) {
-        // 只取内网 IPv4（D15：绑内网网卡）
-        if (ni.family === 'IPv4' && !ni.internal && ni.address.startsWith('192.168.')) {
-          urls.push(`http://${ni.address}:${this.port}/${this.token}`)
+  /** 静态请求处理：token 路由 → 口令校验 → 入口/列表页/资源 → Range → 计数 + 日志。 */
+  private async handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): Promise<void> {
+    const clientIp = req.socket.remoteAddress ?? ''
+    let routeId = ''
+    let status = 404
+    let rel = ''
+    try {
+      const url = new URL(req.url ?? '/', 'http://local')
+      const token = url.pathname.split('/')[1] ?? ''
+      const route = this.routes.get(token)
+      if (!route || Date.now() > route.expiresAt) {
+        if (route && Date.now() > route.expiresAt) this.routes.delete(token)
+        this.finish(res, 404, 'Not Found')
+        this.log(clientIp, routeId, rel, 404)
+        return
+      }
+      routeId = route.id
+
+      // 口令校验：入口 ?key= 与资源 ?key= 都要带（链接本身携带 key）
+      if (route.password && url.searchParams.get('key') !== route.password) {
+        this.finish(res, 403, 'Forbidden: 需要访问口令')
+        this.log(clientIp, routeId, rel, 403)
+        return
+      }
+
+      let relRaw = decodeURIComponent(url.pathname.slice(token.length + 2))
+      if (!relRaw) relRaw = route.entry || ''
+      rel = relRaw
+
+      if (!relRaw) {
+        // 目录列表页（root 根）
+        const html = this.renderIndex(route, '')
+        this.finish(res, 200, html, { 'content-type': MIME['.html']! })
+        route.hits++
+        this.schedulePersist()
+        this.log(clientIp, routeId, rel, 200)
+        return
+      }
+
+      const abs = resolveSafe(route.root, relRaw)
+      const st = await stat(abs)
+      route.hits++
+      this.schedulePersist()
+
+      if (st.isDirectory()) {
+        const html = this.renderIndex(route, relRaw.replace(/\/+$/, ''))
+        this.finish(res, 200, html, { 'content-type': MIME['.html']! })
+        status = 200
+        this.log(clientIp, routeId, rel, status)
+        return
+      }
+
+      status = 200
+      const type = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream'
+      const range = req.headers.range
+      if (range) {
+        const m = /^bytes=(\d*)-(\d*)$/.exec(range)
+        if (m) {
+          const start = m[1] ? parseInt(m[1], 10) : 0
+          const end = m[2] ? parseInt(m[2], 10) : st.size - 1
+          if (start >= 0 && end >= start && start < st.size) {
+            const safeEnd = Math.min(end, st.size - 1)
+            res.writeHead(206, {
+              'content-type': type,
+              'content-length': String(safeEnd - start + 1),
+              'content-range': `bytes ${start}-${safeEnd}/${st.size}`,
+              'accept-ranges': 'bytes',
+            })
+            createReadStream(abs, { start, end: safeEnd }).pipe(res)
+            this.log(clientIp, routeId, rel, 206)
+            return
+          }
+          res.writeHead(416, { 'content-range': `bytes */${st.size}` }).end()
+          this.log(clientIp, routeId, rel, 416)
+          return
         }
       }
+      res.writeHead(200, { 'content-type': type, 'content-length': String(st.size), 'accept-ranges': 'bytes' })
+      createReadStream(abs).pipe(res)
+      this.log(clientIp, routeId, rel, status)
+    } catch {
+      this.finish(res, 404, 'Not Found')
+      this.log(clientIp, routeId, rel, 404)
     }
-    if (urls.length === 0) urls.push(`http://127.0.0.1:${this.port}/${this.token}`)
-    return urls
+  }
+
+  /** 目录列表页：HTML 转义防 XSS，条目带 URL 编码的 rel 路径。 */
+  private renderIndex(route: ShareRoute, relDir: string): string {
+    const absDir = relDir ? resolveSafe(route.root, relDir) : route.root
+    const entries = existsSync(absDir)
+      ? readdirSyncSafe(absDir).map((name) => {
+          const full = join(absDir, name)
+          const isDir = statSync(full).isDirectory()
+          const relPath = relDir ? `${relDir}/${name}` : name
+          const href = `/${route.token}/${relPath.split('/').map(encodeURIComponent).join('/')}` +
+            (route.password ? `?key=${encodeURIComponent(route.password)}` : '')
+          return `<li><a href="${esc(href)}">${esc(name)}${isDir ? '/' : ''}</a></li>`
+        }).sort((a, b) => a.localeCompare(b))
+      : []
+    const title = esc(route.label || '分享')
+    const parent = relDir
+      ? `<p><a href="/${route.token}/${relDir.split('/').slice(0, -1).map(encodeURIComponent).join('/')}${route.password ? `?key=${encodeURIComponent(route.password)}` : ''}">← 上级</a></p>`
+      : ''
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:14px/1.6 system-ui,sans-serif;margin:32px;color:#c9d3ee;background:#0b0e1c}a{color:#5eb0ff;text-decoration:none}a:hover{text-decoration:underline}li{padding:2px 0}h1{font-size:18px}</style></head><body><h1>${title}</h1>${parent}<ul>${entries.join('')}</ul></body></html>`
+  }
+
+  private finish(res: import('node:http').ServerResponse, code: number, body: string, headers: Record<string, string> = {}): void {
+    res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8', ...headers })
+    res.end(body)
+  }
+
+  private log(ip: string, routeId: string, path: string, status: number): void {
+    this.logs.push({ at: Date.now(), ip, path, status, routeId })
+    if (this.logs.length > LOG_LIMIT) this.logs.splice(0, this.logs.length - LOG_LIMIT)
+  }
+
+  /** TTL 双保险之一：定时清理过期路由（之二为命中时惰性校验）。 */
+  private sweepExpired(): void {
+    const now = Date.now()
+    let changed = false
+    for (const [token, route] of this.routes) {
+      if (now > route.expiresAt) { this.routes.delete(token); changed = true }
+    }
+    if (changed) this.schedulePersist()
+  }
+
+  /** 从状态文件恢复未过期路由（已过期剔除并从文件移除）。 */
+  private resumeRoutes(): void {
+    if (!existsSync(this.stateFile)) return
+    try {
+      const saved = JSON.parse(readFileSync(this.stateFile, 'utf8')) as PersistedHub
+      if (!saved || !Array.isArray(saved.routes)) return
+      const now = Date.now()
+      for (const r of saved.routes) {
+        if (!r?.token || !r.root || !r.expiresAt) continue
+        if (now > r.expiresAt) continue
+        if (!existsSync(r.root)) continue
+        this.routes.set(r.token, {
+          id: r.id ?? randomUUID(), token: r.token, toolId: r.toolId ?? '',
+          label: r.label ?? '分享', root: r.root, entry: r.entry ?? '',
+          ttlHours: r.ttlHours ?? DEFAULT_TTL_HOURS, createdAt: r.createdAt ?? now,
+          expiresAt: r.expiresAt, password: r.password ?? '', hits: r.hits ?? 0,
+        })
+      }
+      void this.flushPersist()
+    } catch {
+      // 状态文件损坏：忽略，从空路由表开始（不影响服务启动）
+    }
+  }
+
+  /** 写操作串行化 + 500ms 节流合并（多工具并发 create 不重复落盘）。 */
+  private schedulePersist(): void {
+    if (this.persistTimer) return
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void this.flushPersist()
+    }, 500)
+    this.persistTimer.unref?.()
+  }
+
+  private async flushPersist(): Promise<void> {
+    if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null }
+    if (!this.stateFile) return
+    try {
+      const dir = dirname(this.stateFile)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const state: PersistedHub = { version: 1, routes: [...this.routes.values()] }
+      await writeFile(this.stateFile, JSON.stringify(state), 'utf8')
+    } catch {
+      // 落盘失败不影响当次分享（内存态仍是权威）
+    }
   }
 }
 
-/** 计算剩余有效期描述（分钟） */
+/** readdirSync 的薄封装（集中在内核内，便于类型收窄）；避免遗漏 withFileTypes 参数。 */
+function readdirSyncSafe(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isFile() || e.isDirectory())
+    .map((e) => e.name)
+}
+
+/** HTML 转义（防目录名 XSS） */
+function esc(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
+
+/** 计算剩余有效期描述（分钟）——保留导出以兼容外部可能的引用。 */
 export function ttlMinutesLeft(expiresAt: number): number {
   return Math.max(0, Math.round((expiresAt - Date.now()) / 60000))
 }
+
+/** 旧状态文件名（badge/edm）——由宿主启动时检测即静默删除，内核不读取不迁移。 */
+export const LEGACY_SHARE_STATE_FILES = ['badge-share-state.json', 'edm-share-state.json']

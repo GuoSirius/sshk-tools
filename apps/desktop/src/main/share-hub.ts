@@ -1,0 +1,137 @@
+/**
+ * ShareHub 常驻分享服务宿主封装（plans/09）。
+ * - 持有主进程唯一 ShareHub 实例（@sshk/share-core），收敛生命周期：
+ *   autoStart 启动 / 固定端口被占回落告警 / powerMonitor.resume 自动重启 / 退出落盘
+ * - 旧状态文件（badge-share-state.json / edm-share-state.json）启动检测即静默删除（决策 11）
+ * - toolId 记账鉴权：工具只能撤销/续期自己创建的路由，宿主（空 toolId）可管理全部
+ */
+import { existsSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { powerMonitor } from 'electron'
+import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
+import {
+  IPC_CHANNELS,
+  type ShareRouteInput,
+  type HubStatus,
+} from '@sshk/shared'
+import type { ConfigService } from '@sshk/repository'
+import { handleOk } from './ipc-wrap'
+import { logger } from './logger'
+
+export interface ShareHubHost {
+  hub: ShareHub
+  /** 由 index.ts 在 whenReady 中调用；重复调用幂等 */
+  init(): Promise<void>
+  /** 退出前停止并落盘 */
+  dispose(): Promise<void>
+}
+
+/** toolId 参数来源：调用方 renderer 自报（网关不做强认证，仅避免误操作别的工具路由；宿主 tab 传 '*' 管理全部）。 */
+function resolveToolId(raw: unknown): string {
+  return typeof raw === 'string' ? raw : ''
+}
+
+export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: string; isDev: boolean }): ShareHubHost {
+  const stateFile = join(opts.userDataDir, 'hub-state.json')
+  const hub = new ShareHub(stateFile)
+
+  // 固定端口被占回落 → 日志 +（dev）终端告警；ElMessage 由渲染层 status 轮询感知端口变化后提示
+  hub.setPortFallbackHandler((requested, actual) => {
+    const msg = `[shareHub] 固定端口 ${requested} 被占用，已回落到随机端口 ${actual}`
+    logger.warn('shareHub', msg)
+    if (opts.isDev) console.warn(msg)
+  })
+
+  function applyPreferredIp(): void {
+    hub.setPreferredIp(String(cfg.get('app.shareHub.preferredIp') ?? ''))
+  }
+
+  function removeLegacyStates(): void {
+    for (const name of LEGACY_SHARE_STATE_FILES) {
+      const file = join(opts.userDataDir, name)
+      try { if (existsSync(file)) unlinkSync(file) } catch { /* 静默忽略删除失败 */ }
+    }
+  }
+
+  let initialized = false
+
+  async function init(): Promise<void> {
+    if (initialized) return
+    initialized = true
+    removeLegacyStates()
+    applyPreferredIp()
+    if (cfg.get('app.shareHub.autoStart') !== false) {
+      const port = Number(cfg.get('app.shareHub.port') ?? 0) || 0
+      try { await hub.start(port) } catch (err) {
+        logger.error('shareHub', `自动启动失败：${(err as Error).message}`)
+      }
+    }
+    // 配置即时生效：preferredIp 立即换；autoStart 开→启动、关→停止（保留路由）；port 变更→用新端口重启
+    cfg.onChanged((ns, key) => {
+      if (ns !== 'app' || !key.startsWith('shareHub.')) return
+      if (key === 'shareHub.preferredIp') { applyPreferredIp(); return }
+      if (key === 'shareHub.autoStart') {
+        const on = cfg.get('app.shareHub.autoStart') !== false
+        if (on && !hub.running) void hub.start(Number(cfg.get('app.shareHub.port') ?? 0) || 0)
+        if (!on && hub.running) void hub.stop()
+        return
+      }
+      if (key === 'shareHub.port' && hub.running) {
+        void hub.restart(Number(cfg.get('app.shareHub.port') ?? 0) || 0)
+      }
+    })
+    // 系统睡眠恢复：自动 restart（保留路由与 token）
+    powerMonitor.on('resume', () => {
+      if (hub.running) void hub.restart().catch(() => { /* 端口短暂不可用不影响后续 */ })
+    })
+  }
+
+  async function dispose(): Promise<void> {
+    await hub.stop()
+  }
+
+  return { hub, init, dispose }
+}
+
+/** 注册 ShareHub 的 6 条 IPC（6 通道 → create/list/revoke/renew/status/control）。
+ *  全部经 handleOk，遵守 check:ipc 门禁。 */
+export function registerShareHubIpc(host: ShareHubHost): void {
+  const hub = host.hub
+
+  handleOk(IPC_CHANNELS.shareHubCreate, (_e, input: ShareRouteInput) => hub.create(input))
+
+  handleOk(IPC_CHANNELS.shareHubList, (_e, toolId?: string) => hub.listRoutes(resolveToolId(toolId) || undefined))
+
+  handleOk(IPC_CHANNELS.shareHubRevoke, (_e, id: string, toolId?: string) => {
+    const caller = resolveToolId(toolId)
+    if (caller && caller !== '*') {
+      const route = hub.listRoutes().find((r) => r.id === id)
+      if (!route) return false
+      if (route.toolId !== caller) throw new Error('无权撤销其它工具的分享路由')
+    }
+    return hub.revoke(id)
+  })
+
+  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number, toolId?: string) => {
+    const caller = resolveToolId(toolId)
+    if (caller && caller !== '*') {
+      const route = hub.listRoutes().find((r) => r.id === id)
+      if (!route) throw new Error('分享路由不存在')
+      if (route.toolId !== caller) throw new Error('无权续期其它工具的分享路由')
+    }
+    return hub.renew(id, ttlHours)
+  })
+
+  handleOk(IPC_CHANNELS.shareHubStatus, (): HubStatus => hub.status())
+
+  // 生命周期控制：宿主「分享服务」tab 使用（action 白名单，防误用）
+  handleOk(IPC_CHANNELS.shareHubControl, async (_e, action: 'start' | 'restart' | 'stop' | 'clear') => {
+    switch (action) {
+      case 'start': return hub.start(Number(hub.getPort() || 0) || 0)
+      case 'restart': return hub.restart()
+      case 'stop': await hub.stop(); return { port: 0 }
+      case 'clear': await hub.clear(); return { port: 0 }
+      default: throw new Error(`未知的分享服务操作：${String(action)}`)
+    }
+  })
+}

@@ -29,9 +29,7 @@
       "badge:savePosterMeta",
       "badge:exportFiles",
       "badge:downloadPng",
-      "badge:shareStart",
-      "badge:shareStop",
-      "badge:shareStatus",
+      "badge:shareResolve",
       "badge:parseImage",
       "badge:setVisionKey",
       "badge:visionState"

@@ -33,9 +33,7 @@ export const host = createSafeHost({
     setVisionKey: C.badgeSetVisionKey,
     visionState: C.badgeVisionState,
     downloadPng: C.badgeDownloadPng,
-    shareStart: C.badgeShareStart,
-    shareStop: C.badgeShareStop,
-    shareStatus: C.badgeShareStatus,
+    shareResolve: C.badgeShareResolve,
     templateDownload: C.badgeTemplateDownload,
   },
 })

@@ -174,9 +174,6 @@ interface Window {
       savePosterMeta(payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean>
       deletePoster(posterId: string): Promise<boolean>
       downloadPng(payload: { posterId: string; outPath: string }): Promise<{ outPath: string }>
-      shareStart(payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }>
-      shareStop(): Promise<boolean>
-      shareStatus(): Promise<{ running: boolean; expiresAt: number; expired: boolean; posterId: string; posterName: string }>
       templateDownload(fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }>
       exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {
@@ -276,6 +273,20 @@ interface Window {
     }
     edm: {
       api(action: string, data?: Record<string, unknown>): Promise<unknown>
+    }
+    /** ShareHub 常驻分享服务（plans/09） */
+    shareHub: {
+      create(input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket>
+      list(toolId?: string): Promise<import('@sshk/shared').ShareRouteInfo[]>
+      revoke(id: string, toolId?: string): Promise<boolean>
+      renew(id: string, ttlHours: number, toolId?: string): Promise<import('@sshk/shared').ShareRouteTicket>
+      status(): Promise<import('@sshk/shared').HubStatus>
+    }
+    shareHubControl: {
+      start(): Promise<{ port: number }>
+      restart(): Promise<{ port: number }>
+      stop(): Promise<{ port: number }>
+      clear(): Promise<{ port: number }>
     }
   }
 }

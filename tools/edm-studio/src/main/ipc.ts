@@ -22,7 +22,6 @@ import {
 } from '@sshk/repository'
 import { compose, type ComposePlacement } from '../core/compose.js'
 import { renderSystemPreview, renderSystemCompose, type SystemSelector } from '../core/system-css.js'
-import { ShareServer } from '@sshk/share-core'
 
 export interface EdmIpcDeps {
   repository: Repository
@@ -41,7 +40,7 @@ const ACTIONS = new Set([
   'frgv:save', 'frgv:saveAsNew', 'frgv:get', 'frgv:list', 'frgv:update', 'frgv:remove',
   'candidates:pick', 'version:render',
   'mail:list', 'mail:save', 'mail:remove', 'mail:generate', 'mail:preview', 'mail:readFinal', 'mail:export',
-  'share:start', 'share:stop', 'share:status',
+  'share:resolve',
   'system:load', 'system:render', 'system:readFile',
   'system:canEdit', 'system:writeFile', 'system:rename', 'system:remove',
   'system:derive',
@@ -78,13 +77,8 @@ function obj(p: Payload, key: string): Payload {
  * EDM Studio IPC（数据契约 §5 edm 命名空间，M4/M5 用 action 白名单单通道）。
  * 版本不可变（D8）；删除一律软删除；产物覆盖式（D19）。
  */
-export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareServer } {
+export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
   const repo = deps.repository
-  // C-T1：分享内核抽到 @sshk/share-core；EDM 的产物在 <root>/outputs 下，serve 该子目录
-  // 项11：会话状态落 userData，重启后恢复未过期链接（重新生成才作废旧链接）
-  const shareStateFile = path.join(app.getPath('userData'), 'edm-share-state.json')
-  const share = new ShareServer(path.join(deps.outputRoot, 'outputs'), shareStateFile)
-  void share.resume().catch(() => { /* 端口占用/状态损坏：本次不恢复，用户重新分享即可 */ })
 
   /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
   async function assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void> {
@@ -499,17 +493,12 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
         return { count: items.length, outPath }
       }
 
-      // ── 分享（M5 / D15） ──
-      case 'share:start': {
-        const ttlHours = Number(data['ttlHours'] ?? 72)
-        const res = await share.start(ttlHours, 0)
-        return res
+      // ── 分享解析（plans/09 ShareHub）：产物根目录绝对路径，交给 ShareDialog 创建路由 ──
+      case 'share:resolve': {
+        const root = path.join(deps.outputRoot, 'outputs')
+        if (!existsSync(root)) throw new Error('尚无产物目录，请先生成邮件')
+        return { root, entry: '', label: '邮件产物' }
       }
-      case 'share:stop':
-        await share.stop()
-        return true
-      case 'share:status':
-        return { running: share.running, urls: share.urls() }
 
       // ── 系统内容模型（R3）：文件为源真相，构造内存模型供维护 UI 只读浏览 ──
       case 'system:load':
@@ -786,5 +775,4 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareSe
     }
   })
 
-  return { share }
 }

@@ -4,7 +4,7 @@
  * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
  */
 
-export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'G'
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S'
 
 /** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
 export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
@@ -35,6 +35,7 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
   F: 'F · 应用与各工具收尾（总账 ⏳）',
   G: 'G · 弹框与欢迎页走查（2026-11-17）',
   H: 'H · 文件系统（X6）',
+  S: 'S · 常驻分享服务（ShareHub · plans/09）',
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
@@ -147,6 +148,24 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H16', group: 'H', title: 'Badge Studio HTML 高亮与模板下载', guide: '选择压缩版 minified.html → 单行不再显示「Rendering paused」，点「格式化」换行后高亮正常；「模板下载」主按钮直接下 Excel（含填写说明 sheet），箭头可选 CSV/JSON；最近使用改下拉（每项尾部删、右侧清空）', entry: { type: 'route', target: 'badge-studio' }, relates: 'E-T5' },
   { id: 'H17', group: 'H', title: '更新流程（dev 测试模式）', guide: 'dev 设 SSHK_UPDATE_DEV_CHECK=1 且本地 package.json 版本改旧 → 顶栏显示下载进度条横幅（可关闭），完成出「立即更新」；点已下载按钮不再回退到「检查中」；点安装仅提示不真装；验完改回版本号', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
   { id: 'H18', group: 'H', title: '分享链接跨重启有效', guide: '分享海报/邮件生成链接 → 关闭应用重新打开（TTL 未过）→ 原链接仍可访问；点重新生成 → 旧链接失效（新 token）；72h 到期链接自动 404', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-T1' },
+
+  // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──
+  { id: 'S1', group: 'S', title: '冷启动 autoStart 开 → 运行中', guide: '设置 →「分享服务」tab：服务状态显示「运行中 · 端口 xxxxx」，展示 IP 为自动优选地址', entry: { type: 'settings', target: 'share' }, auto: { kind: 'hostCapability', spec: 'shareHub' }, relates: 'ShareHub/§3.1' },
+  { id: 'S2', group: 'S', title: 'autoStart 关 → 已停止', guide: '「随应用启动」关 → 保存 → 重启应用：服务状态显示「已停止」，路由仍保留（点启动即恢复）', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
+  { id: 'S3', group: 'S', title: 'badge 海报分享 → 局域网可访问', guide: 'Badge Studio 点「分享」→ 生成链接 + 二维码 → 手机/另一台设备访问可打开海报；多 IP 下拉可切换', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-C' },
+  { id: 'S4', group: 'S', title: 'EDM 产物分享 → 局域网可访问', guide: 'EDM 邮件页点「分享产物」→ 链接 + 二维码 → 局域网访问可列出/打开 outputs 产物', entry: { type: 'route', target: 'edm-studio' }, relates: 'ShareHub/§六-C' },
+  { id: 'S5', group: 'S', title: 'TTL 到期 → 404 + 列表摘除', guide: '创建短 TTL 路由（0.01h）→ 到期后访问 404，「路由管理」列表不再显示该条', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.2' },
+  { id: 'S6', group: 'S', title: '重启应用 → 未过期链接继续可用', guide: '分享生成链接 → 重启应用 → 原链接仍可访问（token 属于路由不随进程，状态文件 resume）', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
+  { id: 'S7', group: 'S', title: '重新生成 → 旧链失效', guide: 'ShareDialog 点「重新生成」→ 新 token → 旧链接立即 404', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
+  { id: 'S8', group: 'S', title: '停止 → 全失效，重启 → 恢复', guide: '点「停止」→ 所有链接失效；点「启动」→ 未过期路由链接恢复可用（路由表保留）', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
+  { id: 'S9', group: 'S', title: '撤销单条 → 仅该链失效', guide: '「路由管理」撤销一条 → 仅该链接失效，其它路由正常', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.4' },
+  { id: 'S10', group: 'S', title: '穿越 .. → 404', guide: '在分享链接后拼 `/../../etc/passwd` → 返回 404，无法越出 root', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.2' },
+  { id: 'S11', group: 'S', title: '端口被占 → 回落 + 告警', guide: '「监听端口」填一个被占用端口保存 → 服务回落到随机端口并告警，状态显示实际端口', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
+  { id: 'S12', group: 'S', title: 'IP 自动 / 下拉 / 手输三种生效', guide: '自动优选显示 10.x 优先；下拉选检测 IP 生成对应链接；手输未在网卡的地址给黄色提示但不拦截，新链接用手输 IP', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§四' },
+  { id: 'S13', group: 'S', title: '分享密码 → 无 key 拒绝', guide: '带 password 创建分享 → 不带 ?key= 访问 403，带正确 key 可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
+  { id: 'S14', group: 'S', title: '二维码扫码可开', guide: 'ShareDialog 链接旁二维码 → 手机扫码直达分享页（第三方 qrcode 包生成）', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
+  { id: 'S15', group: 'S', title: '文件系统安全分享 → 可撤销有 TTL', guide: '上传管理本地通道行「安全分享」→ ShareDialog 生成可撤销/有 TTL 链接；裸外链「链接」按钮仍可用（两种并存）', entry: { type: 'route', target: 'upload-manager' }, relates: 'ShareHub/§六-C' },
+  { id: 'S16', group: 'S', title: '停止并清空 → 状态文件删除', guide: '点「停止并清空」（二次确认）→ hub-state.json 删除、路由列表空；重启后无分享路由', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
 ]
 
 /** 步骤总数（页脚展示用） */

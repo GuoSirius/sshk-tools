@@ -18,7 +18,6 @@
     "@sshk/code-editor": "workspace:*",
     "@sshk/repository": "workspace:*",
     "@sshk/rich-text": "workspace:*",
-    "@sshk/share-core": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@unocss/core": "latest",

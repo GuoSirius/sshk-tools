@@ -431,3 +431,76 @@ export interface UsageStatsPayload {
   /** 最近明细（上限 200 条，时间倒序） */
   records: UsageRow[]
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ShareHub 常驻分享服务（plans/09）：多租户只读路由。类型真相源，preload / 渲染层 / 内核共用
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 创建一条分享路由的入参 */
+export interface ShareRouteInput {
+  /** 归属工具 id（'badge-studio' | 'edm-studio' | 'upload-manager' | …）；按此记账鉴权 */
+  toolId: string
+  /** 展示名（如「海报：产品A」） */
+  label: string
+  /** 允许被访问的根目录（绝对路径，主进程校验存在） */
+  root: string
+  /** 入口相对路径（缺省 = 目录列表页） */
+  entry?: string
+  /** 有效期小时数，默认 72；0.01 可用于测试 */
+  ttlHours?: number
+  /** 可选访问口令（链接带 ?key= 轻量校验） */
+  password?: string
+}
+
+/** 创建/续期成功后返回的分享凭证 */
+export interface ShareRouteTicket {
+  id: string
+  token: string
+  /** 基于「展示 IP」生成的链接（展示 IP 排第一，其余有效候选兜底） */
+  urls: string[]
+  expiresAt: number
+}
+
+/** 路由列表行（宿主路由管理 tab / 工具内本工具路由） */
+export interface ShareRouteInfo {
+  id: string
+  toolId: string
+  label: string
+  entry: string
+  ttlHours: number
+  expiresAt: number
+  createdAt: number
+  /** 访问/下载命中计数 */
+  hits: number
+}
+
+/** 一个候选展示 IP（供设置 tab 下拉展示） */
+export interface ShareIpInfo {
+  ip: string
+  /** 网卡名（以太网 / WLAN / vEthernet…） */
+  nic: string
+  /** 是否虚拟机/虚拟网卡（置灰但可选） */
+  virtual: boolean
+}
+
+/** 单条访问日志（环形缓冲，最近 500 条） */
+export interface ShareAccessLog {
+  at: number
+  ip: string
+  path: string
+  status: number
+  routeId: string
+}
+
+/** 服务状态快照（status() 返回） */
+export interface HubStatus {
+  running: boolean
+  port: number
+  /** 当前生效的展示 IP（自动优选或用户指定） */
+  displayIp: string
+  /** 本机候选 IP（供设置页下拉 / ShareDialog 多 IP 切换） */
+  ips: ShareIpInfo[]
+  routes: ShareRouteInfo[]
+  /** 最近访问日志（时间倒序） */
+  logs: ShareAccessLog[]
+}

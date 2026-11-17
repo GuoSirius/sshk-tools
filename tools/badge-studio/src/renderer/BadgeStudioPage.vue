@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
-import { ToolPageLayout, ConfirmDialog, provideToolId } from '@sshk/ui-kit'
+import { computed, onMounted } from 'vue'
+import { ToolPageLayout, ConfirmDialog, ShareDialog, provideToolId } from '@sshk/ui-kit'
 import { ArrowDown } from '@element-plus/icons-vue'
 import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
@@ -8,7 +8,7 @@ import {
   toolId, loadConfigAndRecent, loadPosters,
   hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
-  posterName, sharePoster, stopPosterShare, shareState, regenerateShare, shareExpired, shareMinutesLeft, refreshShareStatus,
+  posterName, shareDialog, openShare,
   selectedPosters, batchExportHtml, batchDeletePosters,
   currentPage, pageSize, posters, onPageChange,
   deleteOpen, deleteTarget, confirmDelete,
@@ -29,16 +29,9 @@ const pages: Record<string, unknown> = { generate: GeneratePage, posters: Poster
 const active = computed(() => pages[tab.value] ?? GeneratePage)
 const isPosters = computed(() => tab.value === 'posters')
 
-// 分享状态每秒刷新一次用于倒计时与过期判定（shareExpired 依赖 Date.now()，需 tick 触发重算）
-let shareTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   void loadConfigAndRecent()
   void loadPosters()
-  void refreshShareStatus()
-  shareTimer = setInterval(() => { void refreshShareStatus() }, 1000)
-})
-onUnmounted(() => {
-  if (shareTimer) clearInterval(shareTimer)
 })
 </script>
 
@@ -72,21 +65,9 @@ onUnmounted(() => {
         <el-button size="small" :disabled="!currentPosterId" @click="savePosterMeta">保存修改</el-button>
         <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
         <el-button type="success" size="small" :loading="downloading" @click="downloadPoster">下载图片</el-button>
-        <template v-if="!shareState.running">
-          <el-button size="small" type="warning" plain :disabled="!currentPosterId" @click="sharePoster({ _id: currentPosterId, name: posterName || '海报' })">
-            分享
-          </el-button>
-        </template>
-        <template v-else>
-          <!-- 项1：重新生成覆盖两种场景——过期后再生成 / 未过期主动换链（旧链立即失效）。
-               expired 由 share-core 判定，剩余分钟随状态刷新；暂停/取消用独立 danger 按钮 -->
-          <el-tooltip :content="shareExpired ? '链接已过期，访问将 404，点此重新生成' : `链接剩余约 ${shareMinutesLeft} 分钟；重新生成后旧链接立即失效`" placement="bottom">
-            <el-button size="small" :type="shareExpired ? 'danger' : 'warning'" plain @click="regenerateShare()">
-              {{ shareExpired ? '过期·重新生成' : '重新生成链接' }}
-            </el-button>
-          </el-tooltip>
-          <el-button size="small" type="danger" plain @click="stopPosterShare">停止分享</el-button>
-        </template>
+        <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentPosterId" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
+          分享
+        </el-button>
       </template>
       <template v-else>
         <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
@@ -118,6 +99,17 @@ onUnmounted(() => {
       :targets="deleteTarget ? [deleteTarget.name] : []"
       confirm-text="删除"
       @confirm="confirmDelete"
+    />
+
+    <!-- 统一分享对话框（plans/09 ShareHub）：创建/二维码/复制/倒计时/续期/撤销全在组件内 -->
+    <ShareDialog
+      v-model:open="shareDialog.open"
+      tool-id="badge-studio"
+      :label="shareDialog.label"
+      :default-root="shareDialog.root"
+      :default-entry="shareDialog.entry"
+      :default-ttl-hours="72"
+      show-mine
     />
   </ToolPageLayout>
 </template>
