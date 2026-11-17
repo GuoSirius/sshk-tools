@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { BrowserWindow, app, dialog } from 'electron'
 import {
   CloudFsDriver,
+  LocalFsDriver,
   RemoteFsDriver,
   fsBasename,
   fsDestPath,
@@ -369,6 +370,23 @@ export class FsRuntime {
   private resolve(profileIdRaw: string): RuntimeResolved {
     const profileId = this.assertProfileId(profileIdRaw)
     const cfg = this.globalConfig()
+    // 本地目录通道（二期，2026-11-17 定版：通道顺序 云→远端→本地）
+    if (profileId === 'local') {
+      const root = String(cfg.local.defaultDir ?? '').trim()
+      if (!root) throw new Error('本地目录未配置：请到「上传配置」设置本地默认目录并保存')
+      return {
+        driver: new LocalFsDriver(root),
+        channel: {
+          id: 'local',
+          name: '本地目录',
+          type: 'local',
+          detail: root,
+          root: '',
+          hasSecret: true,
+          writable: true,
+        },
+      }
+    }
     const remote = cfg.remote.profiles.find((p) => p.id === profileId)
     if (remote) {
       const password = this.opts.services.host.getToolSecret(SECRET_TOOL_ID, remote.id)
@@ -669,31 +687,50 @@ export class FsRuntime {
   channels(): FsChannelInfo[] {
     const cfg = this.globalConfig()
     const out: FsChannelInfo[] = []
-    for (const p of [...cfg.remote.profiles, ...cfg.cloud.profiles]) {
+    /** 组内默认 profile 优先，其余保持原序（2026-11-17 用户定版：云→远端→本地，默认优先） */
+    const ordered = <T extends { id: string }>(list: T[], defaultId: string): T[] =>
+      defaultId
+        ? [...list.filter((p) => p.id === defaultId), ...list.filter((p) => p.id !== defaultId)]
+        : list
+    for (const p of ordered(cfg.cloud.profiles, cfg.cloud.defaultId)) {
       const hasSecret = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
-      if ('protocol' in p) {
-        out.push({
-          id: p.id,
-          name: p.name,
-          type: 'remote',
-          detail: `${p.protocol.toUpperCase()} ${p.host}${p.port ? `:${p.port}` : ''}`,
-          protocol: p.protocol,
-          root: p.remoteDir?.replace(/\/+$/, '') ?? '',
-          hasSecret,
-          writable: true,
-        })
-      } else {
-        out.push({
-          id: p.id,
-          name: p.name,
-          type: 'cloud',
-          detail: `${uploadVendorMeta(p.provider).label} · ${p.bucket}`,
-          provider: p.provider,
-          root: '',
-          hasSecret,
-          writable: p.provider === 'aliyun-oss' || p.provider === 'aws-s3',
-        })
-      }
+      out.push({
+        id: p.id,
+        name: p.name,
+        type: 'cloud',
+        detail: `${uploadVendorMeta(p.provider).label} · ${p.bucket}`,
+        provider: p.provider,
+        root: '',
+        hasSecret,
+        writable: p.provider === 'aliyun-oss' || p.provider === 'aws-s3',
+        isDefault: cfg.cloud.defaultId === p.id,
+      })
+    }
+    for (const p of ordered(cfg.remote.profiles, cfg.remote.defaultId)) {
+      const hasSecret = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
+      out.push({
+        id: p.id,
+        name: p.name,
+        type: 'remote',
+        detail: `${p.protocol.toUpperCase()} ${p.host}${p.port ? `:${p.port}` : ''}`,
+        protocol: p.protocol,
+        root: p.remoteDir?.replace(/\/+$/, '') ?? '',
+        hasSecret,
+        writable: true,
+        isDefault: cfg.remote.defaultId === p.id,
+      })
+    }
+    const localDir = String(cfg.local.defaultDir ?? '').trim()
+    if (localDir) {
+      out.push({
+        id: 'local',
+        name: '本地目录',
+        type: 'local',
+        detail: localDir,
+        root: '',
+        hasSecret: true,
+        writable: true,
+      })
     }
     return out
   }

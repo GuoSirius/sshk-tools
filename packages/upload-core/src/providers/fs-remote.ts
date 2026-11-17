@@ -5,7 +5,7 @@ import { Client as SshClient } from 'ssh2'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { fsBasename, fsJoin, normalizeRootRel } from '../fs-paths'
 import type { FsDriver } from '../fs-driver'
-import { sortFsEntries } from '../fs-driver'
+import { nameMatches, sortFsEntries, walkRemote } from '../fs-driver'
 import type { RemoteProfile } from './remote'
 
 /**
@@ -395,41 +395,4 @@ function fsParentOf(dest: string): string {
   const p = normalizeRootRel(dest)
   const i = p.lastIndexOf('/')
   return i < 0 ? '' : p.slice(0, i)
-}
-
-/** 递归遍历安全上限：搜索/统计共用的深度与条目截断（远程逐层 list 慢，必须限深） */
-const REMOTE_WALK_MAX_DEPTH = 6
-const REMOTE_WALK_MAX_ENTRIES = 20_000
-
-interface WalkItem { entry: FsEntry }
-
-/**
- * 通用递归遍历：listPageFn 返回单级目录条目（path 为通道根相对路径），
- * visit 收到每个条目；返回是否因上限截断。BFS、限深、限总量。
- */
-async function walkRemote(
-  root: string,
-  listPageFn: (dirRel: string) => Promise<FsEntry[]>,
-  visit: (item: WalkItem) => 'stop' | void,
-): Promise<boolean> {
-  let truncated = false
-  let seen = 0
-  const queue: { rel: string; depth: number }[] = [{ rel: root, depth: 0 }]
-  while (queue.length > 0) {
-    const { rel, depth } = queue.shift()!
-    let children: FsEntry[]
-    try { children = await listPageFn(rel) } catch { continue } // 单层失败不阻断整体
-    for (const e of children) {
-      seen++
-      if (seen > REMOTE_WALK_MAX_ENTRIES) { truncated = true; queue.length = 0; break }
-      if (visit({ entry: e }) === 'stop') { truncated = true; queue.length = 0; return truncated }
-      if (e.kind === 'dir' && depth + 1 < REMOTE_WALK_MAX_DEPTH) queue.push({ rel: e.path, depth: depth + 1 })
-    }
-  }
-  return truncated
-}
-
-/** 名称子串匹配（大小写不敏感） */
-function nameMatches(name: string, kw: string): boolean {
-  return !kw || name.toLowerCase().includes(kw)
 }

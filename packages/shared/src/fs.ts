@@ -38,19 +38,21 @@ export interface FsListPage {
 export interface FsChannelInfo {
   id: string
   name: string
-  type: 'remote' | 'cloud'
-  /** 脱敏详情展示：FTP/SFTP 为 host:port；云为 厂商中文名 + bucket */
+  type: 'remote' | 'cloud' | 'local'
+  /** 脱敏详情展示：FTP/SFTP 为 host:port；云为 厂商中文名 + bucket；本地为目录路径 */
   detail: string
   /** 远程协议 ftp | sftp */
   protocol?: string
   /** 云厂商 id（aliyun-oss 等） */
   provider?: string
-  /** 起始目录（remote remoteDir；云恒为 ''） */
+  /** 起始目录（remote remoteDir；云/本地恒为 ''） */
   root: string
-  /** 密钥是否已配置（未配置引导去「上传配置」） */
+  /** 密钥是否已配置（未配置引导去「上传配置」；本地恒为 true） */
   hasSecret: boolean
   /** 写操作是否可用（如云厂商仅支持浏览时为 false） */
   writable: boolean
+  /** 是否该类型下的默认 profile（下拉排序默认优先，2026-11-17 用户定版） */
+  isDefault?: boolean
 }
 
 /** fs:profiles 响应：通道清单 + EDM 产物目录（联动上传用） */

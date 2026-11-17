@@ -55,6 +55,31 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
+/**
+ * 各厂商修改时间归一成毫秒时间戳（用户反馈 2026-11-17：列表时间全 NaN）。
+ * 根因：ali-oss/S3 返回的 LastModified 是 Date 对象，经 strOf 字符串化再剥数字
+ * 会得到远超 Date 上限（±8.64e15 ms）的数 → Invalid Date。这里拿原始值分支处理：
+ * Date 直接取值；七牛 putTime 为纳秒（>1e14 判定）转毫秒；字符串按 ISO 解析。
+ */
+function parseModified(o: unknown): number {
+  const rec = o as Record<string, unknown>
+  for (const k of ['LastModified', 'lastModified', 'putTime']) {
+    const v = rec?.[k]
+    if (v == null) continue
+    if (v instanceof Date) return v.getTime()
+    if (typeof v === 'number') return v > 1e14 ? Math.floor(v / 1e6) : v
+    const s = String(v).trim()
+    if (!s) continue
+    if (/^\d+$/.test(s)) {
+      const n = Number(s)
+      return n > 1e14 ? Math.floor(n / 1e6) : n
+    }
+    const t = Date.parse(s)
+    if (Number.isFinite(t)) return t
+  }
+  return 0
+}
+
 export class CloudFsDriver implements FsDriver {
   constructor(private readonly profile: CloudProfile) {}
 
@@ -98,7 +123,7 @@ export class CloudFsDriver implements FsDriver {
         name,
         path: marker + name,
         size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
-        modified: Number(strOf(o, ['LastModified', 'lastModified', 'putTime']).replace(/[^0-9]/g, '')) || 0,
+        modified: parseModified(o),
       })
     }
     return { entries: sortFsEntries([...dirs, ...files]), nextCursor: page.nextCursor }
@@ -429,7 +454,7 @@ export class CloudFsDriver implements FsDriver {
           name,
           path: marker + name,
           size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
-          modified: Number(strOf(o, ['LastModified', 'lastModified', 'putTime']).replace(/[^0-9]/g, '')) || 0,
+          modified: parseModified(o),
         })
         if (out.length >= maxResults) { truncated = true; break }
       }

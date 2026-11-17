@@ -566,6 +566,17 @@ function openMove(mode: 'copy' | 'move'): void {
   moveDestProfile.value = profileId.value
   moveOpen.value = true
 }
+/** 行内直达（§3.2 行操作列）：单选该条目后走「复制到/移动到」弹框 */
+function rowCopy(entry: FsEntry): void {
+  selection.value = new Set([entry.path])
+  openMove('copy')
+}
+function rowMove(entry: FsEntry): void {
+  selection.value = new Set([entry.path])
+  openMove('move')
+}
+/** SFTP 通道显示权限列（§3.2：仅 SFTP 有值） */
+const hasMode = computed(() => activeChannel.value?.protocol === 'sftp')
 async function submitMove(): Promise<void> {
   const dest = moveDirInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/')
   if (dest.split('/').some((p) => !p)) { ElMessage.warning('目标目录不合法'); return }
@@ -795,11 +806,12 @@ function onKeydown(event: KeyboardEvent): void {
       <el-select v-model="profileId" size="small" class="fs-channel-select" placeholder="选择上传通道" filterable>
         <el-option v-for="c in channels" :key="c.id" :value="c.id" :label="c.name">
           <span class="fs-channel-opt">
-            <el-tag size="small" :type="c.type === 'cloud' ? 'success' : 'warning'" class="fs-opt-tag">
-              {{ c.type === 'cloud' ? '云' : (c.protocol ?? '').toUpperCase() }}
+            <el-tag size="small" :type="c.type === 'cloud' ? 'success' : c.type === 'local' ? 'info' : 'warning'" class="fs-opt-tag">
+              {{ c.type === 'cloud' ? '云' : c.type === 'local' ? '本地' : (c.protocol ?? '远端').toUpperCase() }}
             </el-tag>
             <span class="fs-opt-name">{{ c.name }}</span>
             <span class="fs-opt-detail">{{ c.detail }}</span>
+            <el-tag v-if="c.isDefault" size="small" type="primary" effect="plain" class="fs-opt-tag">默认</el-tag>
           </span>
         </el-option>
       </el-select>
@@ -879,7 +891,7 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <!-- 文件列表 -->
-    <div class="fs-list" :class="{ 'is-drag': dragOver }">
+    <div class="fs-list" :class="{ 'is-drag': dragOver, 'has-mode': hasMode }">
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
         <span>
@@ -910,6 +922,7 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-name fs-sortable" @click="sortKey = 'name'; sortDir = sortKey === 'name' && sortDir === 'asc' ? 'desc' : 'asc'">名称{{ sortKey === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span class="fs-col-time fs-sortable" @click="sortKey = 'time'; sortDir = sortKey === 'time' && sortDir === 'asc' ? 'desc' : 'asc'">修改时间{{ sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
+          <span v-if="hasMode" class="fs-col-mode">权限</span>
           <span class="fs-col-op">操作</span>
         </div>
         <div
@@ -927,11 +940,15 @@ function onKeydown(event: KeyboardEvent): void {
           </span>
           <span class="fs-col-size">{{ entry.kind === 'dir' ? '目录' : fsFormatSize(entry.size) }}</span>
           <span class="fs-col-time" :title="fmtTime(entry.modified)">{{ fmtTime(entry.modified) }}</span>
+          <span v-if="hasMode" class="fs-col-mode">{{ entry.mode ?? '—' }}</span>
           <span class="fs-col-op">
             <el-button v-if="entry.kind === 'file'" size="small" text type="primary" @click.stop="rowOpen(entry)">打开</el-button>
-            <el-button v-if="entry.kind === 'file'" size="small" text @click.stop="downloadEntries([entry])">下载</el-button>
-            <el-button v-if="entry.kind === 'dir'" size="small" text @click.stop="showUsage(entry)">统计</el-button>
-            <el-button size="small" text type="danger" @click.stop="openDelete([entry])">删除</el-button>
+            <el-button v-if="entry.kind === 'file'" size="small" text :icon="Download" title="下载" @click.stop="downloadEntries([entry])" />
+            <el-button v-if="entry.kind === 'file' && hasWritable" size="small" text :icon="CopyDocument" title="复制到…" @click.stop="rowCopy(entry)" />
+            <el-button v-if="entry.kind === 'file' && hasWritable" size="small" text :icon="Rank" title="移动到…" @click.stop="rowMove(entry)" />
+            <el-button v-if="entry.kind === 'dir'" size="small" text title="目录容量统计" @click.stop="showUsage(entry)">统计</el-button>
+            <el-button v-if="hasWritable" size="small" text :icon="EditPen" title="重命名" @click.stop="openRename(entry)" />
+            <el-button size="small" text :icon="Delete" type="danger" title="删除" @click.stop="openDelete([entry])" />
           </span>
         </div>
         <div v-if="cursor" class="fs-more">
@@ -1099,7 +1116,7 @@ function onKeydown(event: KeyboardEvent): void {
 </template>
 
 <style scoped>
-.fs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; gap: 8px; }
+.fs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; gap: 8px; padding: 10px 20px 14px; }
 .fs-spacer { flex: 1; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.5; }
 
@@ -1128,18 +1145,21 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
 .fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 110px 170px 210px; align-items: center; padding: 0 10px; }
-.fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 1; font-size: 12px; opacity: .75; height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
+/* 表头不透明底色（用户反馈 2026-11-17：此前 opacity:.75 连背景一起半透明，滚动后与内容重叠）；muted 观感用文字色实现 */
+.fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 2; font-size: 12px; color: var(--el-text-color-secondary); height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
-.fs-row:hover { background: var(--el-fill-color-light); }
-.fs-row.selected { background: var(--el-color-primary-light-9); }
+.fs-row:hover { background: var(--el-fill-color-light); background-clip: padding-box; }
+.fs-row.selected { background: var(--el-color-primary-light-9); background-clip: padding-box; }
 .fs-sortable { cursor: pointer; user-select: none; }
 .fs-col-check { display: flex; align-items: center; }
 .fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
 .fs-icon.is-dir { color: var(--el-color-warning); }
-.fs-col-size, .fs-col-time { font-size: 12px; opacity: .7; }
+.fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 .fs-col-op { display: flex; justify-content: flex-end; gap: 2px; }
+/* SFTP 权限列（§3.2：仅 SFTP 显示） */
+.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 100px 160px 66px 200px; }
 
 .fs-more { text-align: center; padding: 8px 0; }
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
