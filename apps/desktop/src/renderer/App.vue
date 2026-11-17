@@ -480,10 +480,10 @@ onMounted(async () => {
           </div>
           <div class="desktop">
             <div class="desktop-grid">
-              <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)">
+              <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)" @mouseenter="nameScrollStart" @mouseleave="nameScrollStop">
                 <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="44" />
-                <h3 class="card-name" @mouseenter="nameScrollStart" @mouseleave="nameScrollStop"><span class="card-name-text">{{ tool.name }}</span></h3>
-                <p class="muted card-desc" :title="tool.description">{{ tool.description }}</p>
+                <h3 class="card-name"><span class="card-name-text">{{ tool.name }}</span></h3>
+                <p class="muted card-desc">{{ tool.description }}</p>
                 <div class="card-tags">
                   <el-tag v-for="tag in tool.categories" :key="tag" size="small">{{ tag }}</el-tag>
                   <el-tag v-if="tool.requiredGrant" size="small" type="warning">需密钥</el-tag>
