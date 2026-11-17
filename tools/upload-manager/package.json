@@ -1,12 +1,12 @@
 {
-  "name": "@sshk/upload-config",
+  "name": "@sshk/upload-manager",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 上传配置：本地默认目录、远程(ftp/sftp) 多 profile、云多 profile、全局校验与 safeStorage 密钥",
+  "description": "sshk-tools 上传管理（原上传配置）：本地默认目录、远程(ftp/sftp) 多 profile、云多 profile、全局校验与 safeStorage 密钥",
   "exports": {
     ".": "./src/index.ts",
-    "./renderer": "./src/renderer/UploadConfigPage.vue"
+    "./renderer": "./src/renderer/UploadManagerPage.vue"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

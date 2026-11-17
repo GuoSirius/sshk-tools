@@ -638,8 +638,8 @@ async function registerIpc(): Promise<void> {
       throw err
     }
   })
-  handleOk(IPC_CHANNELS.uploadConfigGet, () => uploads.getConfig())
-  handleOk(IPC_CHANNELS.uploadConfigSet, (_event, raw: unknown) => uploads.setConfig(raw))
+  handleOk(IPC_CHANNELS.uploadManagerGet, () => uploads.getConfig())
+  handleOk(IPC_CHANNELS.uploadManagerSet, (_event, raw: unknown) => uploads.setConfig(raw))
   handleOk(IPC_CHANNELS.uploadProfiles, (_event, type?: 'remote' | 'cloud') =>
     uploads.profiles(type === 'remote' || type === 'cloud' ? type : undefined))
   handleOk(IPC_CHANNELS.uploadSecretSet, (_event, profileId: string, value: string) =>

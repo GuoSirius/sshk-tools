@@ -26,6 +26,7 @@ import {
 } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 import { isProviderId, toolSecretId } from './secret-ids'
+import { logger } from './logger'
 import { recordUsage } from './usage'
 
 export interface AppServices {
@@ -321,7 +322,36 @@ export function setupServices(): AppServices {
     runLocalOcr,
   }
 
-  void loadSecrets()
+  /**
+   * 工具改名迁移（2026-11-17「上传配置」→「上传管理」，id upload-config → upload-manager）：
+   * - secrets.bin：`app:tool:upload-config:<profileId>` → `app:tool:upload-manager:<profileId>`
+   * - settings.json：`tools.upload-config.*` → `tools.upload-manager.*`
+   * 幂等：新键已存在时不覆盖（以新为准），旧键一律清掉。配置不迁移用户会"丢密钥/丢工具配置"。
+   */
+  function migrateUploadManagerRename(): void {
+    try {
+      const LEGACY = 'app:tool:upload-config:'
+      const secrets = currentSecrets()
+      let moved = 0
+      for (const key of Object.keys(secrets)) {
+        if (!key.startsWith(LEGACY)) continue
+        const next = `app:tool:upload-manager:${key.slice(LEGACY.length)}`
+        if (!secrets[next]) { secrets[next] = secrets[key]!; moved++ }
+        delete secrets[key]
+      }
+      if (moved > 0) void saveSecrets(secrets)
+      const legacyCfg = config.get('tools.upload-config')
+      if (legacyCfg && typeof legacyCfg === 'object' && !Array.isArray(legacyCfg)) {
+        if (config.get('tools.upload-manager') == null) config.set('tools.upload-manager', legacyCfg)
+        config.remove('tools.upload-config')
+      }
+      if (moved > 0) logger.info('upload', `工具改名迁移：upload-config → upload-manager（密钥 ${moved} 条）`)
+    } catch (err) {
+      logger.error('upload', `工具改名迁移失败（不影响启动）：${(err as Error).message}`)
+    }
+  }
+
+  void loadSecrets().then(migrateUploadManagerRename)
 
   return {
     config,

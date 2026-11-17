@@ -27,7 +27,7 @@ export interface VerifyStep {
 }
 
 export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
-  A: 'A · 上传配置工具',
+  A: 'A · 上传管理工具',
   B: 'B · 富文本全屏',
   C: 'C · 开发者模式 / 密钥体系',
   D: 'D · EDM 内容管理 / CSS / 编辑器',
@@ -38,21 +38,21 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
-  // ── A 组：上传配置工具（验证清单 A1-A14）──
-  { id: 'A1', group: 'A', title: '打开「上传配置」工具', guide: '顶部无黄色「宿主能力缺失」横幅', entry: { type: 'route', target: 'upload-config' }, auto: { kind: 'hostCapability', spec: 'upload' }, relates: 'N8/C5/V11' },
-  { id: 'A2', group: 'A', title: '远程 profile 主机留空点「测试连接」', guide: '行内显示 ✗ 远程配置不完整 + 黄色提示；主进程终端不打印堆栈', entry: { type: 'route', target: 'upload-config' }, relates: 'N11/V12' },
-  { id: 'A3', group: 'A', title: '同时展开两个 profile 表单', guide: '两个表单同时展开互不折叠', entry: { type: 'route', target: 'upload-config' }, relates: 'N5' },
-  { id: 'A4', group: 'A', title: '云厂商下拉 7 家中文名', guide: '地域/Endpoint 为中文主名 + 灰色真实 ID 副标题', entry: { type: 'route', target: 'upload-config' }, relates: '3/N9' },
-  { id: 'A5', group: 'A', title: '地域输入中文自动纠正', guide: '输入「华东 1（杭州）」回车 → 自动纠正回 oss-cn-hangzhou', entry: { type: 'route', target: 'upload-config' }, relates: 'N9' },
-  { id: 'A6', group: 'A', title: '自定义地域可创建', guide: '输入预置里没有的 ID 可手动创建并保存（allow-create 生效）', entry: { type: 'route', target: 'upload-config' }, relates: '5' },
-  { id: 'A7', group: 'A', title: '密码框查看回填', guide: '点「查看」回填已保存口令；眼睛图标可切换显隐', entry: { type: 'route', target: 'upload-config' }, relates: 'N3' },
-  { id: 'A8', group: 'A', title: '临时口令不落盘', guide: '改口令不保存直接测试 → 测试用临时值；「查看」仍是旧值', entry: { type: 'route', target: 'upload-config' }, relates: 'N3/N4' },
-  { id: 'A9', group: 'A', title: '输入框与按钮对齐', guide: '等高、左右对齐，图标风格统一', entry: { type: 'route', target: 'upload-config' }, relates: 'N1/N2' },
-  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'upload-config' }, auto: { kind: 'catalogState', spec: 'upload-config' }, relates: 'N6' },
-  { id: 'A11', group: 'A', title: '列表行操作', guide: '设为默认/编辑/删除；删除弹二次确认；删默认项后自动顺延第一条', entry: { type: 'route', target: 'upload-config' }, relates: 'N6' },
-  { id: 'A12', group: 'A', title: '本地 profile 自动上传', guide: '本地 profile 设默认 → EDM 图片字段选图 → 自动上传 + 回填 URL；目录不存在自动创建', entry: { type: 'route', target: 'upload-config' }, relates: '4/V7' },
-  { id: 'A13', group: 'A', title: '复制图片 URL', guide: '图片字段点「复制图片 URL」→ 剪贴板为刚回填的 URL', entry: { type: 'route', target: 'upload-config' }, relates: '4' },
-  { id: 'A14', group: 'A', title: '真实账号连接测试', guide: '填一组真实 FTP/SFTP 或云账号测试 → ✓ 通过；临时密钥不写进 settings.json', entry: { type: 'route', target: 'upload-config' }, relates: 'N4/V7' },
+  // ── A 组：上传管理工具（验证清单 A1-A14）──
+  { id: 'A1', group: 'A', title: '打开「上传管理」工具', guide: '顶部无黄色「宿主能力缺失」横幅', entry: { type: 'route', target: 'upload-manager' }, auto: { kind: 'hostCapability', spec: 'upload' }, relates: 'N8/C5/V11' },
+  { id: 'A2', group: 'A', title: '远程 profile 主机留空点「测试连接」', guide: '行内显示 ✗ 远程配置不完整 + 黄色提示；主进程终端不打印堆栈', entry: { type: 'route', target: 'upload-manager' }, relates: 'N11/V12' },
+  { id: 'A3', group: 'A', title: '同时展开两个 profile 表单', guide: '两个表单同时展开互不折叠', entry: { type: 'route', target: 'upload-manager' }, relates: 'N5' },
+  { id: 'A4', group: 'A', title: '云厂商下拉 7 家中文名', guide: '地域/Endpoint 为中文主名 + 灰色真实 ID 副标题', entry: { type: 'route', target: 'upload-manager' }, relates: '3/N9' },
+  { id: 'A5', group: 'A', title: '地域输入中文自动纠正', guide: '输入「华东 1（杭州）」回车 → 自动纠正回 oss-cn-hangzhou', entry: { type: 'route', target: 'upload-manager' }, relates: 'N9' },
+  { id: 'A6', group: 'A', title: '自定义地域可创建', guide: '输入预置里没有的 ID 可手动创建并保存（allow-create 生效）', entry: { type: 'route', target: 'upload-manager' }, relates: '5' },
+  { id: 'A7', group: 'A', title: '密码框查看回填', guide: '点「查看」回填已保存口令；眼睛图标可切换显隐', entry: { type: 'route', target: 'upload-manager' }, relates: 'N3' },
+  { id: 'A8', group: 'A', title: '临时口令不落盘', guide: '改口令不保存直接测试 → 测试用临时值；「查看」仍是旧值', entry: { type: 'route', target: 'upload-manager' }, relates: 'N3/N4' },
+  { id: 'A9', group: 'A', title: '输入框与按钮对齐', guide: '等高、左右对齐，图标风格统一', entry: { type: 'route', target: 'upload-manager' }, relates: 'N1/N2' },
+  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'upload-manager' }, auto: { kind: 'catalogState', spec: 'upload-manager' }, relates: 'N6' },
+  { id: 'A11', group: 'A', title: '列表行操作', guide: '设为默认/编辑/删除；删除弹二次确认；删默认项后自动顺延第一条', entry: { type: 'route', target: 'upload-manager' }, relates: 'N6' },
+  { id: 'A12', group: 'A', title: '本地 profile 自动上传', guide: '本地 profile 设默认 → EDM 图片字段选图 → 自动上传 + 回填 URL；目录不存在自动创建', entry: { type: 'route', target: 'upload-manager' }, relates: '4/V7' },
+  { id: 'A13', group: 'A', title: '复制图片 URL', guide: '图片字段点「复制图片 URL」→ 剪贴板为刚回填的 URL', entry: { type: 'route', target: 'upload-manager' }, relates: '4' },
+  { id: 'A14', group: 'A', title: '真实账号连接测试', guide: '填一组真实 FTP/SFTP 或云账号测试 → ✓ 通过；临时密钥不写进 settings.json', entry: { type: 'route', target: 'upload-manager' }, relates: 'N4/V7' },
 
   // ── B 组：富文本全屏（验证清单 B1-B7）──
   { id: 'B1', group: 'B', title: '全屏铺满窗口', guide: '内容管理页含富文本的表单点全屏 → 铺满窗口，左侧树/菜单全被遮住，底色不透明', entry: { type: 'route', target: 'edm-studio' }, relates: 'N12/V13' },
@@ -88,7 +88,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'D11', group: 'D', title: '自定义模板生成邮件', guide: '用 origin=custom 的模板/片段生成邮件 → 能被正确取用', entry: { type: 'route', target: 'edm-studio' }, relates: 'V5' },
   { id: 'D12', group: 'D', title: 'Monaco 多实例不串', guide: '多 tab + 深色主题 + md↔html 单向互转 → 多实例互不串内容；往返不保真属预期', entry: { type: 'route', target: 'edm-studio' }, relates: 'V8' },
   { id: 'D13', group: 'D', title: '工具设置页左右布局', guide: '非上传工具设置页：左栏分组导航独立滚动、点击定位右栏；右栏独立滚动无空盒；保存条固定；改动出「未保存」提示', entry: { type: 'route', target: 'badge-studio' }, relates: '#27' },
-  { id: 'D14', group: 'D', title: '上传工具设置页不受影响', guide: '上传配置工具设置页仍是原样式，未被改成左右布局', entry: { type: 'route', target: 'upload-config' }, relates: '#27' },
+  { id: 'D14', group: 'D', title: '上传工具设置页不受影响', guide: '上传管理工具设置页仍是原样式，未被改成左右布局', entry: { type: 'route', target: 'upload-manager' }, relates: '#27' },
   { id: 'D15', group: 'D', title: '形态 2 二级配置页', guide: '工具包开发模板：「工具配置」展开两个二级菜单；每页左栏只列该页分组、标题为页名；两页内容互不串', entry: { type: 'route', target: 'template-tool' }, relates: '#28' },
   { id: 'D16', group: 'D', title: '形态 2 页级保存隔离', guide: '「模型与调用」改字段保存 → 只落本页；切「路径与输出」改动保存 → 上页不丢；boolean/select 正常渲染持久化', entry: { type: 'route', target: 'template-tool' }, relates: '#28' },
   { id: 'D17', group: 'D', title: '创建工具向导（dev）', guide: '双入口可见（打包版不显示）；分步填写 → JSON 预览实时更新 → 创建后骨架落盘、目录刷新、重启 dev 可加载', entry: { type: 'settings', target: '工具与权限' }, relates: '#29' },
@@ -112,11 +112,11 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'F/C-V4', group: 'F', title: 'CodeEditor JSON 只读视图', guide: '海报页 JSON 视图按钮打开 → 内容与格式正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V4' },
   { id: 'F/D-V3', group: 'F', title: '流式打字感核查', guide: '模型对话观察打字感；dev 日志查 chunk#n size gap；打字平滑开关默认开', entry: { type: 'route', target: 'model-console' }, relates: 'D-V3' },
   { id: 'F/D-T2', group: 'F', title: '模型能力供工具调用', guide: 'badge/EDM 的 AI 能力均可用（badge 视觉已验；EDM AI 填充/润色走 D-Q2）', entry: { type: 'route', target: 'edm-studio' }, relates: 'D-T2/D-Q2' },
-  { id: 'F/E-V1', group: 'F', title: '本地目录自检', guide: '上传配置工具自检按钮 + 本地 profile 上传回填', entry: { type: 'route', target: 'upload-config' }, relates: 'E-V1' },
-  { id: 'F/E-V2', group: 'F', title: '真实 FTP/SFTP/OSS 连接', guide: '临时密钥不落盘；测试结构化不刷堆栈（N11 已修复验）', entry: { type: 'route', target: 'upload-config' }, relates: 'E-V2/N11' },
-  { id: 'F/E-V3', group: 'F', title: '校验收紧语义', guide: '工具收紧（交集/取小）；未设限字段 undefined', entry: { type: 'route', target: 'upload-config' }, relates: 'E-V3' },
+  { id: 'F/E-V1', group: 'F', title: '本地目录自检', guide: '上传管理工具自检按钮 + 本地 profile 上传回填', entry: { type: 'route', target: 'upload-manager' }, relates: 'E-V1' },
+  { id: 'F/E-V2', group: 'F', title: '真实 FTP/SFTP/OSS 连接', guide: '临时密钥不落盘；测试结构化不刷堆栈（N11 已修复验）', entry: { type: 'route', target: 'upload-manager' }, relates: 'E-V2/N11' },
+  { id: 'F/E-V3', group: 'F', title: '校验收紧语义', guide: '工具收紧（交集/取小）；未设限字段 undefined', entry: { type: 'route', target: 'upload-manager' }, relates: 'E-V3' },
   { id: 'F/E-V4', group: 'F', title: '内联图片回写', guide: 'saveSample 前 data: 图片批量上传回写 URL', entry: { type: 'route', target: 'edm-studio' }, relates: 'E-V4/T8/V9' },
-  { id: 'F/E-V5', group: 'F', title: '能力兜底横幅 + 一键重载', guide: '旧窗口点测试走通用通道或给可操作提示 + 一键重载', entry: { type: 'route', target: 'upload-config' }, auto: { kind: 'hostCapability', spec: 'callHostApi' }, relates: 'E-V5/N8/V11' },
+  { id: 'F/E-V5', group: 'F', title: '能力兜底横幅 + 一键重载', guide: '旧窗口点测试走通用通道或给可操作提示 + 一键重载', entry: { type: 'route', target: 'upload-manager' }, auto: { kind: 'hostCapability', spec: 'callHostApi' }, relates: 'E-V5/N8/V11' },
   { id: 'F/E-V7', group: 'F', title: '打包后 SFTP 纯 JS 回退', guide: '随下次打包顺验：SFTP 连接不因 cpu-features shim 失效', requiresPackaged: true, relates: 'E-V7/C4' },
   { id: 'F/F-T1', group: 'F', title: '打包资源路径验证', guide: '安装目录 resources/edm-studio/assets/edm/ 存在且有品牌内容', requiresPackaged: true, auto: { kind: 'fileExists', spec: 'edm-assets' }, relates: 'F-T1' },
   { id: 'F/F-T2', group: 'F', title: '自定义根跨平台路径', guide: '正式包里自定义内容新建/编辑一次（落 userData/custom-edm）+ dev 同样操作一次（落源码旁）两边正常', requiresPackaged: true, relates: 'F-T2' },
@@ -129,18 +129,18 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'G4', group: 'G', title: '模型控制台表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-console' }, relates: 'E-T3' },
 
   // ── H 组：文件系统（X6 · plans/08 §八验收清单；只新增不改旧 id）──
-  { id: 'H1', group: 'H', title: '进入工具默认文件系统页 + 通道浏览', guide: '打开「上传配置」工具默认落在「文件系统」菜单（上传配置退居第二菜单）；5 个通道均能浏览到与 oss-browser 一致的目录结构（云侧虚拟目录=公共前缀正确呈现）', entry: { type: 'route', target: 'upload-config' }, auto: { kind: 'hostCapability', spec: 'fs' }, relates: 'X6/F-5' },
-  { id: 'H2', group: 'H', title: '新建目录 / 重命名 / 删除即时刷新', guide: 'FTP 与 OSS 上新建目录、重命名、删除文件行为一致且列表即时刷新；递归删除大目录出现传输队列分批进度', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-2/F-3' },
-  { id: 'H3', group: 'H', title: '大文件上传下载全链路', guide: '上传 100MB 文件：传输队列进度/速度/取消/失败重试全部可用；下载同理（落点 userData/downloads，可一键打开目录）', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-4/F-7' },
-  { id: 'H4', group: 'H', title: '文本编辑保存写回 + 冲突提示', guide: '文本文件在编辑器打开并保存，oss-browser 侧可见更新；用另一端改文件后再保存 → 提示「远端已变化」，可选覆盖或放弃', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-6' },
-  { id: 'H5', group: 'H', title: '拖拽上传 + 文件夹递归 + 同名覆盖确认', guide: '从资源管理器拖文件/文件夹进列表 → 保留目录结构入队上传；远端已有同名文件时任务变「待确认」，点覆盖后继续', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-7' },
-  { id: 'H6', group: 'H', title: '图片预览与新建文件', guide: '双击图片弹层预览（可缩放）；「新建文件」创建空白文本直接进编辑器，保存后远端可见', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-6' },
-  { id: 'H7', group: 'H', title: '键盘与多选操作', guide: 'Ctrl/Shift 点选、全选、Delete 删除、F2 重命名、Ctrl+C/V/X 剪贴板跨目录粘贴、Backspace 上一级均生效', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-5' },
-  { id: 'H8', group: 'H', title: '密钥未配置与错误态引导', guide: '未配置密钥的通道给出引导文案；断网/错密码时列表给分类错误（连接失败/认证失败）+ 重试按钮', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/§3.3' },
-  { id: 'H9', group: 'H', title: '音视频在线播放（二期）', guide: '双击 mp4/mp3 等媒体文件弹层播放（<video>/<audio> 原生控件）；超过 64MB 引导下载后本地播放；mkv/mov 等不保证可播的扩展无播放入口（只下载）', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
-  { id: 'H10', group: 'H', title: '跨通道互拷（二期）', guide: '「复制到…」选其它通道 → 目录自动递归展开入队（超 1500 文件截断提示）；剪贴板跨通道粘贴按复制执行（剪切跨通道降级为复制，源保留）；传输队列显示「源 → 目标」；同名冲突待确认可覆盖', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
-  { id: 'H11', group: 'H', title: '递归搜索（二期）', guide: '搜索框回车触发递归搜索（当前路径前缀内，根=整个通道）；结果横幅显示数量与截断提示，「返回目录」还原；云侧扫描上限 5 万 key、远程限深 6 层', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
-  { id: 'H12', group: 'H', title: '目录容量统计（二期）', guide: '目录行「统计」或选中单个目录后工具栏「统计」：弹窗显示总大小与文件数；超大目录达扫描上限时明确标注「数值为已扫部分」', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
+  { id: 'H1', group: 'H', title: '进入工具默认文件系统页 + 通道浏览', guide: '打开「上传管理」工具默认落在「文件系统」菜单（上传管理退居第二菜单）；5 个通道均能浏览到与 oss-browser 一致的目录结构（云侧虚拟目录=公共前缀正确呈现）', entry: { type: 'route', target: 'upload-manager' }, auto: { kind: 'hostCapability', spec: 'fs' }, relates: 'X6/F-5' },
+  { id: 'H2', group: 'H', title: '新建目录 / 重命名 / 删除即时刷新', guide: 'FTP 与 OSS 上新建目录、重命名、删除文件行为一致且列表即时刷新；递归删除大目录出现传输队列分批进度', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-2/F-3' },
+  { id: 'H3', group: 'H', title: '大文件上传下载全链路', guide: '上传 100MB 文件：传输队列进度/速度/取消/失败重试全部可用；下载同理（落点 userData/downloads，可一键打开目录）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-4/F-7' },
+  { id: 'H4', group: 'H', title: '文本编辑保存写回 + 冲突提示', guide: '文本文件在编辑器打开并保存，oss-browser 侧可见更新；用另一端改文件后再保存 → 提示「远端已变化」，可选覆盖或放弃', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-6' },
+  { id: 'H5', group: 'H', title: '拖拽上传 + 文件夹递归 + 同名覆盖确认', guide: '从资源管理器拖文件/文件夹进列表 → 保留目录结构入队上传；远端已有同名文件时任务变「待确认」，点覆盖后继续', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-7' },
+  { id: 'H6', group: 'H', title: '图片预览与新建文件', guide: '双击图片弹层预览（可缩放）；「新建文件」创建空白文本直接进编辑器，保存后远端可见', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-6' },
+  { id: 'H7', group: 'H', title: '键盘与多选操作', guide: 'Ctrl/Shift 点选、全选、Delete 删除、F2 重命名、Ctrl+C/V/X 剪贴板跨目录粘贴、Backspace 上一级均生效', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-5' },
+  { id: 'H8', group: 'H', title: '密钥未配置与错误态引导', guide: '未配置密钥的通道给出引导文案；断网/错密码时列表给分类错误（连接失败/认证失败）+ 重试按钮', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§3.3' },
+  { id: 'H9', group: 'H', title: '音视频在线播放（二期）', guide: '双击 mp4/mp3 等媒体文件弹层播放（<video>/<audio> 原生控件）；超过 64MB 引导下载后本地播放；mkv/mov 等不保证可播的扩展无播放入口（只下载）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
+  { id: 'H10', group: 'H', title: '跨通道互拷（二期）', guide: '「复制到…」选其它通道 → 目录自动递归展开入队（超 1500 文件截断提示）；剪贴板跨通道粘贴按复制执行（剪切跨通道降级为复制，源保留）；传输队列显示「源 → 目标」；同名冲突待确认可覆盖', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
+  { id: 'H11', group: 'H', title: '递归搜索（二期）', guide: '搜索框回车触发递归搜索（当前路径前缀内，根=整个通道）；结果横幅显示数量与截断提示，「返回目录」还原；云侧扫描上限 5 万 key、远程限深 6 层', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
+  { id: 'H12', group: 'H', title: '目录容量统计（二期）', guide: '目录行「统计」或选中单个目录后工具栏「统计」：弹窗显示总大小与文件数；超大目录达扫描上限时明确标注「数值为已扫部分」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
 ]
 
 /** 步骤总数（页脚展示用） */

@@ -46,8 +46,8 @@ export const IPC_CHANNELS = {
   uploadBatch: 'upload:batch',
   /** 主进程 → 渲染层：单文件 / 批量进度（沿用 update:state 推送范式） */
   uploadProgress: 'upload:progress',
-  uploadConfigGet: 'upload:config:get',
-  uploadConfigSet: 'upload:config:set',
+  uploadManagerGet: 'upload:manager:get',
+  uploadManagerSet: 'upload:manager:set',
   uploadProfiles: 'upload:profiles',
   uploadSecretSet: 'upload:secret:set',
   uploadSecretState: 'upload:secret:state',

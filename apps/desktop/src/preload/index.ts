@@ -106,8 +106,8 @@ const api = {
     onProgress: (callback: (payload: unknown) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.uploadProgress, (_event, payload) => callback(payload))
     },
-    getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadConfigGet),
-    setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadConfigSet, cfg),
+    getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerGet),
+    setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerSet, cfg),
     profiles: (type?: 'remote' | 'cloud'): Promise<unknown[]> =>
       invoke(IPC_CHANNELS.uploadProfiles, type),
     setSecret: (profileId: string, value: string): Promise<boolean> =>

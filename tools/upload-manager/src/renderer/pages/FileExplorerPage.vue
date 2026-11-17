@@ -43,10 +43,10 @@ import {
 import { CodeEditor } from '@sshk/code-editor'
 
 /**
- * X6 文件系统页（plans/08 §3）：进入上传配置工具默认展示。
+ * X6 文件系统页（plans/08 §3）：进入上传管理工具默认展示。
  * 布局三段：通道切换条 / 路径区（面包屑 + 可编辑路径）+ 工具栏 / 文件列表（列表·网格双视图）
  * + 状态条 + 右下角传输队列抽屉。
- * 通道 = 上传配置的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
+ * 通道 = 上传管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
  */
 
 // ── 通道与目录状态 ──
@@ -215,7 +215,7 @@ function friendlyError(err: unknown): string {
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(msg)) return '连接失败：无法连通主机（检查地址/端口/网络）'
   if (/530|532|认证|Authentication|password|All authentication/i.test(msg)) return '认证失败：检查用户名与密码/密钥'
   if (/NoSuchBucket|The specified bucket|not exist/i.test(msg)) return '路径不存在：检查 Bucket 与目录'
-  if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「上传配置」填写并保存'
+  if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「上传管理 · 通道配置」填写并保存'
   return msg
 }
 
@@ -959,7 +959,7 @@ function onKeydown(event: KeyboardEvent): void {
         </el-option>
       </el-select>
       <span v-if="activeChannel" class="fs-channel-meta">
-        <span v-if="!activeChannel.hasSecret" class="fs-warn">密钥未配置，去「上传配置」填写</span>
+        <span v-if="!activeChannel.hasSecret" class="fs-warn">密钥未配置，去「通道配置」填写</span>
         <span v-else-if="!hasWritable" class="fs-warn">该厂商仅支持浏览（写操作支持阿里云 OSS / AWS S3）</span>
         <span v-else class="fs-ok">已连接 · {{ activeChannel.detail }}</span>
       </span>
@@ -1051,7 +1051,7 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
       <div v-if="!profileId" class="fs-empty">
         <p>还没有配置上传通道</p>
-        <p class="fs-empty-hint">到「上传配置」页添加远程（FTP/SFTP）或云（OSS 等）profile 后即可浏览管理远端文件。</p>
+        <p class="fs-empty-hint">到「通道配置」页添加远程（FTP/SFTP）或云（OSS 等）profile 后即可浏览管理远端文件。</p>
       </div>
       <div v-else-if="pageError" class="fs-empty fs-error">
         <p>加载失败：{{ pageError }}</p>

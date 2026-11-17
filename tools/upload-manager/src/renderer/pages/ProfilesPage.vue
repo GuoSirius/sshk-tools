@@ -35,7 +35,7 @@ import CloudProfileForm from '../CloudProfileForm.vue'
 import { host } from '../host'
 
 /**
- * T6 上传配置工具（应用级全局配置）。
+ * T6 上传管理工具 · 通道配置页（应用级全局配置）。
  *
  * N6：远程 + 云合并为一张统一列表，行头即「列表 + 操作列」，新增/编辑/删除/设为默认/测试
  *     全部在列表内完成（对齐 model-console 的 Provider 管理范式），不再分两个卡片各自维护。
@@ -307,7 +307,7 @@ async function save(): Promise<void> {
       secretInputs.value[id] = ''
     }
     await load()
-    ElMessage.success('上传配置已保存（密钥独立加密存储）')
+    ElMessage.success('通道配置已保存（密钥独立加密存储）')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -354,7 +354,7 @@ onMounted(() => {
 
 <template>
   <ToolPageLayout
-    title="上传配置"
+    title="通道配置"
     description="应用级全局预设：一次配置，所有工具只选 profile 并覆盖少量非固定信息。密码 / AccessKey Secret 加密存储，不写进配置文件；需要时点「查看」按需回显。"
   >
     <template #actions>

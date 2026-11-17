@@ -87,7 +87,7 @@ export function collectDiagnostics(
     uploads = [...uploadCfg.remote.profiles, ...uploadCfg.cloud.profiles].map((p) => ({
       id: p.id,
       name: p.name,
-      hasSecret: Boolean(services.host.getToolSecret(TOOL_IDS.uploadConfig, p.id)),
+      hasSecret: Boolean(services.host.getToolSecret(TOOL_IDS.uploadManager, p.id)),
     }))
   } catch { /* 保持空 */ }
   const secrets = {
