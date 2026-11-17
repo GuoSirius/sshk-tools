@@ -145,7 +145,7 @@ onBeforeUnmount(() => { batchProgress.active = false })
                   <el-dropdown-menu>
                     <el-dropdown-item command="copy">复制代码</el-dropdown-item>
                     <el-dropdown-item v-if="row.outputs.poster" command="download-png">下载图片</el-dropdown-item>
-                    <el-dropdown-item command="share">分享页面（72h）</el-dropdown-item>
+                    <el-dropdown-item command="share">分享页面</el-dropdown-item>
                     <el-dropdown-item v-if="sourceStates[row._id]?.stale" command="regenerate">重新打标（用新源覆盖）</el-dropdown-item>
                     <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
                   </el-dropdown-menu>

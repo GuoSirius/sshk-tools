@@ -253,18 +253,18 @@ watch(() => props.open, (open) => {
       </template>
 
       <template v-else>
+        <div class="share-ttl-row">
+          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" />
+          <span class="ttl-unit">小时</span>
+          <el-button type="primary" size="small" :loading="busy" :disabled="permanent" @click="applyTtl('extend')">续期 TTL</el-button>
+          <el-button type="warning" size="small" plain :loading="busy" @click="applyTtl('reset')">更新 TTL</el-button>
+          <el-button type="success" size="small" plain :loading="busy" :disabled="permanent" @click="applyTtl('permanent')">永久有效</el-button>
+        </div>
         <div class="share-link-head">
           <el-select v-if="ticket.urls.length > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
             <el-option v-for="(u, i) in ticket.urls" :key="u" :label="u" :value="i" />
           </el-select>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
-        </div>
-        <div class="share-ttl-row">
-          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" controls-position="right" class="ttl-input" />
-          <span class="ttl-unit">小时</span>
-          <el-button type="primary" size="small" :loading="busy" :disabled="permanent" @click="applyTtl('extend')">续期 TTL</el-button>
-          <el-button type="warning" size="small" plain :loading="busy" @click="applyTtl('reset')">更新 TTL</el-button>
-          <el-button type="success" size="small" plain :loading="busy" :disabled="permanent" @click="applyTtl('permanent')">永久有效</el-button>
         </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
@@ -300,12 +300,13 @@ watch(() => props.open, (open) => {
 <style scoped>
 .share-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; }
 .share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
-.share-link-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }
-.share-ttl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--el-border-color-lighter); border-bottom: 1px solid var(--el-border-color-lighter); }
-.share-ttl-row .ttl-input { width: 110px; flex: none; }
-.share-ttl-row .ttl-unit { font-size: 12px; opacity: 0.7; margin-right: 4px; }
+.share-ttl-row { display: flex; align-items: center; gap: 8px; }
+.share-ttl-row .ttl-input { flex: 1; min-width: 0; }
+.share-ttl-row .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; }
+.share-ttl-row .el-button { flex: none; }
 .share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 14px; }
 .share-qr { flex: none; width: 132px; height: 132px; border: 1px solid var(--el-border-color); border-radius: 6px; overflow: hidden; background: #fff; }
 .share-qr :deep(svg) { width: 100%; height: 100%; display: block; }
