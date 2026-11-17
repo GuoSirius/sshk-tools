@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState } from '@sshk/ui-kit'
 import { CodeEditor, formatHtml, compactHtml } from '@sshk/code-editor'
 import { Document, Delete } from '@element-plus/icons-vue'
 import {
@@ -389,16 +388,22 @@ function askClearRows(): void {
         </el-collapse>
       </div>
       <div class="panel preview-panel">
-        <div class="panel-title">badge 副本预览（{{ posterWidth }}px）</div>
-        <iframe
-          v-if="previewHtml"
-          :ref="(el) => { previewFrame = el as HTMLIFrameElement | null }"
-          class="preview-frame"
-          :style="{ width: posterWidth + 'px' }"
-          :srcdoc="previewHtml"
-          sandbox="allow-same-origin allow-scripts"
-        />
-        <EmptyState v-else description="生成后在此预览 badge 副本" />
+        <!-- 空状态：标题与提示合并居中展示（用户 2026-11-17 反馈：两处文案分开不够友好）；
+             有预览时标题回到顶部，iframe 撑满 -->
+        <template v-if="previewHtml">
+          <div class="panel-title">badge 副本预览（{{ posterWidth }}px）</div>
+          <iframe
+            :ref="(el) => { previewFrame = el as HTMLIFrameElement | null }"
+            class="preview-frame"
+            :style="{ width: posterWidth + 'px' }"
+            :srcdoc="previewHtml"
+            sandbox="allow-same-origin allow-scripts"
+          />
+        </template>
+        <div v-else class="preview-empty-centered">
+          <span class="preview-empty-title">badge 副本预览（{{ posterWidth }}px）</span>
+          <span class="preview-empty-hint">生成后在此预览 badge 副本</span>
+        </div>
       </div>
     </div>
     <el-dialog v-model="jsonViewOpen" title="点击统计 · JSON（只读）" width="720px" destroy-on-close :close-on-click-modal="false" :close-on-press-escape="false">
@@ -504,6 +509,18 @@ function askClearRows(): void {
   background: #fff;
   border-radius: 4px;
 }
+/* 预览空状态：标题 + 提示合并居中（两段文案放一起，视觉减负） */
+.preview-empty-centered {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 240px;
+}
+.preview-empty-title { font-size: 14px; font-weight: 600; opacity: 0.85; }
+.preview-empty-hint { font-size: 12px; opacity: 0.6; }
 .stats-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-top: 8px; }
 .stats-toolbar .el-button + .el-button { margin-left: 0; }
 .stats-origin { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
