@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sshk/shared": "workspace:*",
     "@aws-sdk/client-s3": "latest",
     "@azure/storage-blob": "latest",
     "ali-oss": "latest",

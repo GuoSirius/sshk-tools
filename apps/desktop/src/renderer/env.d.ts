@@ -123,7 +123,7 @@ interface Window {
       listDirectories(req: { toolId?: string; targetType?: 'local' | 'remote' | 'cloud'; profileId?: string; overrides?: { localDir?: string; remotePath?: string; bucket?: string; prefix?: string } }): Promise<string[]>
     }
     os: {
-      pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]>
+      pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }): Promise<string[]>
       pickDir(): Promise<string>
       pickSave(opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string>
       readDataUri(file: string): Promise<string>
@@ -131,6 +131,36 @@ interface Window {
       writeBinary(path: string, base64: string): Promise<boolean>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
+    }
+    /** X6 文件系统：已配置上传通道的远端/云浏览管理 + 统一传输队列（密钥只在 main） */
+    fs: {
+      profiles(): Promise<import('@sshk/shared').FsProfilesPayload>
+      list(req: { profileId: string; path: string; cursor?: string | null }): Promise<import('@sshk/shared').FsListPage>
+      stat(req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsStatResult>
+      mkdir(req: { profileId: string; path: string }): Promise<boolean>
+      rm(req: import('@sshk/shared').FsRmRequest): Promise<{ taskIds: string[] }>
+      cp(req: import('@sshk/shared').FsCpRequest): Promise<{ taskIds: string[] }>
+      mv(req: import('@sshk/shared').FsMvRequest): Promise<boolean>
+      /** 跨通道复制（目录 main 侧递归展开，走传输队列） */
+      crossCopy(req: import('@sshk/shared').FsCrossCopyRequest): Promise<import('@sshk/shared').FsCrossCopyResult>
+      /** 递归搜索（path 前缀内名称子串匹配） */
+      search(req: import('@sshk/shared').FsSearchRequest): Promise<import('@sshk/shared').FsSearchResult>
+      /** 目录容量统计 */
+      usage(req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsUsageResult>
+      read(req: { profileId: string; path: string; maxBytes?: number }): Promise<import('@sshk/shared').FsReadResult>
+      write(req: import('@sshk/shared').FsWriteRequest): Promise<boolean>
+      transferStart(inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }>
+      transferList(): Promise<import('@sshk/shared').FsTransferTask[]>
+      transferCancel(ids: string[]): Promise<boolean>
+      transferRetry(ids: string[], overwrite?: boolean): Promise<boolean>
+      transferClear(): Promise<{ removed: number }>
+      onTransferEvent(callback: (task: import('@sshk/shared').FsTransferTask) => void): void
+      pickUpload(opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]>
+      flattenLocal(paths: string[]): Promise<import('@sshk/shared').FsLocalFile[]>
+      downloadDir(profileId: string): Promise<string>
+      setDownloadDir(dir: string): Promise<string>
+      /** 拖拽 File → 本地绝对路径（非文件拖拽返回 ''） */
+      pathForFile(file: File): string
     }
     badge: {
       parseDatasource(file: string): Promise<{ kind: string; rows: { url: string; clicks: number; totalClicks: number }[]; warnings: string[] }>

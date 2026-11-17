@@ -6,7 +6,7 @@ const REAL_TOOL_IDS = new Set(['upload-config', 'edm-studio', 'badge-studio', 'm
 /** catalogState 判定器的特殊 spec（非工具 id） */
 const SPECIAL_CATALOG_SPECS = new Set(['grants'])
 /** 预加载层 api 上的宿主能力键（preload/index.ts 暴露的命名空间 / 单函数） */
-const HOST_API_KEYS = new Set(['upload', 'callHostApi'])
+const HOST_API_KEYS = new Set(['upload', 'fs', 'callHostApi'])
 
 describe('VERIFY_STEPS 自动判定 spec 契约', () => {
   it('catalogState 的 spec 必须是真实工具 id 或特殊键（A10 曾写成 upload 导致恒「未过」）', () => {

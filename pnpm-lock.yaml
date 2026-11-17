@@ -163,6 +163,12 @@ importers:
 
   packages/file-picker:
     dependencies:
+      '@element-plus/icons-vue':
+        specifier: latest
+        version: 2.3.2(vue@3.5.45(typescript@6.0.3))
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../shared
       element-plus:
         specifier: latest
         version: 2.14.8(vue@3.5.45(typescript@6.0.3))
@@ -292,6 +298,9 @@ importers:
       '@azure/storage-blob':
         specifier: latest
         version: 12.34.0(supports-color@7.2.0)
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../shared
       ali-oss:
         specifier: latest
         version: 6.23.0(supports-color@7.2.0)
@@ -454,6 +463,9 @@ importers:
 
   tools/model-console:
     dependencies:
+      '@element-plus/icons-vue':
+        specifier: latest
+        version: 2.3.2(vue@3.5.45(typescript@6.0.3))
       '@sshk/repository':
         specifier: workspace:*
         version: link:../../packages/repository
@@ -510,6 +522,9 @@ importers:
       '@element-plus/icons-vue':
         specifier: latest
         version: 2.3.2(vue@3.5.45(typescript@6.0.3))
+      '@sshk/code-editor':
+        specifier: workspace:*
+        version: link:../../packages/code-editor
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared

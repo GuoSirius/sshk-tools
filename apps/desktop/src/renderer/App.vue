@@ -6,7 +6,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Download } from '@element-plus/icons-vue'
+import { ArrowDown, DArrowLeft, Download, Setting } from '@element-plus/icons-vue'
 import { DEFAULT_THEME_MODE } from '@sshk/shared'
 import type { ThemeMode, ToolCatalogPayload, ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
@@ -166,6 +166,22 @@ function toggleIn(target: Ref<Set<string>>, id: string): void {
   if (next.has(id)) next.delete(id)
   else next.add(id)
   target.value = next
+}
+
+/** 工具名超长时悬浮跑马灯：进入卡片量出溢出量写进 CSS 变量驱动往返滚动，未溢出不动；离开卡片动画平滑回位（2026-11-17 用户反馈） */
+function nameScrollStart(e: MouseEvent): void {
+  const box = e.currentTarget as HTMLElement
+  const text = box.querySelector<HTMLElement>('.card-name-text')
+  if (!text) return
+  // 截断态下 rect.width 已是裁切后宽度，须用 scrollWidth 量内容真实宽度
+  const overflow = Math.ceil(text.scrollWidth - box.clientWidth)
+  if (overflow <= 2) return
+  text.style.setProperty('--name-shift', `${-overflow - 8}px`)
+  text.classList.add('is-scrolling')
+}
+function nameScrollStop(e: MouseEvent): void {
+  const text = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.card-name-text')
+  if (text) text.classList.remove('is-scrolling')
 }
 
 function openTool(id: string): void {
@@ -378,10 +394,7 @@ onMounted(async () => {
         </template>
       </el-dropdown>
       <button class="app-settings-btn" type="button" title="应用设置" @click="openSettings('general')">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 9a3 3 0 100 6 3 3 0 000-6z" />
-          <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
-        </svg>
+        <el-icon :size="15"><Setting /></el-icon>
         <span>设置</span>
       </button>
     </header>
@@ -450,10 +463,7 @@ onMounted(async () => {
             :aria-label="sidebarCollapsed ? '展开菜单' : '收起菜单'"
             @click="sidebarCollapsed = !sidebarCollapsed"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <polyline points="13 6 7 12 13 18" />
-              <polyline points="19 6 13 12 19 18" />
-            </svg>
+            <el-icon class="sidebar-toggle-icon" :size="16"><DArrowLeft /></el-icon>
             <!-- 文案随状态切换：展开态提示收起；收起态提示展开；hover 临时展开时提示固定 -->
             <span class="toggle-text">
               {{ sidebarCollapsed ? (sidebarHover ? '固定展开' : '展开菜单') : '收起菜单' }}
@@ -472,7 +482,7 @@ onMounted(async () => {
             <div class="desktop-grid">
               <article v-for="tool in visibleTools" :key="tool.id" class="tool-card" @click="openTool(tool.id)">
                 <ToolIcon :icon="tool.icon" :tool-id="tool.id" :name="tool.name" :size="44" />
-                <h3 style="margin: 14px 0 6px">{{ tool.name }}</h3>
+                <h3 class="card-name" @mouseenter="nameScrollStart" @mouseleave="nameScrollStop"><span class="card-name-text">{{ tool.name }}</span></h3>
                 <p class="muted card-desc" :title="tool.description">{{ tool.description }}</p>
                 <div class="card-tags">
                   <el-tag v-for="tag in tool.categories" :key="tag" size="small">{{ tag }}</el-tag>

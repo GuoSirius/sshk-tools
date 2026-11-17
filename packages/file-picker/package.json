@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 通用文件选择弹框：图片/文件两模式，上传 + 从已有来源挑选，选中结果经 confirm 交给应用方处理",
+  "description": "sshk-tools 通用文件选择弹框：图片/文档/代码/全部文件四类内容，上传 + 从已有来源挑选，选中结果经 confirm 交给应用方处理",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "@sshk/shared": "workspace:*",
     "element-plus": "latest",
     "vue": "latest"
   },

@@ -1,7 +1,7 @@
 {
   "id": "upload-config",
   "name": "上传配置",
-  "description": "应用级上传能力：本地默认目录、远程(ftp/sftp) 多 profile、云多 profile、全局校验；密钥经 safeStorage 加密，不下发渲染层",
+  "description": "文件系统（远端/云存储浏览管理 + 上传下载传输队列）与应用级上传能力配置；密钥经 safeStorage 加密，不下发渲染层",
   "category": "系统能力",
   "tags": [
     "上传",
@@ -9,7 +9,7 @@
     "安全存储"
   ],
   "icon": "auto",
-  "entryRoute": "profiles",
+  "entryRoute": "files",
   "enabled": true,
   "visibility": "desktop",
   "configLayout": "single",
@@ -23,6 +23,11 @@
   "configDeps": [],
   "requiredGrant": "",
   "menus": [
+    {
+      "id": "files",
+      "label": "文件系统",
+      "icon": "M3 7V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM3 7h18"
+    },
     {
       "id": "profiles",
       "label": "上传配置",

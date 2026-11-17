@@ -54,10 +54,37 @@ export const IPC_CHANNELS = {
   /** 复用 llm:getApiKey 范式：用户主动点「查看」才下发已存密钥，不随列表默认下发 */
   uploadSecretGet: 'upload:secret:get',  /** 每个 remote / cloud profile 独立连通性自检；可用表单里尚未保存的临时值，不落盘 */
   uploadTest: 'upload:test',
-  /** 图库/文件库：按来源（本地/远程/云）列出已有文件（kind=image 只列图片，file 列全部），供选择弹框 */
+  /** 图库/文件库：按来源列出已有文件（kind=image/document/code 按白名单、all 全部；缺省 image），供选择弹框 */
   uploadListImages: 'upload:images:list',
   /** 图库/文件库：按来源列出真实目录（含空目录），供目录下拉；只读 */
   uploadListDirectories: 'upload:directories:list',
+  /** ── 文件系统（X6 · plans/08）：浏览/管理已配置上传通道。密钥只在 main 解析 ── */
+  fsProfiles: 'fs:profiles',
+  fsList: 'fs:list',
+  fsStat: 'fs:stat',
+  fsMkdir: 'fs:mkdir',
+  fsRm: 'fs:rm',
+  fsCp: 'fs:cp',
+  fsMv: 'fs:mv',
+  fsCrossCopy: 'fs:crossCopy',
+  fsSearch: 'fs:search',
+  fsUsage: 'fs:usage',
+  fsRead: 'fs:read',
+  fsWrite: 'fs:write',
+  fsTransferStart: 'fs:transfer:start',
+  fsTransferList: 'fs:transfer:list',
+  fsTransferCancel: 'fs:transfer:cancel',
+  fsTransferRetry: 'fs:transfer:retry',
+  fsTransferClear: 'fs:transfer:clear',
+  /** 主进程 → 渲染层：传输任务全量形态推送（进度/状态变化节流后下发） */
+  fsTransferEvent: 'fs:transfer:event',
+  /** 打开本地文件/目录选择（文件夹上传入口），返回所选绝对路径 */
+  fsPickUpload: 'fs:pickUpload',
+  /** 递归展平本地待上传目录（保留相对结构），main 侧一次性完成 */
+  fsFlattenLocal: 'fs:flattenLocal',
+  /** 下载落点目录（app.fs.downloadDir，缺省 userData/downloads/<通道id>） */
+  fsDownloadDir: 'fs:downloadDir',
+  fsSetDownloadDir: 'fs:setDownloadDir',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

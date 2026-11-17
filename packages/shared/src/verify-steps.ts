@@ -4,7 +4,7 @@
  * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
  */
 
-export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'G'
 
 /** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
 export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
@@ -33,6 +33,8 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
   D: 'D · EDM 内容管理 / CSS / 编辑器',
   E: 'E · 打包 / 依赖 / 门禁',
   F: 'F · 应用与各工具收尾（总账 ⏳）',
+  G: 'G · 弹框与欢迎页走查（2026-11-17）',
+  H: 'H · 文件系统（X6）',
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
@@ -118,6 +120,27 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'F/E-V7', group: 'F', title: '打包后 SFTP 纯 JS 回退', guide: '随下次打包顺验：SFTP 连接不因 cpu-features shim 失效', requiresPackaged: true, relates: 'E-V7/C4' },
   { id: 'F/F-T1', group: 'F', title: '打包资源路径验证', guide: '安装目录 resources/edm-studio/assets/edm/ 存在且有品牌内容', requiresPackaged: true, auto: { kind: 'fileExists', spec: 'edm-assets' }, relates: 'F-T1' },
   { id: 'F/F-T2', group: 'F', title: '自定义根跨平台路径', guide: '正式包里自定义内容新建/编辑一次（落 userData/custom-edm）+ dev 同样操作一次（落源码旁）两边正常', requiresPackaged: true, relates: 'F-T2' },
+
+  // ── G 组：2026-11-17 弹框/欢迎页走查（file-picker 通用化 + 全局弹框口径 + 欢迎页卡片 + model-console 表单）──
+  // kind 五类（image/document/code/video/all）暂不设项：EDM 图片字段尚未接入 FilePickerDialog（总账 E-T4），接入时随接入项一并新增
+  { id: 'G1', group: 'G', title: '图片库新弹框交互定稿', guide: '富文本「图片库」：继续上传/插入所选沉底与关闭同行（关闭最右）；缩略图右上角删除=垃圾桶、移除已选=✕（悬浮红色）；目录下拉首次展开即自动拉取（带 loading，不用先切源）', entry: { type: 'route', target: 'edm-studio' }, relates: 'E-T3/C2' },
+  { id: 'G2', group: 'G', title: '弹框全局内缩口径', guide: '任开 2-3 个弹框（如模型控制台新增 Provider、富文本源码查看、图片库）：顶部 12px、左右 16px 单层内缩，header/body/footer 间距均匀，内容不贴灰边、footer 不与 body 出现双内缩错位', relates: 'E-T3' },
+  { id: 'G3', group: 'G', title: '欢迎页卡片走查', guide: '回桌面首页：描述最少显示 3 行超出内部滚动（卡片等高不跳动）；超长工具名悬浮时往返滚动显示全名（未超长不动）；标签过多一行内横向滚动', relates: 'E-T3' },
+  { id: 'G4', group: 'G', title: '模型控制台表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-console' }, relates: 'E-T3' },
+
+  // ── H 组：文件系统（X6 · plans/08 §八验收清单；只新增不改旧 id）──
+  { id: 'H1', group: 'H', title: '进入工具默认文件系统页 + 通道浏览', guide: '打开「上传配置」工具默认落在「文件系统」菜单（上传配置退居第二菜单）；5 个通道均能浏览到与 oss-browser 一致的目录结构（云侧虚拟目录=公共前缀正确呈现）', entry: { type: 'route', target: 'upload-config' }, auto: { kind: 'hostCapability', spec: 'fs' }, relates: 'X6/F-5' },
+  { id: 'H2', group: 'H', title: '新建目录 / 重命名 / 删除即时刷新', guide: 'FTP 与 OSS 上新建目录、重命名、删除文件行为一致且列表即时刷新；递归删除大目录出现传输队列分批进度', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-2/F-3' },
+  { id: 'H3', group: 'H', title: '大文件上传下载全链路', guide: '上传 100MB 文件：传输队列进度/速度/取消/失败重试全部可用；下载同理（落点 userData/downloads，可一键打开目录）', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-4/F-7' },
+  { id: 'H4', group: 'H', title: '文本编辑保存写回 + 冲突提示', guide: '文本文件在编辑器打开并保存，oss-browser 侧可见更新；用另一端改文件后再保存 → 提示「远端已变化」，可选覆盖或放弃', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-6' },
+  { id: 'H5', group: 'H', title: '拖拽上传 + 文件夹递归 + 同名覆盖确认', guide: '从资源管理器拖文件/文件夹进列表 → 保留目录结构入队上传；远端已有同名文件时任务变「待确认」，点覆盖后继续', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-7' },
+  { id: 'H6', group: 'H', title: '图片预览与新建文件', guide: '双击图片弹层预览（可缩放）；「新建文件」创建空白文本直接进编辑器，保存后远端可见', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-6' },
+  { id: 'H7', group: 'H', title: '键盘与多选操作', guide: 'Ctrl/Shift 点选、全选、Delete 删除、F2 重命名、Ctrl+C/V/X 剪贴板跨目录粘贴、Backspace 上一级均生效', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/F-5' },
+  { id: 'H8', group: 'H', title: '密钥未配置与错误态引导', guide: '未配置密钥的通道给出引导文案；断网/错密码时列表给分类错误（连接失败/认证失败）+ 重试按钮', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/§3.3' },
+  { id: 'H9', group: 'H', title: '音视频在线播放（二期）', guide: '双击 mp4/mp3 等媒体文件弹层播放（<video>/<audio> 原生控件）；超过 64MB 引导下载后本地播放；mkv/mov 等不保证可播的扩展无播放入口（只下载）', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
+  { id: 'H10', group: 'H', title: '跨通道互拷（二期）', guide: '「复制到…」选其它通道 → 目录自动递归展开入队（超 1500 文件截断提示）；剪贴板跨通道粘贴按复制执行（剪切跨通道降级为复制，源保留）；传输队列显示「源 → 目标」；同名冲突待确认可覆盖', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
+  { id: 'H11', group: 'H', title: '递归搜索（二期）', guide: '搜索框回车触发递归搜索（当前路径前缀内，根=整个通道）；结果横幅显示数量与截断提示，「返回目录」还原；云侧扫描上限 5 万 key、远程限深 6 层', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
+  { id: 'H12', group: 'H', title: '目录容量统计（二期）', guide: '目录行「统计」或选中单个目录后工具栏「统计」：弹窗显示总大小与文件数；超大目录达扫描上限时明确标注「数值为已扫部分」', entry: { type: 'route', target: 'upload-config' }, relates: 'X6/二期' },
 ]
 
 /** 步骤总数（页脚展示用） */

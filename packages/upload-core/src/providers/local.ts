@@ -1,7 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { byNewestFirst, isImageFileName } from '../image-files'
+import { byNewestFirst } from '../image-files'
+import { isKindFileName } from '@sshk/shared'
 import { MAX_DIRECTORIES, MAX_LIST_DEPTH, MAX_LIST_FILES } from '../directories'
 import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListQuery, UploadProvider, UploadResult } from '../types'
 
@@ -29,13 +30,14 @@ export class LocalUploadProvider implements UploadProvider {
    * 递归列出目录（含全部子目录）下的已有文件（新在前）；目录不存在视为空库。
    * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的文件。
    * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉。
-   * kind=image（缺省）只列图片；kind=file 列全部文件。
+   * kind=image（缺省）只列图片；document/code 按白名单，all 列全部文件。
    */
   async listImages(ctx: UploadListQuery): Promise<UploadedImagePage> {
     const dir = path.resolve(ctx.overrides?.localDir || this.options.defaultDir || '.')
     if (!existsSync(dir)) return { items: [] }
     const all: UploadedImageInfo[] = []
-    const fileOk = (name: string): boolean => ctx.kind === 'file' || isImageFileName(name)
+    const kind = ctx.kind ?? 'image'
+    const fileOk = (name: string): boolean => isKindFileName(kind, name)
     const walk = (cur: string, depth: number): void => {
       if (depth > MAX_LIST_DEPTH || all.length >= MAX_LIST_FILES) return
       let entries: { name: string; isFile(): boolean; isDirectory(): boolean }[]

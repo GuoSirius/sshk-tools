@@ -138,9 +138,10 @@ function apply(): void {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 14px 20px 16px !important;
+  /* 全局口径（2026-11-17）：body 左右/下归零，弹框本体 16px 侧内缩是唯一内缩层 */
+  padding: 0 !important;
 }
-.src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.src-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
 .src-tip { flex: 0 0 auto; font-size: 12px; opacity: 0.65; margin-bottom: 8px; }
 .src-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .src-footer-group { display: flex; align-items: center; gap: 8px; }

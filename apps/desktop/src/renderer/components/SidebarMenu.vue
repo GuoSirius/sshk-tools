@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ToolMenu } from '@sshk/shared'
+// 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
+import { ArrowRight } from '@element-plus/icons-vue'
 
 defineOptions({ name: 'SidebarMenu' })
 
@@ -53,7 +55,7 @@ function containsActive(menu: ToolMenu): boolean {
       >
         <svg class="side-icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(menu)" /></svg>
         <span class="side-label">{{ menu.label }}</span>
-        <svg class="side-chevron" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18" /></svg>
+        <el-icon class="side-chevron" :size="14"><ArrowRight /></el-icon>
       </button>
       <button
         v-else

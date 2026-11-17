@@ -35,3 +35,15 @@ export { UploadService } from './service'
 export type { UploadServiceOptions } from './service'
 export { LocalUploadProvider, RemoteUploadProvider, CloudUploadProvider } from './providers'
 export type { LocalProviderOptions, RemoteProfile, CloudProfile } from './providers'
+// ── 文件系统（X6 plans/08）──
+export { RemoteFsDriver, CloudFsDriver } from './providers'
+export type { FsDriver } from './fs-driver'
+export { sortFsEntries } from './fs-driver'
+export {
+  normalizeRootRel,
+  fsJoin,
+  fsParent,
+  fsBasename,
+  fsDestPath,
+  cloudKey,
+} from './fs-paths'

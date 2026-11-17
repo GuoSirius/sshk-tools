@@ -4,8 +4,16 @@
  * 工具侧注入实现（EDM、模板工具、富文本等），密钥与 profile 解析全在 main 进程，渲染层不接触。
  */
 
-/** 文件/图片两种模式：影响默认标题、标签文案、缩略图渲染与默认 accept，均可被应用方覆盖 */
-export type FilePickerMode = 'image' | 'file'
+import type { FileKind } from '@sshk/shared'
+
+/**
+ * 内容类别：image=图片库（历史行为）；document=文档库；code=代码库；all=文件库（全部文件）。
+ * 类别扩展名白名单与默认 accept 统一定义在 @sshk/shared/file-kinds（与列取过滤同一份，不漂移）。
+ */
+export type FilePickerKind = FileKind
+
+/** 模式（=内容类别）：影响默认标题、页签/空态文案、卡片渲染与默认 accept，均可被应用方覆盖 */
+export type FilePickerMode = FilePickerKind
 
 export interface FilePickerSource {
   id: string
@@ -38,9 +46,6 @@ export interface FilePickerPage {
   nextCursor?: string | null
 }
 
-/** 列取内容类别：image 只列图片（历史行为），file 列全部文件（文档/视频/压缩包等） */
-export type FilePickerKind = 'image' | 'file'
-
 /** 上传进度可观测点：Provider 无 byte 级上报，只有开始(0)/完成(100)；失败由 upload reject 表达 */
 export interface FilePickerUploadProgress {
   /** 0 或 100 */
@@ -63,7 +68,7 @@ export interface FilePickerLibrary {
   /**
    * 列出某来源已有文件（新在前由实现方保证），返回分页：
    * limit 为单页期望上限；cursor 传上次返回的 nextCursor 续拉下一页；
-   * kind=image 只列图片（与历史图片库行为一致），kind=file 列全部文件，实现方必须透传到底层。
+   * kind=image 只列图片（与历史图片库行为一致）、document/code 按白名单过滤、all 列全部文件，实现方必须透传到底层。
    */
   list(
     source: FilePickerSource,

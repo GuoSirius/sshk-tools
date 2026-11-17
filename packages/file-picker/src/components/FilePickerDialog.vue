@@ -1,17 +1,19 @@
 <script setup lang="ts">
 /**
  * 通用文件选择弹框（自 rich-text ImageLibraryDialog 2026-11-17 泛化抽取）：
- * - 模式：image（图片库）/ file（任意文件：文档、视频、压缩包…）；标题/文案/默认 accept 按模式推导，应用方可覆盖
+ * - 模式（=内容类别）：image 图片库 / document 文档库 / code 代码库 / all 文件库（全部文件）；标题/文案/默认 accept 按类别推导，应用方可覆盖
  * - 来源：本地 / 远程 profile / 云 profile；默认云→远程→本地；设置按 stateKey 持久化，多实例隔离
  * - 统一选择池：上传项与已有项共用一份「已选」，跨 tab / 跨目录 / 跨来源累积，确认时一并交付
  * - 上传项并入列表可见（按 url 去重，标「本次上传」）；切页/重列不清空已选
  * - 列表一次拉足（桥接层提高 limit）+ 前端分批渲染 + 懒加载；文件名搜索支持跨页全量扫描
- * - 定制面：accept / maxSize / maxCount / multiple / naming / conflict / confirmText / initialTab /
- *   defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
+ * - 定制面：accept / allowedExts / maxSize / maxUploads / maxCount / multiple / naming / conflict /
+ *   confirmText / initialTab / defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
+// 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
+import { Close, Delete, Document, Link, Picture } from '@element-plus/icons-vue'
 import type {
   FilePickerConflict,
   FilePickerItem,
@@ -31,29 +33,37 @@ import {
   validateDirInput,
 } from '../picker-settings'
 import type { DirValidation } from '../picker-settings'
+import { FILE_KIND_ACCEPT, FILE_KIND_LABELS, isKindFileName } from '@sshk/shared'
 import { fingerprintKey, hashFile, resolveUploadName } from '../upload-dedupe'
 
 const props = withDefaults(
   defineProps<{
     open: boolean
     library: FilePickerLibrary
-    /** 图片库 / 文件库：影响默认标题、页签文案、卡片渲染与默认 accept */
+    /** 内容类别（图片/文档/代码/全部文件）：影响默认标题、页签文案、卡片渲染、默认 accept 与上传类别校验 */
     mode?: FilePickerMode
-    /** 文件选择框 accept（如 'image/*'、'.pdf,.docx'、'video/*'）；缺省按 mode 推导 */
+    /** 文件选择框 accept（如 'image/*'、'.pdf,.docx'、'video/*'）；优先级 accept > allowedExts 推导 > kind 类别默认 */
     accept?: string
+    /**
+     * 自定义扩展名白名单（如 ['.md', '.pdf']）：非空时**替代** kind 类别白名单，
+     * 作为上传拦截（含拖拽）与列表前端过滤的双重强制口径；accept 缺省时由它推导文件选择框过滤。
+     */
+    allowedExts?: string[]
     /** 是否允许一次确认多个；false 时等价 maxCount=1（新选替换旧选） */
     multiple?: boolean
     /** 最大可选数量；0 / 缺省 = 不限制；=1 时单选替换 */
     maxCount?: number
+    /** 本次打开弹框期间累计上传文件数上限（0 / 缺省 = 不限制）；与 maxCount 独立，可分别控制上传量与选择量 */
+    maxUploads?: number
     /** 单文件字节上限（组件侧快速拦截；0 / 缺省 = 不限制，真正的校验在 Upload Service 侧） */
     maxSize?: number
     /** 上传存储命名：hash=内容寻址名（默认，现状逻辑）；original=保留原文件名 */
     naming?: FilePickerNaming
     /** original 命名时同名不同内容的处理：hash=追加 -hash8（默认，不覆盖）；overwrite=直接覆盖 */
     conflict?: FilePickerConflict
-    /** 确认按钮文案；缺省 image→「插入所选」、file→「确认选择」 */
+    /** 确认按钮文案；缺省 image→「插入所选」、其余类别→「确认选择」 */
     confirmText?: string
-    /** 弹框标题；缺省 image→「图片库」、file→「文件库」 */
+    /** 弹框标题；缺省按类别：「图片库」「文档库」「代码库」「文件库」 */
     title?: string
     /** 打开时默认页签（无已保存设置时生效） */
     initialTab?: 'upload' | 'gallery' | 'selected'
@@ -67,8 +77,10 @@ const props = withDefaults(
   {
     mode: 'image',
     accept: undefined,
+    allowedExts: undefined,
     multiple: true,
     maxCount: 0,
+    maxUploads: 0,
     maxSize: 0,
     naming: 'hash',
     conflict: 'hash',
@@ -88,9 +100,25 @@ const emit = defineEmits<{
 }>()
 
 /** 生效的展示文案与默认值（mode 推导 + props 覆盖） */
-const dialogTitle = computed(() => props.title ?? (props.mode === 'image' ? '图片库' : '文件库'))
 const isImage = computed(() => props.mode === 'image')
-const acceptAttr = computed(() => props.accept ?? (props.mode === 'image' ? 'image/*' : ''))
+const kindLabel = computed(() => FILE_KIND_LABELS[props.mode] ?? '文件')
+const dialogTitle = computed(() => props.title ?? `${kindLabel.value}库`)
+/** 生效扩展名白名单：归一化（去空白/小写/补点），空列表视为未设置返回 null */
+const effectiveExts = computed<string[] | null>(() => {
+  const list = (props.allowedExts ?? [])
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+    .map((e) => (e.startsWith('.') ? e : `.${e}`))
+  return list.length > 0 ? list : null
+})
+/** 扩展名是否在白名单内；白名单未设置时恒 true，无文件名时按「宁缺勿滥」拒绝 */
+function extAllowed(name?: string): boolean {
+  if (!effectiveExts.value) return true
+  if (!name) return false
+  const lower = name.toLowerCase()
+  return effectiveExts.value.some((e) => lower.endsWith(e))
+}
+const acceptAttr = computed(() => props.accept ?? effectiveExts.value?.join(',') ?? FILE_KIND_ACCEPT[props.mode] ?? '')
 const confirmLabel = computed(() => props.confirmText ?? (props.mode === 'image' ? '插入所选' : '确认选择'))
 /** 上传 input 的多选：跟随 multiple */
 const uploadMultiple = computed(() => props.multiple)
@@ -385,6 +413,8 @@ const galleryView = computed<PoolItem[]>(() => {
   for (const u of uploaded.value) map.set(itemKey(u), u)
   const scope = currentScope.value
   for (const it of items.value) {
+    // 自定义扩展名白名单时前端同步过滤列取结果（kind 只支持五类，无法表达任意扩展名组合）
+    if (!extAllowed(it.name ?? it.key)) continue
     const wrapped: PoolItem = { ...it, origin: 'existing', scope }
     if (!map.has(itemKey(wrapped))) map.set(itemKey(wrapped), wrapped)
   }
@@ -421,8 +451,7 @@ function resolveSrcOf(url: string): string {
 /** 上传区主提示（模式推导；模板表达式里不写嵌套模板字符串） */
 const uploadHint = computed<string>(() => {
   if (uploading.value) return '上传中…'
-  const kind = isImage.value ? '图片' : '文件'
-  return `点击或拖拽${kind}到此处${uploadMultiple.value ? '（可多选）' : ''}`
+  return `点击或拖拽${kindLabel.value}到此处${uploadMultiple.value ? '（可多选）' : ''}`
 })
 
 /** 空态文案：按页签与模式推导（模板表达式里不写嵌套模板字符串，vue-tsc 解析不稳） */
@@ -435,7 +464,7 @@ const emptyStateText = computed<string>(() => {
     return poolCount.value ? '无匹配文件' : '尚未选择；在「上传」或「从库选择」里勾选，会汇总到这里'
   }
   if (loadingList.value) return '读取中…'
-  return keyword.value ? '无匹配文件' : `暂无文件，点「刷新」或先上传${isImage.value ? '几张' : '几个'}`
+  return keyword.value ? '无匹配文件' : `暂无${kindLabel.value}，点「刷新」或先上传${isImage.value ? '几张' : '几个'}`
 })
 
 function storage(): Storage | null {
@@ -695,12 +724,29 @@ async function handleFiles(files: File[]): Promise<void> {
     if (files.length === 0) return
   }
 
+  // 扩展名拦截：allowedExts 非空时替代 kind 类别白名单（自定义口径优先）；否则 image/document/code 按类别白名单
+  if (effectiveExts.value) {
+    const mismatched = files.filter((f) => !extAllowed(f.name))
+    if (mismatched.length > 0) {
+      ElMessage.error(`仅允许 ${effectiveExts.value.join('、')} 格式，已跳过：${mismatched.slice(0, 3).map((f) => f.name).join('、')}${mismatched.length > 3 ? ' 等' : ''}`)
+      files = files.filter((f) => extAllowed(f.name))
+    }
+    if (files.length === 0) return
+  } else if (props.mode !== 'all') {
+    const mismatched = files.filter((f) => !isKindFileName(props.mode, f.name))
+    if (mismatched.length > 0) {
+      ElMessage.error(`以下文件不属于${kindLabel.value}类，已跳过：${mismatched.slice(0, 3).map((f) => f.name).join('、')}${mismatched.length > 3 ? ' 等' : ''}`)
+      files = files.filter((f) => isKindFileName(props.mode, f.name))
+    }
+    if (files.length === 0) return
+  }
+
   // 上传前去重：目标位置 + 源文件名（带后缀）+ 内容 hash。三者全同才算重复；
   // 同一内容改不同名字视为不同文件，都允许上传。已在传/已成功的不重复上传，失败的可重选。
   const existing = new Set(
     uploadTasks.value.filter((t) => t.status !== 'failed').map((t) => t.fingerprint),
   )
-  const fresh: { file: File; fingerprint: string; uploadName: string }[] = []
+  let fresh: { file: File; fingerprint: string; uploadName: string }[] = []
   let skipped = 0
   for (const file of files) {
     const hash = await hashFile(file)
@@ -714,6 +760,20 @@ async function handleFiles(files: File[]): Promise<void> {
   }
   if (skipped > 0) ElMessage.info(`已跳过 ${skipped} 个重复文件（同位置已上传或上传中）`)
   if (fresh.length === 0) return
+
+  // 上传数量拦截：本次打开期间累计额度（进行中+成功，不含失败）；与 maxCount 独立，超出部分不发起上传
+  if (props.maxUploads > 0) {
+    const used = uploadTasks.value.filter((t) => t.status !== 'failed').length
+    const left = props.maxUploads - used
+    if (left <= 0) {
+      ElMessage.warning(`本次打开最多可上传 ${props.maxUploads} 个文件，额度已用完`)
+      return
+    }
+    if (fresh.length > left) {
+      ElMessage.warning(`本次打开最多可上传 ${props.maxUploads} 个文件，剩余额度 ${left} 个，超出部分已跳过`)
+      fresh = fresh.slice(0, left)
+    }
+  }
 
   for (const { file, fingerprint, uploadName } of fresh) {
     const task: UploadTask = {
@@ -915,8 +975,8 @@ function onPaneScroll(e: Event): void {
               <el-option v-for="s in sources" :key="s.id" :value="s.id" :label="s.label" />
             </el-select>
             <el-radio-group v-model="tab" class="mode-tabs">
-              <el-radio-button value="upload">{{ isImage ? '上传图片' : '上传文件' }}</el-radio-button>
-              <el-radio-button value="gallery">{{ isImage ? '从图库选择' : '从文件库选择' }}</el-radio-button>
+              <el-radio-button value="upload">上传{{ kindLabel }}</el-radio-button>
+              <el-radio-button value="gallery">从{{ kindLabel }}库选择</el-radio-button>
               <el-radio-button value="selected">已选择{{ poolCount ? ` ${poolCount}` : '' }}</el-radio-button>
             </el-radio-group>
           </div>
@@ -1008,18 +1068,11 @@ function onPaneScroll(e: Event): void {
               @error="task.previewFailed = true"
             />
             <div v-else-if="!isImage" class="file-tile">
-              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-                <path d="M14 3v5h5" />
-              </svg>
+              <el-icon :size="26"><Document /></el-icon>
               <span class="file-ext">{{ extOf(task.name) || 'FILE' }}</span>
             </div>
             <span v-else class="task-thumb-ph" title="图片预览不可用">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15.5 16 11 7 20" />
-              </svg>
+              <el-icon :size="24"><Picture /></el-icon>
             </span>
             <span v-if="task.status === 'success'" class="task-thumb-state ok">✓</span>
             <span v-else-if="task.status === 'failed'" class="task-thumb-state err">!</span>
@@ -1059,11 +1112,7 @@ function onPaneScroll(e: Event): void {
           >
             <template #placeholder>
               <div class="img-placeholder" aria-hidden="true">
-                <svg class="img-placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15.5 16 11 7 20" />
-                </svg>
+                <el-icon class="img-placeholder-icon" :size="26"><Picture /></el-icon>
               </div>
             </template>
             <template #error>
@@ -1079,11 +1128,7 @@ function onPaneScroll(e: Event): void {
             </template>
           </el-image>
           <div v-else class="thumb-img file-tile" title="文件">
-            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-              <path d="M14 3v5h5" />
-              <path d="M9 13h6M9 17h4" />
-            </svg>
+            <el-icon :size="30"><Document /></el-icon>
             <span class="file-ext">{{ extOf(item.name || item.key || '') || 'FILE' }}</span>
             <span v-if="item.size" class="file-size">{{ formatSize(item.size) }}</span>
           </div>
@@ -1095,10 +1140,7 @@ function onPaneScroll(e: Event): void {
               title="复制链接"
               @click.stop="copyLink(item)"
             >
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
-                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
-              </svg>
+              <el-icon :size="12"><Link /></el-icon>
             </button>
           </div>
           <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
@@ -1111,9 +1153,7 @@ function onPaneScroll(e: Event): void {
             title="移除已选"
             @click.stop="removePoolKey(itemKey(item))"
           >
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            <el-icon :size="12"><Close /></el-icon>
           </button>
           <button
             v-else-if="item.origin === 'upload'"
@@ -1122,12 +1162,7 @@ function onPaneScroll(e: Event): void {
             title="删除"
             @click.stop="removeUploaded(item)"
           >
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 6h18" />
-              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6M14 11v6" />
-            </svg>
+            <el-icon :size="12"><Delete /></el-icon>
           </button>
         </div>
       </div>
@@ -1314,7 +1349,7 @@ function onPaneScroll(e: Event): void {
   overflow: hidden;
   padding: 12px 0 0 !important;
 }
-:global(.file-picker-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 16px 16px !important; }
+:global(.file-picker-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 0 16px !important; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
 .lib-pane { flex: 1 1 0; min-height: 120px; overflow-y: auto; padding-right: 6px; }
 </style>

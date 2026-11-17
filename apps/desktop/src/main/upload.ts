@@ -25,6 +25,8 @@ import {
   uploadVendorMeta,
   type UploadGlobalConfig,
   type UploadProfileOption,
+  type FileKind,
+  normalizeFileKind,
 } from '@sshk/shared'
 import type { AppServices } from './services'
 
@@ -65,8 +67,13 @@ export interface UploadListRequest {
   limit?: number
   /** 列取翻页游标：传上次返回的 nextCursor 续拉 */
   cursor?: string
-  /** 内容类别：image 只列图片（历史默认），file 列全部文件 */
-  kind?: 'image' | 'file'
+  /** 内容类别：image 只列图片（历史默认）、document 文档、code 代码、all 列全部文件；历史值 'file' 归一为 all */
+  kind?: FileKind
+}
+
+/** 列图/列文件：历史值 'file' 兼容归一为 'all'，其余交由 Service/Provider 缺省（image）兜底 */
+function normalizeListKind(kind: FileKind | string | undefined): FileKind | undefined {
+  return normalizeFileKind(kind)
 }
 
 export interface UploadTestRequest {
@@ -239,7 +246,7 @@ export class UploadRuntime {
   /** 图库/文件库：按请求级来源列出已有文件（只读，不需要文件）；返回分页与游标供大目录续拉 */
   async listImages(req: UploadListRequest): Promise<UploadedImagePage> {
     const { service, ctx } = this.readonlyList(req)
-    return service.listImages({ ...ctx, limit: req?.limit, cursor: req?.cursor, kind: req?.kind })
+    return service.listImages({ ...ctx, limit: req?.limit, cursor: req?.cursor, kind: normalizeListKind(req?.kind) })
   }
 
   /** 图库/文件库：按来源列出真实目录（只读）；失败原样抛出，由前端降级并提示原因 */

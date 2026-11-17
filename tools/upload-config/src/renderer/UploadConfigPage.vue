@@ -32,6 +32,7 @@ import {
 } from '@sshk/shared'
 import RemoteProfileForm from './RemoteProfileForm.vue'
 import CloudProfileForm from './CloudProfileForm.vue'
+import FileExplorerPage from './FileExplorerPage.vue'
 import { host } from './host'
 
 /**
@@ -355,7 +356,10 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- X6 文件系统：进入工具默认展示（manifest entryRoute=files） -->
+  <FileExplorerPage v-if="menu === 'files'" />
   <ToolPageLayout
+    v-else
     title="上传配置"
     description="应用级全局预设：一次配置，所有工具只选 profile 并覆盖少量非固定信息。密码 / AccessKey Secret 加密存储，不写进配置文件；需要时点「查看」按需回显。"
   >

@@ -2,6 +2,8 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+// 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
+import { Cpu, Top, User } from '@element-plus/icons-vue'
 import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta } from '../state'
 import { host } from '../host'
 
@@ -122,17 +124,8 @@ onMounted(() => {
         <div v-for="(m, i) in messages" :key="i" class="chat-msg" :class="m.role">
           <div class="chat-head">
             <span class="chat-avatar" :class="m.role">
-              <svg v-if="m.role === 'user'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
-              </svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="4" y="8" width="16" height="11" rx="2.5" />
-                <path d="M12 8V4M9.5 4h5" />
-                <circle cx="9" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
-                <circle cx="15" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
-                <path d="M2.5 13h1.5M20 13h1.5" />
-              </svg>
+              <el-icon v-if="m.role === 'user'" :size="16"><User /></el-icon>
+              <el-icon v-else :size="16"><Cpu /></el-icon>
             </span>
             <span class="chat-role">{{ m.role === 'user' ? '我' : (activeProvider ? activeProvider.model : 'AI 助手') }}</span>
             <el-tag v-if="m.nonStream" size="small" type="warning">非流式</el-tag>
@@ -175,9 +168,7 @@ onMounted(() => {
           @click="sendChat"
         >
           <span v-if="chatting" class="composer-spinner" aria-hidden="true"></span>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 19V5M5 12l7-7 7 7" />
-          </svg>
+          <el-icon v-else :size="16"><Top /></el-icon>
         </button>
         </div>
       </div>
@@ -209,7 +200,7 @@ onMounted(() => {
   width: 22px; height: 22px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
 }
-.chat-avatar svg { width: 14px; height: 14px; display: block; }
+.chat-avatar .el-icon { display: block; }
 .chat-avatar.user { background: var(--el-color-primary-light-8); color: var(--el-color-primary); }
 .chat-avatar.assistant { background: rgba(128,128,128,.16); color: var(--el-color-info); }
 .chat-role { font-size: 12px; font-weight: 600; opacity: .75; }
@@ -317,7 +308,7 @@ onMounted(() => {
   cursor: pointer;
   transition: filter .15s, transform .1s;
 }
-.composer-send svg { width: 16px; height: 16px; }
+.composer-send .el-icon { width: 16px; height: 16px; }
 .composer-send:not(:disabled):hover { filter: brightness(1.12); }
 .composer-send:not(:disabled):active { transform: scale(.94); }
 .composer-send:disabled { background: var(--el-border-color); cursor: not-allowed; }

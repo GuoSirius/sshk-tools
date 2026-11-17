@@ -314,11 +314,6 @@ body {
   height: 14px;
   max-width: 14px;
   flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
   opacity: .55;
   transition: transform .2s ease, max-width .22s ease, opacity .16s ease;
 }
@@ -375,18 +370,11 @@ body {
   border-color: color-mix(in srgb, var(--sshk-accent) 35%, transparent);
   color: var(--sshk-accent);
 }
-.sidebar-toggle svg {
-  width: 16px;
-  height: 16px;
+.sidebar-toggle .el-icon {
   flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
   transition: transform .24s cubic-bezier(.2, .8, .2, 1);
 }
-.tool-sidebar.is-narrow .sidebar-toggle svg { transform: rotate(180deg); }
+.tool-sidebar.is-narrow .sidebar-toggle .el-icon { transform: rotate(180deg); }
 .toggle-text { white-space: nowrap; }
 .tool-sidebar.is-narrow .toggle-text { display: none; }
 
@@ -412,13 +400,14 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 172px;
-  max-height: 208px;
+  max-height: 240px;
   transition: transform .15s ease, border-color .15s ease;
 }
-/* 描述仅在溢出时可滚动；标签多时横向滚动，默认不出现滚动条 */
+/* 描述最小可视 3 行（line-height 1.6），更少不出滚动条；超出部分内部滚动。
+   卡片 max-height 同步放宽到 240px，保证 3 行 + 图标/标题/标签放得下（2026-11-17 用户反馈） */
 .card-desc {
   flex: 1;
-  min-height: 0;
+  min-height: 4.8em;
   margin: 0;
   line-height: 1.6;
   overflow-y: auto;
@@ -433,6 +422,25 @@ body {
   border-radius: 4px;
 }
 .tool-card:hover { transform: translateY(-2px); border-color: var(--sshk-accent); }
+/* 名称超长截断省略；悬浮时按溢出量往返滚动显示全名（跑马灯，JS 量溢出写 --name-shift）。
+   注意：text-overflow 只对元素自身文本生效，截断必须放在 .card-name-text 上（inline-block 子元素溢出不会画省略号）；
+   is-scrolling 时切 overflow:visible 放开截断让全名滚动。 */
+.tool-card .card-name {
+  margin: 14px 0 6px;
+  overflow: hidden;
+}
+.tool-card .card-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform .25s ease;
+}
+.tool-card .card-name-text.is-scrolling { overflow: visible; animation: card-name-marquee 7s ease-in-out infinite alternate; }
+@keyframes card-name-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--name-shift, -40px)); }
+}
 
 .card-mark {
   width: 40px; height: 40px; border-radius: 10px;
@@ -500,10 +508,7 @@ body {
   color: var(--sshk-accent); border-color: var(--sshk-accent);
   background: color-mix(in srgb, var(--sshk-accent) 10%, transparent);
 }
-.app-settings-btn svg {
-  width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor;
-  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
-}
+.app-settings-btn .el-icon { flex: none; }
 
 /* ── 应用设置中心：左侧分组导航 + 右侧内容，分组可无限扩展 ── */
 .el-drawer__body { padding: 0 !important; overflow: hidden; }
@@ -559,9 +564,16 @@ body {
 /* EP 结构：.el-overlay > .el-overlay-dialog(fixed 铺满) > .el-dialog——flex 必须加在这一层才居中生效 */
 .el-overlay-dialog { display: flex; align-items: center; justify-content: center; }
 .el-drawer__body { overscroll-behavior: contain; }
-.el-dialog { overscroll-behavior: contain; margin: 0; max-height: 86vh; display: flex; flex-direction: column; }
-.el-dialog__body { flex: 1; min-height: 0; overflow-y: auto; }
-.el-dialog__footer { text-align: center; }
+/* 弹框内边距口径（2026-11-17 定版，单层内缩原则）：
+   .el-dialog 是唯一内缩层——顶部 12px、左右 16px、底部 0（由 footer 自理）；
+   body 的左右/下 padding 归零（用户拍板：空间更大化、内容更紧凑），上方与 header 的间隔
+   由 header 的 padding-bottom 提供；footer 自带 12px 对上间隔 + 16px 底部。
+   header/body/footer 任意组合出现时各部分之间均有间隔；无 header 时 body 贴 12px 顶、
+   无 footer 时 body 贴底（内容自管底部留白）。自管布局的弹框按同一口径覆盖。 */
+.el-dialog { overscroll-behavior: contain; margin: 0; max-height: 86vh; display: flex; flex-direction: column; padding: 12px 16px 0; }
+.el-dialog__header { padding: 0 0 10px; }
+.el-dialog__body { flex: 1; min-height: 0; overflow-y: auto; padding: 0; }
+.el-dialog__footer { text-align: center; padding: 12px 0 16px; }
 .kv-line {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 0; border-bottom: 1px dashed var(--sshk-border); font-size: 13px;

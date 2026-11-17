@@ -3,7 +3,8 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
-import { byNewestFirst, isImageFileName } from '../image-files'
+import { byNewestFirst } from '../image-files'
+import { isKindFileName, type FileKind } from '@sshk/shared'
 import { LIST_BUDGET_MS, MAX_DIRECTORIES, MAX_LIST_DEPTH, MAX_LIST_FILES } from '../directories'
 import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListQuery, UploadProvider, UploadResult } from '../types'
 
@@ -51,19 +52,20 @@ export class RemoteUploadProvider implements UploadProvider {
     const dir = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
     const limit = ctx.limit ?? 500
     const offset = Math.max(0, Math.floor(Number(ctx.cursor) || 0))
-    const imageOnly = ctx.kind !== 'file'
+    // 缺省 kind 按图片处理（历史行为）；document/code 按白名单，all 全部
+    const kind = ctx.kind ?? 'image'
     const all =
       this.profile.protocol === 'ftp'
-        ? await this.ftpListImages(dir, imageOnly)
-        : await this.sftpListImages(dir, imageOnly)
+        ? await this.ftpListImages(dir, kind)
+        : await this.sftpListImages(dir, kind)
     all.sort(byNewestFirst)
     const items = all.slice(offset, offset + limit)
     const nextCursor = offset + limit < all.length ? String(offset + limit) : null
     return { items, nextCursor }
   }
 
-  /** FTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；imageOnly 时只收图片 */
-  private async ftpListImages(root: string, imageOnly: boolean): Promise<UploadedImageInfo[]> {
+  /** FTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；kind 按白名单过滤 */
+  private async ftpListImages(root: string, kind: FileKind): Promise<UploadedImageInfo[]> {
     const client = new FtpClient()
     try {
       await client.access({
@@ -90,7 +92,7 @@ export class RemoteUploadProvider implements UploadProvider {
               seen.add(full)
               queue.push({ dir: full, depth: cur.depth + 1 })
             }
-          } else if ((!imageOnly || isImageFileName(i.name)) && out.length < MAX_LIST_FILES) {
+          } else if (isKindFileName(kind, i.name) && out.length < MAX_LIST_FILES) {
             out.push({
               url: this.urlFor(cur.dir, i.name),
               key: full,
@@ -107,8 +109,8 @@ export class RemoteUploadProvider implements UploadProvider {
     }
   }
 
-  /** SFTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；imageOnly 时只收图片 */
-  private sftpListImages(root: string, imageOnly: boolean): Promise<UploadedImageInfo[]> {
+  /** SFTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；kind 按白名单过滤 */
+  private sftpListImages(root: string, kind: FileKind): Promise<UploadedImageInfo[]> {
     return new Promise<UploadedImageInfo[]>((resolve, reject) => {
       const conn = new SshClient()
       conn.on('ready', () => {
@@ -138,7 +140,7 @@ export class RemoteUploadProvider implements UploadProvider {
                     seen.add(full)
                     queue.push({ dir: full, depth: cur.depth + 1 })
                   }
-                } else if ((!imageOnly || isImageFileName(i.filename)) && out.length < MAX_LIST_FILES) {
+                } else if (isKindFileName(kind, i.filename) && out.length < MAX_LIST_FILES) {
                   out.push({
                     url: this.urlFor(cur.dir, i.filename),
                     key: full,

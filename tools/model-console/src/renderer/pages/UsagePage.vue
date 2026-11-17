@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UsageStatsPayload, UsageRow } from '@sshk/shared'
+// 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
+import { Download } from '@element-plus/icons-vue'
 import { host } from '../host'
 
 /**
@@ -115,9 +117,7 @@ async function ElMessageBoxConfirm(): Promise<void> {
       </el-radio-group>
       <span class="usage-toolbar-gap"></span>
       <el-button size="small" :disabled="!(data?.records?.length)" @click="exportCsv">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="usage-btn-icon" aria-hidden="true">
-          <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
-        </svg>
+        <el-icon class="usage-btn-icon" :size="14"><Download /></el-icon>
         导出 CSV
       </el-button>
       <el-button size="small" type="danger" plain @click="clearAll">清空</el-button>

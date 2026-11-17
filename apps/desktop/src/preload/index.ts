@@ -1,6 +1,6 @@
 // 源码为 ESM/TS，electron-vite 构建为 out/preload/index.cjs（CommonJS）。
 // sandbox: true 下 preload 只能由 require 加载，因此产物固定 CJS 且只做白名单桥接。
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS, isIpcResult } from '@sshk/shared'
 import { toPlain } from './plain'
 
@@ -120,7 +120,7 @@ const api = {
     /** 单个 profile 连通性自检；可带表单里尚未保存的临时密钥。返回结构化结果，不 reject */
     test: (req: unknown): Promise<{ ok: boolean; message: string }> =>
       invoke(IPC_CHANNELS.uploadTest, req),
-    /** 图库/文件库：按来源（本地/远程/云）列出已有文件（kind=image 只列图片，file 列全部），返回分页（nextCursor 非空可续拉） */
+    /** 图库/文件库：按来源列出已有文件（kind=image/document/code 按白名单、all 全部；缺省 image），返回分页（nextCursor 非空可续拉） */
     listImages: (req: unknown): Promise<{ items: { url: string; key: string; name: string; size?: number; modified?: number }[]; nextCursor?: string | null }> =>
       invoke(IPC_CHANNELS.uploadListImages, req),
     /** 富文本图片库：按来源列出真实目录（含空目录），返回相对路径数组 */
@@ -128,7 +128,7 @@ const api = {
       invoke(IPC_CHANNELS.uploadListDirectories, req),
   },
   os: {
-    pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean }): Promise<string[]> =>
+    pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }): Promise<string[]> =>
       invoke(IPC_CHANNELS.osPickFile, opts),
     pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
     /** 图片预览：本地图片转 data URI（限 10MB） */
@@ -305,6 +305,54 @@ const api = {
     /** action 白名单单通道：brands / tpl / frg / mail / share */
     api: (action: string, data?: Record<string, unknown>): Promise<unknown> =>
       invoke(IPC_CHANNELS.edmApi, { action, data }),
+  },
+  /** X6 文件系统：已配置上传通道的远端/云浏览管理 + 统一传输队列（密钥只在 main） */
+  fs: {
+    profiles: (): Promise<import('@sshk/shared').FsProfilesPayload> => invoke(IPC_CHANNELS.fsProfiles),
+    list: (req: { profileId: string; path: string; cursor?: string | null }): Promise<import('@sshk/shared').FsListPage> =>
+      invoke(IPC_CHANNELS.fsList, req),
+    stat: (req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsStatResult> =>
+      invoke(IPC_CHANNELS.fsStat, req),
+    mkdir: (req: { profileId: string; path: string }): Promise<boolean> => invoke(IPC_CHANNELS.fsMkdir, req),
+    rm: (req: import('@sshk/shared').FsRmRequest): Promise<{ taskIds: string[] }> => invoke(IPC_CHANNELS.fsRm, req),
+    cp: (req: import('@sshk/shared').FsCpRequest): Promise<{ taskIds: string[] }> => invoke(IPC_CHANNELS.fsCp, req),
+    mv: (req: import('@sshk/shared').FsMvRequest): Promise<boolean> => invoke(IPC_CHANNELS.fsMv, req),
+    /** 跨通道复制：目录在 main 侧递归展开为文件任务，走传输队列 */
+    crossCopy: (req: import('@sshk/shared').FsCrossCopyRequest): Promise<import('@sshk/shared').FsCrossCopyResult> =>
+      invoke(IPC_CHANNELS.fsCrossCopy, req),
+    /** 递归搜索：path 前缀内按名称子串匹配（'' = 整个通道） */
+    search: (req: import('@sshk/shared').FsSearchRequest): Promise<import('@sshk/shared').FsSearchResult> =>
+      invoke(IPC_CHANNELS.fsSearch, req),
+    /** 目录容量统计（文件总字节与个数，可能截断） */
+    usage: (req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsUsageResult> =>
+      invoke(IPC_CHANNELS.fsUsage, req),
+    read: (req: { profileId: string; path: string; maxBytes?: number }): Promise<import('@sshk/shared').FsReadResult> =>
+      invoke(IPC_CHANNELS.fsRead, req),
+    write: (req: import('@sshk/shared').FsWriteRequest): Promise<boolean> => invoke(IPC_CHANNELS.fsWrite, req),
+    transferStart: (inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }> =>
+      invoke(IPC_CHANNELS.fsTransferStart, inputs),
+    transferList: (): Promise<import('@sshk/shared').FsTransferTask[]> => invoke(IPC_CHANNELS.fsTransferList),
+    transferCancel: (ids: string[]): Promise<boolean> => invoke(IPC_CHANNELS.fsTransferCancel, ids),
+    transferRetry: (ids: string[], overwrite?: boolean): Promise<boolean> =>
+      invoke(IPC_CHANNELS.fsTransferRetry, ids, overwrite),
+    transferClear: (): Promise<{ removed: number }> => invoke(IPC_CHANNELS.fsTransferClear),
+    /** 主进程推送传输任务全量形态（进度/状态节流） */
+    onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): void => {
+      ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, (_event, task) => callback(task))
+    },
+    /** 本地文件/目录选择（文件夹上传入口）；type=file|dir|any */
+    pickUpload: (opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]> =>
+      invoke(IPC_CHANNELS.fsPickUpload, opts),
+    /** 递归展平本地待上传路径（保留相对目录结构） */
+    flattenLocal: (paths: string[]): Promise<import('@sshk/shared').FsLocalFile[]> =>
+      invoke(IPC_CHANNELS.fsFlattenLocal, paths),
+    /** 拖拽进窗口的 File → 本地绝对路径（webUtils.getPathForFile，非文件拖拽返回 ''） */
+    pathForFile: (file: File): string => {
+      try { return webUtils.getPathForFile(file) } catch { return '' }
+    },
+    /** 当前通道的下载落点目录（不存在会自动创建） */
+    downloadDir: (profileId: string): Promise<string> => invoke(IPC_CHANNELS.fsDownloadDir, profileId),
+    setDownloadDir: (dir: string): Promise<string> => invoke(IPC_CHANNELS.fsSetDownloadDir, dir),
   },
 }
 

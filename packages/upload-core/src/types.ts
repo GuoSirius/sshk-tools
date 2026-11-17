@@ -4,6 +4,8 @@
  * 避免每个 Provider 重复实现一遍（与《上传能力规划.md》§三的 uploadBatch 保持兼容，留作扩展点）。
  */
 
+import type { FileKind } from '@sshk/shared'
+
 export type UploadTargetType = 'local' | 'remote' | 'cloud'
 
 /** 校验规则：全局默认 + 工具级收紧 */
@@ -80,8 +82,11 @@ export interface UploadProgress {
   error?: string
 }
 
-/** 列取内容类别：image 只列图片（历史默认行为），file 列全部文件（文档/视频/压缩包等） */
-export type UploadListKind = 'image' | 'file'
+/**
+ * 列取内容类别：image 只列图片（历史默认行为），document 文档 / code 代码 / video 视频，
+ * all 列全部文件。类别与扩展名白名单统一定义在 @sshk/shared/file-kinds。
+ */
+export type UploadListKind = FileKind
 
 /** 列图/列文件只读上下文：分页 + 内容类别（kind 缺省按 image 处理，保持历史行为） */
 export type UploadListQuery = UploadContext & { limit?: number; cursor?: string | null; kind?: UploadListKind }
@@ -95,7 +100,7 @@ export interface UploadProvider {
    * 可选扩展点：列出该来源已有文件（「从图床选择插入」用）；不支持时 Service 抛错。
    * 分页语义：cursor 传上次返回的 nextCursor 续拉；limit 为本页期望收集上限（实现方内部可再按
    * 单请求上限翻页）；返回 nextCursor 非空表示未取尽，调用方可继续拉。
-   * kind=image（缺省）只列图片，kind=file 列全部文件——实现方必须区分处理。
+   * kind=image（缺省）只列图片，document/code/video 按白名单过滤，all 列全部文件——实现方必须区分处理。
    */
   listImages?(ctx: UploadListQuery): Promise<UploadedImagePage>
   /**
