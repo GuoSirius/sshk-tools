@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { EmptyState, ConfirmDialog } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, FormGrid } from '@sshk/ui-kit'
 import { applyFallbackModels } from '../model-fallback'
 import { host } from '../host'
 import {
@@ -265,86 +265,91 @@ async function revealKey(): Promise<void> {
     <el-dialog
       v-model="dialogOpen"
       :title="editingId ? '编辑 Provider' : '新增 Provider'"
-      width="480px"
+      width="680px"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
     >
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="auto" size="small">
-        <el-form-item v-if="presets.length" label="快速预设">
-          <el-select
-            v-model="presetId"
-            clearable
-            placeholder="选一个常用服务商，自动填好端点与模型"
-            style="width: 100%"
-            @change="(v: unknown) => applyPreset(String(v ?? ''))"
-          >
-            <el-option v-for="p in presets" :key="p.id" :label="`${p.name} · ${p.baseURL}`" :value="p.id" />
-          </el-select>
-          <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
-        </el-form-item>
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="如：本地 Ollama" />
-        </el-form-item>
-        <el-form-item label="类型">
-          <el-radio-group v-model="form.kind">
-            <el-radio value="local">本地</el-radio>
-            <el-radio value="remote">云端</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="baseURL" prop="baseURL">
-          <el-input v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
-        </el-form-item>
-        <el-form-item label="模型名" prop="model">
-          <div class="model-row">
-            <el-select
-              v-model="form.model"
-              filterable
-              allow-create
-              default-first-option
-              :loading="fetchingModels"
-              placeholder="下拉选择或手动输入模型名"
-              style="flex: 1"
-            >
-              <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
-            </el-select>
-            <el-button size="small" :loading="fetchingModels" @click="fetchModels">拉取模型列表</el-button>
-          </div>
-          <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
-        </el-form-item>
-        <el-form-item label="回退模型">
-          <el-select
-            v-model="form.fallbackModel"
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            placeholder="可选；默认模型失败时自动回退到该模型再试"
-            style="width: 100%"
-          >
-            <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
-          </el-select>
-          <div class="form-hint">调用优先级：工具自选模型 → 默认模型 → 回退模型；链上全部失败才报错</div>
-        </el-form-item>
-        <el-form-item label="重试次数">
-          <el-input-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
-          <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
-        </el-form-item>
-        <el-form-item label="apiKey" prop="apiKey">
-          <div class="model-row">
-            <el-input
-              v-model="form.apiKey"
-              type="password"
-              show-password
-              :placeholder="editingId ? '留空则不修改；可点右侧查看已存密钥' : '本地服务可留空'"
-              style="flex: 1"
-            />
-            <el-button v-if="editingId" size="small" @click="revealKey">查看已存</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
-        </el-form-item>
-      </el-form>
+      <!-- 弹框定高（52vh）+ 2 列栅格：新增/编辑内容差异不再引起弹框跳动，长内容区内滚动 -->
+      <div class="provider-form-body">
+        <el-form ref="formRef" :model="form" :rules="formRules" label-width="auto" size="small">
+          <FormGrid>
+            <el-form-item v-if="presets.length" label="快速预设" class="full">
+              <el-select
+                v-model="presetId"
+                clearable
+                placeholder="选一个常用服务商，自动填好端点与模型"
+                style="width: 100%"
+                @change="(v: unknown) => applyPreset(String(v ?? ''))"
+              >
+                <el-option v-for="p in presets" :key="p.id" :label="`${p.name} · ${p.baseURL}`" :value="p.id" />
+              </el-select>
+              <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
+            </el-form-item>
+            <el-form-item label="名称" prop="name">
+              <el-input v-model="form.name" placeholder="如：本地 Ollama" />
+            </el-form-item>
+            <el-form-item label="类型">
+              <el-radio-group v-model="form.kind">
+                <el-radio value="local">本地</el-radio>
+                <el-radio value="remote">云端</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="baseURL" prop="baseURL" class="full">
+              <el-input v-model="form.baseURL" placeholder="http://127.0.0.1:11434/v1" />
+            </el-form-item>
+            <el-form-item label="模型名" prop="model" class="full">
+              <div class="model-row">
+                <el-select
+                  v-model="form.model"
+                  filterable
+                  allow-create
+                  default-first-option
+                  :loading="fetchingModels"
+                  placeholder="下拉选择或手动输入模型名"
+                  style="flex: 1"
+                >
+                  <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+                </el-select>
+                <el-button size="small" :loading="fetchingModels" @click="fetchModels">拉取模型列表</el-button>
+              </div>
+              <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
+            </el-form-item>
+            <el-form-item label="回退模型">
+              <el-select
+                v-model="form.fallbackModel"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                placeholder="可选；失败时自动回退再试"
+                style="width: 100%"
+              >
+                <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+              </el-select>
+              <div class="form-hint">调用优先级：工具自选 → 默认 → 回退模型；全链失败才报错</div>
+            </el-form-item>
+            <el-form-item label="重试次数">
+              <el-input-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
+              <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
+            </el-form-item>
+            <el-form-item label="apiKey" prop="apiKey" class="full">
+              <div class="model-row">
+                <el-input
+                  v-model="form.apiKey"
+                  type="password"
+                  show-password
+                  :placeholder="editingId ? '留空则不修改；可点右侧查看已存密钥' : '本地服务可留空'"
+                  style="flex: 1"
+                />
+                <el-button v-if="editingId" size="small" @click="revealKey">查看已存</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="启用">
+              <el-switch v-model="form.enabled" />
+            </el-form-item>
+          </FormGrid>
+        </el-form>
+      </div>
       <template #footer>
         <el-button size="small" @click="dialogOpen = false">取消</el-button>
         <el-button size="small" type="primary" :loading="saving" @click="saveProvider">保存</el-button>
@@ -373,6 +378,8 @@ async function revealKey(): Promise<void> {
 .preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .model-row { display: flex; gap: 6px; width: 100%; }
 .form-hint { font-size: 11px; opacity: .6; line-height: 1.5; margin-top: 4px; }
+/* 弹框表单定高（52vh，随视口缩放）：新增/编辑内容差异不引起弹框高度跳动，超长时区内滚动 */
+.provider-form-body { height: 52vh; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
 .masked { letter-spacing: 2px; }
 .ok { color: var(--el-color-success); }
 .bad { color: var(--el-color-danger); }
