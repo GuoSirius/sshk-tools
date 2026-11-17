@@ -1,5 +1,6 @@
 import { ElMessage } from 'element-plus'
-import type { RichTextImageLibrary, RichTextImageSource, RichTextImageTarget, RichTextUploadHook } from '@sshk/rich-text'
+import type { FilePickerLibrary, FilePickerSource, FilePickerTarget } from '@sshk/file-picker'
+import type { RichTextUploadHook } from '@sshk/rich-text'
 import { extractInlineImages, replaceInlineImages, replacementFor } from '../core/inline-images.js'
 import { beginUploadSession, endUploadSession } from './upload-progress'
 import { host } from './host'
@@ -86,8 +87,8 @@ interface ProfileOption {
 }
 
 /** 富文本「图片库」桥接：来源 = 本地默认 + 已配置远程/云 profile；密钥解析全在 main */
-export function createImageLibrary(toolId: string): RichTextImageLibrary {
-  const requestOf = (source: RichTextImageSource, target?: RichTextImageTarget) => ({
+export function createImageLibrary(toolId: string): FilePickerLibrary {
+  const requestOf = (source: FilePickerSource, target?: FilePickerTarget) => ({
     toolId,
     targetType: source.type,
     profileId: source.type === 'local' ? undefined : source.id,
@@ -99,7 +100,7 @@ export function createImageLibrary(toolId: string): RichTextImageLibrary {
     },
   })
   return {
-    async sources(): Promise<RichTextImageSource[]> {
+    async sources(): Promise<FilePickerSource[]> {
       const profiles = (await host.upload.profiles()) as ProfileOption[]
       return [
         { id: LOCAL_SOURCE_ID, type: 'local', label: '本地（应用默认上传目录）' },
@@ -123,6 +124,7 @@ export function createImageLibrary(toolId: string): RichTextImageLibrary {
         ...requestOf(source, target ?? {}),
         limit: opts?.limit,
         cursor: opts?.cursor,
+        kind: opts?.kind,
       })) as {
         items: { url: string; name: string; key?: string; size?: number; modified?: number }[]
         nextCursor?: string | null

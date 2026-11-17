@@ -3,7 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { byNewestFirst, isImageFileName } from '../image-files'
 import { MAX_DIRECTORIES, MAX_LIST_DEPTH, MAX_LIST_FILES } from '../directories'
-import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListQuery, UploadProvider, UploadResult } from '../types'
 
 /** T3：本地目录 Provider（最快打通的链路）。全局默认目录 + 工具级 localDir 覆盖 */
 export interface LocalProviderOptions {
@@ -26,14 +26,16 @@ export class LocalUploadProvider implements UploadProvider {
   }
 
   /**
-   * 递归列出目录（含全部子目录）下的已有图片（新在前）；目录不存在视为空库。
-   * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的图。
+   * 递归列出目录（含全部子目录）下的已有文件（新在前）；目录不存在视为空库。
+   * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的文件。
    * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉。
+   * kind=image（缺省）只列图片；kind=file 列全部文件。
    */
-  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
+  async listImages(ctx: UploadListQuery): Promise<UploadedImagePage> {
     const dir = path.resolve(ctx.overrides?.localDir || this.options.defaultDir || '.')
     if (!existsSync(dir)) return { items: [] }
     const all: UploadedImageInfo[] = []
+    const fileOk = (name: string): boolean => ctx.kind === 'file' || isImageFileName(name)
     const walk = (cur: string, depth: number): void => {
       if (depth > MAX_LIST_DEPTH || all.length >= MAX_LIST_FILES) return
       let entries: { name: string; isFile(): boolean; isDirectory(): boolean }[]
@@ -52,7 +54,7 @@ export class LocalUploadProvider implements UploadProvider {
         const full = path.join(cur, entry.name)
         if (entry.isDirectory()) {
           walk(full, depth + 1)
-        } else if (entry.isFile() && isImageFileName(entry.name)) {
+        } else if (entry.isFile() && fileOk(entry.name)) {
           let size = 0
           let modified = 0
           try {

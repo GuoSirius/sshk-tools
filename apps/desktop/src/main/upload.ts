@@ -56,15 +56,17 @@ export interface UploadRequest {
   overrides?: UploadOverrides
 }
 
-/** 图库列图请求：只读，不需要文件内容 */
+/** 图库/文件库列取请求：只读，不需要文件内容 */
 export interface UploadListRequest {
   toolId?: string
   targetType?: UploadTargetType
   profileId?: string
   overrides?: UploadOverrides
   limit?: number
-  /** 列图翻页游标：传上次返回的 nextCursor 续拉 */
+  /** 列取翻页游标：传上次返回的 nextCursor 续拉 */
   cursor?: string
+  /** 内容类别：image 只列图片（历史默认），file 列全部文件 */
+  kind?: 'image' | 'file'
 }
 
 export interface UploadTestRequest {
@@ -234,13 +236,13 @@ export class UploadRuntime {
     return { service, ctx }
   }
 
-  /** 富文本图片库：按请求级来源列出已有图片（只读，不需要文件）；返回分页与游标供大目录续拉 */
+  /** 图库/文件库：按请求级来源列出已有文件（只读，不需要文件）；返回分页与游标供大目录续拉 */
   async listImages(req: UploadListRequest): Promise<UploadedImagePage> {
     const { service, ctx } = this.readonlyList(req)
-    return service.listImages({ ...ctx, limit: req?.limit, cursor: req?.cursor })
+    return service.listImages({ ...ctx, limit: req?.limit, cursor: req?.cursor, kind: req?.kind })
   }
 
-  /** 富文本图片库：按来源列出真实目录（只读）；失败原样抛出，由前端降级并提示原因 */
+  /** 图库/文件库：按来源列出真实目录（只读）；失败原样抛出，由前端降级并提示原因 */
   async listDirectories(req: UploadListRequest): Promise<string[]> {
     const { service, ctx } = this.readonlyList(req)
     return service.listDirectories(ctx)

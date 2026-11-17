@@ -1,39 +1,128 @@
 <script setup lang="ts">
 /**
- * 图片库弹窗（用户需求 2026-11-16 ④⑤ / 2026-11-17 ①~⑦ + 三轮追加）：
+ * 通用文件选择弹框（自 rich-text ImageLibraryDialog 2026-11-17 泛化抽取）：
+ * - 模式：image（图片库）/ file（任意文件：文档、视频、压缩包…）；标题/文案/默认 accept 按模式推导，应用方可覆盖
  * - 来源：本地 / 远程 profile / 云 profile；默认云→远程→本地；设置按 stateKey 持久化，多实例隔离
- * - 统一选择池：上传项与图库项共用一份「已选」，跨 tab / 跨目录 / 跨来源累积，最后一并插入
- * - 上传图片并入图库页可见（按 url 去重，标「本次上传」）；切页/重列不清空已选
- * - 图库一次拉足（桥接层提高 limit）+ 前端分批渲染 + 图片懒加载，避免图片过多撑爆
- * - 文件名搜索（name/key/url）；目录级联逐层选择、任意层级可选，也可手输不存在目录
+ * - 统一选择池：上传项与已有项共用一份「已选」，跨 tab / 跨目录 / 跨来源累积，确认时一并交付
+ * - 上传项并入列表可见（按 url 去重，标「本次上传」）；切页/重列不清空已选
+ * - 列表一次拉足（桥接层提高 limit）+ 前端分批渲染 + 懒加载；文件名搜索支持跨页全量扫描
+ * - 定制面：accept / maxSize / maxCount / multiple / naming / conflict / confirmText / initialTab /
+ *   defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
-import type { IDomEditor } from '@wangeditor/editor'
-import type { RichTextImageItem, RichTextImageLibrary, RichTextImageSource, RichTextImageTarget } from '../types'
-import { toDisplaySrc } from '../display'
+import type {
+  FilePickerConflict,
+  FilePickerItem,
+  FilePickerLibrary,
+  FilePickerMode,
+  FilePickerNaming,
+  FilePickerSource,
+  FilePickerTarget,
+} from '../types'
 import {
   defaultSourceId,
   loadSettings,
-  matchImageKeyword,
+  matchFileKeyword,
   normalizeDirInput,
   saveSettings,
   sortSourcesByDefault,
   validateDirInput,
-} from '../image-library-settings'
-import type { DirValidation } from '../image-library-settings'
-import { contentName, fingerprintKey, hashFile } from '../upload-dedupe'
+} from '../picker-settings'
+import type { DirValidation } from '../picker-settings'
+import { fingerprintKey, hashFile, resolveUploadName } from '../upload-dedupe'
 
-/** 选择池条目：origin 区分本次上传（可删）与图库已有（不可删）；scope 记录来源/桶/目录归属 */
-interface PoolItem extends RichTextImageItem {
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    library: FilePickerLibrary
+    /** 图片库 / 文件库：影响默认标题、页签文案、卡片渲染与默认 accept */
+    mode?: FilePickerMode
+    /** 文件选择框 accept（如 'image/*'、'.pdf,.docx'、'video/*'）；缺省按 mode 推导 */
+    accept?: string
+    /** 是否允许一次确认多个；false 时等价 maxCount=1（新选替换旧选） */
+    multiple?: boolean
+    /** 最大可选数量；0 / 缺省 = 不限制；=1 时单选替换 */
+    maxCount?: number
+    /** 单文件字节上限（组件侧快速拦截；0 / 缺省 = 不限制，真正的校验在 Upload Service 侧） */
+    maxSize?: number
+    /** 上传存储命名：hash=内容寻址名（默认，现状逻辑）；original=保留原文件名 */
+    naming?: FilePickerNaming
+    /** original 命名时同名不同内容的处理：hash=追加 -hash8（默认，不覆盖）；overwrite=直接覆盖 */
+    conflict?: FilePickerConflict
+    /** 确认按钮文案；缺省 image→「插入所选」、file→「确认选择」 */
+    confirmText?: string
+    /** 弹框标题；缺省 image→「图片库」、file→「文件库」 */
+    title?: string
+    /** 打开时默认页签（无已保存设置时生效） */
+    initialTab?: 'upload' | 'gallery' | 'selected'
+    /** 无已保存设置时的预设桶/目录（打开即定位；已保存的设置优先） */
+    defaultTarget?: FilePickerTarget
+    /** 预览 URL 解析钩子（rich-text 传 localres 显示形态转换；其他应用可不传） */
+    resolveSrc?: (url: string) => string
+    /** 多实例隔离键：不同实例各存各的来源/目录设置 */
+    stateKey?: string
+  }>(),
+  {
+    mode: 'image',
+    accept: undefined,
+    multiple: true,
+    maxCount: 0,
+    maxSize: 0,
+    naming: 'hash',
+    conflict: 'hash',
+    confirmText: undefined,
+    title: undefined,
+    initialTab: 'upload',
+    defaultTarget: undefined,
+    resolveSrc: undefined,
+    stateKey: 'default',
+  },
+)
+
+const emit = defineEmits<{
+  (e: 'update:open', v: boolean): void
+  /** 确认：交付已选条目（url/name/size/key），用途由应用方定义 */
+  (e: 'confirm', items: FilePickerItem[]): void
+}>()
+
+/** 生效的展示文案与默认值（mode 推导 + props 覆盖） */
+const dialogTitle = computed(() => props.title ?? (props.mode === 'image' ? '图片库' : '文件库'))
+const isImage = computed(() => props.mode === 'image')
+const acceptAttr = computed(() => props.accept ?? (props.mode === 'image' ? 'image/*' : ''))
+const confirmLabel = computed(() => props.confirmText ?? (props.mode === 'image' ? '插入所选' : '确认选择'))
+/** 上传 input 的多选：跟随 multiple */
+const uploadMultiple = computed(() => props.multiple)
+/** 生效最大可选数：multiple=false 视为 1（新选替换旧选） */
+const effectiveMax = computed(() => (props.multiple ? (props.maxCount || 0) : 1))
+
+/** 一批渲染的文件数：一次拉全但分批挂 DOM，滚动到底再追加 */
+const PAGE_SIZE = 48
+/** 一次向后端拉取的文件上限（各云 SDK 单页上限 ≥ 500；前端再分批渲染/懒加载） */
+const FETCH_LIMIT = 500
+
+const tab = ref<'upload' | 'gallery' | 'selected'>('upload')
+const sources = ref<FilePickerSource[]>([])
+const sourceId = ref('')
+const target = ref<FilePickerTarget>({})
+const loadingSources = ref(false)
+/** 设置恢复完成前不写回，避免空状态覆盖已存值 */
+const restored = ref(false)
+
+const uploading = ref(false)
+const uploadInput = ref<HTMLInputElement | null>(null)
+/** 拖拽投放高亮态 */
+const dropActive = ref(false)
+/** 本次上传的文件（未确认前可删除）；列表页也会合并展示 */
+interface PoolItem extends FilePickerItem {
   key?: string
-  origin: 'upload' | 'gallery'
-  /** 归属作用域：sourceId|bucket|目录，跨源/桶/目录的同名图片互不串扰 */
+  origin: 'upload' | 'existing'
+  /** 归属作用域：sourceId|bucket|目录，跨源/桶/目录的同名文件互不串扰 */
   scope: string
 }
-
-/** 上传任务：逐项跟踪进度/状态，失败可重试或删除；成功项同时并入 uploaded 与选择池 */
+const uploaded = ref<PoolItem[]>([])
+/** 上传任务队列（含进行中/成功/失败），用于总体与单项进度、失败重试/删除 */
 interface UploadTask {
   id: number
   file: File
@@ -43,7 +132,7 @@ interface UploadTask {
   percent: number
   error?: string
   url?: string
-  /** 本地预览 objectURL（web-uploader 风格缩略图），卸载/删除时 revoke */
+  /** 本地预览 objectURL（缩略图），卸载/删除时 revoke；文件模式仅用于图片类文件的预览 */
   previewUrl?: string
   /** 缩略图加载失败（CSP 拦截/损坏文件/不支持格式）时改用占位，不显示浏览器裂图 */
   previewFailed?: boolean
@@ -52,50 +141,12 @@ interface UploadTask {
   size: number
   /** 去重指纹（目标位置 + 源文件名 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
   fingerprint: string
-  /** 实际存储名（原名-hash8.后缀）；UI 显示原名 name，上传用此名，保证同名不同内容不覆盖、重试幂等 */
+  /** 实际存储名（按 naming/conflict 策略解析）；UI 显示原名 name，上传用此名，保证重试幂等 */
   uploadName: string
   scope: string
-  source: RichTextImageSource
-  target: RichTextImageTarget
+  source: FilePickerSource
+  target: FilePickerTarget
 }
-
-/**
- * 选择池键：url 唯一标识一张图。不同源/桶的对象 URL 本身就不同，无需把 scope 拼进 key；
- * 这样上传选中后切到图库（同 url）仍保持选中，切目录/源亦然，且计数不重复。
- * scope 只记录来源用于清单展示，不参与去重。
- */
-const itemKey = (i: { url: string }): string => i.url
-
-const props = withDefaults(
-  defineProps<{
-    open: boolean
-    editor: IDomEditor | null
-    library: RichTextImageLibrary
-    /** 多实例隔离键：不同富文本实例各存各的来源/目录设置 */
-    stateKey?: string
-  }>(),
-  { stateKey: 'default' },
-)
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
-
-/** 一批渲染的图片数：一次拉全但分批挂 DOM，滚动到底再追加 */
-const PAGE_SIZE = 48
-/** 一次向后端拉取的图片上限（各云 SDK 单页上限 ≥ 500；前端再分批渲染/懒加载） */
-const FETCH_LIMIT = 500
-
-const tab = ref<'upload' | 'gallery' | 'selected'>('upload')
-const sources = ref<RichTextImageSource[]>([])
-const sourceId = ref('')
-const target = ref<RichTextImageTarget>({})
-const loadingSources = ref(false)
-/** 设置恢复完成前不写回，避免空状态覆盖已存值 */
-const restored = ref(false)
-
-const uploading = ref(false)
-const uploadInput = ref<HTMLInputElement | null>(null)
-/** 本次上传的图片（未插入前可删除）；图库页也会合并展示 */
-const uploaded = ref<PoolItem[]>([])
-/** 上传任务队列（含进行中/成功/失败），用于总体与单项进度、失败重试/删除 */
 const uploadTasks = ref<UploadTask[]>([])
 let uploadSeq = 0
 /** 进行中任务总数（总体进度分母） */
@@ -132,7 +183,7 @@ function stopDoneWindowTimer(): void {
   clearInterval(doneWindowTimer)
   doneWindowTimer = null
 }
-/** 上传中/失败 + 刚完成仍在展示窗口内的任务：以缩略图卡片并入网格，受文件名搜索过滤 */
+/** 上传中/失败 + 刚完成仍在展示窗口内的任务：以卡片并入网格，受文件名搜索过滤 */
 const activeUploadTasks = computed(() => {
   void nowTick.value // 依赖时钟，窗口到期后重算
   const inWindow = (t: UploadTask): boolean =>
@@ -141,8 +192,8 @@ const activeUploadTasks = computed(() => {
     (t) => inWindow(t) && (!keyword.value || t.name.toLowerCase().includes(keyword.value.toLowerCase())),
   )
 })
-/** 图库已列图片 */
-const items = ref<RichTextImageItem[]>([])
+/** 列表已列文件 */
+const items = ref<FilePickerItem[]>([])
 const loadingList = ref(false)
 /** 目录懒加载失败原因（仍可手输目录） */
 const dirError = ref('')
@@ -157,16 +208,31 @@ const keyword = ref('')
 /** 已渲染数量（分批渲染） */
 const renderedCount = ref(PAGE_SIZE)
 
-/** 统一选择池：key = 作用域+url，跨 tab / 目录 / 源 / 桶累积，同名图片不串扰 */
+/** 统一选择池键：url 唯一标识一个文件。不同源/桶的对象 URL 本身就不同；
+ *  上传选中后切列表（同 url）仍保持选中，切目录/源亦然，且计数不重复。 */
+const itemKey = (i: { url: string }): string => i.url
+
+/** 统一选择池：跨 tab / 目录 / 源 / 桶累积；scope 只记录来源用于清单展示 */
 const pool = ref<Record<string, PoolItem>>({})
 const poolList = computed(() => Object.values(pool.value))
 const poolCount = computed(() => poolList.value.length)
 const uploadPicked = computed(() => poolList.value.filter((i) => i.origin === 'upload').length)
-const galleryPicked = computed(() => poolList.value.filter((i) => i.origin === 'gallery').length)
+const existingPicked = computed(() => poolList.value.filter((i) => i.origin === 'existing').length)
 const isSelected = (item: PoolItem): boolean => Boolean(pool.value[itemKey(item)])
-function addToPool(item: PoolItem): void {
-  if (!item.url) return
+/** 剩余可选数量：不限时为 Infinity */
+const capacityLeft = computed(() => (effectiveMax.value > 0 ? effectiveMax.value - poolCount.value : Number.POSITIVE_INFINITY))
+function addToPool(item: PoolItem): boolean {
+  if (!item.url) return false
+  if (pool.value[itemKey(item)]) {
+    pool.value[itemKey(item)] = item
+    return true
+  }
+  if (capacityLeft.value <= 0) {
+    ElMessage.warning(`最多可选 ${effectiveMax.value} 个`)
+    return false
+  }
   pool.value[itemKey(item)] = item
+  return true
 }
 function removeFromPool(item: PoolItem): void {
   const k = itemKey(item)
@@ -233,11 +299,11 @@ function normalizeRestoredDir(): void {
 const scopeDir = computed(() => (typeOf.value === 'local' ? dirModel.value.trim() : normalizeDirInput(dirModel.value)))
 /** 手输目录实时校验提示（不阻断输入；error 仅提示，仍允许保存后由 Provider 兜底） */
 const dirValidation = computed<DirValidation>(() => validateDirInput(dirModel.value, typeOf.value))
-/** 当前来源+桶+目录的作用域串，构造图库项/上传项时固化进 pool key */
+/** 当前来源+桶+目录的作用域串，构造条目时固化进 pool key */
 const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', scopeDir.value].join('|'))
 
 /** ── 目录级联懒加载：展开某级时才列该级子目录（三种源统一），Provider 返回该源语义下的完整路径 ── */
-function targetForDir(dir: string): RichTextImageTarget {
+function targetForDir(dir: string): FilePickerTarget {
   if (typeOf.value === 'cloud') return { ...target.value, prefix: dir }
   if (typeOf.value === 'remote') return { ...target.value, remotePath: dir }
   return { ...target.value, localDir: dir }
@@ -278,8 +344,8 @@ const cascaderProps = {
       // 点文字下钻发现该级无子目录：视为叶子，第一次点击即按选中走（回显+关闭），不让用户点两次（2026-11-17）
       if (node.level > 0 && children.length === 0 && !echoing && gen === dirPanelGen.value) {
         const panel = (cascaderRef.value as unknown as { cascaderPanelRef?: CascaderPanelApi } | null)?.cascaderPanelRef
-        const target = panel?.getFlattedNodes(false).find((n) => String(n.value) === parent)
-        if (panel && target) panel.handleCheckChange(target, true, false)
+        const targetNode = panel?.getFlattedNodes(false).find((n) => String(n.value) === parent)
+        if (panel && targetNode) panel.handleCheckChange(targetNode, true, false)
       }
     } catch (err) {
       dirError.value = (err as Error)?.message || String(err)
@@ -295,26 +361,26 @@ function onDirChange(v: string | null): void {
   dirModel.value = v ?? ''
 }
 
-/** 图库页可见项：本次上传（含旧源上传的）优先，当前源列图按作用域+url 去重补充，再按文件名过滤 */
+/** 列表页可见项：本次上传（含旧源上传的）优先，当前源列文件按作用域+url 去重补充，再按文件名过滤 */
 const galleryView = computed<PoolItem[]>(() => {
   const map = new Map<string, PoolItem>()
   for (const u of uploaded.value) map.set(itemKey(u), u)
   const scope = currentScope.value
   for (const it of items.value) {
-    const wrapped: PoolItem = { ...it, origin: 'gallery', scope }
+    const wrapped: PoolItem = { ...it, origin: 'existing', scope }
     if (!map.has(itemKey(wrapped))) map.set(itemKey(wrapped), wrapped)
   }
-  return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
+  return [...map.values()].filter((i) => matchFileKeyword(i, keyword.value))
 })
 /** 上传页可见项（同样支持文件名搜索） */
 const uploadView = computed<PoolItem[]>(() => {
   // 按 url 去重兜底（上传前已按内容 hash 去重，这里防历史/异常数据重复卡片）
   const map = new Map<string, PoolItem>()
   for (const i of uploaded.value) map.set(itemKey(i), i)
-  return [...map.values()].filter((i) => matchImageKeyword(i, keyword.value))
+  return [...map.values()].filter((i) => matchFileKeyword(i, keyword.value))
 })
 /** 已选择 tab：展示统一选择池（跨 tab/源/桶/目录累积），同样支持文件名搜索 */
-const selectedView = computed<PoolItem[]>(() => poolList.value.filter((i) => matchImageKeyword(i, keyword.value)))
+const selectedView = computed<PoolItem[]>(() => poolList.value.filter((i) => matchFileKeyword(i, keyword.value)))
 const visible = computed<PoolItem[]>(() =>
   tab.value === 'upload' ? uploadView.value : tab.value === 'selected' ? selectedView.value : galleryView.value,
 )
@@ -329,7 +395,30 @@ const rendered = computed<PoolItem[]>(() => {
 })
 
 /** 放大预览源始终取「当前可见全集」（非仅已渲染），可左右翻看；initial-index 用全集下标 */
-const previewUrls = computed(() => visible.value.map((i) => toDisplaySrc(i.url)))
+const previewUrls = computed(() => visible.value.map((i) => resolveSrcOf(i.url)))
+function resolveSrcOf(url: string): string {
+  return props.resolveSrc ? props.resolveSrc(url) : url
+}
+
+/** 上传区主提示（模式推导；模板表达式里不写嵌套模板字符串） */
+const uploadHint = computed<string>(() => {
+  if (uploading.value) return '上传中…'
+  const kind = isImage.value ? '图片' : '文件'
+  return `点击或拖拽${kind}到此处${uploadMultiple.value ? '（可多选）' : ''}`
+})
+
+/** 空态文案：按页签与模式推导（模板表达式里不写嵌套模板字符串，vue-tsc 解析不稳） */
+const emptyStateText = computed<string>(() => {
+  if (tab.value === 'upload') {
+    return keyword.value ? '无匹配文件' : `尚未上传；上传后在此预览，不会立即${isImage.value ? '插入正文' : '交付'}`
+  }
+  if (tab.value === 'selected') {
+    if (keyword.value) return '无匹配文件'
+    return poolCount.value ? '无匹配文件' : '尚未选择；在「上传」或「从库选择」里勾选，会汇总到这里'
+  }
+  if (loadingList.value) return '读取中…'
+  return keyword.value ? '无匹配文件' : `暂无文件，点「刷新」或先上传${isImage.value ? '几张' : '几个'}`
+})
 
 function storage(): Storage | null {
   try { return window.localStorage } catch { return null }
@@ -346,7 +435,7 @@ function persist(): void {
 }
 
 /** 模块内只做缓存镜像；真正持久化在 localStorage，按 stateKey 隔离 */
-const targetCache: Record<string, Record<string, RichTextImageTarget>> = {}
+const targetCache: Record<string, Record<string, FilePickerTarget>> = {}
 
 async function loadSources(): Promise<void> {
   loadingSources.value = true
@@ -354,7 +443,7 @@ async function loadSources(): Promise<void> {
     const list = await props.library.sources()
     sources.value = sortSourcesByDefault(list)
   } catch (err) {
-    ElMessage.error(`读取图床来源失败：${(err as Error).message}`)
+    ElMessage.error(`读取来源失败：${(err as Error).message}`)
   } finally {
     loadingSources.value = false
   }
@@ -379,9 +468,13 @@ watch(
     const saved = loadSettings(storage(), props.stateKey)
     targetCache[props.stateKey] = saved?.targets ?? {}
     sourceId.value = defaultSourceId(sources.value, saved?.sourceId)
-    target.value = { ...(targetCache[props.stateKey]?.[sourceId.value] ?? {}) }
+    // 已保存设置优先；没有时回落到应用方预设的桶/目录（defaultTarget）
+    target.value = {
+      ...(props.defaultTarget ?? {}),
+      ...(targetCache[props.stateKey]?.[sourceId.value] ?? {}),
+    }
     normalizeRestoredDir()
-    tab.value = saved?.tab ?? 'upload'
+    tab.value = saved?.tab ?? props.initialTab ?? 'upload'
     // 设置恢复后再打开写回监听，防止空值落盘覆盖
     await nextTick()
     restored.value = true
@@ -392,7 +485,10 @@ watch(
 let sourceWatchBusy = false
 watch(sourceId, async (id) => {
   if (!restored.value || sourceWatchBusy) return
-  target.value = { ...(targetCache[props.stateKey]?.[id] ?? {}) }
+  target.value = {
+    ...(props.defaultTarget ?? {}),
+    ...(targetCache[props.stateKey]?.[id] ?? {}),
+  }
   normalizeRestoredDir()
   items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
   dirError.value = ''
@@ -402,7 +498,7 @@ watch(sourceId, async (id) => {
   if (tab.value === 'gallery') await loadGallery()
 })
 
-/** 图库页改桶/目录后自动重列（防抖，避免逐字输入时反复请求） */
+/** 列表页改桶/目录后自动重列（防抖，避免逐字输入时反复请求） */
 let galleryReloadTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleGalleryReload(): void {
   if (!props.open || !restored.value || tab.value !== 'gallery') return
@@ -432,7 +528,7 @@ watch(keyword, (kw) => {
     cancelScan() // 清空关键词：终止扫描，回到分页浏览
     return
   }
-  // 仅图库 tab 需要跨页扫描（上传/已选择数据全在内存）；防抖 400ms 避免逐字触发
+  // 仅列表 tab 需要跨页扫描（上传/已选择数据全在内存）；防抖 400ms 避免逐字触发
   if (tab.value !== 'gallery') return
   searchTimer = setTimeout(() => { searchTimer = null; void runSearchScan() }, 400)
 })
@@ -453,11 +549,23 @@ onBeforeUnmount(() => {
   for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
 })
 
-function esc(url: string): string {
-  return url.replace(/"/g, '%22')
+/** 文件扩展名（小写、含点；无扩展名返回空串） */
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(dot).toLowerCase() : ''
 }
 
-/** 复制图片完整链接：优先 Clipboard API，失败回退 execCommand（file:// 等非安全上下文） */
+/** 字节数的简短中文展示（文件卡片用） */
+function formatSize(size?: number): string {
+  if (!size || size <= 0) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = size
+  let u = 0
+  while (v >= 1024 && u < units.length - 1) { v /= 1024; u++ }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]!}`
+}
+
+/** 复制文件完整链接：优先 Clipboard API，失败回退 execCommand（file:// 等非安全上下文） */
 async function copyLink(item: PoolItem): Promise<void> {
   const url = item.url
   try {
@@ -480,16 +588,15 @@ async function copyLink(item: PoolItem): Promise<void> {
   }
 }
 
-/** 插入图片：显示层用 localres（本地 file:// 预览契约），回写存储由 onChange 统一转回 */
-function insertUrls(urls: string[]): void {
-  const editor = props.editor
-  if (!editor || urls.length === 0) return
-  editor.focus()
-  editor.dangerouslyInsertHtml(urls.map((u) => `<img src="${esc(toDisplaySrc(u))}" alt=""/>`).join(''))
+/** 确认：交付已选条目给应用方；弹框只收尾（清池、清上传缓存、关闭），不决定用途 */
+function confirmSelected(): void {
+  const picked = poolList.value
+  if (picked.length === 0) return
+  emit('confirm', picked.map((i) => ({ url: i.url, name: i.name, size: i.size, key: i.key, modified: i.modified })))
   pool.value = {}
   uploaded.value = []
   close()
-  ElMessage.success(`已插入 ${urls.length} 张图片`)
+  ElMessage.success(`已选择 ${picked.length} 个文件`)
 }
 
 function pickFiles(): void {
@@ -528,7 +635,7 @@ async function runUpload(task: UploadTask): Promise<boolean> {
   task.doneAt = undefined
   ensureProgressTimer()
   try {
-    // 用带 hash 的存储名上传：同名不同内容各自落盘、互不覆盖；重试沿用同一 uploadName 天然幂等。
+    // 用策略解析出的存储名上传；重试沿用同一 uploadName 天然幂等。
     // File.name 只读，包一层引用原内容即可（不重复拷贝数据）。UI 仍显示用户选的原名 task.name。
     const uploadFile = new File([task.file], task.uploadName, {
       type: task.file.type,
@@ -542,10 +649,10 @@ async function runUpload(task: UploadTask): Promise<boolean> {
     task.status = 'success'
     task.doneAt = Date.now()
     ensureDoneWindowTimer()
-    // 入库项用存储名：与 Provider listImages 刷新回来的名字一致，避免刷新前后显示不一致
-    const item: PoolItem = { url, key: task.uploadName, name: task.uploadName, origin: 'upload', scope: task.scope }
+    // 入库项用存储名：与 Provider 列表刷新回来的名字一致，避免刷新前后显示不一致
+    const item: PoolItem = { url, key: task.uploadName, name: task.uploadName, origin: 'upload', scope: task.scope, size: task.size }
     uploaded.value.push(item)
-    addToPool(item) // 上传即默认选中，可在预览里取消
+    addToPool(item) // 上传即默认选中，可取消
     return true
   } catch (err) {
     task.status = 'failed'
@@ -554,13 +661,21 @@ async function runUpload(task: UploadTask): Promise<boolean> {
   }
 }
 
-async function onFilesChosen(e: Event): Promise<void> {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
+/** 选中的文件统一入口（点击选择与拖拽投放共用）：大小拦截 → 指纹去重 → 入队上传 */
+async function handleFiles(files: File[]): Promise<void> {
   const source = activeSource.value
   if (!source || files.length === 0) return
   const scope = currentScope.value
+
+  // 组件侧快速拦截：单文件超 maxSize 直接拒绝（真正的校验在 Upload Service 侧，这里给即时反馈）
+  if (props.maxSize > 0) {
+    const oversized = files.filter((f) => f.size > props.maxSize!)
+    if (oversized.length > 0) {
+      ElMessage.error(`以下文件超过大小限制（${formatSize(props.maxSize)}）：${oversized.slice(0, 3).map((f) => f.name).join('、')}${oversized.length > 3 ? ' 等' : ''}`)
+      files = files.filter((f) => f.size <= props.maxSize!)
+    }
+    if (files.length === 0) return
+  }
 
   // 上传前去重：目标位置 + 源文件名（带后缀）+ 内容 hash。三者全同才算重复；
   // 同一内容改不同名字视为不同文件，都允许上传。已在传/已成功的不重复上传，失败的可重选。
@@ -577,9 +692,9 @@ async function onFilesChosen(e: Event): Promise<void> {
       continue
     }
     existing.add(fp) // 同一批内也去重
-    fresh.push({ file, fingerprint: fp, uploadName: contentName(file.name, hash) })
+    fresh.push({ file, fingerprint: fp, uploadName: resolveUploadName(file.name, hash, props.naming, props.conflict) })
   }
-  if (skipped > 0) ElMessage.info(`已跳过 ${skipped} 张重复图片（同位置已上传或上传中）`)
+  if (skipped > 0) ElMessage.info(`已跳过 ${skipped} 个重复文件（同位置已上传或上传中）`)
   if (fresh.length === 0) return
 
   for (const { file, fingerprint, uploadName } of fresh) {
@@ -599,9 +714,24 @@ async function onFilesChosen(e: Event): Promise<void> {
   if (ok > 0) {
     // 上传成功后重挂级联：清掉懒加载缓存，下次展开即可看到新目录
     dirPanelKey.value++
-    ElMessage.success(`${ok} 张已上传并选中，切到图库可继续挑选，最后一并插入`)
+    ElMessage.success(`${ok} 个文件已上传并选中，切到列表页可继续挑选，最后一并确认`)
   }
-  if (failed > 0) ElMessage.warning(`${failed} 张上传失败，可在上传列表中重试或删除`)
+  if (failed > 0) ElMessage.warning(`${failed} 个文件上传失败，可在上传列表中重试或删除`)
+}
+
+async function onFilesChosen(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  await handleFiles(files)
+}
+
+/** 拖拽投放上传：与点击选择走同一入口（dataTransfer.files） */
+async function onDrop(e: DragEvent): Promise<void> {
+  dropActive.value = false
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  if (files.length === 0) return
+  await handleFiles(files)
 }
 
 /** 重试单个失败任务（沿用原文件与来源/目录） */
@@ -629,37 +759,33 @@ function removeUploaded(item: PoolItem): void {
   removePoolKey(k)
 }
 
-/** 只删除「本次上传且已选」的项，未选中的上传图保留 */
+/** 只删除「本次上传且已选」的项，未选中的上传文件保留 */
 function removeSelectedUploaded(): void {
   const removed = uploaded.value.filter(isSelected)
   if (removed.length === 0) return
   for (const i of removed) removePoolKey(itemKey(i))
   const keys = new Set(removed.map(itemKey))
   uploaded.value = uploaded.value.filter((i) => !keys.has(itemKey(i)))
-  ElMessage.success(`已删除 ${removed.length} 张未插入图片`)
+  ElMessage.success(`已删除 ${removed.length} 个未确认文件`)
 }
 
 /** 全选/全不选/反选作用于「当前可见集合」，不清空其他 tab / 目录 / 源已选的项 */
 function selectAllVisible(v: boolean): void {
   for (const i of visible.value) {
-    if (v) addToPool(i)
-    else removeFromPool(i)
+    if (v) {
+      if (!addToPool(i)) break // 达到上限即止（addToPool 已提示）
+    } else removeFromPool(i)
   }
 }
 function invertVisible(): void {
   for (const i of visible.value) togglePool(i)
 }
 
-/** 插入统一选择池中的全部图片（跨 tab / 目录 / 源 / 桶） */
-function insertSelected(): void {
-  insertUrls(poolList.value.map((i) => i.url))
-}
-
-/** 图库分页游标：非空表示来源侧还有剩余图片，可「加载更多」续拉 */
+/** 列表分页游标：非空表示来源侧还有剩余文件，可「加载更多」续拉 */
 const galleryCursor = ref<string | null>(null)
 const loadingMore = ref(false)
 
-/** ── 搜索跨页全量扫描：来源侧还有未加载页时自动分块续拉，保证关键词能命中后面页的图 ── */
+/** ── 搜索跨页全量扫描：来源侧还有未加载页时自动分块续拉，保证关键词能命中后面页的文件 ── */
 const SEARCH_SCAN_CHUNK = 2000
 /** 扫描上限：防异常超大桶无限拉取（达到即提示「结果可能不全」） */
 const SEARCH_SCAN_MAX = 10_000
@@ -685,7 +811,7 @@ async function runSearchScan(): Promise<void> {
   try {
     let cursor: string | null = galleryCursor.value
     while (cursor && scanTotal.value < SEARCH_SCAN_MAX) {
-      const page = await props.library.list(source, target.value, { limit: SEARCH_SCAN_CHUNK, cursor })
+      const page = await props.library.list(source, target.value, { limit: SEARCH_SCAN_CHUNK, cursor, kind: props.mode })
       if (seq !== scanSeq) return // 关键词/目录/来源已变，本轮结果丢弃
       items.value = [...items.value, ...page.items]
       scanTotal.value = items.value.length
@@ -709,27 +835,27 @@ async function loadGallery(): Promise<void> {
   renderedCount.value = PAGE_SIZE
   try {
     // 不清空 pool：重选目录得到新列表后，此前已选仍保留，可继续累积
-    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT })
+    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, kind: props.mode })
     items.value = page.items
     galleryCursor.value = page.nextCursor ?? null
   } catch (err) {
     items.value = []
     galleryCursor.value = null
-    ElMessage.error(`读取图库失败：${(err as Error).message}`)
+    ElMessage.error(`读取文件列表失败：${(err as Error).message}`)
   } finally {
     loadingList.value = false
   }
-  // 带关键词进入/刷新图库：来源侧还有未加载页时自动续扫，保证搜索能命中后面页
+  // 带关键词进入/刷新列表：来源侧还有未加载页时自动续扫，保证搜索能命中后面页
   if (keyword.value && galleryCursor.value) void runSearchScan()
 }
 
-/** 「加载更多」续拉下一页（大目录 1000/10000+ 张时按页取，不一次列爆） */
+/** 「加载更多」续拉下一页（大目录 1000/10000+ 个文件时按页取，不一次列爆） */
 async function loadMoreGallery(): Promise<void> {
   const source = activeSource.value
   if (!source || !galleryCursor.value || loadingMore.value) return
   loadingMore.value = true
   try {
-    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, cursor: galleryCursor.value })
+    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, cursor: galleryCursor.value, kind: props.mode })
     items.value = [...items.value, ...page.items]
     galleryCursor.value = page.nextCursor ?? null
     renderedCount.value += PAGE_SIZE
@@ -752,7 +878,8 @@ function onPaneScroll(e: Event): void {
 <template>
   <el-dialog
     :model-value="open"
-    class="image-library-dialog"
+    class="file-picker-dialog"
+    :title="dialogTitle"
     width="820px"
     top="4vh"
     :close-on-click-modal="false"
@@ -763,15 +890,15 @@ function onPaneScroll(e: Event): void {
     <!-- 高频工具栏放 header：结构上脱离内容滚动区，滚动时始终可见 -->
     <template #header>
       <div class="lib-header">
-        <span class="lib-title">图片库</span>
+        <span class="lib-title">{{ dialogTitle }}</span>
         <div class="lib-top">
           <div class="lib-row lib-row-source">
-            <el-select v-model="sourceId" placeholder="选择图床来源（默认优先云）" class="source-select" :loading="loadingSources">
+            <el-select v-model="sourceId" placeholder="选择来源（默认优先云）" class="source-select" :loading="loadingSources">
               <el-option v-for="s in sources" :key="s.id" :value="s.id" :label="s.label" />
             </el-select>
             <el-radio-group v-model="tab" class="mode-tabs">
-              <el-radio-button value="upload">上传图片</el-radio-button>
-              <el-radio-button value="gallery">从图库选择</el-radio-button>
+              <el-radio-button value="upload">{{ isImage ? '上传图片' : '上传文件' }}</el-radio-button>
+              <el-radio-button value="gallery">{{ isImage ? '从图库选择' : '从文件库选择' }}</el-radio-button>
               <el-radio-button value="selected">已选择{{ poolCount ? ` ${poolCount}` : '' }}</el-radio-button>
             </el-radio-group>
           </div>
@@ -802,7 +929,9 @@ function onPaneScroll(e: Event): void {
           <!-- 目录懒加载失败：透出原因，仍可手输 -->
           <div v-if="dirError" class="dir-validation dir-validation--warning">目录列表加载失败：{{ dirError }}（仍可手输目录）</div>
           <div class="lib-row lib-row-actions">
-            <span class="lib-count">已选 {{ poolCount }} 张（上传 {{ uploadPicked }} · 图库 {{ galleryPicked }}）</span>
+            <span class="lib-count">
+              已选 {{ poolCount }}{{ effectiveMax > 0 ? ` / ${effectiveMax}` : '' }}（上传 {{ uploadPicked }} · 库选 {{ existingPicked }}）
+            </span>
             <el-input v-model="keyword" clearable class="search-input" placeholder="搜索文件名" />
             <el-button size="small" type="primary" plain @click="selectAllVisible(true)">全选本页</el-button>
             <el-button size="small" type="info" plain @click="selectAllVisible(false)">全不选</el-button>
@@ -812,10 +941,12 @@ function onPaneScroll(e: Event): void {
             <el-button v-else size="small" type="danger" plain :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
             <span class="lib-action-gap" />
             <el-button size="small" type="primary" plain @click="uploadMore">继续上传</el-button>
-            <el-button size="small" type="primary" :disabled="poolCount === 0" @click="insertSelected">插入所选{{ poolCount ? ` ${poolCount} 张` : '' }}</el-button>
+            <el-button size="small" type="primary" :disabled="poolCount === 0" @click="confirmSelected">
+              {{ confirmLabel }}{{ poolCount ? ` ${poolCount} 个` : '' }}
+            </el-button>
           </div>
         </div>
-        <!-- 上传总体进度固定在 header，滚动区只放纯图片列表 -->
+        <!-- 上传总体进度固定在 header，滚动区只放纯文件列表 -->
         <div v-if="uploadTotal" class="upload-progress-bar">
           <div class="up-summary">
             <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
@@ -825,15 +956,30 @@ function onPaneScroll(e: Event): void {
         </div>
       </div>
     </template>
-    <input ref="uploadInput" type="file" accept="image/*" multiple class="hidden-input" @change="onFilesChosen" />
+    <input
+      ref="uploadInput"
+      type="file"
+      :accept="acceptAttr"
+      :multiple="uploadMultiple"
+      class="hidden-input"
+      @change="onFilesChosen"
+    />
 
     <div class="lib-pane" @scroll="onPaneScroll">
-      <div v-if="tab === 'upload'" class="drop-hint" :class="{ busy: uploading }" @click="pickFiles">
-        <div class="drop-main">{{ uploading ? '上传中…' : '点击选择图片（可多选）' }}</div>
-        <div class="drop-sub">上传后先预览、可删除/点开查看；切到图库可继续挑选，最后一并插入</div>
+      <div
+        v-if="tab === 'upload'"
+        class="drop-hint"
+        :class="{ busy: uploading, active: dropActive }"
+        @click="pickFiles"
+        @dragover.prevent="dropActive = true"
+        @dragleave.prevent="dropActive = false"
+        @drop.prevent="onDrop"
+      >
+        <div class="drop-main">{{ uploadHint }}</div>
+        <div class="drop-sub">上传后先预览、可删除/点开查看；切到列表页可继续挑选，最后一并确认</div>
       </div>
       <div v-if="visible.length || (tab === 'upload' && activeUploadTasks.length)" class="thumb-grid">
-        <!-- 上传中/失败任务：缩略图上叠进度/状态，卡片底部放重试与删除 -->
+        <!-- 上传中/失败任务：卡片上叠进度/状态，卡片底部放重试与删除 -->
         <div
           v-for="task in tab === 'upload' ? activeUploadTasks : []"
           :key="'task-' + task.id"
@@ -843,11 +989,18 @@ function onPaneScroll(e: Event): void {
         >
           <div class="task-thumb">
             <img
-              v-if="task.previewUrl && !task.previewFailed"
+              v-if="isImage && task.previewUrl && !task.previewFailed"
               :src="task.previewUrl"
               :alt="task.name"
               @error="task.previewFailed = true"
             />
+            <div v-else-if="!isImage" class="file-tile">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                <path d="M14 3v5h5" />
+              </svg>
+              <span class="file-ext">{{ extOf(task.name) || 'FILE' }}</span>
+            </div>
             <span v-else class="task-thumb-ph" title="图片预览不可用">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2.5" />
@@ -879,8 +1032,10 @@ function onPaneScroll(e: Event): void {
         </div>
         <div v-for="item in rendered" :key="itemKey(item)" class="thumb-cell" :class="{ picked: isSelected(item) }">
           <el-checkbox :model-value="isSelected(item)" class="thumb-check" @change="togglePool(item)" @click.stop />
+          <!-- 图片模式：缩略图 + 大图预览；文件模式：类型图标卡片 -->
           <el-image
-            :src="toDisplaySrc(item.url)"
+            v-if="isImage"
+            :src="resolveSrcOf(item.url)"
             fit="cover"
             loading="lazy"
             class="thumb-img"
@@ -910,6 +1065,15 @@ function onPaneScroll(e: Event): void {
               </div>
             </template>
           </el-image>
+          <div v-else class="thumb-img file-tile" title="文件">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              <path d="M14 3v5h5" />
+              <path d="M9 13h6M9 17h4" />
+            </svg>
+            <span class="file-ext">{{ extOf(item.name || item.key || '') || 'FILE' }}</span>
+            <span v-if="item.size" class="file-size">{{ formatSize(item.size) }}</span>
+          </div>
           <div class="thumb-name" :title="item.url">
             <span class="thumb-name-text">{{ item.name || item.key }}</span>
             <button
@@ -944,21 +1108,15 @@ function onPaneScroll(e: Event): void {
           >删除</el-button>
         </div>
       </div>
-      <div v-else class="gallery-empty">
-        {{ tab === 'upload'
-          ? (keyword ? '无匹配图片' : '尚未上传；上传后在此预览，不会立即插入正文')
-          : tab === 'selected'
-            ? (keyword ? '无匹配图片' : (poolCount ? '无匹配图片' : '尚未选择图片；在「上传图片」或「从图库选择」里勾选，会汇总到这里'))
-            : (loadingList ? '读取中…' : (keyword ? '无匹配图片' : '暂无图片，点「刷新列表」或先上传几张')) }}
-      </div>
+      <div v-else class="gallery-empty">{{ emptyStateText }}</div>
       <div v-if="scanning" class="load-more load-more--action">
-        正在搜索全部图片：已扫描 {{ scanTotal }} 张…
+        正在搜索全部文件：已扫描 {{ scanTotal }} 个…
         <el-button size="small" type="danger" plain @click="cancelScan">取消</el-button>
       </div>
-      <div v-else-if="scanCapped" class="load-more">已扫描 {{ scanTotal }} 张（达扫描上限，更深的图片未纳入搜索）</div>
+      <div v-else-if="scanCapped" class="load-more">已扫描 {{ scanTotal }} 个（达扫描上限，更深的文件未纳入搜索）</div>
       <div v-else-if="renderedCount < visible.length" class="load-more">已显示 {{ rendered.length }} / {{ visible.length }}，滚动继续加载</div>
       <div v-else-if="galleryCursor && tab === 'gallery'" class="load-more load-more--action">
-        已加载 {{ items.length }} 张，来源侧可能还有更多
+        已加载 {{ items.length }} 个，来源侧可能还有更多
         <el-button size="small" type="primary" plain :loading="loadingMore" @click="loadMoreGallery">加载更多</el-button>
       </div>
     </div>
@@ -1000,7 +1158,8 @@ function onPaneScroll(e: Event): void {
   transition: border-color 0.2s, background 0.2s;
   margin-bottom: 10px;
 }
-.drop-hint:hover { border-color: var(--el-color-primary); }
+.drop-hint:hover, .drop-hint.active { border-color: var(--el-color-primary); }
+.drop-hint.active { background: rgba(64, 158, 255, 0.08); }
 .drop-hint.busy { opacity: 0.6; cursor: wait; }
 /* 上传总体进度条 */
 .upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
@@ -1057,6 +1216,14 @@ function onPaneScroll(e: Event): void {
   border-color: var(--el-color-primary);
 }
 .thumb-img { width: 100%; height: 80px; border-radius: 4px; display: block; cursor: zoom-in; }
+/* 文件模式卡片：类型图标 + 扩展名 + 大小（无缩略图/无大图预览） */
+.file-tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; color: var(--el-text-color-placeholder);
+  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.06) 0 6px, transparent 6px 12px);
+}
+.file-ext { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+.file-size { font-size: 10px; opacity: 0.7; }
 /* 图片加载失败：统一柔和占位（替代 Element Plus 默认 FAILED 与生硬的「裂图」文案） */
 .img-fallback {
   width: 100%; height: 100%; display: flex; flex-direction: column;
@@ -1092,7 +1259,7 @@ function onPaneScroll(e: Event): void {
 .load-more--action { display: flex; align-items: center; justify-content: center; gap: 10px; }
 
 /* 整个弹框（含 header 工具栏 + footer）占应用视口约 75%，body 用 flex 吃掉 header 之外的剩余 */
-:global(.image-library-dialog) {
+:global(.file-picker-dialog) {
   height: 75vh;
   min-height: 460px;
   max-height: 92vh;
@@ -1100,8 +1267,8 @@ function onPaneScroll(e: Event): void {
   flex-direction: column;
   overflow: hidden;
 }
-:global(.image-library-dialog .el-dialog__header) { flex: 0 0 auto; padding: 16px 16px 12px !important; margin-right: 0 !important; }
-:global(.image-library-dialog .el-dialog__body) {
+:global(.file-picker-dialog .el-dialog__header) { flex: 0 0 auto; padding: 16px 16px 12px !important; margin-right: 0 !important; }
+:global(.file-picker-dialog .el-dialog__body) {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -1109,7 +1276,7 @@ function onPaneScroll(e: Event): void {
   overflow: hidden;
   padding: 12px 16px !important;
 }
-:global(.image-library-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 16px 16px !important; }
+:global(.file-picker-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 16px 16px !important; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
 .lib-pane { flex: 1 1 0; min-height: 120px; overflow-y: auto; padding-right: 6px; }
 </style>

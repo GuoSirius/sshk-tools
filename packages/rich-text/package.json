@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@sshk/code-editor": "workspace:*",
+    "@sshk/file-picker": "workspace:*",
     "@wangeditor/editor": "latest",
     "element-plus": "latest",
     "marked": "latest",

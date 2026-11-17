@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { byNewestFirst, isImageFileName } from '../image-files'
 import { collectPrefixes, MAX_DIRECTORIES, normalizeDirPath } from '../directories'
-import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListKind, UploadListQuery, UploadProvider, UploadResult } from '../types'
 
 /**
  * T5 / 复核项 3：云上传 Provider，覆盖常见厂商与 S3 兼容服务。
@@ -308,7 +308,7 @@ async function listCloudPage(
 async function listObjects(
   profile: CloudProfile,
   mod: SdkModule,
-  q: { bucket: string; prefix: string; limit: number; cursor?: string | null },
+  q: { bucket: string; prefix: string; limit: number; cursor?: string | null; kind?: UploadListKind },
 ): Promise<{ items: UploadedImageInfo[]; nextCursor: string | null }> {
   const out: UploadedImageInfo[] = []
   let cursor: string | null = q.cursor ?? null
@@ -322,7 +322,7 @@ async function listObjects(
     })
     for (const o of collectObjects(p.raw)) {
       const key = strOf(o, ['Key', 'key', 'name'])
-      if (!key || !isImageFileName(key)) continue
+      if (!key || (q.kind !== 'file' && !isImageFileName(key))) continue
       out.push({
         url: publicUrl(profile, key),
         key,
@@ -545,15 +545,15 @@ export class CloudUploadProvider implements UploadProvider {
     return await probe(p, mod)
   }
 
-  /** 富文本图片库：列出 bucket（可被 overrides.bucket / overrides.prefix 覆盖）下已有图片 */
-  /** 富文本图片库：按前缀列已有图片（跟随翻页收集）；返回分页与游标，大目录由上层带游标续拉 */
-  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
+  /** 图库/文件库：按前缀列已有文件（跟随翻页收集）；kind=image（缺省）只列图片，kind=file 列全部 */
+  async listImages(ctx: UploadListQuery): Promise<UploadedImagePage> {
     const mod = await loadSdk(specOf(this.profile))
     return await listObjects(this.profile, mod, {
       bucket: ctx.overrides?.bucket || this.profile.bucket,
       prefix: (ctx.overrides?.prefix ?? '').replace(/^\/+|\/+$/g, ''),
       limit: ctx.limit ?? 500,
       cursor: ctx.cursor ?? null,
+      kind: ctx.kind,
     })
   }
 

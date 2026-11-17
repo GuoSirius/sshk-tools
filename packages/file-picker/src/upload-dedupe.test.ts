@@ -1,6 +1,6 @@
 import { webcrypto } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { contentName, fingerprintKey, hashFile } from './upload-dedupe'
+import { contentName, fingerprintKey, hashFile, resolveUploadName } from './upload-dedupe'
 
 const subtle = webcrypto.subtle as unknown as SubtleCrypto
 const blob = (s: string): Blob => new Blob([s])
@@ -83,12 +83,33 @@ describe('contentName', () => {
     expect(contentName('.gitignore', hash)).toBe('.gitignore')
     expect(contentName('.env', hash)).toBe('.env')
     expect(contentName('.env.local', hash)).toBe('.env.local')
-    // 带图片后缀的点文件也保持原名（避免 .gitignore.png 这类被改名后识别失效）
+    // 带扩展名的点文件也保持原名（避免 .gitignore.png 这类被改名后识别失效）
     expect(contentName('.hidden.png', hash)).toBe('.hidden.png')
   })
 
   it('hash 不可用时退回原名', () => {
     expect(contentName('banner.png', '')).toBe('banner.png')
+  })
+})
+
+describe('resolveUploadName', () => {
+  const hash = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+
+  it('naming=hash（默认）：内容寻址名，同名不同内容并存', () => {
+    expect(resolveUploadName('banner.png', hash)).toBe('banner-a1b2c3d4.png')
+    expect(resolveUploadName('banner.png', hash, 'hash')).toBe('banner-a1b2c3d4.png')
+  })
+
+  it('naming=original + conflict=hash：同名不同内容仍追加 -hash8，不覆盖', () => {
+    expect(resolveUploadName('报告.pdf', hash, 'original', 'hash')).toBe('报告-a1b2c3d4.pdf')
+  })
+
+  it('naming=original + conflict=overwrite：保留原文件名', () => {
+    expect(resolveUploadName('报告.pdf', hash, 'original', 'overwrite')).toBe('报告.pdf')
+  })
+
+  it('naming=hash 时 conflict 不生效（hash 名天然不冲突）', () => {
+    expect(resolveUploadName('banner.png', hash, 'hash', 'overwrite')).toBe('banner-a1b2c3d4.png')
   })
 })
 

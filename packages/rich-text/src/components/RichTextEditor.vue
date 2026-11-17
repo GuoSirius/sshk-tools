@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import '@wangeditor/editor/dist/css/style.css'
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   createEditor,
   createToolbar,
@@ -13,7 +14,7 @@ import type {
   RichTextImageRule,
   RichTextUploadHook,
 } from '../types'
-import { toDisplayHtml, toStoredHtml } from '../display'
+import { toDisplayHtml, toStoredHtml, toDisplaySrc } from '../display'
 import {
   DEFAULT_GROUP_IMAGE_INDEX,
   IMAGE_LIBRARY_MENU_KEY,
@@ -28,7 +29,8 @@ import {
   unbindSourceView,
 } from '../source-view-menu'
 import { countText, type TextStats } from '../word-count'
-import ImageLibraryDialog from './ImageLibraryDialog.vue'
+import { FilePickerDialog } from '@sshk/file-picker'
+import type { FilePickerItem } from '@sshk/file-picker'
 import SourceViewDialog from './SourceViewDialog.vue'
 
 /**
@@ -95,6 +97,17 @@ const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
 const libraryOpen = ref(false)
 const sourceOpen = ref(false)
+
+/** 图片库确认（2026-11-17 泛化到 FilePickerDialog 后插入行为移回本组件）：拼 <img> 插入正文 */
+function onLibraryConfirm(items: FilePickerItem[]): void {
+  const editor = editorRef.value
+  if (!editor || items.length === 0) return
+  editor.focus()
+  editor.dangerouslyInsertHtml(
+    items.map((i) => `<img src="${String(i.url).replace(/"/g, '%22')}" alt=""/>`).join(''),
+  )
+  ElMessage.success(`已插入 ${items.length} 张图片`)
+}
 /** 底部状态栏（Word 式字数统计） */
 const stats = ref<TextStats>({ words: 0, chars: 0, charsNoSpace: 0, paragraphs: 0 })
 const selectedLen = ref(0)
@@ -269,12 +282,15 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </Teleport>
-  <ImageLibraryDialog
+  <FilePickerDialog
     v-if="imageLibrary"
     v-model:open="libraryOpen"
-    :editor="editorRef ?? null"
+    mode="image"
     :library="imageLibrary"
     :state-key="stateKey"
+    :resolve-src="toDisplaySrc"
+    confirm-text="插入所选"
+    @confirm="onLibraryConfirm"
   />
   <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
 </template>

@@ -1,33 +1,36 @@
-import type { RichTextImageSource, RichTextImageTarget } from './types'
+import type { FilePickerSource, FilePickerTarget } from './types'
 
 /**
- * 富文本图片库设置（用户需求 2026-11-17）：
+ * 文件选择弹框设置（自 rich-text 图片库设置 2026-11-17 迁移泛化）：
  * - 默认来源优先级：云 → 远程 → 本地；
  * - 来源与桶/目录等专属项跨页面切换、应用重启回显；
- * - 多实例以 stateKey 隔离（template 双实例页 A/B、EDM 各富文本字段各用独立 key）。
+ * - 多实例以 stateKey 隔离（template 双实例页 A/B、EDM 各字段各用独立 key）。
  */
-export interface ImageLibrarySettings {
+export interface FilePickerSettings {
   sourceId: string
   /** 每个来源独立保存专属项：切换来源不会丢掉此前填过的桶/目录 */
-  targets: Record<string, RichTextImageTarget>
+  targets: Record<string, FilePickerTarget>
   tab?: 'upload' | 'gallery' | 'selected'
 }
 
-const PRIORITY: Record<RichTextImageSource['type'], number> = { cloud: 0, remote: 1, local: 2 }
+const PRIORITY: Record<FilePickerSource['type'], number> = { cloud: 0, remote: 1, local: 2 }
 
-export function sortSourcesByDefault(sources: RichTextImageSource[]): RichTextImageSource[] {
+export function sortSourcesByDefault(sources: FilePickerSource[]): FilePickerSource[] {
   return [...sources].sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type])
 }
 
 /** 来源不存在（配置变更删除 profile）时回落到优先级最高的可用来源 */
-export function defaultSourceId(sources: RichTextImageSource[], savedId?: string): string {
+export function defaultSourceId(sources: FilePickerSource[], savedId?: string): string {
   const ordered = sortSourcesByDefault(sources)
   return ordered.find((s) => s.id === savedId)?.id ?? ordered[0]?.id ?? ''
 }
 
 export function settingsKey(stateKey: string): string {
-  return `sshk:rich-text:image-library:${stateKey || 'default'}`
+  return `sshk:file-picker:${stateKey || 'default'}`
 }
+
+/** 旧版 rich-text 图片库的存储键：首次读取从这里迁移，避免老用户丢已选来源/目录 */
+const LEGACY_SETTINGS_KEY = (stateKey: string): string => `sshk:rich-text:image-library:${stateKey || 'default'}`
 
 /**
  * 手输目录归一化：统一正斜杠、去首尾斜杠、压掉重复段。
@@ -44,13 +47,10 @@ export function normalizeDirInput(raw: string): string {
     .join('/')
 }
 
-/** localStorage 不可用（隐私模式/受限 webview）时静默降级为内存态，不阻断编辑 */
-export function loadSettings(store: Storage | null | undefined, stateKey: string): ImageLibrarySettings | null {
-  if (!store) return null
+function parseSettings(raw: string | null): FilePickerSettings | null {
+  if (!raw) return null
   try {
-    const raw = store.getItem(settingsKey(stateKey))
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<ImageLibrarySettings>
+    const parsed = JSON.parse(raw) as Partial<FilePickerSettings>
     if (!parsed || typeof parsed !== 'object') return null
     return {
       sourceId: typeof parsed.sourceId === 'string' ? parsed.sourceId : '',
@@ -62,12 +62,21 @@ export function loadSettings(store: Storage | null | undefined, stateKey: string
   }
 }
 
-export function saveSettings(store: Storage | null | undefined, stateKey: string, settings: ImageLibrarySettings): void {
+/** localStorage 不可用（隐私模式/受限 webview）时静默降级为内存态，不阻断编辑 */
+export function loadSettings(store: Storage | null | undefined, stateKey: string): FilePickerSettings | null {
+  if (!store) return null
+  const direct = parseSettings(store.getItem(settingsKey(stateKey)))
+  if (direct) return direct
+  // 新键未写入过：回落读旧版 rich-text 图片库键（读取不改写，等首次 saveSettings 自然迁移）
+  return parseSettings(store.getItem(LEGACY_SETTINGS_KEY(stateKey)))
+}
+
+export function saveSettings(store: Storage | null | undefined, stateKey: string, settings: FilePickerSettings): void {
   if (!store) return
   try {
     store.setItem(settingsKey(stateKey), JSON.stringify(settings))
   } catch {
-    // localStorage 满 / 被禁用：不影响图片库主流程
+    // localStorage 满 / 被禁用：不影响主流程
   }
 }
 
@@ -109,7 +118,7 @@ export function validateDirInput(raw: string, type: 'local' | 'remote' | 'cloud'
     return { level: 'warn', message: '反斜杠会在确认时自动转为 /' }
   }
   if (/[?#]/.test(value)) {
-    return { level: 'warn', message: '包含 ? 或 # 可能影响图片访问链接，建议避免使用' }
+    return { level: 'warn', message: '包含 ? 或 # 可能影响文件访问链接，建议避免使用' }
   }
   if (value.startsWith('/') || value.endsWith('/') || /\/{2,}/.test(value) || /\s/.test(value)) {
     return { level: 'warn', message: '首尾/重复斜杠与空格会在确认时自动清理' }
@@ -118,9 +127,9 @@ export function validateDirInput(raw: string, type: 'local' | 'remote' | 'cloud'
 }
 
 /**
- * 关键词匹配图片（文件名搜索）：忽略大小写，命中 name / key / url 任一即可。
+ * 关键词匹配文件（文件名搜索）：忽略大小写，命中 name / key / url 任一即可。
  */
-export function matchImageKeyword<T extends { name?: string; key?: string; url: string }>(
+export function matchFileKeyword<T extends { name?: string; key?: string; url: string }>(
   item: T,
   keyword: string,
 ): boolean {

@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type { RichTextImageSource } from './types'
+import type { FilePickerSource } from './types'
 import {
   defaultSourceId,
   loadSettings,
-  matchImageKeyword,
+  matchFileKeyword,
   normalizeDirInput,
   saveSettings,
   settingsKey,
   sortSourcesByDefault,
   validateDirInput,
-} from './image-library-settings'
+} from './picker-settings'
 
-const sources: RichTextImageSource[] = [
+const sources: FilePickerSource[] = [
   { id: 'local-1', type: 'local', label: '本地' },
   { id: 'remote-1', type: 'remote', label: '远程' },
   { id: 'cloud-1', type: 'cloud', label: '云' },
@@ -30,8 +30,8 @@ function memoryStore(): Storage {
   }
 }
 
-const byId = (id: string): RichTextImageSource => sources.find((s) => s.id === id) ?? sources[0]!
-describe('image-library-settings', () => {
+const byId = (id: string): FilePickerSource => sources.find((s) => s.id === id) ?? sources[0]!
+describe('picker-settings', () => {
   it('默认来源优先级：云 → 远程 → 本地', () => {
     expect(sortSourcesByDefault(sources).map((s) => s.id)).toEqual(['cloud-1', 'cloud-2', 'remote-1', 'local-1'])
     expect(defaultSourceId(sources)).toBe('cloud-1')
@@ -61,13 +61,30 @@ describe('image-library-settings', () => {
     expect(loadSettings(store, 'x')).toBeNull()
   })
 
+  it('旧版 rich-text 图片库键自动迁移读取（不丢已保存的来源/目录）', () => {
+    const store = memoryStore()
+    const legacy = { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm' } }, tab: 'gallery' as const }
+    store.setItem('sshk:rich-text:image-library:inst', JSON.stringify(legacy))
+    expect(loadSettings(store, 'inst')).toEqual(legacy)
+  })
+
+  it('新键写入后优先于旧键（首次保存即完成迁移）', () => {
+    const store = memoryStore()
+    const legacy = { sourceId: 'local-1', targets: {}, tab: 'upload' as const }
+    const fresh = { sourceId: 'cloud-1', targets: {}, tab: 'gallery' as const }
+    store.setItem('sshk:rich-text:image-library:inst', JSON.stringify(legacy))
+    expect(loadSettings(store, 'inst')).toEqual(legacy)
+    saveSettings(store, 'inst', fresh)
+    expect(loadSettings(store, 'inst')).toEqual(fresh)
+  })
+
   it('文件名搜索：忽略大小写，命中 name / key / url 任一，空关键词全通过', () => {
-    const img = { url: 'https://cdn/x/IMG_001.png', name: 'Banner.png', key: 'blog/2026/Banner.png' }
-    expect(matchImageKeyword(img, '')).toBe(true)
-    expect(matchImageKeyword(img, 'banner')).toBe(true)
-    expect(matchImageKeyword(img, '2026')).toBe(true)
-    expect(matchImageKeyword(img, 'img_001')).toBe(true)
-    expect(matchImageKeyword(img, 'nope')).toBe(false)
+    const file = { url: 'https://cdn/x/IMG_001.png', name: 'Banner.png', key: 'blog/2026/Banner.png' }
+    expect(matchFileKeyword(file, '')).toBe(true)
+    expect(matchFileKeyword(file, 'banner')).toBe(true)
+    expect(matchFileKeyword(file, '2026')).toBe(true)
+    expect(matchFileKeyword(file, 'img_001')).toBe(true)
+    expect(matchFileKeyword(file, 'nope')).toBe(false)
   })
 })
 

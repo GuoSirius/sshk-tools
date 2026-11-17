@@ -1,5 +1,5 @@
 /**
- * 上传去重指纹。
+ * 上传去重指纹与存储命名（自 rich-text upload-dedupe 2026-11-17 迁移泛化）。
  *
  * 重复选择的判定维度：目标位置（源|桶|目录）+ 源文件名（带后缀）+ 内容 SHA-256。
  * - 文件名纳入 key：同一份内容复制多份、改成不同名字，视为不同文件，都允许上传；
@@ -9,8 +9,10 @@
  * - Web Crypto 不可用时降级为「位置 + 文件名 + 大小」——装不上 hash 的环境也不至于完全不去重。
  */
 
+import type { FilePickerConflict, FilePickerNaming } from './types'
+
 export interface UploadFingerprintInput {
-  /** 目标位置：sourceId|bucket|目录（与图片库的 scope 一致） */
+  /** 目标位置：sourceId|bucket|目录（与弹框的 scope 一致） */
   scope: string
   name: string
   size: number
@@ -31,7 +33,7 @@ export function fingerprintKey(input: UploadFingerprintInput): string {
   return `${input.scope}${SEP}${input.name}${SEP}${content}`
 }
 
-/** 存储名里用的 hash 长度（hex 字符）：8 位 = 32bit，图片库量级碰撞可忽略，文件名也不至于太长 */
+/** 存储名里用的 hash 长度（hex 字符）：8 位 = 32bit，文件库量级碰撞可忽略，文件名也不至于太长 */
 const NAME_HASH_LEN = 8
 
 /**
@@ -45,13 +47,30 @@ export function contentName(name: string, hash: string): string {
   if (!hash) return name
   // 点开头的文件（.gitignore / .env / .env.local）靠【完整文件名】被工具识别，
   // 插入 hash（.gitignore-a1b2c3d4）会让识别失效——这类文件保持原名，不改名。
-  // 代价：同名不同内容的点文件仍会落在同一存储名上（覆盖），但这类文件本就不是图片上传的目标。
+  // 代价：同名不同内容的点文件仍会落在同一存储名上（覆盖），但这类文件本就极少作为上传目标。
   if (name.startsWith('.')) return name
   const dot = name.lastIndexOf('.')
   // 无后缀时整段当主名，避免生成 -hash. 的空后缀
   const base = dot > 0 ? name.slice(0, dot) : name
   const ext = dot > 0 ? name.slice(dot) : ''
   return `${base}-${hash.slice(0, NAME_HASH_LEN)}${ext}`
+}
+
+/**
+ * 按命名/冲突策略解析实际存储名：
+ * - naming=hash（默认）：内容寻址名，同名不同内容并存（现状逻辑）；
+ * - naming=original + conflict=hash：同名不同内容追加 -hash8，不覆盖已有文件；
+ * - naming=original + conflict=overwrite：保留原文件名，同名直接覆盖。
+ * 同名同内容在两种命名下都被上传前指纹去重拦下，不会产生重复请求。
+ */
+export function resolveUploadName(
+  name: string,
+  hash: string,
+  naming: FilePickerNaming = 'hash',
+  conflict: FilePickerConflict = 'hash',
+): string {
+  if (naming === 'original' && conflict === 'overwrite') return name
+  return contentName(name, hash)
 }
 
 /**

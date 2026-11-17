@@ -1,8 +1,8 @@
 import type {
-  RichTextImageLibrary,
-  RichTextImageSource,
-  RichTextImageTarget,
-} from '@sshk/rich-text'
+  FilePickerLibrary,
+  FilePickerSource,
+  FilePickerTarget,
+} from '@sshk/file-picker'
 import { host } from './host'
 
 /**
@@ -29,8 +29,8 @@ function readAsDataUrl(file: File): Promise<string> {
   })
 }
 
-export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary {
-  const requestOf = (source: RichTextImageSource, target?: RichTextImageTarget) => ({
+export function createTemplateImageLibrary(toolId: string): FilePickerLibrary {
+  const requestOf = (source: FilePickerSource, target?: FilePickerTarget) => ({
     toolId,
     targetType: source.type,
     profileId: source.type === 'local' ? undefined : source.id,
@@ -42,7 +42,7 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
     },
   })
   return {
-    async sources(): Promise<RichTextImageSource[]> {
+    async sources(): Promise<FilePickerSource[]> {
       const profiles = (await host.upload.profiles()) as ProfileOption[]
       return [
         { id: LOCAL_SOURCE_ID, type: 'local', label: '本地（应用默认上传目录）' },
@@ -69,6 +69,7 @@ export function createTemplateImageLibrary(toolId: string): RichTextImageLibrary
         ...requestOf(source, target ?? {}),
         limit: opts?.limit,
         cursor: opts?.cursor,
+        kind: opts?.kind,
       })) as {
         items: { url: string; key: string; name: string; size?: number; modified?: number }[]
         nextCursor?: string | null

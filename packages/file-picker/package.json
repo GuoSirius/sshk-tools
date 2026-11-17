@@ -1,0 +1,24 @@
+{
+  "name": "@sshk/file-picker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 通用文件选择弹框：图片/文件两模式，上传 + 从已有来源挑选，选中结果经 confirm 交给应用方处理",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

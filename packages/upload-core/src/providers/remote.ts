@@ -5,7 +5,7 @@ import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import { byNewestFirst, isImageFileName } from '../image-files'
 import { LIST_BUDGET_MS, MAX_DIRECTORIES, MAX_LIST_DEPTH, MAX_LIST_FILES } from '../directories'
-import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadProvider, UploadResult } from '../types'
+import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListQuery, UploadProvider, UploadResult } from '../types'
 
 /** T4：远程 profile（ftp | sftp 合并，protocol 区分）。连接信息由 main 进程从 settings/safeStorage 解析后注入 */
 export interface RemoteProfile {
@@ -41,27 +41,29 @@ export class RemoteUploadProvider implements UploadProvider {
   }
 
   /**
-   * 递归列出远端目录（含全部子目录）下的已有图片（新在前）；无 baseUrl 时回填 protocol://host URL。
-   * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的图。
+   * 递归列出远端目录（含全部子目录）下的已有文件（新在前）；无 baseUrl 时回填 protocol://host URL。
+   * 与云来源的前缀列举语义一致：选中父目录 = 看到自己 + 所有层级子目录的文件。
    * 单连接 BFS 下钻，带目录数/文件数/深度上限与时间预算（超时先返回已收集部分）。
    * cursor 为上一页返回的偏移量（字符串数字），大目录由调用方按页续拉（每次调用重新下钻）。
+   * kind=image（缺省）只列图片；kind=file 列全部文件。
    */
-  async listImages(ctx: UploadContext & { limit?: number; cursor?: string | null }): Promise<UploadedImagePage> {
+  async listImages(ctx: UploadListQuery): Promise<UploadedImagePage> {
     const dir = (ctx.overrides?.remotePath || this.profile.remoteDir || '/').replace(/\/+$/, '') || '/'
     const limit = ctx.limit ?? 500
     const offset = Math.max(0, Math.floor(Number(ctx.cursor) || 0))
+    const imageOnly = ctx.kind !== 'file'
     const all =
       this.profile.protocol === 'ftp'
-        ? await this.ftpListImages(dir)
-        : await this.sftpListImages(dir)
+        ? await this.ftpListImages(dir, imageOnly)
+        : await this.sftpListImages(dir, imageOnly)
     all.sort(byNewestFirst)
     const items = all.slice(offset, offset + limit)
     const nextCursor = offset + limit < all.length ? String(offset + limit) : null
     return { items, nextCursor }
   }
 
-  /** FTP 递归列图（单连接 BFS，带目录/文件/深度上限与时间预算） */
-  private async ftpListImages(root: string): Promise<UploadedImageInfo[]> {
+  /** FTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；imageOnly 时只收图片 */
+  private async ftpListImages(root: string, imageOnly: boolean): Promise<UploadedImageInfo[]> {
     const client = new FtpClient()
     try {
       await client.access({
@@ -88,7 +90,7 @@ export class RemoteUploadProvider implements UploadProvider {
               seen.add(full)
               queue.push({ dir: full, depth: cur.depth + 1 })
             }
-          } else if (isImageFileName(i.name) && out.length < MAX_LIST_FILES) {
+          } else if ((!imageOnly || isImageFileName(i.name)) && out.length < MAX_LIST_FILES) {
             out.push({
               url: this.urlFor(cur.dir, i.name),
               key: full,
@@ -105,8 +107,8 @@ export class RemoteUploadProvider implements UploadProvider {
     }
   }
 
-  /** SFTP 递归列图（单连接 BFS，带目录/文件/深度上限与时间预算） */
-  private sftpListImages(root: string): Promise<UploadedImageInfo[]> {
+  /** SFTP 递归列文件（单连接 BFS，带目录/文件/深度上限与时间预算）；imageOnly 时只收图片 */
+  private sftpListImages(root: string, imageOnly: boolean): Promise<UploadedImageInfo[]> {
     return new Promise<UploadedImageInfo[]>((resolve, reject) => {
       const conn = new SshClient()
       conn.on('ready', () => {
@@ -136,7 +138,7 @@ export class RemoteUploadProvider implements UploadProvider {
                     seen.add(full)
                     queue.push({ dir: full, depth: cur.depth + 1 })
                   }
-                } else if (isImageFileName(i.filename) && out.length < MAX_LIST_FILES) {
+                } else if ((!imageOnly || isImageFileName(i.filename)) && out.length < MAX_LIST_FILES) {
                   out.push({
                     url: this.urlFor(cur.dir, i.filename),
                     key: full,
