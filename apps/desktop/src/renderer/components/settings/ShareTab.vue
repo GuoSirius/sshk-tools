@@ -260,7 +260,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 </template>
 
 <style scoped>
-.share-tab { display: flex; flex-direction: column; gap: 14px; }
+/* 根容器 .share-tab 的多卡片间距在 theme.css 全局统一（.tools-tab 等同规则） */
 .share-status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .share-actions { justify-content: flex-start; gap: 12px; align-items: center; flex-wrap: wrap; }
 .autostart-row { margin-right: auto; }

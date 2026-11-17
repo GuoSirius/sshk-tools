@@ -6,10 +6,17 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Alias, Plugin } from 'vite'
+import { config as loadDotenv } from 'dotenv'
 import { collectBuiltinToolInfo, resolveBuiltinSelectionFromEnv } from './src/main/builtin-selection'
+import { envOff } from '../../packages/shared/src/env'
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const pkg = (rel: string): string => fileURLToPath(new URL(`../../${rel}`, import.meta.url))
+
+// 构建期加载仓库根 .env（真实环境变量优先，dotenv 默认不覆盖）：
+// SSHK_BUILTIN_TOOLS / SSHK_AUTO_UPDATE 等构建旋钮由此进入 process.env——
+// 此前只在主进程 env-load.ts 加载，pnpm dist 打包期读不到导致裁剪/禁更全部失效（2026-11-17 用户实测）。
+if (existsSync(join(ROOT, '.env'))) loadDotenv({ path: join(ROOT, '.env'), quiet: true })
 
 /** 构建期注入 git 短 commit（关于页「运行环境」展示）；非仓库环境回退 dev */
 function gitCommit(): string {
@@ -41,7 +48,13 @@ const BUILTIN = (() => {
   )
   return sel
 })()
-const BUILTIN_DEFINE = { __SSHK_BUILTIN_TOOLS__: JSON.stringify({ mode: BUILTIN.mode, ids: BUILTIN.ids }) }
+const BUILTIN_DEFINE = { __SSHK_BUILTIN_TOOLS__: JSON.stringify({ mode: BUILTIN.mode, ids: BUILTIN.ids, pulledIn: BUILTIN.pulledIn }) }
+
+/**
+ * 分发期固定旋钮：打包版没有 .env（env-load 静默跳过），运行时读不到构建时的
+ * SSHK_AUTO_UPDATE——构建期读一次并注入产物，SSHK_AUTO_UPDATE=0 打包后立即生效。
+ */
+const AUTO_UPDATE_DEFINE = { __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(envOff(process.env.SSHK_AUTO_UPDATE)) }
 
 /** 未选工具的所有模块替换为空导出：eager 清单/图标/懒加载页面/主进程入口都不进 bundle */
 function builtinStubPlugin(excluded: readonly string[]): Plugin {
@@ -109,7 +122,7 @@ export default defineConfig({
   main: {
     plugins: [builtinStubPlugin(BUILTIN.excluded), externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
-    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE },
+    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是
@@ -145,7 +158,7 @@ export default defineConfig({
     server: { host: true },
     plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS()],
     resolve: { alias: sshkAlias },
-    define: BUILTIN_DEFINE,
+    define: { ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
     build: {
       rollupOptions: {
         input: fileURLToPath(new URL('./index.html', import.meta.url)),

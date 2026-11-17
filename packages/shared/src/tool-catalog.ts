@@ -41,6 +41,8 @@ export interface ResolveCatalogInput {
   settingsToolIds: string[]
   /** 插件加载状态：loaded=false 只让该工具不可用 */
   pluginStatus: Record<string, ToolPluginStatus>
+  /** 构建裁剪依赖闭包拉入的工具（X5-A）：能力保留（可被依赖）但任何位置强制不可见 */
+  forcedHidden?: string[]
   hasAccessKey: boolean
 }
 
@@ -130,6 +132,9 @@ export function resolveToolCatalog(
   const byId = new Map(tools.map((tool) => [tool.id, tool]))
   const inDistribution = (id: string): boolean =>
     input.includeTools === null || input.includeTools.includes(id)
+  // X5-A（用户 2026-11-17 定稿语义）：依赖闭包拉入的工具忽略一切可见性配置，
+  // 任何位置（桌面/工具管理）都不展示；但 serviceable 保持 true，能力仍可被依赖。
+  const forcedHidden = new Set(input.forcedHidden ?? [])
 
   const states: ToolRuntimeState[] = tools.map((tool) => {
     const ov = input.overrides[tool.id] ?? {}
@@ -158,9 +163,12 @@ export function resolveToolCatalog(
     // 覆盖值优先；未覆盖时取清单 category + tags
     const overridden = splitCategories(ov.category)
     const categories = overridden.length > 0 ? overridden : toolCategories(tool)
-    // 两类四态：serviceable = 能力可用（依赖链按它传播）；visible/manageable 按形态分流
+    // 两类四态：serviceable = 能力可用（依赖链按它传播）；visible/manageable 按形态分流。
+    // X5-A 依赖闭包拉入（forcedHidden）：能力保留可被依赖，但任何位置不展示、不可管理。
     const visibility = tool.visibility ?? 'desktop'
     const desktopLike = visibility === 'managed' || visibility === 'desktop'
+    const isForcedHidden = forcedHidden.has(tool.id)
+    const displayReason = isForcedHidden ? '随依赖内建（依赖闭包），不单独展示' : reason
     const serviceable = !reason
     const state: ToolRuntimeState = {
       id: tool.id,
@@ -174,14 +182,14 @@ export function resolveToolCatalog(
       // 两形态归一：历史 tabs 归并入 single，只有 menu 才启用二级配置页
       configLayout: tool.configLayout === 'menu' ? 'menu' : 'single',
       enabled,
-      visible: desktopLike && serviceable,
-      manageable: desktopLike,
+      visible: desktopLike && serviceable && !isForcedHidden,
+      manageable: desktopLike && !isForcedHidden,
       serviceable,
       visibility,
       available,
       runtime: Boolean(tool.package),
       pluginError: plugin?.error,
-      reason,
+      reason: displayReason,
       warnings,
       dependsOn,
       requiredGrant: requiredGrant || undefined,

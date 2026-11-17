@@ -30,6 +30,9 @@ function builtinIncluded(id: string): boolean {
   return BUILTIN.mode === 'all' || (BUILTIN.ids ?? []).includes(id)
 }
 
+/** 依赖闭包拉入的工具（非用户显式选择）：清单保留（能力可被依赖），目录裁决层强制不可见 */
+export const PULLED_IN_TOOLS: string[] = BUILTIN.pulledIn ?? []
+
 export const MANIFESTS: ToolDescriptor[] = Object.entries(manifestModules).flatMap(([file, raw]) => {
   const manifest = raw as ToolDescriptor | null
   const dirId = toolIdOf(file)

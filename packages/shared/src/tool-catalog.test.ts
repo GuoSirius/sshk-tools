@@ -90,6 +90,22 @@ describe('工具插件清单（自包含 manifest）', () => {
     expect(result.orphans).toEqual([])
   })
 
+  it('X5-A：forcedHidden（依赖闭包拉入）工具任何位置不可见，但能力保留可被依赖', () => {
+    // 依赖链：badge 依赖 model-console；model-console 被「拉入」→ 强制不可见+不可管理，但 badge 保持可见
+    const result = resolveToolCatalog(MANIFESTS, baseInput({
+      dependsOn: { 'badge-studio': ['model-console'] },
+      forcedHidden: ['model-console'],
+    }))
+    const model = result.tools.find((tool) => tool.id === 'model-console')!
+    const badge = result.tools.find((tool) => tool.id === 'badge-studio')!
+    expect(model.visible).toBe(false)
+    expect(model.manageable).toBe(false)
+    expect(model.serviceable).toBe(true) // 能力保留：badge 的依赖链不受影响
+    expect(model.reason).toBe('随依赖内建（依赖闭包），不单独展示')
+    expect(badge.visible).toBe(true)
+    expect(badge.reason).toBeUndefined()
+  })
+
   it('禁用一个工具后其它工具仍完全可用（不报错、不隐藏、无警告）', () => {
     const result = resolveToolCatalog(MANIFESTS, baseInput({ enabled: { 'edm-studio': false } }))
     const edm = result.tools.find((tool) => tool.id === 'edm-studio')!

@@ -567,7 +567,7 @@ onMounted(async () => {
     </div>
 
     <footer class="status-bar">
-      <span v-if="isDev">v{{ version }}</span>
+      <span>v{{ version }}</span>
       <span class="app-spacer" />
       <span>{{ clockText }}</span>
       <span>就绪</span>

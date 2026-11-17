@@ -36,7 +36,7 @@ import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
 import { defaultConfigPath, listSnapshots, restoreSnapshot, clearSnapshots } from '@sshk/repository'
 import { loadToolPlugins, killUtilityTools } from './plugins'
-import { MANIFESTS, reloadManifestFile } from './discovery'
+import { MANIFESTS, reloadManifestFile, PULLED_IN_TOOLS } from './discovery'
 import { registerDevTools } from './dev-tools'
 import { UploadRuntime, type UploadListRequest, type UploadRequest, type UploadTestRequest } from './upload'
 import { FsRuntime } from './fs'
@@ -61,8 +61,10 @@ const isDev = !app.isPackaged
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
 const updateDevCheck = isDev && envOn(process.env.SSHK_UPDATE_DEV_CHECK)
 /** 分发包自动更新总开关：SSHK_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
- *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。 */
-const autoUpdateDisabled = envOff(process.env.SSHK_AUTO_UPDATE)
+ *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。
+ *  打包版没有 .env（env-load 静默跳过），所以构建期把 .env 的取值注入 __SSHK_AUTO_UPDATE_DISABLED__，
+ *  运行时真实环境变量仍可叠加覆盖（两者任一为 0 即禁用）。 */
+const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(process.env.SSHK_AUTO_UPDATE)
 if (updateDevCheck) {
   const fakeVersion = String(process.env.SSHK_UPDATE_DEV_VERSION ?? '').trim()
   if (fakeVersion) {
@@ -241,6 +243,8 @@ function buildCatalog(): ToolCatalogPayload {
     heldGrants,
     settingsToolIds: cfg.listToolIds(),
     pluginStatus,
+    // X5-A 依赖闭包拉入的工具：能力保留但任何位置强制不可见（用户 2026-11-17 定稿）
+    forcedHidden: PULLED_IN_TOOLS,
     hasAccessKey,
   })
 }
