@@ -54,4 +54,10 @@ withDefaults(defineProps<{ cols?: 2 | 3 }>(), { cols: 2 })
 .sshk-form-grid .combo { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
 .sshk-form-grid .combo > .el-input,
 .sshk-form-grid .combo > .el-select { flex: 1; min-width: 0; }
+/* combo 内的数字框：上面的 width:100% 会成为它的 flex-basis（约等于整行宽），
+   收缩全部落在 basis 最大的它身上，同排的 el-input（basis 0、min-width:0）
+   被挤成 0 宽——只剩 wrapper 溢出的一条圆角残边，看起来就像数字框左边
+   有一块补不齐的留白（用户 2026-11-17 截图，主机/端口组合）。
+   combo 内退回固定宽度（与 small 档 150px 一致），剩余宽度让给输入框 */
+.sshk-form-grid .combo > .el-input-number { width: 150px; flex: 0 1 auto; }
 </style>
