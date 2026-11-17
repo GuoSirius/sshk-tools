@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref, watch } from 'vue'
+import {computed, markRaw, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { DataLine, InfoFilled, Setting, Tools } from '@element-plus/icons-vue'
 import { ACCESS_GRANT, IPC_CHANNELS } from '@sshk/shared'
 import type { ThemeMode, ToolRuntimeState, InstallPreview, ToolCatalogPayload } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
@@ -62,10 +63,10 @@ async function installUpdate(): Promise<void> {
 
 /** 后期新增应用级菜单：只加一个分组 + 一个 section，不挤占顶部栏 */
 const groups = [
-  { id: 'general', label: '常规设置', hint: '主题、产物目录、启动行为与分享' },
-  { id: 'tools', label: '工具与权限', hint: '启用禁用、访问密钥、分发白名单、卡片信息' },
-  { id: 'system', label: '系统与数据', hint: '版本、数据目录、密钥与备份策略' },
-  { id: 'about', label: '关于应用', hint: '配置分层与扩展约定' },
+  { id: 'general', label: '常规设置', hint: '主题、产物目录、启动行为与分享', icon: markRaw(Setting) },
+  { id: 'tools', label: '工具与权限', hint: '启用禁用、访问密钥、分发白名单、卡片信息', icon: markRaw(Tools) },
+  { id: 'system', label: '系统与数据', hint: '版本、数据目录、密钥与备份策略', icon: markRaw(DataLine) },
+  { id: 'about', label: '关于应用', hint: '配置分层与扩展约定', icon: markRaw(InfoFilled) },
 ] as const
 const activeGroup = ref<string>(props.group ?? 'general')
 watch(() => props.group, (value) => { if (value) activeGroup.value = value })
@@ -611,7 +612,7 @@ async function cleanupOrphans(): Promise<void> {
           type="button"
           @click="activeGroup = group.id"
         >
-          <span class="nav-dot" />
+          <el-icon class="nav-icon"><component :is="group.icon" /></el-icon>
           <span>{{ group.label }}</span>
         </button>
         <div class="settings-nav-foot">
