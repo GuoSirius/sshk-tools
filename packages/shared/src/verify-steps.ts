@@ -161,11 +161,14 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S9', group: 'S', title: '撤销单条 → 仅该链失效', guide: '「路由管理」撤销一条 → 仅该链接失效，其它路由正常', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.4' },
   { id: 'S10', group: 'S', title: '穿越 .. → 404', guide: '在分享链接后拼 `/../../etc/passwd` → 返回 404，无法越出 root', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.2' },
   { id: 'S11', group: 'S', title: '端口被占 → 回落 + 告警', guide: '「监听端口」填一个被占用端口保存 → 服务回落到随机端口并告警，状态显示实际端口', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
-  { id: 'S12', group: 'S', title: 'IP 自动 / 下拉 / 手输三种生效', guide: '自动优选显示 10.x 优先；下拉选检测 IP 生成对应链接；手输未在网卡的地址给黄色提示但不拦截，新链接用手输 IP', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§四' },
+  { id: 'S12', group: 'S', title: 'IP 自动 / 下拉 / 手输三种生效', guide: '自动优选显示 10.x 优先；下拉选检测 IP 生成对应链接；手输合法 IPv4 生效，格式非法（如 abc/999.1.1.1）保存被拦截且不覆盖原值', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§四' },
   { id: 'S13', group: 'S', title: '分享密码 → 无 key 拒绝', guide: '带 password 创建分享 → 不带 ?key= 访问 403，带正确 key 可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
   { id: 'S14', group: 'S', title: '二维码扫码可开', guide: 'ShareDialog 链接旁二维码 → 手机扫码直达分享页（第三方 qrcode 包生成）', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
   { id: 'S15', group: 'S', title: '文件系统安全分享 → 可撤销有 TTL', guide: '上传管理本地通道行「安全分享」→ ShareDialog 生成可撤销/有 TTL 链接；裸外链「链接」按钮仍可用（两种并存）', entry: { type: 'route', target: 'upload-manager' }, relates: 'ShareHub/§六-C' },
   { id: 'S16', group: 'S', title: '停止并清空 → 状态文件删除', guide: '点「停止并清空」（二次确认）→ hub-state.json 删除、路由列表空；重启后无分享路由', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
+  { id: 'S17', group: 'S', title: '永久有效 → tag 改文案颜色、URL 不变', guide: 'ShareDialog 点「永久有效」→ 剩余时间 tag 变「永久有效」（warning 色），链接地址不变；重启应用后仍可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
+  { id: 'S18', group: 'S', title: '续期 TTL 累加 / 更新 TTL 重置', guide: '剩余约 48h 时点「续期 TTL」填 72 → 剩余约 120h（URL 不变）；点「更新 TTL」填 5 → 从当前重新计时为约 5h', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
+  { id: 'S19', group: 'S', title: 'TTL 数字框默认取应用设置、整数约束', guide: '设置默认时长改 12 → 打开分享弹框数字框显示 12；输入小数被取整；设置页端口/时长输入小数保存被拦截', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
 ]
 
 /** 步骤总数（页脚展示用） */

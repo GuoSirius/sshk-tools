@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ShareHub, ttlMinutesLeft, LEGACY_SHARE_STATE_FILES } from './index'
+import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 
 const dirs: string[] = []
 const hubs: ShareHub[] = []
@@ -173,5 +174,57 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect(ttlMinutesLeft(Date.now() + 3600_000)).toBeGreaterThanOrEqual(59)
     expect(LEGACY_SHARE_STATE_FILES).toContain('badge-share-state.json')
     expect(LEGACY_SHARE_STATE_FILES).toContain('edm-share-state.json')
+  })
+
+  it('永久有效（ttlHours=0）：expiresAt=哨兵、JSON 往返、重启 resume 后不失效', async () => {
+    const { hub, root, state } = makeHub()
+    await hub.start(0)
+    const t = await hub.create({ toolId: 't', label: '永久', root, ttlHours: 0 })
+    expect(hub.listRoutes()[0]?.ttlHours).toBe(0)
+    await hub.stop() // stop 内部 flushPersist 落盘
+    const saved = JSON.parse(readFileSync(state, 'utf8')) as { routes: { expiresAt: number }[] }
+    expect(saved.routes[0]?.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
+    const revived = new ShareHub(state)
+    hubs.push(revived)
+    await revived.start(0)
+    expect(revived.listRoutes()).toHaveLength(1)
+    expect(revived.listRoutes()[0]?.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
+    expect(t.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
+  })
+
+  it('renew：reset 从当前重算、extend 在当前到期上累加、永久路由累加仍永久，token 不变 URL 不变', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const t = await hub.create({ toolId: 't', label: 'x', root, ttlHours: 10 })
+    const expectUrl = t.urls[0]
+
+    const reset = await hub.renew(t.id, 5, 'reset')
+    expect(reset.token).toBe(t.token)
+    expect(reset.urls[0]).toBe(expectUrl)
+    expect(reset.expiresAt).toBeLessThanOrEqual(Date.now() + 5 * 3600_000 + 2000)
+    expect(reset.expiresAt).toBeGreaterThanOrEqual(Date.now() + 5 * 3600_000 - 2000)
+
+    const extended = await hub.renew(t.id, 3, 'extend')
+    expect(extended.token).toBe(t.token)
+    expect(extended.urls[0]).toBe(expectUrl)
+    // 累加基准是 reset 后的 expiresAt，误差容忍 2s
+    expect(extended.expiresAt).toBeGreaterThanOrEqual(reset.expiresAt + 3 * 3600_000 - 2000)
+    expect(extended.expiresAt).toBeLessThanOrEqual(reset.expiresAt + 3 * 3600_000 + 2000)
+
+    // 永久化后累加不应撤销永久
+    const permanent = await hub.renew(t.id, 0)
+    expect(permanent.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
+    const stillPermanent = await hub.renew(t.id, 2, 'extend')
+    expect(stillPermanent.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
+    expect(stillPermanent.urls[0]).toBe(expectUrl)
+  })
+
+  it('ttlHours 非法（负数/小数）回落默认 72，0 视为永久', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const neg = await hub.create({ toolId: 't', label: 'neg', root, ttlHours: -5 })
+    expect(hub.listRoutes().find((r) => r.id === neg.id)?.ttlHours).toBe(72)
+    const decimal = await hub.create({ toolId: 't', label: 'dec', root, ttlHours: 1.5 })
+    expect(hub.listRoutes().find((r) => r.id === decimal.id)?.ttlHours).toBe(72)
   })
 })

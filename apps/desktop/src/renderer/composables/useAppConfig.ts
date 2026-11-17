@@ -42,7 +42,7 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.sharePort = await num('app.shareHub.port', 0)
   appConfig.sharePreferredIp = (await str('app.shareHub.preferredIp', '')) === 'null' ? '' : await str('app.shareHub.preferredIp', '')
   const ttl = await num('app.shareHub.defaultTtlHours', 72)
-  appConfig.shareDefaultTtlHours = ttl > 0 ? Math.floor(ttl) : 72
+  appConfig.shareDefaultTtlHours = Number.isInteger(ttl) && ttl >= 0 ? ttl : 72
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
@@ -54,9 +54,9 @@ export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean
   const pairs: [string, unknown][] = group === 'share'
     ? [
         ['app.shareHub.autoStart', appConfig.shareAutoStart],
-        ['app.shareHub.port', Number(appConfig.sharePort) || 0],
+        ['app.shareHub.port', Number.isInteger(Number(appConfig.sharePort)) ? Number(appConfig.sharePort) : 0],
         ['app.shareHub.preferredIp', appConfig.sharePreferredIp.trim()],
-        ['app.shareHub.defaultTtlHours', Math.max(1, Math.floor(Number(appConfig.shareDefaultTtlHours) || 72))],
+        ['app.shareHub.defaultTtlHours', Number.isInteger(Number(appConfig.shareDefaultTtlHours)) && Number(appConfig.shareDefaultTtlHours) >= 0 ? Number(appConfig.shareDefaultTtlHours) : 72],
       ]
     : [
         ['app.outputDir', appConfig.outputDir.trim() || null],

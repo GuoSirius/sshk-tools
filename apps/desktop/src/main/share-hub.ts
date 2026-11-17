@@ -112,14 +112,14 @@ export function registerShareHubIpc(host: ShareHubHost): void {
     return hub.revoke(id)
   })
 
-  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number, toolId?: string) => {
+  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number, toolId?: string, mode?: 'reset' | 'extend') => {
     const caller = resolveToolId(toolId)
     if (caller && caller !== '*') {
       const route = hub.listRoutes().find((r) => r.id === id)
       if (!route) throw new Error('分享路由不存在')
       if (route.toolId !== caller) throw new Error('无权续期其它工具的分享路由')
     }
-    return hub.renew(id, ttlHours)
+    return hub.renew(id, ttlHours, mode)
   })
 
   handleOk(IPC_CHANNELS.shareHubStatus, (): HubStatus => hub.status())

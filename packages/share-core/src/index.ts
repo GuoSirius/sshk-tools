@@ -13,6 +13,17 @@ import type {
   ShareAccessLog,
   HubStatus,
 } from '@sshk/shared'
+import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+
+/** ttlHours 归一化为非负整数（0=永久），非法（负数/小数/NaN）回落默认值。 */
+function normalizeTtl(value: unknown): number {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_TTL_HOURS
+}
+/** 永久哨兵 → 到期时刻；有限时长 → now + hours。 */
+function expiresAtFor(ttlHours: number, now = Date.now()): number {
+  return ttlHours === 0 ? SHARE_PERMANENT_EXPIRES_AT : now + ttlHours * 3600_000
+}
 
 /** 局域网只读分享内核（plans/09 从零重写）：单端口、多路由、TTL 双保险、可撤销可续期。
  *  - 一个 HTTP server（0.0.0.0），路由表 Map<token, ShareRoute>，每条路由独立 root/TTL/口令/计数
@@ -158,8 +169,7 @@ export class ShareHub {
     const entry = String(input?.entry ?? '').replaceAll('\\', '/').replace(/^\/+/, '')
     if (entry) resolveSafe(root, entry)
 
-    const ttlHours = Number.isFinite(input.ttlHours) && Number(input.ttlHours) > 0
-      ? Number(input.ttlHours) : DEFAULT_TTL_HOURS
+    const ttlHours = normalizeTtl(input.ttlHours)
     const now = Date.now()
     const route: ShareRoute = {
       id: randomUUID(),
@@ -170,7 +180,7 @@ export class ShareHub {
       entry,
       ttlHours,
       createdAt: now,
-      expiresAt: now + ttlHours * 3600_000,
+      expiresAt: expiresAtFor(ttlHours, now),
       password: String(input.password ?? ''),
       hits: 0,
     }
@@ -188,13 +198,30 @@ export class ShareHub {
     return true
   }
 
-  /** 续期一条路由（重算 expiresAt），返回新 ticket。 */
-  async renew(idOrToken: string, ttlHours: number): Promise<ShareRouteTicket> {
+  /**
+   * 续期一条路由（复用 token，URL 不变），返回新 ticket。
+   * mode='reset'：从当前时刻重新计时 ttlHours（默认）；
+   * mode='extend'：在当前到期时刻上累加 ttlHours（永久路由累加仍为永久）；
+   * ttlHours=0：无论何种 mode 都设为永久有效。
+   */
+  async renew(idOrToken: string, ttlHours: number, mode: 'reset' | 'extend' = 'reset'): Promise<ShareRouteTicket> {
     const route = this.findBy(idOrToken)
     if (!route) throw new Error('分享路由不存在或已过期')
-    const hours = Number.isFinite(ttlHours) && ttlHours > 0 ? ttlHours : DEFAULT_TTL_HOURS
-    route.ttlHours = hours
-    route.expiresAt = Date.now() + hours * 3600_000
+    const hours = normalizeTtl(ttlHours)
+    if (hours === 0) {
+      route.ttlHours = 0
+      route.expiresAt = SHARE_PERMANENT_EXPIRES_AT
+    } else if (mode === 'extend') {
+      // 累加：永久路由保持永久（累加有限时长不应撤销永久授权）
+      if (route.expiresAt !== SHARE_PERMANENT_EXPIRES_AT) {
+        const base = Math.max(route.expiresAt, Date.now())
+        route.expiresAt = base + hours * 3600_000
+      }
+      route.ttlHours = hours
+    } else {
+      route.ttlHours = hours
+      route.expiresAt = expiresAtFor(hours)
+    }
     this.schedulePersist()
     return this.ticket(route)
   }

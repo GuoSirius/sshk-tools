@@ -360,8 +360,8 @@ const api = {
       invoke(IPC_CHANNELS.shareHubList, toolId),
     revoke: (id: string, toolId?: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.shareHubRevoke, id, toolId),
-    renew: (id: string, ttlHours: number, toolId?: string): Promise<import('@sshk/shared').ShareRouteTicket> =>
-      invoke(IPC_CHANNELS.shareHubRenew, id, ttlHours, toolId),
+    renew: (id: string, ttlHours: number, toolId?: string, mode?: 'reset' | 'extend'): Promise<import('@sshk/shared').ShareRouteTicket> =>
+      invoke(IPC_CHANNELS.shareHubRenew, id, ttlHours, toolId, mode),
     status: (): Promise<import('@sshk/shared').HubStatus> => invoke(IPC_CHANNELS.shareHubStatus),
   },
   /** 生命周期控制：仅宿主「分享服务」tab 可用 */

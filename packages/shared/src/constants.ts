@@ -61,3 +61,10 @@ export const ACCESS_KEY_SECRET_ID = 'app:accessKey'
 export const AUTO_TOOL_ICON = 'auto'
 /** 图标未配置 / 配置无效时回退的系统默认图标 key */
 export const DEFAULT_TOOL_ICON = 'default'
+
+/**
+ * 分享路由「永久有效」哨兵（plans/09，用户 2026-11-17 拍板 ttlHours=0 即永久）：
+ * 用安全整数上界作 expiresAt —— Date.now() 永不越过（不会误清理），
+ * 且 JSON.stringify 能精确往返（Infinity 会变 null 破坏 resume）。
+ */
+export const SHARE_PERMANENT_EXPIRES_AT = Number.MAX_SAFE_INTEGER

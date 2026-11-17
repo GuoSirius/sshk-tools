@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
- * 统一分享对话框（plans/09 · 工具接入零成本）：打开即复用有效链接/自动创建 → 二维码 → 复制 → 倒计时 → 续期/撤销/重新生成。
+ * 统一分享对话框（plans/09 · 工具接入零成本）：打开即复用有效链接/自动创建 → 二维码 → 复制 → 倒计时 → TTL 管理/撤销/重新生成。
  * 工具只需 <ShareDialog v-model="open" :tool-id="..." :label="..." :default-root="..." />，
  * 底层统一走宿主 ShareHub（@sshk/ui-kit callHostApi 兜底），工具不自建服务、不占端口。
+ * TTL 三按钮（用户 2026-11-17 拍板）：续期 TTL=在当前到期上累加；更新 TTL=从当前重新计时；永久有效=ttlHours 0。三者均复用 token，URL 不变。
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 import { callHostApi, type HostApiSpec } from '../host-api'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
 const props = defineProps<{
@@ -21,8 +22,6 @@ const props = defineProps<{
   defaultRoot: string
   /** 入口相对路径（缺省 = 目录列表页） */
   defaultEntry?: string
-  /** 有效期小时，默认 72 */
-  defaultTtlHours?: number
   /** 可选访问口令 */
   password?: string
 }>()
@@ -33,7 +32,7 @@ const SPEC = {
   create: { group: 'shareHub', method: 'create', channel: IPC_CHANNELS.shareHubCreate, label: '创建分享' },
   list: { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' },
   revoke: { group: 'shareHub', method: 'revoke', channel: IPC_CHANNELS.shareHubRevoke, label: '撤销分享' },
-  renew: { group: 'shareHub', method: 'renew', channel: IPC_CHANNELS.shareHubRenew, label: '续期分享' },
+  renew: { group: 'shareHub', method: 'renew', channel: IPC_CHANNELS.shareHubRenew, label: '更新分享时长' },
 } satisfies Record<string, HostApiSpec>
 
 const busy = ref(false)
@@ -41,6 +40,8 @@ const ticket = ref<ShareRouteTicket | null>(null)
 const activeUrlIndex = ref(0)
 const nowTick = ref(Date.now())
 const loadError = ref('')
+/** 数字框时长：默认读应用设置 app.shareHub.defaultTtlHours，用户可自行调整 */
+const ttlHours = ref(72)
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
 /** 同一分享目标跨重启复用链接；key 只对四元组取短哈希，不把路径/中文直接塞进 localStorage 键 */
@@ -84,18 +85,20 @@ watch(activeUrl, async (url) => {
     })
   } catch { qrDataUrl.value = '' }
 }, { immediate: true })
+const permanent = computed(() => ticket.value !== null && ticket.value.expiresAt === SHARE_PERMANENT_EXPIRES_AT)
 const minutesLeft = computed(() => {
   if (!ticket.value) return 0
+  if (permanent.value) return 0
   return Math.max(0, Math.round((ticket.value.expiresAt - nowTick.value) / 60000))
 })
-const expired = computed(() => ticket.value !== null && minutesLeft.value <= 0)
+const expired = computed(() => ticket.value !== null && !permanent.value && minutesLeft.value <= 0)
 
+/** 读取应用设置的默认时长；非法回落 72。0 = 永久有效 */
 async function resolveTtlHours(): Promise<number> {
-  if (props.defaultTtlHours !== undefined) return Math.max(1, Math.floor(props.defaultTtlHours))
   try {
     const raw = await callHostApi<unknown>(SPEC.configGet, 'app.shareHub.defaultTtlHours')
     const n = Number(raw)
-    if (Number.isFinite(n) && n > 0) return Math.floor(n)
+    if (Number.isInteger(n) && n >= 0) return n
   } catch { /* 配置不可读时用默认值 */ }
   return 72
 }
@@ -106,14 +109,14 @@ async function createTicket(): Promise<void> {
     label: props.label,
     root: props.defaultRoot,
     entry: props.defaultEntry ?? '',
-    ttlHours: await resolveTtlHours(),
+    ttlHours: ttlHours.value,
     password: props.password,
   })
   ticket.value = t
   saveTicket(t)
   activeUrlIndex.value = 0
   if (t.urls[0]) await copyUrl(t.urls[0])
-  ElMessage.success('分享已创建，链接已复制')
+  ElMessage.success(permanent.value ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
 }
 
 /** 打开即准备链接：有效期 + 路由列表双重校验，有效则复用，失效/撤销/未创建才自动创建 */
@@ -122,12 +125,13 @@ async function ensureTicket(): Promise<void> {
   busy.value = true
   loadError.value = ''
   try {
+    ttlHours.value = await resolveTtlHours()
     const saved = readTicket()
-    if (saved && saved.expiresAt > Date.now()) {
+    if (saved && (saved.expiresAt === SHARE_PERMANENT_EXPIRES_AT || saved.expiresAt > Date.now())) {
       let alive = true
       try {
         const routes = await callHostApi<ShareRouteInfo[]>(SPEC.list, props.toolId)
-        alive = routes.some((r) => r.id === saved.id && r.expiresAt > Date.now())
+        alive = routes.some((r) => r.id === saved.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
       } catch { /* 校验接口失败时信任本地未过期记录 */ }
       if (alive) { ticket.value = saved; return }
     }
@@ -174,13 +178,23 @@ async function copyUrl(url?: string): Promise<void> {
   } catch { /* 剪贴板不可用时用户可点首行「复制」 */ }
 }
 
-async function renew(): Promise<void> {
+/** TTL 三操作统一入口：均复用 token，URL 不变 */
+async function applyTtl(mode: 'extend' | 'reset' | 'permanent'): Promise<void> {
   if (!ticket.value) return
+  const hours = mode === 'permanent' ? 0 : ttlHours.value
+  if (mode !== 'permanent' && (!Number.isInteger(hours) || hours < 1)) {
+    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  }
   busy.value = true
   try {
-    ticket.value = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, await resolveTtlHours(), props.toolId)
-    saveTicket(ticket.value)
-    ElMessage.success('已续期，新链接已刷新')
+    const id = ticket.value.id
+    const next = await callHostApi<ShareRouteTicket>(SPEC.renew, id, hours, props.toolId, mode === 'reset' ? 'reset' : 'extend')
+    ticket.value = next
+    saveTicket(next)
+    const msg = mode === 'permanent' ? '已设为永久有效，链接不变'
+      : mode === 'extend' ? `已累加 ${hours} 小时，链接不变`
+      : `已更新为 ${hours} 小时（从当前重新计时），链接不变`
+    ElMessage.success(msg)
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
 }
@@ -245,6 +259,13 @@ watch(() => props.open, (open) => {
           </el-select>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
         </div>
+        <div class="share-ttl-row">
+          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" controls-position="right" class="ttl-input" />
+          <span class="ttl-unit">小时</span>
+          <el-button type="primary" size="small" :loading="busy" :disabled="permanent" @click="applyTtl('extend')">续期 TTL</el-button>
+          <el-button type="warning" size="small" plain :loading="busy" @click="applyTtl('reset')">更新 TTL</el-button>
+          <el-button type="success" size="small" plain :loading="busy" :disabled="permanent" @click="applyTtl('permanent')">永久有效</el-button>
+        </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
           <div class="share-qr-tip">
@@ -253,7 +274,8 @@ watch(() => props.open, (open) => {
           </div>
         </div>
         <div class="share-expire-row">
-          <el-tag :type="expired ? 'danger' : 'success'" effect="dark" size="small">
+          <el-tag v-if="permanent" type="warning" effect="dark" size="small">永久有效</el-tag>
+          <el-tag v-else :type="expired ? 'danger' : 'success'" effect="dark" size="small">
             {{ expired ? '已过期' : `剩余约 ${minutesLeft} 分钟` }}
           </el-tag>
         </div>
@@ -267,7 +289,6 @@ watch(() => props.open, (open) => {
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
-        <el-button type="primary" size="small" :loading="busy" @click="renew">续期</el-button>
         <el-button type="danger" size="small" plain :loading="busy" @click="revoke">撤销分享</el-button>
         <el-button type="warning" size="small" :loading="busy" @click="regenerate">重新生成</el-button>
         <el-button size="small" @click="close">关闭</el-button>
@@ -282,6 +303,9 @@ watch(() => props.open, (open) => {
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }
+.share-ttl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--el-border-color-lighter); border-bottom: 1px solid var(--el-border-color-lighter); }
+.share-ttl-row .ttl-input { width: 110px; flex: none; }
+.share-ttl-row .ttl-unit { font-size: 12px; opacity: 0.7; margin-right: 4px; }
 .share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 14px; }
 .share-qr { flex: none; width: 132px; height: 132px; border: 1px solid var(--el-border-color); border-radius: 6px; overflow: hidden; background: #fff; }
 .share-qr :deep(svg) { width: 100%; height: 100%; display: block; }
