@@ -22,6 +22,8 @@ export interface ConfigPreset {
   exportedAt: string
   llm?: { providers: unknown[]; activeProviderId: string | null }
   upload?: { remote: UploadGlobalConfig['remote']; cloud: UploadGlobalConfig['cloud']; validation: UploadGlobalConfig['validation'] }
+  /** 仅「含密钥导出」时存在：明文密钥段，导入时写回 safeStorage（默认导出绝不带此段） */
+  credentials?: PresetCredentials
 }
 
 /** 导入结果计数 */
@@ -34,6 +36,24 @@ export interface PresetImportResult {
 export interface PresetConfigStore {
   get(key: string): unknown
   set(key: string, value: unknown): void
+}
+
+/**
+ * 密钥存取投影（用户 2026-11-17：导出开关控制是否携带密钥）。
+ * 密钥在 safeStorage 而非 config，导出/导入需经此投影读写；字段名刻意避开敏感正则关键词，
+ * 使 credentials 段能安全通过 stripSensitiveDeep（若用 apiKey/secret 会在导入侧被误剔）。
+ */
+export interface PresetSecretStore {
+  getProviderKey(providerId: string): string
+  getUploadKey(profileId: string): string
+  setProviderKey(providerId: string, key: string): void
+  setUploadKey(profileId: string, key: string): void
+}
+
+/** 预设里的密钥段（字段名避开 apiKey/secret/token 等敏感正则，避免被脱敏误剔） */
+export interface PresetCredentials {
+  providers?: { id: string; key: string }[]
+  uploads?: { id: string; key: string }[]
 }
 
 /** 深拷贝并剔除敏感键；返回剔除的键路径列表（空数组 = 无敏感键，正常） */
@@ -67,12 +87,17 @@ function validProvider(p: unknown): boolean {
     && typeof r['model'] === 'string'
 }
 
-/** 组装预设（不含任何密钥；本机 local.defaultDir 不导出；结构非法的 Provider 条目不进预设） */
-export function buildPreset(cfg: PresetConfigStore): ConfigPreset {
+/**
+ * 组装预设（本机 local.defaultDir 不导出；结构非法的 Provider 条目不进预设）。
+ * - includeSecrets=false（默认）：密钥字段强剔除，预设绝不含明文（原有脱敏红线不变）；
+ * - includeSecrets=true 且提供 secretStore：额外附 credentials 段（明文密钥），供可信设备间完整迁移。
+ */
+export function buildPreset(cfg: PresetConfigStore, secretStore?: PresetSecretStore, includeSecrets = false): ConfigPreset {
   const rawProviders = Array.isArray(cfg.get('app.llm.providers')) ? (cfg.get('app.llm.providers') as unknown[]) : []
+  const validProviders = rawProviders.filter(validProvider)
   const { clean, removed } = stripSensitiveDeep({
     llm: {
-      providers: rawProviders.filter(validProvider),
+      providers: validProviders,
       activeProviderId: cfg.get('app.llm.activeProviderId') ?? null,
     },
     upload: normalizeUploadConfig(cfg.get('app.upload')),
@@ -91,21 +116,39 @@ export function buildPreset(cfg: PresetConfigStore): ConfigPreset {
   if (upload) {
     preset.upload = { remote: upload.remote, cloud: upload.cloud, validation: upload.validation }
   }
+  // 含密钥导出：从 safeStorage 投影读取，按 providerId / profileId 组装 credentials 段
+  if (includeSecrets && secretStore) {
+    const providers = validProviders
+      .map((p) => ({ id: (p as { _id: string })._id, key: secretStore.getProviderKey((p as { _id: string })._id) }))
+      .filter((x) => Boolean(x.key))
+    const keysOfUpload = [...(upload?.remote.profiles ?? []), ...(upload?.cloud.profiles ?? [])]
+      .map((p) => ({ id: p.id, key: secretStore.getUploadKey(p.id) }))
+      .filter((x) => Boolean(x.key))
+    preset.credentials = {
+      ...(providers.length ? { providers } : {}),
+      ...(keysOfUpload.length ? { uploads: keysOfUpload } : {}),
+    }
+    logger.warn('preset', `含密钥导出：Provider ${providers.length} / 上传 Profile ${keysOfUpload.length} 条明文密钥写入预设，请妥善保管该文件`)
+  }
   return preset
 }
 
-/** 合并预设到当前配置（按 id 覆盖/追加；返回计数）。非法结构直接抛错（H1：调用方 handleOk 包装） */
-export function mergePreset(cfg: PresetConfigStore, raw: unknown): PresetImportResult {
+/** 合并预设到当前配置（按 id 覆盖/追加；返回计数）。非法结构直接抛错（H1：调用方 handleOk 包装）
+ *  secretStore 可选：提供时，预设里的 credentials 段（含密钥导出才有）会写回 safeStorage。 */
+export function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: PresetSecretStore): PresetImportResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('预设文件格式不正确')
   const preset = raw as Record<string, unknown>
   if (preset['kind'] !== PRESET_KIND || typeof preset['version'] !== 'number') {
     throw new Error('不是 sshk-tools 配置预设文件（kind/version 不匹配）')
   }
+  // credentials 段先摘出（字段名避开敏感正则，stripSensitiveDeep 不会剔它），避免被写进配置
+  const rawCred = preset['credentials'] as PresetCredentials | undefined
   const { clean, removed } = stripSensitiveDeep(preset)
   if (removed.length > 0) {
     logger.warn('preset', `导入预设时剔除敏感字段：${removed.join('、')}`)
   }
   const data = clean as Record<string, unknown>
+  delete data['credentials']
   let providersMerged = 0
   let uploadProfilesMerged = 0
 
@@ -161,25 +204,59 @@ export function mergePreset(cfg: PresetConfigStore, raw: unknown): PresetImportR
     cfg.set('app.upload', current)
   }
 
+  // 含密钥预设：把 credentials 段写回 safeStorage（仅写入本预设确实合并进来的 id，避免陈旧密钥覆盖）
+  if (rawCred && secretStore) {
+    let keysRestored = 0
+    const appliedProviderIds = new Set((data['llm'] as { providers?: { _id: string }[] } | undefined)?.providers?.map((p) => p._id) ?? [])
+    for (const c of rawCred.providers ?? []) {
+      if (!c || typeof c.id !== 'string' || typeof c.key !== 'string' || !c.key) continue
+      if (!appliedProviderIds.has(c.id)) continue
+      secretStore.setProviderKey(c.id, c.key)
+      keysRestored++
+    }
+    const appliedUploadIds = new Set([
+      ...(presetUploadSafeIds(preset)),
+    ])
+    for (const c of rawCred.uploads ?? []) {
+      if (!c || typeof c.id !== 'string' || typeof c.key !== 'string' || !c.key) continue
+      if (!appliedUploadIds.has(c.id)) continue
+      secretStore.setUploadKey(c.id, c.key)
+      keysRestored++
+    }
+    if (keysRestored > 0) logger.warn('preset', `含密钥预设导入：已写回 ${keysRestored} 条明文密钥到 safeStorage`)
+  }
+
   logger.info('preset', `预设导入完成：Provider ${providersMerged} / 上传 Profile ${uploadProfilesMerged}`)
   return { providersMerged, uploadProfilesMerged }
 }
 
+/** 从原始预设中取合法上传 profile id（用于校验 credentials 写回范围，防止陈旧密钥覆盖） */
+function presetUploadSafeIds(preset: Record<string, unknown>): string[] {
+  const upload = preset['upload'] as { remote?: { profiles?: { id: string }[] }; cloud?: { profiles?: { id: string }[] } } | undefined
+  return [...(upload?.remote?.profiles ?? []), ...(upload?.cloud?.profiles ?? [])].map((p) => p.id).filter(Boolean)
+}
+
 /** 导出预设到 .json（路径必须来自用户保存对话框） */
-export function exportPreset(cfg: PresetConfigStore, outPath: string): { file: string; providers: number; uploadProfiles: number } {
+export function exportPreset(
+  cfg: PresetConfigStore,
+  outPath: string,
+  secretStore?: PresetSecretStore,
+  includeSecrets = false,
+): { file: string; providers: number; uploadProfiles: number; secrets: number } {
   const target = String(outPath ?? '')
   if (!/\.json$/i.test(target)) throw new Error('保存路径必须是 .json')
-  const preset = buildPreset(cfg)
+  const preset = buildPreset(cfg, secretStore, includeSecrets)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify(preset, null, 2), 'utf8')
   const providers = preset.llm?.providers.length ?? 0
   const uploadProfiles = (preset.upload?.remote.profiles.length ?? 0) + (preset.upload?.cloud.profiles.length ?? 0)
-  logger.info('preset', `预设已导出：${target}（Provider ${providers} / 上传 Profile ${uploadProfiles}）`)
-  return { file: target, providers, uploadProfiles }
+  const secrets = (preset.credentials?.providers?.length ?? 0) + (preset.credentials?.uploads?.length ?? 0)
+  logger.info('preset', `预设已导出：${target}（Provider ${providers} / 上传 Profile ${uploadProfiles}${secrets ? ` / 密钥 ${secrets}` : ''}）`)
+  return { file: target, providers, uploadProfiles, secrets }
 }
 
 /** 从 .json 导入预设（路径必须来自用户文件选择对话框，与 backup.import 同范式） */
-export function importPreset(cfg: PresetConfigStore, filePath: string): PresetImportResult {
+export function importPreset(cfg: PresetConfigStore, filePath: string, secretStore?: PresetSecretStore): PresetImportResult {
   const source = String(filePath ?? '')
   if (!/\.json$/i.test(source)) throw new Error('请选择 .json 预设文件')
   let raw: unknown
@@ -188,5 +265,5 @@ export function importPreset(cfg: PresetConfigStore, filePath: string): PresetIm
   } catch {
     throw new Error('预设文件不是合法 JSON')
   }
-  return mergePreset(cfg, raw)
+  return mergePreset(cfg, raw, secretStore)
 }

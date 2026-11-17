@@ -292,18 +292,30 @@ function healthStateTag(state: ToolHealthRow['state']): 'success' | 'warning' | 
   return 'danger'
 }
 
-// ── N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并，密钥不随预设走） ──
+// ── N3 配置预设分享：导出（默认脱敏）/ 导入（按 id 合并，含密钥时写回 safeStorage） ──
 const PRESET_EXPORT_SPEC: HostApiSpec = { group: 'presets', method: 'export', channel: IPC_CHANNELS.presetExport, label: '配置预设导出' }
 const PRESET_IMPORT_SPEC: HostApiSpec = { group: 'presets', method: 'import', channel: IPC_CHANNELS.presetImport, label: '配置预设导入' }
+/** 导出是否携带明文密钥（默认关；含密钥导出为敏感操作，需二次确认） */
+const presetIncludeSecrets = ref(false)
 async function exportPresetFile(): Promise<void> {
+  if (presetIncludeSecrets.value) {
+    try {
+      await ElMessageBox.confirm(
+        '「包含密钥」已开启：导出的 JSON 将含有模型 API Key 与上传密钥明文。任何拿到该文件的人都能直接使用你的密钥，请仅用于可信设备间迁移并妥善保管。确定继续吗？',
+        '敏感操作确认',
+        { type: 'warning', confirmButtonText: '确认包含密钥导出', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+      )
+    } catch { return }
+  }
   const save = await window.api.os.pickSave({
-    fileName: `sshk-preset-${new Date().toLocaleDateString('sv-SE')}.json`,
+    fileName: `sshk-preset-${new Date().toLocaleDateString('sv-SE')}${presetIncludeSecrets.value ? '-含密钥' : ''}.json`,
     extensions: ['json'],
   })
   if (!save) return
   try {
-    const r = await callHostApi<{ file: string; providers: number; uploadProfiles: number }>(PRESET_EXPORT_SPEC, save)
-    ElMessage.success(`预设已导出：Provider ${r.providers} / 上传 Profile ${r.uploadProfiles}`)
+    const r = await callHostApi<{ file: string; providers: number; uploadProfiles: number; secrets: number }>(
+      PRESET_EXPORT_SPEC, save, presetIncludeSecrets.value)
+    ElMessage.success(`预设已导出：Provider ${r.providers} / 上传 Profile ${r.uploadProfiles}${r.secrets ? ` / 密钥 ${r.secrets} 条（明文，请妥善保管）` : ''}`)
   } catch (err) {
     ElMessage.error(`导出失败：${(err as Error).message}`)
   }
@@ -917,6 +929,16 @@ async function cleanupOrphans(): Promise<void> {
 
             <section class="settings-card">
               <div class="card-title">配置预设</div>
+              <div class="switch-row">
+                <span class="switch-label">
+                  包含密钥
+                  <el-tooltip content="开启后，导出预设会携带模型 API Key 与上传密钥明文，用于可信设备间完整迁移。默认关闭（只导出配置、不含密钥）。含密钥文件请妥善保管，导入会自动写回本机密钥库。" placement="top">
+                    <span class="tip-icon">?</span>
+                  </el-tooltip>
+                </span>
+                <el-switch v-model="presetIncludeSecrets" size="small" />
+                <span v-if="presetIncludeSecrets" class="hint danger-text">当前将导出明文密钥，请仅用于可信设备</span>
+              </div>
               <div class="kv-line">
                 <span>导出 / 导入</span>
                 <div class="btn-group">
@@ -924,33 +946,7 @@ async function cleanupOrphans(): Promise<void> {
                   <el-button size="small" @click="importPresetFile">导入预设</el-button>
                 </div>
               </div>
-              <div class="hint">导出模型 Provider 与上传 Profile 为 JSON 预设（密钥字段强校验剔除、本机默认目录不带入）；导入按 id 合并（同名覆盖、新增追加），密钥需在对端各自重新配置。</div>
-            </section>
-
-            <section class="settings-card">
-              <div class="card-title">
-                回滚快照
-                <el-switch v-model="cfg.outputSnapshot" size="small" @change="saveSnapshotSwitch" />
-              </div>
-              <div class="hint">开启后（默认关，D19 覆盖行为不变）：badge / EDM 重新生成产物前自动把旧文件留一份快照（每文件最近 1 份，总量上限 50MB 自动清最旧）。恢复会覆盖当前产物。</div>
-              <div v-for="s in snapshots" :key="s.id" class="kv-line">
-                <span class="snap-name">{{ s.toolId }} · {{ s.rel }}</span>
-                <span class="hint">{{ (s.sizeBytes / 1024).toFixed(1) }} KB · {{ snapshotTime(s.time) }}</span>
-                <el-button size="small" text type="primary" @click="restoreSnapshotEntry(s)">恢复</el-button>
-              </div>
-              <div v-if="snapshots.length === 0" class="kv-line"><span class="hint">暂无快照（开启开关后重新生成产物即产生）</span></div>
-              <div v-if="snapshots.length" class="card-actions">
-                <el-button size="small" type="danger" plain @click="clearSnapshotAll">清空快照</el-button>
-              </div>
-            </section>
-
-            <section class="settings-card">
-              <div class="card-title">诊断与反馈</div>
-              <div class="kv-line">
-                <span>一键诊断</span>
-                <el-button size="small" type="primary" :loading="diagLoading" @click="openDiagnosis">生成诊断报告</el-button>
-              </div>
-              <div class="hint">报障时生成 zip 发给开发者即可：report.md（版本 / env 变量名 / 密钥布尔 / 工具快照 / 产物占用）+ 近 3 天完整日志。值级脱敏：env 只列名、密钥只出布尔，生成前可预览确认；全程本机完成，不上传不联网。</div>
+              <div class="hint">导出模型 Provider 与上传 Profile 为 JSON 预设；默认剔除密钥、本机默认目录不带入。导入按 id 合并（同名覆盖、新增追加），含密钥预设导入时自动写回密钥库。</div>
             </section>
 
             <section class="settings-card">
@@ -988,6 +984,34 @@ async function cleanupOrphans(): Promise<void> {
               </el-dialog>
               <div class="kv-line"><span class="hint">未签名包以 utility 沙箱安装；main 权限需要有效签名与显式信任</span></div>
             </section>
+
+            <section class="settings-card">
+              <div class="card-title">
+                回滚快照
+                <el-switch v-model="cfg.outputSnapshot" size="small" @change="saveSnapshotSwitch" />
+              </div>
+              <div class="hint">开启后（默认关，D19 覆盖行为不变）：badge / EDM 重新生成产物前自动把旧文件留一份快照（每文件最近 1 份，总量上限 50MB 自动清最旧）。恢复会覆盖当前产物。</div>
+              <div v-for="s in snapshots" :key="s.id" class="kv-line">
+                <span class="snap-name">{{ s.toolId }} · {{ s.rel }}</span>
+                <span class="hint">{{ (s.sizeBytes / 1024).toFixed(1) }} KB · {{ snapshotTime(s.time) }}</span>
+                <el-button size="small" text type="primary" @click="restoreSnapshotEntry(s)">恢复</el-button>
+              </div>
+              <div v-if="snapshots.length === 0" class="kv-line"><span class="hint">暂无快照（开启开关后重新生成产物即产生）</span></div>
+              <div v-if="snapshots.length" class="card-actions">
+                <el-button size="small" type="danger" plain @click="clearSnapshotAll">清空快照</el-button>
+              </div>
+            </section>
+
+            <section class="settings-card">
+              <div class="card-title">诊断与反馈</div>
+              <div class="kv-line">
+                <span>一键诊断</span>
+                <el-button size="small" type="primary" :loading="diagLoading" @click="openDiagnosis">生成诊断报告</el-button>
+              </div>
+              <div class="hint">报障时生成 zip 发给开发者即可：report.md（版本 / env 变量名 / 密钥布尔 / 工具快照 / 产物占用）+ 近 3 天完整日志。值级脱敏：env 只列名、密钥只出布尔，生成前可预览确认；全程本机完成，不上传不联网。</div>
+            </section>
+
+
           </template>
 
           <!-- 关于 -->
@@ -1077,6 +1101,14 @@ async function cleanupOrphans(): Promise<void> {
 </template>
 
 <style scoped>
+/* 预设「包含密钥」开关：长说明进 tooltip，开启后红色警示 */
+.tip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px;
+  border: 1px solid var(--el-text-color-placeholder); border-radius: 50%;
+  font-size: 10px; line-height: 1; color: var(--el-text-color-placeholder); cursor: help;
+}
+.danger-text { color: var(--el-color-danger); }
 /* 穿插⑦-2：日志行标签不换行、摘要单行省略（完整目录 tooltip 悬浮） */
 .kv-label { flex: none; white-space: nowrap; }
 .log-summary { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

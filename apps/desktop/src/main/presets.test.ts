@@ -1,9 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { buildPreset, mergePreset, stripSensitiveDeep, type PresetConfigStore } from './presets'
+import { buildPreset, mergePreset, stripSensitiveDeep, type PresetConfigStore, type PresetSecretStore } from './presets'
 
 function store(initial: Record<string, unknown> = {}): PresetConfigStore & { data: Record<string, unknown> } {
   const data: Record<string, unknown> = { ...initial }
   return { data, get: (k) => data[k], set: (k, v) => { data[k] = v } }
+}
+function secretStore(): PresetSecretStore & { written: Record<string, string> } {
+  const source: Record<string, string> = { p1: 'sk-provider', r1: 'ftp-pass', c1: 'oss-secret' }
+  const written: Record<string, string> = {}
+  return {
+    written,
+    getProviderKey: (id) => source[id] ?? '',
+    getUploadKey: (id) => source[id] ?? '',
+    setProviderKey: (id, key) => { written[id] = key },
+    setUploadKey: (id, key) => { written[id] = key },
+  }
+}
+const presetCfg = {
+  'app.llm.providers': [{ _id: 'p1', name: 'A', baseURL: 'https://api.example.com/v1', model: 'm' }],
+  'app.llm.activeProviderId': 'p1',
+  'app.upload': {
+    local: { defaultDir: 'D:/only-mine' },
+    remote: { profiles: [{ id: 'r1', name: 'FTP', protocol: 'ftp', host: 'h', username: 'u' }], defaultId: 'r1' },
+    cloud: { profiles: [{ id: 'c1', name: 'OSS', provider: 'aliyun-oss', region: 'r', bucket: 'b', accessKeyId: 'AK' }], defaultId: 'c1' },
+    validation: { accept: [], maxSize: 0 },
+  },
 }
 
 describe('stripSensitiveDeep（N3 脱敏）', () => {
@@ -116,5 +137,38 @@ describe('mergePreset（N3 导入）', () => {
     const providers = cfg.data['app.llm.providers'] as Record<string, unknown>[]
     expect(providers[0]).not.toHaveProperty('apiKey')
     expect(JSON.stringify(cfg.data)).not.toContain('sk-leak')
+  })
+})
+
+describe('含密钥导出/导入（用户 2026-11-17 开关）', () => {
+  it('默认导出不带 credentials；includeSecrets 才附明文密钥', () => {
+    const cfg = store(presetCfg)
+    const sec = secretStore()
+    const plain = buildPreset(cfg, sec, false)
+    expect(plain.credentials).toBeUndefined()
+    const withSecrets = buildPreset(cfg, sec, true)
+    expect(withSecrets.credentials?.providers).toEqual([{ id: 'p1', key: 'sk-provider' }])
+    expect(withSecrets.credentials?.uploads).toEqual([
+      { id: 'r1', key: 'ftp-pass' },
+      { id: 'c1', key: 'oss-secret' },
+    ])
+    // credentials 字段名刻意避开脱敏正则，stripSensitiveDeep 不会误剔
+    expect(stripSensitiveDeep(withSecrets).removed).toEqual([])
+  })
+
+  it('含密钥导入写回 safeStorage，且不把 credentials 段污染进配置', () => {
+    const cfg = store({})
+    const sec = secretStore()
+    const preset = buildPreset(store(presetCfg), sec, true)
+    mergePreset(cfg, preset, sec)
+    expect(sec.written).toEqual({ p1: 'sk-provider', r1: 'ftp-pass', c1: 'oss-secret' })
+    expect(cfg.data).not.toHaveProperty('credentials')
+  })
+
+  it('未传 secretStore 时 credentials 段被忽略，不写任何密钥（兼容旧调用）', () => {
+    const cfg = store({})
+    const preset = buildPreset(store(presetCfg), secretStore(), true)
+    expect(() => mergePreset(cfg, preset)).not.toThrow()
+    expect(cfg.data).not.toHaveProperty('credentials')
   })
 })

@@ -228,9 +228,9 @@ interface Window {
       autoCheck(req: { kind: string; spec: string }): Promise<{ state: string; detail: string }>
     }
     presets: {
-      /** N3 导出配置预设（Provider 无密钥 + 上传 profile 无密钥） */
-      export(outPath: string): Promise<{ file: string; providers: number; uploadProfiles: number }>
-      /** N3 导入配置预设（按 id 合并） */
+      /** 导出配置预设；includeSecrets=true 携带明文密钥（需用户显式开启） */
+      export(outPath: string, includeSecrets?: boolean): Promise<{ file: string; providers: number; uploadProfiles: number; secrets: number }>
+      /** 导入配置预设（按 id 合并，含密钥时写回 safeStorage） */
       import(filePath: string): Promise<{ providersMerged: number; uploadProfilesMerged: number }>
     }
     snapshots: {

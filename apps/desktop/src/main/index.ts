@@ -27,7 +27,7 @@ import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
 import { collectToolHealth, toolRecentErrors } from './health'
 import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoCheck, saveSession } from './verify-sessions'
 import type { VerifySession } from '@sshk/shared'
-import { exportPreset, importPreset } from './presets'
+import { exportPreset, importPreset, type PresetSecretStore } from './presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
@@ -810,8 +810,21 @@ async function registerIpc(): Promise<void> {
   })
 
   // ── N3 配置预设分享：导出（脱敏 JSON）/ 导入（按 id 合并）──
-  handleOk(IPC_CHANNELS.presetExport, (_event, outPath: string) => exportPreset(services!.config, String(outPath ?? '')))
-  handleOk(IPC_CHANNELS.presetImport, (_event, filePath: string) => importPreset(services!.config, String(filePath ?? '')))
+  // 预设密钥投影：含密钥导出/导入时经 services 读写 safeStorage（默认导出不带密钥，红线不变）
+  const presetSecrets: PresetSecretStore = {
+    getProviderKey: (id) => services!.getApiKey(id),
+    getUploadKey: (id) => services!.host.getToolSecret('upload-manager', id),
+    setProviderKey: (id, key) => services!.setApiKey(id, key),
+    setUploadKey: (id, key) => services!.host.setToolSecret('upload-manager', id, key),
+  }
+  handleOk(IPC_CHANNELS.presetExport, (_event, req: string | { outPath: string; includeSecrets?: boolean }, inc?: boolean) => {
+    // 兼容两条调用路径：命名方法传 (outPath, includeSecrets)；通用 IPC 透传 (channel, outPath, includeSecrets)
+    const payload = typeof req === 'string'
+      ? { outPath: req, includeSecrets: Boolean(inc) }
+      : (req ?? { outPath: '' })
+    return exportPreset(services!.config, String(payload.outPath ?? ''), presetSecrets, Boolean(payload.includeSecrets))
+  })
+  handleOk(IPC_CHANNELS.presetImport, (_event, filePath: string) => importPreset(services!.config, String(filePath ?? ''), presetSecrets))
 
   // ── N4 回滚快照：列表 / 恢复 / 清空（开关 app.outputSnapshot 在设置页）──
   const snapshotRoot = join(app.getPath('userData'), '.snapshots')

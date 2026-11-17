@@ -239,9 +239,9 @@ const api = {
       invoke(IPC_CHANNELS.verifyAutoCheck, req),
   },
   presets: {
-    /** N3 导出配置预设（Provider 无密钥 + 上传 profile 无密钥），路径必须来自 pickSave */
-    export: (outPath: string): Promise<{ file: string; providers: number; uploadProfiles: number }> =>
-      invoke(IPC_CHANNELS.presetExport, outPath),
+    /** 导出配置预设；includeSecrets=true 携带明文密钥（需用户显式开启），路径必须来自 pickSave */
+    export: (outPath: string, includeSecrets = false): Promise<{ file: string; providers: number; uploadProfiles: number; secrets: number }> =>
+      invoke(IPC_CHANNELS.presetExport, { outPath, includeSecrets }),
     /** N3 导入配置预设（按 id 合并），路径必须来自 pickFile */
     import: (filePath: string): Promise<{ providersMerged: number; uploadProfilesMerged: number }> =>
       invoke(IPC_CHANNELS.presetImport, filePath),
