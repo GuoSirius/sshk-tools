@@ -28,6 +28,23 @@ describe('H1 统一 IPC 失败契约（handleOk / wrapIpcHandler）', () => {
     await expect(wrapped(eventStub)).resolves.toEqual({ __ipc: true, ok: false, code: 'validation', message: '校验不通过' })
   })
 
+  it('云 SDK AccessDenied → code=permission，不刷终端堆栈', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const denied = Object.assign(new Error('You have no right to access this object because of bucket acl.'), {
+      code: 'AccessDenied', status: 403, name: 'AccessDeniedError',
+    })
+    const wrapped = wrapIpcHandler('ch:acl', () => { throw denied })
+    await expect(wrapped(eventStub)).resolves.toMatchObject({ __ipc: true, ok: false, code: 'permission' })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('NoSuchBucket → code=io，同样按业务失败处理', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrapped = wrapIpcHandler('ch:missing', () => { throw Object.assign(new Error('The specified bucket does not exist'), { code: 'NoSuchBucket' }) })
+    await expect(wrapped(eventStub)).resolves.toMatchObject({ __ipc: true, ok: false, code: 'io' })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
   it('意外异常 → code=unknown 并打终端日志（不 reject）', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const wrapped = wrapIpcHandler('ch:boom', () => { throw new TypeError('xx is not a function') })

@@ -1,5 +1,6 @@
 import { createWriteStream } from 'node:fs'
 import { Readable, Transform } from 'node:stream'
+import { AppError } from '@sshk/shared'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
@@ -320,7 +321,20 @@ export class CloudFsDriver implements FsDriver {
     this.assertWritable('移动')
     if (normalizeRootRel(src) === normalizeRootRel(dest)) throw new Error('源与目标相同，无需移动')
     await this.cp(src, dest)
-    await this.rmFile(src)
+    try {
+      await this.rmFile(src)
+    } catch (err) {
+      const e = err as { code?: unknown; status?: unknown; message?: unknown }
+      const denied = e?.code === 'AccessDenied' || Number(e?.status) === 403 ||
+        /no right to access|bucket acl|AccessDenied|permission denied|Forbidden/i.test(String(e?.message ?? err))
+      if (!denied) throw err
+      // 复制已成功但源不可删：必须说清「部分完成」，否则用户以为整个移动失败会重试产生重复对象
+      throw new AppError(
+        `移动未完成：目标「${dest}」已生成，但源「${src}」删除失败（Bucket ACL 不允许 DeleteObject，等同复制成功）。` +
+        '操作已中止，请开通删除权限后重试，或手动删除原对象；已复制的文件请核对。',
+        'permission',
+      )
+    }
   }
 
   async readBuffer(path: string): Promise<{ data: Buffer; size: number; modified?: number; etag?: string }> {

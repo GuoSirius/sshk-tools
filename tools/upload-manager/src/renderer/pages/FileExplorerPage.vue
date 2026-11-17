@@ -213,11 +213,13 @@ async function loadMore(): Promise<void> {
 
 function friendlyError(err: unknown): string {
   const msg = (err as Error).message ?? String(err)
+  // 移动部分完成的主进程提示已含处置建议，原样展示，别被下面的通用权限文案覆盖
+  if (/移动未完成/.test(msg)) return msg
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(msg)) return '连接失败：无法连通主机（检查地址/端口/网络）'
   if (/530|532|认证|Authentication|password|All authentication/i.test(msg)) return '认证失败：检查用户名与密码/密钥'
   if (/NoSuchBucket|The specified bucket|not exist/i.test(msg)) return '路径不存在：检查 Bucket 与目录'
   if (/no right to access|bucket acl|AccessDenied|403|permission|Forbidden|无权|权限/i.test(msg)) {
-    return '权限不足：当前密钥对该 Bucket 无删除/写入权限，请在云控制台检查 Bucket ACL 与子账号授权（原始：' + msg + '）'
+    return '权限不足：当前密钥无此操作权限，请到云控制台检查 Bucket ACL 与子账号授权'
   }
   if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「上传管理 · 通道配置」填写并保存'
   return msg
