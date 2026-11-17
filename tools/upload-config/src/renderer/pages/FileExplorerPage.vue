@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  ArrowDown,
   Back,
   CopyDocument,
   Delete,
@@ -18,9 +19,9 @@ import {
   Refresh,
   Search,
   Top,
+  TrendCharts,
   Upload,
   VideoCamera,
-  DocumentCopy,
 } from '@element-plus/icons-vue'
 import {
   FS_IMAGE_PREVIEW_LIMIT,
@@ -100,6 +101,8 @@ const searchTruncated = ref(false)
 
 // ── 容量统计（二期）──
 const usageLoading = ref(false)
+/** 已统计的目录容量（path → 结果），直接显示在列表「类型/大小」列 */
+const usageResults = ref(new Map<string, { size: number; files: number; truncated: boolean }>())
 
 // ── 传输队列 ──
 const drawerOpen = ref(false)
@@ -171,6 +174,9 @@ async function list(resetCursor = true): Promise<void> {
     entries.value = page.entries
     cursor.value = page.nextCursor ?? null
     pathInput.value = path.value
+    // 清掉已不在列表里的统计缓存（目录被删后同路径新目录不显示旧统计）
+    const valid = new Set(page.entries.map((e) => e.path))
+    usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
   } catch (err) {
     entries.value = []
     cursor.value = null
@@ -206,6 +212,7 @@ function friendlyError(err: unknown): string {
 watch(profileId, () => {
   localStorage.setItem('sshk.fs.profileId', profileId.value)
   path.value = ''
+  usageResults.value = new Map()
   if (profileId.value) void list()
 })
 watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
@@ -267,22 +274,27 @@ function exitSearch(): void {
   filter.value = ''
 }
 
-// ── 目录容量统计（二期）──
+// ── 目录容量统计（二期）：结果直接写入列表「类型/大小」列 ──
 async function showUsage(entry: FsEntry): Promise<void> {
   if (!profileId.value || usageLoading.value) return
   usageLoading.value = true
   try {
     const r = await window.api.fs.usage({ profileId: profileId.value, path: entry.path })
-    ElMessageBox.alert(
-      `${entry.name || '根目录'}：${fsFormatSize(r.size)} · ${r.files} 个文件${r.truncated ? '（扫描达到上限，以上为已扫部分）' : ''}`,
-      '目录容量统计',
-      { confirmButtonText: '知道了' },
-    )
+    usageResults.value = new Map(usageResults.value).set(entry.path, { size: r.size, files: r.files, truncated: r.truncated })
+    ElMessage.success(`${entry.name || '根目录'}：${fsFormatSize(r.size)} · ${r.files} 个文件${r.truncated ? '（已达扫描上限）' : ''}，已显示在列表`)
   } catch (err) {
     ElMessage.error(friendlyError(err))
   } finally {
     usageLoading.value = false
   }
+}
+
+/** 「类型/大小」列文案：文件=大小；目录=类型（统计过则附容量与文件数） */
+function sizeCell(entry: FsEntry): string {
+  if (entry.kind === 'file') return fsFormatSize(entry.size)
+  const u = usageResults.value.get(entry.path)
+  if (!u) return '目录'
+  return `目录 · ${fsFormatSize(u.size)} / ${u.files} 文件${u.truncated ? ' ∗' : ''}`
 }
 
 // ── 选择 ──
@@ -379,11 +391,16 @@ async function openFile(entry: FsEntry): Promise<void> {
         readonly: false, saving: false, conflict: false,
       }
     } catch (err) {
-      // 超阈值 → 引导下载编辑
-      ElMessageBox.confirm(`${(err as Error).message}。是否直接下载该文件？`, '文件过大', {
-        type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
-        closeOnClickModal: false, closeOnPressEscape: false,
-      }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 保持关闭 */ })
+      const msg = (err as Error).message ?? ''
+      // 仅「超阈值」引导下载；其余错误（网络/权限等）原样提示
+      if (/过大|超过/.test(msg)) {
+        ElMessageBox.confirm(`${msg}。是否直接下载该文件？`, '文件过大', {
+          type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
+          closeOnClickModal: false, closeOnPressEscape: false,
+        }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 保持关闭 */ })
+      } else {
+        ElMessage.warning(friendlyError(err))
+      }
     }
     return
   }
@@ -636,6 +653,17 @@ async function paste(): Promise<void> {
 }
 
 // ── 新建文件 ──
+/** 工具栏「更多▾」分发（§3.1） */
+function moreCommand(cmd: unknown): void {
+  switch (String(cmd)) {
+    case 'refresh': refresh(); return
+    case 'usage': if (selectedEntries.value.length === 1) void showUsage(selectedEntries.value[0]!); return
+    case 'copyto': openMove('copy'); return
+    case 'newfile': void newFile(); return
+    case 'downloaddir': void changeDownloadDir(); return
+    case 'opendir': void openDownloadDir(); return
+  }
+}
 async function newFile(): Promise<void> {
   try {
     const { value } = await ElMessageBox.prompt('新建空白文本文件，输入文件名（如 page.html）', '新建文件', {
@@ -770,7 +798,7 @@ onMounted(() => {
   window.api.fs.onTransferEvent((task) => {
     tasks.value.set(task.id, task)
     tasks.value = new Map(tasks.value)
-    if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy')) scheduleRefresh()
+    if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy' || task.kind === 'cross')) scheduleRefresh()
   })
   void loadChannels().then(() => { if (profileId.value) void list() })
   // 队列已有历史任务（页面刷新恢复）
@@ -820,15 +848,12 @@ function onKeydown(event: KeyboardEvent): void {
         <span v-else-if="!hasWritable" class="fs-warn">该厂商仅支持浏览（写操作支持阿里云 OSS / AWS S3）</span>
         <span v-else class="fs-ok">已连接 · {{ activeChannel.detail }}</span>
       </span>
-      <span class="fs-spacer" />
-      <el-button size="small" text :icon="MenuIcon" title="下载目录" @click="changeDownloadDir">下载目录</el-button>
-      <el-button size="small" text :icon="DocumentCopy" title="打开本地下载目录" @click="openDownloadDir">打开目录</el-button>
     </div>
 
     <!-- 路径区 -->
     <div class="fs-path-bar">
-      <el-button size="small" text :icon="Back" :disabled="!path" title="上一级 (Backspace)" @click="goUp" />
-      <el-button size="small" text :icon="Refresh" title="刷新 (F5)" @click="refresh" />
+      <el-button size="small" text type="primary" class="fs-nav-btn" :icon="Back" :disabled="!path" title="上一级 (Backspace)" @click="goUp" />
+      <el-button size="small" text type="primary" class="fs-nav-btn" :icon="Refresh" title="刷新 (F5)" @click="refresh" />
       <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
         <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
         <template v-for="(seg, i) in crumbs" :key="i">
@@ -861,10 +886,10 @@ function onKeydown(event: KeyboardEvent): void {
       </el-button-group>
     </div>
 
-    <!-- 工具栏 -->
+    <!-- 工具栏（§3.1 并集：常用操作外置，仅次要项进「更多▾」） -->
     <div class="fs-toolbar">
       <el-dropdown @command="(c: unknown) => (String(c) === 'dir' ? uploadDirs() : String(c) === 'output' ? uploadFromOutput() : uploadFiles())">
-        <el-button size="small" type="primary" :icon="Upload" :disabled="!profileId">
+        <el-button size="small" type="success" :icon="Upload" :disabled="!profileId">
           上传<el-icon class="el-icon--right"><Top style="transform: rotate(180deg)" /></el-icon>
         </el-button>
         <template #dropdown>
@@ -875,19 +900,30 @@ function onKeydown(event: KeyboardEvent): void {
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-button size="small" :icon="Download" :disabled="selectedFiles === 0" @click="downloadEntries(selectedEntries)">下载</el-button>
-      <el-button size="small" :icon="FolderAdd" :disabled="!hasWritable || !profileId" @click="mkdirOpen = true">新建文件夹</el-button>
-      <el-button size="small" :icon="Document" :disabled="!hasWritable || !profileId" @click="newFile">新建文件</el-button>
-      <el-button size="small" :icon="CopyDocument" :disabled="!selectedEntries.length" @click="clipCopy('copy')">复制</el-button>
-      <el-button size="small" :icon="Rank" :disabled="!selectedEntries.length" @click="openMove('copy')">复制到…</el-button>
-      <el-button size="small" :icon="Rank" :disabled="!selectedEntries.length || !hasWritable" @click="openMove('move')">移动到…</el-button>
-      <el-button size="small" :icon="EditPen" :disabled="selectedEntries.length !== 1 || !hasWritable" @click="openRename(selectedEntries[0]!)">重命名</el-button>
-      <el-button size="small" :icon="Delete" :disabled="selectedEntries.length !== 1 || selectedEntries[0]!.kind !== 'dir'" :loading="usageLoading" title="统计选中目录的容量与文件数" @click="showUsage(selectedEntries[0]!)">统计</el-button>
-      <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedEntries.length || !hasWritable" @click="openDelete(selectedEntries)">删除</el-button>
-      <span class="fs-spacer" />
-      <el-button size="small" :icon="Plus" title="粘贴 (Ctrl+V)；跨通道粘贴按复制执行" :disabled="!clipboard || clipboard.profileId === profileId && !hasWritable" @click="paste">
+      <el-button size="small" type="primary" :icon="Download" :disabled="selectedFiles === 0" @click="downloadEntries(selectedEntries)">下载</el-button>
+      <el-button size="small" type="primary" plain :icon="FolderAdd" :disabled="!hasWritable || !profileId" @click="mkdirOpen = true">新建文件夹</el-button>
+      <el-button size="small" type="primary" plain :icon="Document" :disabled="!hasWritable || !profileId" @click="newFile">新建文件</el-button>
+      <el-button size="small" type="warning" plain :icon="CopyDocument" :disabled="!selectedEntries.length" @click="clipCopy('copy')">复制</el-button>
+      <el-button size="small" type="success" plain :icon="Plus" title="粘贴 (Ctrl+V)；跨通道粘贴按复制执行" :disabled="!clipboard || !hasWritable" @click="paste">
         粘贴{{ clipboard ? `（${clipboard.items.length} 项${clipboard.op === 'cut' ? ' · 剪切' : ''}${clipboard.profileId !== profileId ? ' · 跨通道' : ''}）` : '' }}
       </el-button>
+      <el-button size="small" type="warning" plain :icon="Rank" :disabled="!selectedEntries.length || !hasWritable" @click="openMove('move')">移动</el-button>
+      <el-button size="small" type="primary" plain :icon="EditPen" :disabled="selectedEntries.length !== 1 || !hasWritable" @click="openRename(selectedEntries[0]!)">重命名</el-button>
+      <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedEntries.length || !hasWritable" @click="openDelete(selectedEntries)">删除</el-button>
+      <el-dropdown @command="moreCommand">
+        <el-button size="small" :icon="MenuIcon">
+          更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
+            <el-dropdown-item command="usage" :icon="TrendCharts" :disabled="selectedEntries.length !== 1 || selectedEntries[0]!.kind !== 'dir'">统计选中目录容量</el-dropdown-item>
+            <el-dropdown-item command="copyto" :icon="CopyDocument" :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
+            <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
+            <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
 
     <!-- 文件列表 -->
@@ -920,7 +956,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-checkbox :model-value="selection.size > 0 && selection.size === filteredEntries.length" :indeterminate="selection.size > 0 && selection.size < filteredEntries.length" @change="selectAll" />
           </span>
           <span class="fs-col-name fs-sortable" @click="sortKey = 'name'; sortDir = sortKey === 'name' && sortDir === 'asc' ? 'desc' : 'asc'">名称{{ sortKey === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
-          <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
+          <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">类型/大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span class="fs-col-time fs-sortable" @click="sortKey = 'time'; sortDir = sortKey === 'time' && sortDir === 'asc' ? 'desc' : 'asc'">修改时间{{ sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span v-if="hasMode" class="fs-col-mode">权限</span>
           <span class="fs-col-op">操作</span>
@@ -933,22 +969,22 @@ function onKeydown(event: KeyboardEvent): void {
           @click="rowClick(entry, $event)"
           @dblclick="rowOpen(entry)"
         >
-          <span class="fs-col-check"><el-checkbox :model-value="selection.has(entry.path)" @click.prevent.stop @change="toggleCheck(entry)" /></span>
+          <span class="fs-col-check"><el-checkbox :model-value="selection.has(entry.path)" @click.stop @dblclick.stop @change="toggleCheck(entry)" /></span>
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
           </span>
-          <span class="fs-col-size">{{ entry.kind === 'dir' ? '目录' : fsFormatSize(entry.size) }}</span>
+          <span class="fs-col-size" :title="sizeCell(entry)">{{ sizeCell(entry) }}</span>
           <span class="fs-col-time" :title="fmtTime(entry.modified)">{{ fmtTime(entry.modified) }}</span>
           <span v-if="hasMode" class="fs-col-mode">{{ entry.mode ?? '—' }}</span>
           <span class="fs-col-op">
-            <el-button v-if="entry.kind === 'file'" size="small" text type="primary" @click.stop="rowOpen(entry)">打开</el-button>
-            <el-button v-if="entry.kind === 'file'" size="small" text :icon="Download" title="下载" @click.stop="downloadEntries([entry])" />
-            <el-button v-if="entry.kind === 'file' && hasWritable" size="small" text :icon="CopyDocument" title="复制到…" @click.stop="rowCopy(entry)" />
-            <el-button v-if="entry.kind === 'file' && hasWritable" size="small" text :icon="Rank" title="移动到…" @click.stop="rowMove(entry)" />
-            <el-button v-if="entry.kind === 'dir'" size="small" text title="目录容量统计" @click.stop="showUsage(entry)">统计</el-button>
-            <el-button v-if="hasWritable" size="small" text :icon="EditPen" title="重命名" @click.stop="openRename(entry)" />
-            <el-button size="small" text :icon="Delete" type="danger" title="删除" @click.stop="openDelete([entry])" />
+            <el-button size="small" text :type="entry.kind === 'dir' ? 'primary' : 'primary'" @click.stop="rowOpen(entry)">打开</el-button>
+            <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
+            <el-button size="small" text type="warning" v-if="hasWritable" @click.stop="rowCopy(entry)">复制</el-button>
+            <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
+            <el-button v-if="entry.kind === 'dir'" size="small" text type="success" @click.stop="showUsage(entry)">统计</el-button>
+            <el-button v-if="hasWritable" size="small" text type="primary" @click.stop="openRename(entry)">重命名</el-button>
+            <el-button v-if="hasWritable" size="small" text type="danger" @click.stop="openDelete([entry])">删除</el-button>
           </span>
         </div>
         <div v-if="cursor" class="fs-more">
@@ -970,7 +1006,7 @@ function onKeydown(event: KeyboardEvent): void {
           >
             <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-cell-name">{{ entry.name }}</span>
-            <span class="fs-cell-meta">{{ entry.kind === 'dir' ? '目录' : fsFormatSize(entry.size) }}</span>
+            <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
           </div>
         </div>
         <div v-if="cursor" class="fs-more">
@@ -1047,9 +1083,9 @@ function onKeydown(event: KeyboardEvent): void {
         <img :src="preview.src" :style="{ transform: `scale(${preview.scale})` }" alt="preview" />
       </div>
       <template #footer>
-        <el-button size="small" @click="preview.scale = Math.max(0.2, preview.scale - 0.2)">缩小</el-button>
-        <el-button size="small" @click="preview.scale = 1">复位</el-button>
-        <el-button size="small" @click="preview.scale = Math.min(5, preview.scale + 0.2)">放大</el-button>
+        <el-button size="small" type="primary" plain @click="preview.scale = Math.max(0.2, preview.scale - 0.2)">缩小</el-button>
+        <el-button size="small" type="primary" plain @click="preview.scale = 1">复位</el-button>
+        <el-button size="small" type="primary" plain @click="preview.scale = Math.min(5, preview.scale + 0.2)">放大</el-button>
         <el-button size="small" @click="preview.open = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -1083,7 +1119,7 @@ function onKeydown(event: KeyboardEvent): void {
     <!-- 传输队列抽屉 -->
     <el-drawer v-model="drawerOpen" title="传输队列" direction="btt" size="45%" close-on-click-modal="false" close-on-press-escape="false">
       <div class="fs-drawer-toolbar">
-        <el-button size="small" text @click="clearFinishedTasks">清理已完结</el-button>
+        <el-button size="small" text type="warning" @click="clearFinishedTasks">清理已完结</el-button>
         <span class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
       </div>
       <div class="fs-task-list">
@@ -1145,7 +1181,7 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; position: relative; }
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
-.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 110px 170px 210px; align-items: center; padding: 0 10px; }
+.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 150px 170px 220px; align-items: center; padding: 0 10px; }
 /* 表头不透明底色（用户反馈 2026-11-17：此前 opacity:.75 连背景一起半透明，滚动后与内容重叠）；muted 观感用文字色实现 */
 .fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 2; font-size: 12px; color: var(--el-text-color-secondary); height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
@@ -1158,9 +1194,14 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
-.fs-col-op { display: flex; justify-content: flex-end; gap: 2px; }
+/* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
+.fs-path-bar .fs-nav-btn .el-icon { font-size: 17px; }
+/* 操作列：表头居中（用户 2026-11-17），行内按钮靠右且间距收紧 */
+.fs-thead .fs-col-op { justify-content: center; }
+.fs-col-op { display: flex; justify-content: flex-end; gap: 0; }
+.fs-col-op .el-button + .el-button { margin-left: 2px; }
 /* SFTP 权限列（§3.2：仅 SFTP 显示） */
-.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 100px 160px 66px 200px; }
+.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 150px 160px 66px 210px; }
 
 .fs-more { text-align: center; padding: 8px 0; }
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
