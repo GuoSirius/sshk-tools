@@ -109,7 +109,6 @@ onMounted(() => {
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
       :default-ttl-hours="72"
-      show-mine
     />
   </ToolPageLayout>
 </template>

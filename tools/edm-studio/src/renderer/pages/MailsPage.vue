@@ -210,7 +210,6 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
       :default-ttl-hours="72"
-      show-mine
     />
   </div>
 </template>
