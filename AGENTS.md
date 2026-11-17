@@ -14,5 +14,6 @@
 
 ## 其它约定
 
+- **CHANGELOG.md 由 release 流程自动生成，AI 禁止手工写入/编辑**；需要交代破坏性变更或发布说明时写进 commit message、需求台账或设计文档，不碰 CHANGELOG（2026-11-17 用户明确纠正）。
 - 需求/优化/决策一律登记 `docs/02-architecture/工具插件化需求台账.md`（含跨会话补记）。
 - 门禁：`pnpm verify` 全绿才准提交（13 道检查 + vitest）；提交用 conventional commits，推送 main。

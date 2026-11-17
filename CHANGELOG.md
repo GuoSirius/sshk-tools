@@ -2,13 +2,8 @@
 
 ## [1.2.0](https://github.com/GuoSirius/sshk-tools/compare/v1.1.0...v1.2.0) (2026-11-17)
 
-### ⚠️ 破坏性变更 (Breaking Changes)
-
-* **share:** 旧 `ShareServer` 与 badge/edm 分享状态文件已彻底移除，升级后所有旧分享链接立即失效，需在工具内重新分享生成新链接。
-
 ### ♻️ 代码重构 (Refactors)
 
-* **settings:** 应用设置 5 个 tab 拆为独立 Vue 组件，外壳仅保留导航分发；共享配置抽 `useAppConfig`，通用语义样式提全局。
 * **tools:** 上传配置改名上传管理（upload-config→upload-manager）——目录/manifest/包名/页面/TOOL_IDS/IPC 通道/shared 模块全链路重命名，启动幂等迁移 safeStorage 密钥前缀与 tools.* 配置段保证存量配置不丢；feat(scripts): ensure-electron 下载改带进度 runner（downloadArtifact+getProgressCallback 实时打印 x/y MB），补齐 electron@45.3.3 二进制 ([6cc9ec3](https://github.com/GuoSirius/sshk-tools/commit/6cc9ec364f926585a64e1bab0609b83f487cb622))
 * **rich-text:** 图片库第三个「已选择」tab + 进度条移入固定区 ([b75d9f1](https://github.com/GuoSirius/sshk-tools/commit/b75d9f168bddb43d1dbf5d485673bd4bd3c9c14f))
 * **rich-text:** 源码弹框格式化/压缩按钮移到底部 ([3cf9248](https://github.com/GuoSirius/sshk-tools/commit/3cf9248dcbd44f5de18a563ceebcc87684a8ae8e))
@@ -21,7 +16,6 @@
 
 ### 🚀 新功能 (Features)
 
-* **share:** 常驻 ShareHub 分享服务落地——单端口多路由、TTL/口令、静态文件 Range、访问日志、多 IP 与二维码，badge/edm/文件系统本地通道统一接入 ShareDialog；设置页新增独立「分享服务」tab。
 * **fs-explorer:** 行操作新增「链接」复制外链（baseUrl+编码路径，未配置引导到通道配置），操作列 220→252px 容纳 7 按钮；上一级/刷新改图标+文字按钮（纯图标易误读为历史前进后退） ([c93a78d](https://github.com/GuoSirius/sshk-tools/commit/c93a78d1f7dcc810a2f59179fba58c73974afa10))
 * **fs:** 下载改系统对话框选位置（单文件另存为带替换确认跳过二次冲突/多文件选目录）+ PDF 在线预览（50MB 上限 Blob iframe）+ 不可预览类型先确认再下载 + 传输队列紧凑布局并修复不能滚动（全局 drawer body overflow:hidden 下自管滚动容器）+ 移动/复制/复制到目标目录级联可选+手输 ([32ce720](https://github.com/GuoSirius/sshk-tools/commit/32ce720e96f74059cace4ec2decd9f1cc4826e94))
 * **fs-explorer:** 统计目录时目录名旁旋转 loading + 大小列'统计中…'；修复上传按钮尾部多余图标；拖拽上传改 window 级监听并全链路显式反馈（拿不到路径/无通道/空入队均有提示） ([52f1a7a](https://github.com/GuoSirius/sshk-tools/commit/52f1a7a8ac95f30be5d15ea6e8bcccfa009a4abc))
@@ -97,8 +91,6 @@
 
 ### 🐛 缺陷修复 (Bug Fixes)
 
-* **share:** 分享对话框布局按截图调整——IP 下拉铺满、二维码与说明上下居中、所有操作沉底且关闭最右、「本工具其它分享」居中。
-* **fs:** 云移动遇到 Bucket ACL 拒绝删源不再刷裸堆栈——明确提示「目标已生成、源删除失败（等同复制成功）」，权限/网络/认证/路径类错误统一按业务失败归类。
 * **fs-explorer:** 操作列按钮溢出盖住修改时间列——EP small text 默认 padding 5px 11px 使 6 个按钮约 298px 撑爆 220px 列宽，紧凑化 padding 至 0 4px（约 214px）并将 SFTP 模式操作列 210px 提至 220px ([c36e502](https://github.com/GuoSirius/sshk-tools/commit/c36e5022e8ff9ef512d159b52c0841820f67cb29))
 * **fs:** 验收反馈批量修复——行复选框 bug、工具栏对齐 §3.1、统计入表、彩色化 ([709667e](https://github.com/GuoSirius/sshk-tools/commit/709667e6f32b8daf7f3be95ff5945ca74f962c49))
 * **fs:** 表头上方缝隙露行——去掉滚动容器垂直 padding ([7004793](https://github.com/GuoSirius/sshk-tools/commit/70047938a13e0d3aad58f5b14c3215a254d04066))
