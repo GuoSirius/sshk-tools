@@ -321,6 +321,24 @@ const cascaderProps = {
   checkStrictly: true,
   emitPath: false,
   lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
+    // 打开瞬间的挂载竞态：cascader 挂载早于 open 初始化流程（sources 还没拉到、激活源为空），
+    // EP 会在挂载时立刻触发根节点懒加载；此时若 resolve([]) 会把根节点钉死成已加载空态，
+    // 之后展开不再重新拉取（2026-11-17 用户反馈「必须切一次源才能拉出目录」）。
+    // 等初始化完成（或弹框已关）再继续；等待期间 EP 自带 loading 态。
+    if (!activeSource.value && props.open && !restored.value) {
+      await new Promise<void>((done) => {
+        const stop = watch(
+          [restored, () => props.open],
+          () => {
+            if (restored.value || !props.open) {
+              stop()
+              done()
+            }
+          },
+          { flush: 'post' },
+        )
+      })
+    }
     const source = activeSource.value
     if (!source || !props.library.listDirectories) {
       resolve([])
@@ -939,11 +957,6 @@ function onPaneScroll(e: Event): void {
             <el-button v-if="tab === 'gallery'" size="small" type="success" plain :loading="loadingList" @click="loadGallery">刷新</el-button>
             <el-button v-else-if="tab === 'selected'" size="small" type="danger" plain :disabled="poolCount === 0" @click="clearPool">清空</el-button>
             <el-button v-else size="small" type="danger" plain :disabled="uploadPicked === 0" @click="removeSelectedUploaded">删除所选</el-button>
-            <span class="lib-action-gap" />
-            <el-button size="small" type="primary" plain @click="uploadMore">继续上传</el-button>
-            <el-button size="small" type="primary" :disabled="poolCount === 0" @click="confirmSelected">
-              {{ confirmLabel }}{{ poolCount ? ` ${poolCount} 个` : '' }}
-            </el-button>
           </div>
         </div>
         <!-- 上传总体进度固定在 header，滚动区只放纯文件列表 -->
@@ -1122,6 +1135,11 @@ function onPaneScroll(e: Event): void {
     </div>
 
     <template #footer>
+      <!-- 确认动作沉底：继续上传 / 插入所选与关闭同行，关闭固定最右（2026-11-17 用户反馈） -->
+      <el-button type="primary" plain @click="uploadMore">继续上传</el-button>
+      <el-button type="primary" :disabled="poolCount === 0" @click="confirmSelected">
+        {{ confirmLabel }}{{ poolCount ? ` ${poolCount} 个` : '' }}
+      </el-button>
       <el-button type="info" plain @click="close">关闭</el-button>
     </template>
   </el-dialog>
@@ -1148,7 +1166,6 @@ function onPaneScroll(e: Event): void {
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }
 .lib-count { font-size: 12px; opacity: 0.75; margin-right: 2px; }
-.lib-action-gap { flex: 1 1 12px; }
 .drop-hint {
   border: 1px dashed rgba(128, 128, 128, 0.45);
   border-radius: 8px;
