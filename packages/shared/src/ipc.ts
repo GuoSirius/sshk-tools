@@ -152,6 +152,8 @@ export const IPC_CHANNELS = {
   badgeShareStart: 'badge:shareStart',
   badgeShareStop: 'badge:shareStop',
   badgeShareStatus: 'badge:shareStatus',
+  /** 数据源模板下载（项4）：生成空表头+示例行的 xlsx/csv/json 模板，返回 base64 由渲染层落盘 */
+  badgeTemplateDownload: 'badge:templateDownload',
   /** H3 日志落盘：渲染层 → 主进程（ipcRenderer.send 单向，不走 invoke） */
   logFrontend: 'log:frontend',
   /** 日志目录信息 / 清空（设置 → 系统与数据 → 日志） */

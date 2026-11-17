@@ -255,7 +255,7 @@ watch(() => props.section, (section) => {
                   :label="field.label"
                   :class="{ full: field.full || field.type === 'textarea' || field.type === 'dir' || field.type === 'file' }"
                 >
-                  <el-input clearable-number
+                  <el-input-number
                     v-if="field.type === 'number'"
                     v-model="values[field.key]"
                     :min="field.min"
@@ -450,7 +450,9 @@ watch(() => props.section, (section) => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
+  width: auto;
   min-width: 0;
+  white-space: nowrap;
 }
 .switch-label :deep(.sshk-form-hint) {
   width: auto;

@@ -1274,7 +1274,7 @@ async function confirmSaveAs(): Promise<void> {
                 <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
                 <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>
-              <el-form-item v-if="showForm.version" label="版本号"><el-input clearable-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.version" label="变更说明"><el-input clearable v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
             <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />

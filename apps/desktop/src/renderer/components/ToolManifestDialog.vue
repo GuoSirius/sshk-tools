@@ -440,7 +440,7 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <div v-for="row in defaultRows" :key="row.key" class="inline-form">
             <el-input clearable :model-value="row.key" size="small" disabled style="width: 200px" />
             <el-switch v-if="row.type === 'boolean'" v-model="row.value" />
-            <el-input clearable-number v-else-if="row.type === 'number'" v-model="row.value" size="small" style="width: 150px" />
+            <el-input-number v-else-if="row.type === 'number'" v-model="row.value" size="small" style="width: 150px" />
             <el-select v-else-if="row.type === 'select'" v-model="row.value" size="small" style="width: 180px">
               <el-option
                 v-for="opt in parseOptions(groupRows.flatMap((g) => g.fields).find((f) => f.key === row.key)?.optionsText ?? '')"

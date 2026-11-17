@@ -44,6 +44,9 @@ const options = computed(() => ({
   folding: true,
   showFoldingControls: 'mouseover' as const,
   unfoldOnClickAfterEndOfLine: true,
+  // 压缩后的 HTML 常是单行超长文本：Monaco 默认 stopRenderingLineAfter=10000 会暂停该行渲染，
+  // 表现为「压缩 HTML 没有高亮 + 顶部提示 Rendering paused for long line」。设为 -1 关闭限制。
+  stopRenderingLineAfter: -1,
 }))
 
 /** 编辑器实例暴露：供页面级搜索定位（setSelection / revealRangeInCenter）等高级用法 */

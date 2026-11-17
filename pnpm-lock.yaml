@@ -150,6 +150,9 @@ importers:
       monaco-yaml:
         specifier: latest
         version: 5.5.1(monaco-editor@0.57.0)
+      prettier:
+        specifier: latest
+        version: 3.10.1
       vue:
         specifier: latest
         version: 3.5.45(typescript@6.0.3)

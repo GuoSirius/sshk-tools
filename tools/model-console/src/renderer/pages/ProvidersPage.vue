@@ -329,7 +329,7 @@ async function revealKey(): Promise<void> {
               <div class="form-hint">调用优先级：工具自选 → 默认 → 回退模型；全链失败才报错</div>
             </el-form-item>
             <el-form-item label="重试次数">
-              <el-input clearable-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
+              <el-input-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
               <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
             </el-form-item>
             <el-form-item label="apiKey" prop="apiKey" class="full">

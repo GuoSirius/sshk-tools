@@ -69,7 +69,7 @@ interface Window {
       openDataDir(): Promise<void>
       reload(force?: boolean): Promise<boolean>
       toggleDevTools(key?: string): Promise<boolean>
-      verifyDevtoolsKey(key: string): Promise<boolean>
+      verifyDevtoolsKey(key: string, operation?: 'devtools' | 'developerMode'): Promise<boolean>
       /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
       onRequestClose(callback: () => void): void
       /** 渲染层确认关闭后调用：主进程置 quitting 并真正退出 */
@@ -78,7 +78,7 @@ interface Window {
     update: {
       check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }>
       download(): Promise<boolean>
-      quitAndInstall(): Promise<void>
+      quitAndInstall(): Promise<{ dev?: boolean } | void>
       onState(callback: (payload: UpdateState) => void): void
     }
     llm: {
@@ -177,6 +177,7 @@ interface Window {
       shareStart(payload: { posterId: string; ttlHours?: number }): Promise<{ url: string; expiresAt: number }>
       shareStop(): Promise<boolean>
       shareStatus(): Promise<{ running: boolean; expiresAt: number }>
+      templateDownload(fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }>
       exportFiles(payload: { posterIds: string[]; outPath: string }): Promise<{ outPath: string; posters: number }>
       parseImage(payload: {
         file: string

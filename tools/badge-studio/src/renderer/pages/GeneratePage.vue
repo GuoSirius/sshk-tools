@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState } from '@sshk/ui-kit'
-import { CodeEditor } from '@sshk/code-editor'
-import { Document } from '@element-plus/icons-vue'
+import { CodeEditor, formatHtml, compactHtml } from '@sshk/code-editor'
+import { Document, Delete } from '@element-plus/icons-vue'
 import {
   recentHtmls, clearRecent, htmlPath, useRecent, removeRecent,
   edmMails, edmMailsLoading, sourceMailId, loadEdmMails, pickEdmMail, clearSourceMail,
@@ -79,6 +79,35 @@ function locateInHtml(term: string): void {
   editor.focus()
   htmlSearchPos.value = { index: htmlSearchCursor.value + 1, total: matches.length }
 }
+
+/** 项3：格式化 / 压缩编辑器里的 HTML（仅改编辑区内容，不写回源文件） */
+async function applyFormat(): Promise<void> {
+  const before = pastedHtml.value
+  const next = await formatHtml(before)
+  if (next === before) { ElMessage.info('HTML 已是格式化状态或内容不完整，未做改动'); return }
+  pastedHtml.value = next
+  ElMessage.success('已格式化，长行现已换行便于查看与修改')
+}
+function applyCompact(): void {
+  const before = pastedHtml.value
+  const next = compactHtml(before)
+  if (next === before) { ElMessage.info('HTML 已是压缩状态'); return }
+  pastedHtml.value = next
+  ElMessage.success('已压缩 HTML（保留 <pre>/<code> 原文）')
+}
+
+/** 项5：清空表格二次确认（误点保护；清空只影响工作区 CSV 与表格，不动源文件） */
+function askClearRows(): void {
+  if (!hasStats.value) return
+  ElMessageBox.confirm(
+    `确定清空当前 ${statRows.value.length} 行数据？此操作只影响工作区表格与上方 CSV 文本，不会修改源文件；清空后不可撤销。`,
+    '清空表格确认',
+    { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', closeOnClickModal: false },
+  ).then(() => {
+    clearRows()
+    ElMessage.success('表格已清空')
+  }).catch(() => { /* 用户取消 */ })
+}
 </script>
 
 <template>
@@ -103,20 +132,25 @@ function locateInHtml(term: string): void {
           </el-select>
           <el-button size="small" :loading="edmMailsLoading" @click="void loadEdmMails()">刷新邮件</el-button>
         </div>
-        <div v-if="recentHtmls.length > 0" class="recent-head">
-          <span>最近使用 · 记录在本机配置，刷新后保留</span>
-          <el-button size="small" text @click="clearRecent">清空全部</el-button>
+        <!-- 最近使用：下拉即选择器（项1）——每项尾部删除 icon 单删，下拉右侧清空按钮；底部标签行已去掉 -->
+        <div v-if="recentHtmls.length > 0" class="recent-picker">
+          <el-select
+            size="small"
+            clearable
+            placeholder="最近使用 · 点选重新载入历史文件"
+            class="recent-select"
+            :model-value="htmlPath"
+            @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) void useRecent(item) }"
+          >
+            <el-option v-for="r in recentHtmls" :key="r.path" :label="r.name" :value="r.path">
+              <span class="recent-opt">
+                <span class="recent-opt-name" :title="r.path">{{ r.name }}</span>
+                <el-icon class="recent-opt-del" title="删除该记录" @click.stop="void removeRecent(r)"><Delete /></el-icon>
+              </span>
+            </el-option>
+          </el-select>
+          <el-button size="small" type="danger" plain title="清空全部历史记录" @click="void clearRecent">清空</el-button>
         </div>
-        <el-select
-          v-if="recentHtmls.length > 0"
-          size="small"
-          placeholder="点选历史记录重新载入文件"
-          style="width: 100%; margin-bottom: 8px"
-          :model-value="htmlPath"
-          @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) void useRecent(item) }"
-        >
-          <el-option v-for="r in recentHtmls" :key="r.path" :label="r.name" :value="r.path" />
-        </el-select>
         <div class="cfg-row">
           <el-input
             v-model="htmlSearch"
@@ -133,33 +167,26 @@ function locateInHtml(term: string): void {
           </span>
         </div>
         <CodeEditor ref="htmlEditorRef" v-model="pastedHtml" language="html" height="300px" />
-        <div v-if="recentHtmls.length > 0" class="recent-row">
-          <el-tag
-            v-for="r in recentHtmls.slice(0, 4)"
-            :key="r.path"
-            size="small"
-            closable
-            style="margin-right: 6px"
-            @click="void useRecent(r)"
-            @close="void removeRecent(r)"
-          >
-            {{ r.name }}
-          </el-tag>
+        <!-- 项3：压缩 HTML 单行无高亮 → 一键格式化 / 压缩，仅改编辑区内容，不落盘原文件 -->
+        <div class="cfg-row" style="margin-top: 6px">
+          <el-button size="small" type="primary" plain :disabled="!pastedHtml" @click="applyFormat">格式化</el-button>
+          <el-button size="small" type="warning" plain :disabled="!pastedHtml" @click="applyCompact">压缩</el-button>
+          <span class="muted">压缩 HTML 换行后即可正常高亮编辑；仅影响编辑区，不修改原文件</span>
         </div>
-        <div class="hint">标签只是历史路径，不会自动把文件内容恢复到编辑区；点标签才重新读取。文件被移动/删除时会自动移除该记录。</div>
       </div>
 
       <div class="panel">
         <div class="panel-title">点击统计 · 三种来源统一进可编辑表格</div>
         <CodeEditor v-model="pastedStats" language="csv" height="110px" />
         <div class="hint" style="margin-top: 4px">格式：url,clicks,…；粘贴后点「解析文本」进表格。CSV 高亮为共享编辑器 csv 语言。</div>
-        <div class="cfg-row" style="margin-top: 8px">
-          <el-button size="small" @click="parsePastedStats">解析文本</el-button>
-          <el-button size="small" @click="pickImages">选择图片（可多选）</el-button>
-          <el-button size="small" @click="addRow">新增一行</el-button>
-          <el-button size="small" :icon="Document" :disabled="!hasStats" @click="jsonViewOpen = true">JSON 视图</el-button>
-          <el-button size="small" text type="danger" :disabled="!hasStats" @click="clearRows">清空表格</el-button>
-          <span class="muted">共 {{ statRows.length }} 行{{ statsFile ? ` · 来自 ${statsFile.split(/[\\/]/).pop()}` : '' }}</span>
+        <!-- 项5：按钮精简文案一行 + 彩色化 + 间距收紧；清空带行数并二次确认 -->
+        <div class="stats-toolbar">
+          <el-button size="small" type="primary" plain @click="parsePastedStats">解析文本</el-button>
+          <el-button size="small" type="success" plain @click="pickImages">选择图片</el-button>
+          <el-button size="small" type="primary" plain @click="addRow">新增一行</el-button>
+          <el-button size="small" type="info" plain :icon="Document" @click="jsonViewOpen = true">JSON</el-button>
+          <el-button size="small" type="danger" plain :disabled="!hasStats" @click="askClearRows">清空（{{ statRows.length }}）</el-button>
+          <span class="muted stats-origin">{{ statsFile ? `来自 ${statsFile.split(/[\\/]/).pop()}` : `共 ${statRows.length} 行` }}</span>
         </div>
 
         <div v-if="imageFiles.length" class="image-list-panel">
@@ -194,28 +221,30 @@ function locateInHtml(term: string): void {
         <div v-if="statsWarnings.length" class="warn">{{ statsWarnings.join('；') }}</div>
 
         <el-table v-if="hasStats" :data="statRows" size="small" max-height="260" class="stat-table">
+          <el-table-column type="index" label="序号" width="58" align="center" />
           <el-table-column label="URL" min-width="180">
             <template #default="{ row }">
               <el-input clearable v-model="row.url" size="small" @input="syncCsvFromRows" />
             </template>
           </el-table-column>
-          <el-table-column label="clicks" width="112">
-            <template #default="{ row }">
-              <el-input clearable-number v-model="row.clicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
-            </template>
-          </el-table-column>
-          <el-table-column label="totalClicks" width="120">
-            <template #default="{ row }">
-              <el-input clearable-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
-            </template>
-          </el-table-column>
-          <el-table-column label="标记" width="78">
+          <!-- 项6：标记列移到 URL 后，便于逐行核对 -->
+          <el-table-column label="标记" width="78" align="center">
             <template #default="{ row }">
               <template v-if="row.matched === undefined">—</template>
               <el-tag v-else-if="row.matched > 0" size="small" type="success">{{ row.matched }}</el-tag>
               <el-tooltip v-else content="该 URL 未被标记，点定位检查" placement="top">
                 <el-tag size="small" type="danger" style="cursor: pointer" @click="locateInHtml(row.url)">0 定位</el-tag>
               </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="clicks" width="112">
+            <template #default="{ row }">
+              <el-input-number v-model="row.clicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
+            </template>
+          </el-table-column>
+          <el-table-column label="totalClicks" width="120">
+            <template #default="{ row }">
+              <el-input-number v-model="row.totalClicks" size="small" :min="0" :controls="false" class="num-cell" @change="syncCsvFromRows" />
             </template>
           </el-table-column>
           <el-table-column v-for="key in customMetricKeys" :key="key" min-width="100">
@@ -472,17 +501,16 @@ function locateInHtml(term: string): void {
   background: #fff;
   border-radius: 4px;
 }
-.recent-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  opacity: .7;
-  margin-bottom: 6px;
-}
-.recent-row {
-  margin-top: 8px;
-}
+.stats-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-top: 8px; }
+.stats-toolbar .el-button + .el-button { margin-left: 0; }
+.stats-origin { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.recent-picker { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.recent-picker .recent-select { flex: 1; min-width: 0; }
+.recent-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+.recent-opt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-opt-del { flex: none; color: var(--el-color-danger); cursor: pointer; }
+.recent-opt-del:hover { color: var(--el-color-danger-light-3); }
 .cfg-row {
   display: flex;
   align-items: center;

@@ -42,7 +42,7 @@ import { installLocalResHandler, registerLocalResScheme } from './local-res'
 
 /** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
 registerLocalResScheme()
-import { devtoolsKeyMatches } from './dev-access'
+import { devtoolsKeyMatches, isDevOpAuthorized, markDevOpAuthorized, type DevKeyOperation } from './dev-access'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const rendererHtml = path.join(here, '../renderer/index.html')
@@ -51,17 +51,15 @@ const iconFile = path.join(here, '../../build/icon.png')
 const trayIconFile = path.join(here, '../../build/tray.png')
 
 const isDev = !app.isPackaged
+/** dev 更新测试（用户验收项7）：仅 dev 生效，走真实 GitHub 更新源验证全流程，下载后不自动安装。
+ *  用法：本地 package.json 版本号改成旧值（如 1.1.0），dev 启动即可复现「发现新版 → 下载 → 待安装」；验完改回。 */
+const updateDevCheck = isDev && ['1', 'true'].includes(String(process.env.SSHK_UPDATE_DEV_CHECK ?? '').toLowerCase())
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let services: AppServices | null = null
 /** 退出中标志：关闭确认通过后由渲染层回调置位，放行 before-quit / close 链路 */
 let quitting = false
-/**
- * 复核项 10：打包版开启「开发者模式」的会话内授权。
- * 只由 app:verifyDevtoolsKey 校验通过后置位，重启即失效；config:set 写
- * app.developerMode=true 时据此裁决，防止渲染层绕过设置页弹框直接提权。
- */
-let devModeAuthorized = false
+/** 开发者模式提权闸门（2026-11-17 起走 dev-access 按操作缓存：isDevOpAuthorized('developerMode')） */
 /** 插件加载结果：单个插件失败不影响宿主与其它工具 */
 let pluginStatus: Record<string, ToolPluginStatus> = {}
 
@@ -294,7 +292,7 @@ async function registerIpc(): Promise<void> {
     // 打包版「关 → 开」开发者模式必须先在本会话通过访问密钥校验；
     // 已是开启状态再保存、或关闭，都不需要口令，避免误伤正常配置保存。
     if (key === 'app.developerMode' && value === true && !isDev &&
-        !Boolean(cfg.get('app.developerMode')) && !devModeAuthorized) {
+        !Boolean(cfg.get('app.developerMode')) && !isDevOpAuthorized('developerMode')) {
       throw new Error('开启开发者模式需要先通过访问密钥验证')
     }
     cfg.set(key, value)
@@ -337,25 +335,28 @@ async function registerIpc(): Promise<void> {
     app.quit()
     return true
   })
-  // 开发环境随意开关；打包版密钥优先级：settings.json 显式哈希 > env SSHK_DEVTOOLS_KEY > 内置 sshk-tools@888
+  // 开发者工具：会话内按操作缓存密钥（项9）——有效期内再开不重输；与「开发者模式」各自独立。
+  // 打包版密钥优先级：settings.json 显式哈希 > env SSHK_DEVTOOLS_KEY > 内置 sshk-tools@888
   handleOk(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
-    if (isDev) {
-      mainWindow?.webContents.toggleDevTools()
-      return true
-    }
-    if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
-      throw new Error('访问密钥不正确')
+    if (isDev) { mainWindow?.webContents.toggleDevTools(); return true }
+    if (!isDevOpAuthorized('devtools')) {
+      if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
+        throw new Error('访问密钥不正确')
+      }
+      markDevOpAuthorized('devtools')
     }
     mainWindow?.webContents.toggleDevTools()
     return true
   })
-  // 复核项 10：开发者模式等敏感开关只校验口令，不打开 DevTools；与上面共用同一实现
-  handleOk(IPC_CHANNELS.appVerifyDevtoolsKey, (_event, key?: string) => {
-    if (isDev) { devModeAuthorized = true; return true }
+  // 开发者模式等敏感开关：只校验口令不打开 DevTools；按操作独立缓存，互不复用
+  handleOk(IPC_CHANNELS.appVerifyDevtoolsKey, (_event, key?: string, operation?: DevKeyOperation) => {
+    const op: DevKeyOperation = operation === 'devtools' ? 'devtools' : 'developerMode'
+    if (isDevOpAuthorized(op)) return true
+    if (isDev) { markDevOpAuthorized(op); return true }
     if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
       throw new Error('访问密钥不正确')
     }
-    devModeAuthorized = true
+    markDevOpAuthorized(op)
     return true
   })
 
@@ -487,7 +488,7 @@ async function registerIpc(): Promise<void> {
   // autoUpdater 全生命周期状态：检查 → 发现 → 下载进度 → 完成 → 失败，统一推给渲染层。
   // 渲染层据此展示状态指示、进度条与「立即安装」提示，告别一次性 toast。
   handleOk(IPC_CHANNELS.updateCheck, async () => {
-    if (isDev) { pushUpdate({ phase: 'dev' }); return { dev: true } }
+    if (isDev && !updateDevCheck) { pushUpdate({ phase: 'dev' }); return { dev: true } }
     try {
       const result = await autoUpdater.checkForUpdates()
       const version = result?.updateInfo?.version ?? null
@@ -498,12 +499,18 @@ async function registerIpc(): Promise<void> {
     }
   })
   handleOk(IPC_CHANNELS.updateDownload, async () => {
-    if (isDev) return false
+    if (isDev && !updateDevCheck) return false
     await autoUpdater.downloadUpdate()
     return true
   })
   handleOk(IPC_CHANNELS.updateQuitAndInstall, () => {
+    if (updateDevCheck) {
+      // dev 测试：只验证下载流程，绝不真装（否则会替换掉正在开发的 install 目录）
+      logger.info('updater', 'dev 更新测试模式：拦截安装，仅下载不落盘安装')
+      return { dev: true }
+    }
     autoUpdater.quitAndInstall()
+    return { dev: false }
   })
 
   // ── LLM（宿主能力：工具可依赖，应用不依赖工具） ──
@@ -868,10 +875,12 @@ function pushUpdate(patch: Partial<UpdateState>): void {
 
 /** 给 autoUpdater 挂全生命周期监听，把状态与进度实时推到渲染层 */
 function wireAutoUpdater(): void {
+  // dev 测试模式：electron-updater 默认在非打包环境拒绝工作，必须打开 forceDevUpdateConfig 才会读 GitHub 源
+  if (updateDevCheck) (autoUpdater as unknown as { forceDevUpdateConfig: boolean }).forceDevUpdateConfig = true
   autoUpdater.autoDownload = true
   // 复核项 10：「下载更新后重启自动安装」默认关闭，由 app.autoInstallOnAppQuit 控制；
-  // 关闭时用户仍可在「系统与数据 → 更新」点「立即安装」手动安装。
-  autoUpdater.autoInstallOnAppQuit = Boolean(services?.config.get('app.autoInstallOnAppQuit'))
+  // dev 测试模式强制关自动安装（用户验收项7：只验下载流程，不执行安装）。
+  autoUpdater.autoInstallOnAppQuit = updateDevCheck ? false : Boolean(services?.config.get('app.autoInstallOnAppQuit'))
   autoUpdater.on('checking-for-update', () => {
     pushUpdate({ phase: 'checking', error: undefined })
   })
@@ -896,7 +905,8 @@ function wireAutoUpdater(): void {
 }
 
 function setupAutoUpdate(): void {
-  if (isDev) return
+  if (isDev && !updateDevCheck) return
+  if (updateDevCheck) logger.info('updater', 'dev 更新测试模式已启用：连接 GitHub 更新源，下载但绝不安装')
   wireAutoUpdater()
   // 尊重「自动更新」开关：关闭则仅在用户手动「检查更新」时检测
   const auto = services?.config.get('app.autoUpdate')

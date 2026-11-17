@@ -52,8 +52,6 @@ import { CodeEditor } from '@sshk/code-editor'
 // ── 通道与目录状态 ──
 const channels = ref<FsChannelInfo[]>([])
 const outputRoot = ref('')
-/** 应用以管理员运行时 Windows 会拦截资源管理器拖拽（UIPI），给出明确提示而不是让用户猜 */
-const elevated = ref(false)
 const profileId = ref('')
 const path = ref('')
 const pathInput = ref('')
@@ -163,7 +161,6 @@ async function loadChannels(): Promise<void> {
     const payload = await window.api.fs.profiles()
     channels.value = payload.channels
     outputRoot.value = payload.outputRoot
-    elevated.value = Boolean(payload.elevated)
     const saved = localStorage.getItem('sshk.fs.profileId') ?? ''
     const ok = payload.channels.find((c) => c.id === saved) ?? payload.channels[0]
     profileId.value = ok?.id ?? ''
@@ -488,27 +485,33 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
   }
 }
 
-// ── 拖拽上传（window 级监听：Chromium 只有在 dragover preventDefault 后 drop 才会触发，
-//    挂在页面根 div 上时悬浮层/子元素易吞事件导致"拖了没反应"；
-//    dragenter/dragleave 用计数法防子元素间来回触发闪烁。drop 只接受落在文件系统页面内的目标） ──
+// ── 拖拽上传（window 级 capture 监听 + 全窗口 preventDefault）──
+// 关键（2026-11-17 三修）：HTML5 DnD 规范要求 dragenter **和** dragover 都 preventDefault，
+// 缺一不可——此前只有 dragover preventDefault，dragenter 放过 → Chromium 判定「不接受放置」，
+// 鼠标显示圆圈加横杠的禁放光标，drop 事件根本不触发。同时必须设 dropEffect='copy' 才是复制光标。
+// 不区分管理员/普通权限：UIPI 只影响「 dragged 到更低完整性进程」，实测两条路径都可拖，
+// 真正的病根是上面的事件契约，管理员警示条已移除。
 const dragOver = ref(false)
-const rootRef = ref<HTMLElement | null>(null)
 let dragDepth = 0
-function isFsTarget(e: Event): boolean {
-  return rootRef.value?.contains(e.target as Node) ?? false
+function isFileDrag(e: DragEvent): boolean {
+  const types = e.dataTransfer?.types
+  return Boolean(types && Array.from(types).includes('Files'))
 }
 function onWindowDragEnter(e: DragEvent): void {
-  if (!isFsTarget(e)) return
+  // 任何拖入都 preventDefault（保证 drop 会触发）；只有文件拖拽才显示上传遮罩
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  if (!isFileDrag(e)) return
   dragDepth++
   dragOver.value = true
 }
 function onWindowDragOver(e: DragEvent): void {
-  // 全窗口 preventDefault：拖到页面外区域松手也不会触发浏览器默认行为（打开文件）
   e.preventDefault()
-  if (isFsTarget(e) && dragDepth > 0) dragOver.value = true
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  if (isFileDrag(e)) dragOver.value = true
 }
 function onWindowDragLeave(e: DragEvent): void {
-  if (!isFsTarget(e)) return
+  if (!isFileDrag(e)) return
   dragDepth = Math.max(0, dragDepth - 1)
   if (dragDepth === 0) dragOver.value = false
 }
@@ -516,7 +519,7 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
   e.preventDefault()
   dragDepth = 0
   dragOver.value = false
-  if (!isFsTarget(e)) return
+  // 文件拖到窗口任意位置（顶栏/侧栏/空白）都接受——工具页本身占满主体，严格限制 target 只会漏拖
   const files = [...(e.dataTransfer?.files ?? [])]
   if (!files.length) {
     ElMessage.warning('未从系统拖拽事件中拿到文件（可能拖的是网页元素或纯文本）；文件请从资源管理器拖入')
@@ -666,10 +669,13 @@ function clipCopy(op: 'copy' | 'cut'): void {
   clipboard.value = { op, profileId: profileId.value, items: selectedEntries.value.map((e) => ({ path: e.path, kind: e.kind })) }
   ElMessage.success(op === 'copy' ? `已复制 ${clipboard.value.items.length} 项` : `已剪切 ${clipboard.value.items.length} 项`)
 }
+/** 上次成功选定/提交的目标目录（项18）：EP cascader 关闭弹框不清内部显示，手输框必须同步回显同一个值 */
+const lastMoveDir = ref('')
 function openMove(mode: 'copy' | 'move'): void {
   if (!selectedEntries.value.length) return
   moveMode.value = mode
-  moveDirInput.value = path.value
+  // 优先回填上次选中的目标目录（与 cascader 显示一致）；首次才用当前目录
+  moveDirInput.value = lastMoveDir.value || path.value
   moveDestProfile.value = profileId.value
   moveOpen.value = true
 }
@@ -697,6 +703,7 @@ const moveCascaderRef = ref<{ togglePopperVisible: (visible: boolean) => void } 
 /** 点单选圈：路径回填手输框并收起面板（checkStrictly 下 EP 不会自动收起） */
 function onMoveDirPicked(v: unknown): void {
   moveDirInput.value = String(v ?? '')
+  if (moveDirInput.value) lastMoveDir.value = moveDirInput.value
   moveCascaderRef.value?.togglePopperVisible(false)
 }
 /** 行内直达（§3.2 行操作列）：单选该条目后走「复制到/移动到」弹框 */
@@ -714,16 +721,20 @@ async function submitMove(): Promise<void> {
   const dest = moveDirInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/')
   if (dest.split('/').some((p) => !p)) { ElMessage.warning('目标目录不合法'); return }
   const sources = selectedEntries.value.map((e) => ({ path: e.path, kind: e.kind }))
-  const cross = moveMode.value === 'copy' && moveDestProfile.value && moveDestProfile.value !== profileId.value
+  const cross = Boolean(moveDestProfile.value && moveDestProfile.value !== profileId.value)
   moveOpen.value = false
   try {
-    if (moveMode.value === 'move') {
+    if (cross) {
+      // 跨通道（项20）：复制/移动都走 crossCopy，move=true 时目标写成功即删源
+      const r = await window.api.fs.crossCopy({
+        srcProfileId: profileId.value, destProfileId: moveDestProfile.value,
+        sources, destDir: dest, move: moveMode.value === 'move',
+      })
+      drawerOpen.value = true
+      ElMessage.info(`跨通道${moveMode.value === 'move' ? '移动' : '复制'}已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
+    } else if (moveMode.value === 'move') {
       await window.api.fs.mv({ profileId: profileId.value, sources, destDir: dest })
       ElMessage.success('已移动')
-    } else if (cross) {
-      const r = await window.api.fs.crossCopy({ srcProfileId: profileId.value, destProfileId: moveDestProfile.value, sources, destDir: dest })
-      drawerOpen.value = true
-      ElMessage.info(`跨通道复制已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
     } else {
       const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources, destDir: dest })
       if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
@@ -955,17 +966,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div ref="rootRef" class="fs-page" tabindex="0" @keydown="onKeydown">
-    <!-- 拖拽诊断：管理员进程收不到资源管理器拖拽（Windows UIPI），明示原因避免反复试错 -->
-    <el-alert
-      v-if="elevated"
-      class="fs-elevated-alert"
-      type="warning"
-      :closable="true"
-      title="应用正以管理员身份运行：Windows 会拦截资源管理器的文件拖拽（拖入无任何反应属正常现象）"
-      description="请用普通权限重启应用（关闭管理员终端 / 右键属性取消「以管理员身份运行」）后再试拖拽；当前仍可用「上传 ▾」按钮选择文件。"
-      show-icon
-    />
+  <div class="fs-page" tabindex="0" @keydown="onKeydown">
     <!-- 通道切换条 -->
     <div class="fs-channel-bar">
       <el-select v-model="profileId" size="small" class="fs-channel-select" placeholder="选择上传通道" filterable>
@@ -1189,8 +1190,9 @@ function onKeydown(event: KeyboardEvent): void {
     <!-- 复制到 / 移动到 -->
     <el-dialog v-model="moveOpen" :title="moveMode === 'move' ? '移动到…' : '复制到…'" width="480px" close-on-click-modal="false" close-on-press-escape="false">
       <div class="fs-move-body">
-        <template v-if="moveMode === 'copy'">
-          <div class="hint" style="margin-bottom: 6px">目标通道（选择其它通道即跨通道复制，走传输队列）：</div>
+        <!-- 项20：复制/移动都可选目标通道；跨通道走传输队列，移动=复制成功删源 -->
+        <template v-if="moveMode === 'copy' || moveMode === 'move'">
+          <div class="hint" style="margin-bottom: 6px">目标通道（选择其它通道即跨通道{{ moveMode === 'move' ? '移动（复制后删源）' : '复制' }}，走传输队列）：</div>
           <el-select v-model="moveDestProfile" size="small" style="width: 100%; margin-bottom: 12px" filterable>
             <el-option v-for="c in channels" :key="c.id" :value="c.id" :label="`${c.name}（${c.detail}）`" :disabled="!c.hasSecret" />
           </el-select>
@@ -1309,7 +1311,6 @@ function onKeydown(event: KeyboardEvent): void {
 
 <style scoped>
 .fs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; gap: 8px; padding: 10px 20px 14px; }
-.fs-elevated-alert { flex: none; --el-alert-padding: 6px 10px; }
 .fs-spacer { flex: 1; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.5; }
 

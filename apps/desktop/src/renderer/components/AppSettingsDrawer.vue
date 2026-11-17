@@ -45,7 +45,7 @@ const updateStatusText = computed(() => {
   }
 })
 async function checkUpdate(): Promise<void> {
-  if (updaterState.value.phase === 'checking' || updaterState.value.phase === 'downloading') return
+  if (updaterState.value.phase === 'checking' || updaterState.value.phase === 'downloading' || updaterState.value.phase === 'available') return
   const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
   if (result.dev) ElMessage.info('开发环境不检查更新')
   else if (result.error) ElMessage.error('检查更新失败：' + String(result.error))
@@ -96,12 +96,16 @@ async function onDeveloperModeChange(next: unknown): Promise<void> {
   const wanted = Boolean(next)
   if (!wanted || isDev) { cfg.developerMode = wanted; return }
   try {
-    const secret = await promptSecret(
-      '开发者模式',
-      '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
-      '验证并开启',
-    )
-    await callHostApi<boolean>(DEV_KEY_SPEC, String(secret ?? ''))
+    // 项9：先探测本操作是否已在有效期内授权（空 key 仅作探针，缓存通过时主进程直接放行）；未授权才弹框
+    const alreadyAuthed = await window.api.app.verifyDevtoolsKey('', 'developerMode').catch(() => false)
+    if (!alreadyAuthed) {
+      const secret = await promptSecret(
+        '开发者模式',
+        '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
+        '验证并开启',
+      )
+      await callHostApi<boolean>(DEV_KEY_SPEC, String(secret ?? ''), 'developerMode')
+    }
     cfg.developerMode = true
     ElMessage.success('验证通过，点「保存应用配置」后生效')
   } catch (err) {
@@ -627,7 +631,7 @@ async function cleanupOrphans(): Promise<void> {
                     </el-select>
                   </el-form-item>
                   <el-form-item label="分享有效期">
-                    <el-input clearable-number v-model="cfg.ttlHours" :min="1" :max="720" />
+                    <el-input-number v-model="cfg.ttlHours" :min="1" :max="720" />
                     <FormHint inline>小时（到期即失效）</FormHint>
                   </el-form-item>
                   <el-form-item label="开机自启">
@@ -661,7 +665,7 @@ async function cleanupOrphans(): Promise<void> {
                   <el-form-item label="开发者模式">
                     <div class="switch-row">
                       <span class="switch-label">开发者模式
-                        <FormHint inline detail="开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥；源码 dev 运行时开发功能始终开启，不受此开关影响">仅打包版生效；源码 dev 恒开</FormHint>
+                        <FormHint inline detail="仅打包版生效；源码 dev 运行时开发功能恒开。开启后显示全部工具并开放配置入口，需输入开发者工具访问密钥">打包版</FormHint>
                       </span>
                       <el-switch :model-value="cfg.developerMode" @change="(v: unknown) => onDeveloperModeChange(v)" />
                     </div>

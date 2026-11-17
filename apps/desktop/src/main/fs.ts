@@ -1,6 +1,5 @@
 import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { BrowserWindow, app, dialog } from 'electron'
 import {
   CloudFsDriver,
@@ -50,20 +49,6 @@ import { logger } from './logger'
 
 const SECRET_TOOL_ID = TOOL_IDS.uploadManager
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
-
-let elevatedCache: boolean | null = null
-/** 是否以管理员运行（仅 Windows 有此问题：管理员进程收不到资源管理器的拖拽事件，UIPI 拦截） */
-function isElevated(): boolean {
-  if (process.platform !== 'win32') return false
-  if (elevatedCache === null) {
-    try {
-      elevatedCache = spawnSync('net', ['session'], { timeout: 3000, windowsHide: true }).status === 0
-    } catch {
-      elevatedCache = false
-    }
-  }
-  return elevatedCache
-}
 
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
 const MAX_TASKS = 2000
@@ -123,6 +108,7 @@ class FsTransferEngine {
         destRemotePath: input.destRemotePath,
         destProfileId: input.destProfileId,
         destProfileName: input.destProfileId ? resolve(input.destProfileId).channel.name : undefined,
+        moveSource: input.moveSource,
         size: Number(input.size) || 0,
         transferred: 0,
         status: 'queued',
@@ -344,12 +330,17 @@ class FsTransferEngine {
     try {
       await srcDriver.download(src, tmpFile, (n) => this.sample(t, n))
       await destDriver.write(dest, createReadStream(tmpFile), (n) => this.sample(t, (stat.size ?? 0) + n))
+      // 跨通道移动（项20）：目标写成功后删源文件；删除失败仅告警，不回滚已完成的目标写入
+      if (t.moveSource) {
+        try { await srcDriver.rmFile(src) }
+        catch (err) { logger.warn('upload', `fs 跨通道移动：目标已写入但源删除失败：${src}（${(err as Error).message}）`) }
+      }
       t.transferred = t.size
       this.push(t)
     } finally {
       try { rmSync(tmpFile, { force: true }) } catch { /* 临时文件清理失败不影响结果 */ }
     }
-    logger.info('upload', `fs 跨通道复制完成：${t.profileName}/${src} → ${destChannel.name}/${dest}（${fsFormatSize(stat.size ?? 0)}）`)
+    logger.info('upload', `fs 跨通道${t.moveSource ? '移动' : '复制'}完成：${t.profileName}/${src} → ${destChannel.name}/${dest}（${fsFormatSize(stat.size ?? 0)}）`)
   }
 
   /** 删除队列任务恒为「目录递归删除」（单文件删除在 rm() 内联完成） */
@@ -539,6 +530,24 @@ export class FsRuntime {
     const destDir = this.assertPath(req?.destDir)
     const taskIds: string[] = []
     const inline: { src: string; dest: string }[] = []
+    const CP_DIR_CAP = 1500
+    let dirCopies = 0
+
+    /** 云/本地目录：对象存储没有真实目录，driver.cp 只支持单对象 copyObject——必须递归展开成文件逐个复制（项19） */
+    const expandDir = async (dirPath: string, destBase: string): Promise<void> => {
+      let cursor: string | null = null
+      do {
+        const page = await driver.list(dirPath, { pageSize: 2000, cursor })
+        for (const e of page.entries) {
+          if (dirCopies >= CP_DIR_CAP) throw new Error(`目录复制超过 ${CP_DIR_CAP} 个文件上限，已中止`)
+          const childDest = `${destBase}/${e.name}`
+          if (e.kind === 'file') inline.push({ src: e.path, dest: childDest })
+          else await expandDir(e.path, childDest)
+        }
+        cursor = page.nextCursor ?? null
+      } while (cursor)
+    }
+
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
       if (!src) throw new Error('根目录不可复制')
@@ -553,6 +562,11 @@ export class FsRuntime {
           remotePath: src,
           destRemotePath: dest,
         }], (id) => this.resolve(id)))
+      } else if (item.kind === 'dir') {
+        // 云/本地目录递归展开；云侧还需先建目录 marker 保证空目录可见
+        await driver.mkdir(dest)
+        await expandDir(src, dest)
+        dirCopies++
       } else {
         inline.push({ src, dest })
       }
@@ -568,13 +582,34 @@ export class FsRuntime {
     const { driver, channel } = this.resolve(req?.profileId)
     if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const destDir = this.assertPath(req?.destDir)
+    const MV_DIR_CAP = 1500
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
       if (!src) throw new Error('根目录不可移动')
       const dest = fsDestPath(destDir, src)
       if (dest === src || dest.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
-      await driver.mv(src, dest)
-      logger.info('upload', `fs 移动：${channel.id}/${src} → ${dest}`)
+      if (item.kind === 'dir' && channel.type === 'cloud') {
+        // 云目录「移动」= 逐文件 copy+delete（copyObject 不接受目录路径），最后删源 marker（项19）
+        let moved = 0
+        const moveTree = async (dirPath: string, destBase: string): Promise<void> => {
+          let cursor: string | null = null
+          do {
+            const page = await driver.list(dirPath, { pageSize: 2000, cursor })
+            for (const e of page.entries) {
+              if (moved >= MV_DIR_CAP) throw new Error(`目录移动超过 ${MV_DIR_CAP} 个文件上限，已中止`)
+              if (e.kind === 'file') { await driver.mv(e.path, `${destBase}/${e.name}`); moved++ }
+              else await moveTree(e.path, `${destBase}/${e.name}`)
+            }
+            cursor = page.nextCursor ?? null
+          } while (cursor)
+        }
+        await moveTree(src, dest)
+        await driver.rmFile(src.endsWith('/') ? src : `${src}/`).catch(() => { /* marker 可能不存在 */ })
+        logger.info('upload', `fs 云目录移动：${channel.id}/${src} → ${dest}（${moved} 个文件）`)
+      } else {
+        await driver.mv(src, dest)
+        logger.info('upload', `fs 移动：${channel.id}/${src} → ${dest}`)
+      }
     }
     return true
   }
@@ -588,6 +623,7 @@ export class FsRuntime {
     const { driver: destDriver, channel: destChannel } = this.resolve(req?.destProfileId)
     if (srcChannel.id === destChannel.id) throw new Error('源与目标为同一通道：请用同通道复制')
     if (!destDriver.writable) throw new Error(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (req?.move && !srcDriver.writable) throw new Error(`源通道「${srcChannel.name}」不支持删除，无法跨通道移动（仅复制）`)
     const destDir = this.assertPath(req?.destDir ?? '')
     const CROSS_TASK_CAP = 1500
     const inputs: FsTransferInput[] = []
@@ -605,6 +641,7 @@ export class FsRuntime {
           remotePath: path,
           // path 由驱动逐级 fsJoin 生成（已规范化），直接拼目标目录即可
           destRemotePath: destDir ? `${destDir}/${path}` : path,
+          moveSource: Boolean(req?.move),
           size: stat.size ?? 0,
         })
         return
@@ -755,7 +792,7 @@ export class FsRuntime {
 
   /** fs:profiles 响应：通道清单 + EDM 产物目录 */
   profilesPayload(): FsProfilesPayload {
-    return { channels: this.channels(), outputRoot: this.opts.services.outputRoot, elevated: isElevated() }
+    return { channels: this.channels(), outputRoot: this.opts.services.outputRoot }
   }
 
   /** EDM 产物目录（「上传到此处」联动用；渲染层据此打开产物目录选择） */

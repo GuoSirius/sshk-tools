@@ -52,6 +52,16 @@ function tickClock(): void {
   clockText.value = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} 星期${WEEK_CN[d.getDay()]}`
 }
 const { state: updater } = useUpdater()
+/** 更新横幅是否被用户关闭（项10）：仅对当前这一轮版本生效，下次发现新版自动重置 */
+const updateBannerDismissed = ref(false)
+const dismissedForVersion = ref('')
+watch(updater, (u) => {
+  if (u.version && u.version !== dismissedForVersion.value) {
+    dismissedForVersion.value = u.version
+    updateBannerDismissed.value = false
+  }
+})
+function dismissUpdateBanner(): void { updateBannerDismissed.value = true }
 let hoverTimer: number | undefined
 
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
@@ -305,7 +315,7 @@ watch(sidebarCollapsed, (collapsed) => { if (!collapsed) sidebarHover.value = fa
 onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
 async function checkUpdate(): Promise<void> {
-  if (updater.value.phase === 'checking' || updater.value.phase === 'downloading') return
+  if (updater.value.phase === 'checking' || updater.value.phase === 'downloading' || updater.value.phase === 'available') return
   const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
   if (result.dev) {
     ElMessage.info('开发环境不检查更新')
@@ -320,9 +330,13 @@ async function checkUpdate(): Promise<void> {
 
 /** 下载完成后点击触发退出并安装（electron-updater 在下次启动时落地） */
 async function installUpdate(): Promise<void> {
-  await window.api.update.quitAndInstall().catch((err: unknown) => {
+  const r = await window.api.update.quitAndInstall().catch((err: unknown) => {
     ElMessage.error('安装失败：' + (err as Error).message)
+    return null
   })
+  if (r && typeof r === 'object' && 'dev' in r) {
+    ElMessage.info('dev 更新测试模式：已拦截安装，仅验证下载流程；请手动重启后改回版本号')
+  }
 }
 
 onMounted(async () => {
@@ -353,13 +367,14 @@ onMounted(async () => {
         type="success"
         @click="installUpdate"
       >立即更新 v{{ updater.version }}</el-button>
-      <!-- 有可用包：醒目提示 + 箭头，暗示可点击（自动下载仍在后台进行） -->
+      <!-- 有可用包：状态指示（后台自动下载中），不再触发 checkUpdate——点它会重新检查导致「检查中→发现新版本」来回跳 -->
       <el-button
         v-else-if="updater.phase === 'available'"
         size="small"
         type="warning"
-        @click="checkUpdate"
-      ><el-icon><Download /></el-icon> 发现新版本</el-button>
+        plain
+        title="已发现新版本，正在后台下载，请稍候"
+      ><el-icon><Download /></el-icon> 发现新版本{{ updater.percent !== undefined ? ` ${updater.percent}%` : '' }}</el-button>
       <!-- 下载中：文字行盖一层进度遮罩，按百分比从左填充，能看清是否完成 -->
       <el-button
         v-else-if="updater.phase === 'downloading'"
@@ -407,20 +422,36 @@ onMounted(async () => {
       </button>
     </header>
 
-    <!-- 更新横幅：下载完成主动提示安装；检查失败给重试入口 -->
+    <!-- 更新横幅：下载中显示进度条 / 完成提示安装 / 失败重试；均可关闭（项10：允许用户忽略，稍后自行重启） -->
     <div
-      v-if="updater.phase === 'downloaded'"
+      v-if="updater.phase === 'downloading' && !updateBannerDismissed"
+      class="update-banner update-banner--progress"
+    >
+      <span class="update-banner-progress">
+        正在下载新版本 v{{ updater.version }} · {{ updater.percent ?? 0 }}%
+        <el-progress :percentage="updater.percent ?? 0" :stroke-width="6" :show-text="false" style="width: 180px; display: inline-block; vertical-align: middle; margin-left: 8px" />
+      </span>
+      <el-button size="small" text type="info" title="关闭提示（下载仍在后台继续）" @click="dismissUpdateBanner">关闭</el-button>
+    </div>
+    <div
+      v-else-if="updater.phase === 'downloaded' && !updateBannerDismissed"
       class="update-banner update-banner--ok"
     >
       <span>新版本 v{{ updater.version }} 已下载完成，重启即可生效</span>
-      <el-button size="small" type="primary" @click="installUpdate">立即重启安装</el-button>
+      <span class="update-banner-actions">
+        <el-button size="small" type="primary" @click="installUpdate">立即重启安装</el-button>
+        <el-button size="small" text type="info" title="关闭提示（稍后可点顶栏按钮安装）" @click="dismissUpdateBanner">关闭</el-button>
+      </span>
     </div>
     <div
-      v-else-if="updater.phase === 'error'"
+      v-else-if="updater.phase === 'error' && !updateBannerDismissed"
       class="update-banner update-banner--err"
     >
       <span>更新检查失败：{{ updater.error }}</span>
-      <el-button size="small" text @click="checkUpdate">重试</el-button>
+      <span class="update-banner-actions">
+        <el-button size="small" text @click="checkUpdate">重试</el-button>
+        <el-button size="small" text type="info" title="关闭提示" @click="dismissUpdateBanner">关闭</el-button>
+      </span>
     </div>
 
     <div
@@ -530,6 +561,7 @@ onMounted(async () => {
     </div>
 
     <footer class="status-bar">
+      <span v-if="isDev">v{{ version }}</span>
       <span class="app-spacer" />
       <span>{{ clockText }}</span>
       <span>就绪</span>

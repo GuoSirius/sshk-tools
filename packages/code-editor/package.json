@@ -14,6 +14,7 @@
     "@guolao/vue-monaco-editor": "latest",
     "monaco-editor": "latest",
     "monaco-yaml": "latest",
+    "prettier": "latest",
     "vue": "latest"
   },
   "devDependencies": {

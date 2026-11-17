@@ -49,8 +49,9 @@ const api = {
     reload: (force?: boolean): Promise<boolean> =>
       invoke(IPC_CHANNELS.appReload, Boolean(force)),
     toggleDevTools: (key?: string): Promise<boolean> => invoke(IPC_CHANNELS.appToggleDevTools, key),
-    /** 只校验访问密钥、不打开 DevTools；开发者模式等敏感开关复用同套口令 */
-    verifyDevtoolsKey: (key: string): Promise<boolean> => invoke(IPC_CHANNELS.appVerifyDevtoolsKey, key),
+    /** 只校验访问密钥、不打开 DevTools；按操作独立缓存（项9：开发者模式/开发者工具各自输各自的） */
+    verifyDevtoolsKey: (key: string, operation?: 'devtools' | 'developerMode'): Promise<boolean> =>
+      invoke(IPC_CHANNELS.appVerifyDevtoolsKey, key, operation),
     /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
     onRequestClose: (callback: () => void): void => {
       ipcRenderer.on(IPC_CHANNELS.appRequestClose, () => callback())
@@ -62,7 +63,7 @@ const api = {
     check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }> =>
       invoke(IPC_CHANNELS.updateCheck),
     download: (): Promise<boolean> => invoke(IPC_CHANNELS.updateDownload),
-    quitAndInstall: (): Promise<void> => invoke(IPC_CHANNELS.updateQuitAndInstall),
+    quitAndInstall: (): Promise<{ dev?: boolean } | void> => invoke(IPC_CHANNELS.updateQuitAndInstall),
     /** 主进程主动推送 autoUpdater 状态（检查/发现/下载进度/完成/失败），渲染层据此驱动 UI */
     onState: (callback: (payload: unknown) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.updateState, (_event, payload) => callback(payload))
@@ -170,6 +171,8 @@ const api = {
     shareStop: (): Promise<boolean> => invoke(IPC_CHANNELS.badgeShareStop),
     shareStatus: (): Promise<{ running: boolean; expiresAt: number }> =>
       invoke(IPC_CHANNELS.badgeShareStatus),
+    templateDownload: (fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }> =>
+      invoke(IPC_CHANNELS.badgeTemplateDownload, fmt),
     parseImage: (payload: {
       file: string
       provider: 'cloud' | 'paddleocr' | 'manual'

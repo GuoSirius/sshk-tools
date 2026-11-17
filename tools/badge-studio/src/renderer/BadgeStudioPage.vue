@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { ToolPageLayout, ConfirmDialog, provideToolId } from '@sshk/ui-kit'
+import { ArrowDown } from '@element-plus/icons-vue'
 import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
 import {
   toolId, loadConfigAndRecent, loadPosters,
   hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
-  pickHtml, pickStats, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
+  pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, sharePoster, stopPosterShare, shareState,
   selectedPosters, batchExportHtml, batchDeletePosters,
   currentPage, pageSize, posters, onPageChange,
@@ -43,6 +44,20 @@ onMounted(() => {
       <template v-if="!isPosters">
         <el-button size="small" @click="pickHtml">选择 HTML</el-button>
         <el-button size="small" @click="pickStats">选择数据源</el-button>
+        <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
+        <el-dropdown trigger="click" @command="(cmd: string) => void downloadTemplate(cmd as 'xlsx' | 'csv' | 'json')">
+          <el-button-group>
+            <el-button size="small" type="success" plain @click="void downloadTemplate('xlsx')">模板下载</el-button>
+            <el-button size="small" type="success" plain><el-icon><ArrowDown /></el-icon></el-button>
+          </el-button-group>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="xlsx">Excel 模板（.xlsx · 默认）</el-dropdown-item>
+              <el-dropdown-item command="csv">CSV 模板（.csv）</el-dropdown-item>
+              <el-dropdown-item command="json">JSON 模板（.json）</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button size="small" :disabled="!hasHtml || !hasStats" @click="markBeforeGenerate">批量补属性</el-button>
         <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml || !hasStats" @click="generate">
           生成海报

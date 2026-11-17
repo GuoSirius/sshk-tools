@@ -710,6 +710,23 @@ export async function capturePoster(): Promise<void> {
   }
 }
 
+/** 项4：数据源模板下载——默认 xlsx，下拉可选 csv/json；表头+示例行+填写说明由主进程生成 */
+export async function downloadTemplate(fmt: 'xlsx' | 'csv' | 'json' = 'xlsx'): Promise<void> {
+  try {
+    const { base64, fileName } = await host.badge.templateDownload(fmt)
+    const ext = fmt
+    const save = await host.os.pickSave({
+      fileName,
+      extensions: [ext === 'json' ? 'json' : ext],
+    })
+    if (!save) return
+    await host.os.writeBinary(save, base64)
+    ElMessage.success(`模板已下载：${save}`)
+  } catch (err) {
+    ElMessage.error(`模板下载失败：${(err as Error).message}`)
+  }
+}
+
 /** 下载 = 截图 + 下载；未生成时先生成再截图，落盘位置由用户保存对话框决定 */
 export const downloading = ref(false)
 export async function downloadPoster(): Promise<void> {

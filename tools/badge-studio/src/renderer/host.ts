@@ -36,5 +36,6 @@ export const host = createSafeHost({
     shareStart: C.badgeShareStart,
     shareStop: C.badgeShareStop,
     shareStatus: C.badgeShareStatus,
+    templateDownload: C.badgeTemplateDownload,
   },
 })

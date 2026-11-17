@@ -81,7 +81,10 @@ function obj(p: Payload, key: string): Payload {
 export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): { share: ShareServer } {
   const repo = deps.repository
   // C-T1：分享内核抽到 @sshk/share-core；EDM 的产物在 <root>/outputs 下，serve 该子目录
-  const share = new ShareServer(path.join(deps.outputRoot, 'outputs'))
+  // 项11：会话状态落 userData，重启后恢复未过期链接（重新生成才作废旧链接）
+  const shareStateFile = path.join(app.getPath('userData'), 'edm-share-state.json')
+  const share = new ShareServer(path.join(deps.outputRoot, 'outputs'), shareStateFile)
+  void share.resume().catch(() => { /* 端口占用/状态损坏：本次不恢复，用户重新分享即可 */ })
 
   /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
   async function assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void> {

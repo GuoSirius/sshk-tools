@@ -119,7 +119,7 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
           <div v-for="p in itemsOf(s.key)" :key="p.uid" class="placement">
             <span class="handle" title="拖拽排序"><el-icon><Rank /></el-icon></span>
             <span class="lbl" :title="p.label">{{ p.label }}</span>
-            <el-input clearable-number
+            <el-input-number
               :model-value="p.repeat"
               size="small"
               :min="1"

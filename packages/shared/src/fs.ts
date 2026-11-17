@@ -59,8 +59,6 @@ export interface FsChannelInfo {
 export interface FsProfilesPayload {
   channels: FsChannelInfo[]
   outputRoot: string
-  /** 应用是否以管理员运行（Windows 管理员进程收不到资源管理器拖拽事件，UIPI 拦截；拖拽上传诊断用） */
-  elevated: boolean
 }
 
 /** main 侧 stat 结果：文件级冲突检测 / 存在性判断用 */
@@ -133,6 +131,8 @@ export interface FsTransferTask {
   /** 跨通道复制：目标通道 id 与展示名 */
   destProfileId?: string
   destProfileName?: string
+  /** 跨通道移动：成功后删除源文件（项20） */
+  moveSource?: boolean
   size: number
   transferred: number
   status: FsTransferStatus
@@ -159,6 +159,8 @@ export interface FsTransferInput {
   remoteKind?: FsEntryKind
   /** 入队即已确认覆盖同名（如系统另存为对话框已提示替换），跳过引擎 conflict 二次确认 */
   overwrite?: boolean
+  /** 跨通道移动：写目标成功后删除源文件（项20） */
+  moveSource?: boolean
   size?: number
 }
 
@@ -178,6 +180,8 @@ export interface FsCrossCopyRequest {
   sources: { path: string; kind: FsEntryKind }[]
   /** 目标目录（目标通道根相对；'' = 根） */
   destDir: string
+  /** 跨通道移动（项20）：复制成功后删除源文件；源通道须可写，否则报错 */
+  move?: boolean
 }
 
 /** 跨通道复制展开结果 */

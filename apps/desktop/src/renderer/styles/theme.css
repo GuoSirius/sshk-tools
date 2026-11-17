@@ -142,6 +142,12 @@ body {
   background: color-mix(in srgb, #e74c3c 12%, var(--sshk-appbar));
   color: var(--sshk-text);
 }
+.update-banner--progress {
+  background: color-mix(in srgb, var(--sshk-accent) 12%, var(--sshk-appbar));
+  color: var(--sshk-text);
+}
+.update-banner-progress { display: inline-flex; align-items: center; }
+.update-banner-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 
 /* 更新按钮：下载中进度遮罩——文字行上方盖一层随百分比从左填充的色块 */
 .update-btn--progress {
@@ -524,10 +530,13 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 13px;
+  width: auto;            /* 用户 2026-11-17：label 按内容自适应，不占满列宽 */
   min-width: 0;
+  white-space: nowrap;    /* 标签文字禁止换行；长描述一律进问号 tooltip，外面只放简短文案 */
   text-align: left;
 }
-.switch-label .sshk-form-hint { width: auto; }
+.switch-label .sshk-form-hint { width: auto; white-space: nowrap; }
+.switch-label .sshk-form-hint .txt { white-space: nowrap; }
 /* el-form-item 内含开关时同样强制一行（兼容 label-position=top 的表单） */
 .el-form-item:has(> .el-form-item__content .switch-row) .el-form-item__label { display: none; }
 

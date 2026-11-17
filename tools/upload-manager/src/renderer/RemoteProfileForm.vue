@@ -36,7 +36,7 @@ const emit = defineEmits<{
       <el-form-item label="主机 / 端口">
         <div class="combo">
           <el-input clearable v-model="profile.host" placeholder="192.168.1.10" />
-          <el-input clearable-number v-model="profile.port" :min="1" :max="65535" />
+          <el-input-number v-model="profile.port" :min="1" :max="65535" />
         </div>
       </el-form-item>
       <el-form-item label="用户名"><el-input clearable v-model="profile.username" /></el-form-item>

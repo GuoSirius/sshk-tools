@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import { networkInterfaces } from 'node:os'
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { readFile, writeFile, unlink } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { resolveSafe } from '@sshk/repository'
@@ -25,29 +25,45 @@ const MIME: Record<string, string> = {
  * - 只读 serveRoot 下文件；路径穿越受 resolveSafe 保护
  * - EDM：serveRoot = <root>/outputs；badge：serveRoot = 产物根（html + assets 同源可访问）
  */
+interface PersistedShare {
+  token: string
+  expiresAt: number
+  port: number
+}
+
 export class ShareServer {
   private server: Server | null = null
   private token = ''
   private _expiresAt = 0
   private port = 0
 
-  constructor(private readonly serveRoot: string) {}
+  /** stateFile：分享会话持久化路径（userData 下）。null 表示不持久化（向后兼容既有调用）。 */
+  constructor(private readonly serveRoot: string, private readonly stateFile: string | null = null) {}
 
   get running(): boolean {
     return this.server !== null
   }
 
-  /** 当前会话过期时间戳（未启动时为 0） */
-  get expiresAt(): number {
-    return this._expiresAt
+  /** 应用启动时恢复未过期的分享会话（项11：72h 内跨重启仍可访问，token 不变 → 链接不变）。
+   *  - 状态文件不存在 / 已过期 / 结构非法 → 返回 null（不启动）；
+   *  - 重新 start 会生成新 token 并覆盖状态文件 → 旧链接自动失效。 */
+  async resume(requestedPort = 0): Promise<{ port: number; token: string; expiresAt: number; urls: string[] } | null> {
+    if (!this.stateFile || !existsSync(this.stateFile) || this.running) return null
+    let saved: PersistedShare
+    try {
+      saved = JSON.parse(readFileSync(this.stateFile, 'utf8')) as PersistedShare
+      if (!saved?.token || !saved.expiresAt || Date.now() > saved.expiresAt) return null
+    } catch {
+      return null
+    }
+    this.token = saved.token
+    this._expiresAt = saved.expiresAt
+    await this.listen(saved.port || requestedPort)
+    return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls() }
   }
 
-  async start(ttlHours: number, requestedPort: number): Promise<{ port: number; token: string; expiresAt: number; urls: string[] }> {
-    await this.stop()
-    this.token = randomBytes(12).toString('base64url')
-    this._expiresAt = Date.now() + ttlHours * 3600_000
+  private async listen(requestedPort: number): Promise<void> {
     const root = this.serveRoot
-
     this.server = createServer(async (req, res) => {
       try {
         const url = new URL(req.url ?? '/', 'http://local')
@@ -70,14 +86,32 @@ export class ShareServer {
         res.writeHead(404).end('Not Found')
       }
     })
-
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject)
       this.server!.listen(requestedPort === 0 ? 0 : requestedPort, () => resolve())
     })
     const addr = this.server.address()
     this.port = typeof addr === 'object' && addr ? addr.port : requestedPort
+  }
 
+  private async persistState(): Promise<void> {
+    if (!this.stateFile) return
+    const state: PersistedShare = { token: this.token, expiresAt: this._expiresAt, port: this.port }
+    await writeFile(this.stateFile, JSON.stringify(state), 'utf8').catch(() => { /* 落盘失败不影响当次分享 */ })
+  }
+
+  /** 当前会话过期时间戳（未启动时为 0） */
+  get expiresAt(): number {
+    return this._expiresAt
+  }
+
+  async start(ttlHours: number, requestedPort: number): Promise<{ port: number; token: string; expiresAt: number; urls: string[] }> {
+    await this.stop()
+    // 项11：每次「重新生成」都换新 token → 旧链接自动失效
+    this.token = randomBytes(12).toString('base64url')
+    this._expiresAt = Date.now() + ttlHours * 3600_000
+    await this.listen(requestedPort)
+    await this.persistState()
     return { port: this.port, token: this.token, expiresAt: this._expiresAt, urls: this.urls() }
   }
 
@@ -95,6 +129,7 @@ export class ShareServer {
     this.server = null
     this.token = ''
     this._expiresAt = 0
+    if (this.stateFile) await unlink(this.stateFile).catch(() => { /* 文件本就不存在，忽略 */ })
   }
 
   /**

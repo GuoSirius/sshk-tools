@@ -396,7 +396,7 @@ onMounted(() => {
             <el-input clearable v-model="acceptText" placeholder=".png, .jpg, .webp（留空 = 不限制）" />
           </el-form-item>
           <el-form-item label="单文件大小(MB)">
-            <el-input clearable-number v-model="maxSizeMb" :min="0" :max="2048" :step="1" />
+            <el-input-number v-model="maxSizeMb" :min="0" :max="2048" :step="1" />
             <span class="hint-inline">0 = 不限制；工具只能设得更严，不能放宽</span>
           </el-form-item>
         </el-form>

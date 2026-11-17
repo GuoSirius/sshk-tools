@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import { zipSync, type Zippable } from 'fflate'
-import { dirname, extname, isAbsolute } from 'node:path'
+import { dirname, extname, isAbsolute, join } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { app } from 'electron'
 import { ShareServer } from '@sshk/share-core'
@@ -180,7 +180,10 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     return deps.host
   }
   // C-T1：海报分享复用宿主级 share-core 内核（serve 产物根，html + assets 同源可访问）
-  const share = new ShareServer(deps.outputRoot)
+  // 项11：会话状态落 userData，重启后 resume 恢复未过期链接（token 不变 → 链接不变）
+  const shareStateFile = join(app.getPath('userData'), 'badge-share-state.json')
+  const share = new ShareServer(deps.outputRoot, shareStateFile)
+  void share.resume().catch(() => { /* 端口占用/状态损坏：本次不恢复，用户重新分享即可 */ })
 
   // ① 数据源解析：按扩展名分派（xlsx/csv/json）
   //    支持文件选择器给出的绝对路径（用户主动选择）与产物系统相对路径
@@ -431,4 +434,42 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     running: share.running,
     expiresAt: share.expiresAt,
   })))
+
+  // ⑩ 数据源模板下载（用户验收项4）：空表头 + 示例行；xlsx 含「填写说明」sheet；返回 base64 由渲染层落盘
+  ipc.handle(IPC_CHANNELS.badgeTemplateDownload, wrap(async (fmt: 'xlsx' | 'csv' | 'json') => {
+    const XLSX = await import('xlsx')
+    const sample = {
+      url: 'https://example.com/product/1',
+      clicks: 12,
+      totalClicks: 30,
+    }
+    const headers = ['url', 'clicks', 'totalClicks']
+    let buf: Buffer
+    let fileName: string
+    if (fmt === 'json') {
+      const json = JSON.stringify([sample], null, 2)
+      buf = Buffer.from(json, 'utf8')
+      fileName = 'badge-datasource-template.json'
+    } else if (fmt === 'csv') {
+      const csv = '\uFEFF' + headers.join(',') + '\n' + headers.map((h) => String(sample[h as keyof typeof sample])).join(',') + '\n'
+      buf = Buffer.from(csv, 'utf8')
+      fileName = 'badge-datasource-template.csv'
+    } else {
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet([sample], { header: headers })
+      XLSX.utils.book_append_sheet(wb, ws, '数据源')
+      const guide = XLSX.utils.aoa_to_sheet([
+        ['列名', '是否必填', '说明'],
+        ['url', '必填', '商品/链接地址，用于匹配 HTML 中的链接并打角标'],
+        ['clicks', '必填', '角标显示的数字（整数）'],
+        ['totalClicks', '选填', '累计点击；也可用「角标取值列」切换为其它列'],
+        ['自定义列', '选填', '如 uv / 下单数，应用内「新增数值列」即可扩展'],
+        ['填写提示', '', '保持表头名称不变；第一行示例数据请删除或替换后保存'],
+      ])
+      XLSX.utils.book_append_sheet(wb, guide, '填写说明')
+      buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Uint8Array)
+      fileName = 'badge-datasource-template.xlsx'
+    }
+    return { base64: buf.toString('base64'), fileName }
+  }))
 }
