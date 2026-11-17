@@ -409,7 +409,7 @@ async function saveDistribution(): Promise<void> {
 }
 
 // ── 备份：settings + NeDB + 产物 → zip（导入含快照回滚与密钥迁移） ──
-/** D18 密钥迁移口令：仅当 SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1 启动时主进程才采用；为空则密钥不加密直存 */
+/** D18 备份密钥迁移口令：填了即生效（加密备份内密钥，导入时用同一口令还原）；留空则密钥不迁移 */
 const migrationPassphrase = ref('')
 async function exportBackup(): Promise<void> {
   const save = await window.api.os.pickSave({
@@ -928,7 +928,7 @@ async function cleanupOrphans(): Promise<void> {
                 <span>迁移口令</span>
                 <el-input v-model="migrationPassphrase" size="small" type="password" show-password clearable placeholder="留空 = 密钥不加密" style="width: 230px" />
               </div>
-              <div class="hint">D18：仅当以 SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1 启动时口令才生效（加密备份内密钥，导入时用同一口令还原）；开关关闭时口令被忽略、密钥不迁移。跨设备迁移需两端同开。</div>
+              <div class="hint">D18：填写口令则备份包内密钥以口令加密（AES），导入时用同一口令还原；留空则密钥不随备份迁移。跨设备迁移两端填同一口令即可，无需再设环境变量。</div>
             </section>
 
             <section class="settings-card">

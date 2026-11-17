@@ -468,7 +468,8 @@ async function uploadFromOutput(): Promise<void> {
 
 /** 本地展平结果 → 传输队列上传任务（relPath 保留目录结构） */
 async function enqueueUploads(files: { name: string; localPath: string; relPath: string; size: number }[]): Promise<void> {
-  if (!files.length || !profileId.value) return
+  if (!files.length) { ElMessage.warning('没有可上传的文件（目录为空或文件无效）'); return }
+  if (!profileId.value) { ElMessage.warning('请先选择上传通道'); return }
   const inputs = files.map((f) => ({
     kind: 'upload' as const,
     profileId: profileId.value,
@@ -534,21 +535,35 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
       }
     }
   }
-  if (!files.length) {
-    ElMessage.warning('未从系统拖拽事件中拿到文件（拖的是网页元素/纯文本，或拖放消息被系统拦截）；文件请从资源管理器拖入，或用工具栏「上传文件」')
-    return
+  // 全链路诊断（用户验收项4：drop 后无任何动静——以前 flattenLocal/transferStart 抛错会静默吞掉）
+  console.info(`[fs-drop] drop 收到：files=${files.length} items=${dt?.items?.length ?? 0} types=${dt ? Array.from(dt.types).join(',') : '-'}`)
+  try {
+    if (!files.length) {
+      ElMessage.warning('未从系统拖拽事件中拿到文件（拖的是网页元素/纯文本，或拖放消息被系统拦截）；文件请从资源管理器拖入，或用工具栏「上传文件」')
+      return
+    }
+    // webUtils.getPathForFile 为主，File.path 兜底（个别 Electron 版本 contextBridge 传 File 后 webUtils 取不到）
+    const paths: string[] = []
+    const nameFor: string[] = []
+    for (const f of files) {
+      let p = ''
+      try { p = window.api.fs.pathForFile(f) } catch { p = '' }
+      if (!p) {
+        const legacy = (f as File & { path?: string }).path
+        if (typeof legacy === 'string' && legacy) p = legacy
+      }
+      if (p) { paths.push(p); nameFor.push(f.name) }
+      else console.warn(`[fs-drop] 取不到本地路径：name=${f.name} size=${f.size}`)
+    }
+    if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传文件」按钮选择'); return }
+    if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道，再拖入文件'); return }
+    const flat = await window.api.fs.flattenLocal(paths)
+    console.info(`[fs-drop] flattenLocal：输入 ${paths.length} 项 → 展开 ${flat.length} 个文件`)
+    await enqueueUploads(flat)
+  } catch (err) {
+    console.error('[fs-drop] 拖拽上传链路异常：', err)
+    ElMessage.error(`拖拽上传失败：${(err as Error).message ?? err}`)
   }
-  // webUtils.getPathForFile 为主，File.path 兜底（个别 Electron 版本 contextBridge 传 File 后 webUtils 取不到）
-  const paths = files.map((f) => {
-    const viaWebUtils = window.api.fs.pathForFile(f)
-    if (viaWebUtils) return viaWebUtils
-    const legacy = (f as File & { path?: string }).path
-    return typeof legacy === 'string' ? legacy : ''
-  }).filter(Boolean)
-  if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传文件」按钮选择'); return }
-  if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道，再拖入文件'); return }
-  const flat = await window.api.fs.flattenLocal(paths)
-  await enqueueUploads(flat)
 }
 
 // ── 下载 ──
@@ -1290,7 +1305,8 @@ function onKeydown(event: KeyboardEvent): void {
       <div class="fs-queue-wrap">
         <div class="fs-drawer-toolbar">
           <el-button size="small" text type="warning" @click="clearFinishedTasks">清理已完结</el-button>
-          <span class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
+          <!-- 并发/重试是静态配置说明（用户验收项5）：空队列时显示会像误产生的统计数据，仅在有任务时展示 -->
+          <span v-if="taskList.length" class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
         </div>
         <div class="fs-task-list">
           <div v-if="!taskList.length" class="fs-empty"><p>暂无传输任务</p></div>

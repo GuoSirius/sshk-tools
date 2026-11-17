@@ -18,6 +18,8 @@ import {
   type ToolOverrides,
   type ToolPluginStatus,
   now,
+  envOn,
+  envOff,
 } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
@@ -56,10 +58,10 @@ const isDev = !app.isPackaged
  *  版本号来源二选一（都不用改 package.json）：
  *   - SSHK_UPDATE_DEV_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
-const updateDevCheck = isDev && ['1', 'true'].includes(String(process.env.SSHK_UPDATE_DEV_CHECK ?? '').toLowerCase())
+const updateDevCheck = isDev && envOn(process.env.SSHK_UPDATE_DEV_CHECK)
 /** 分发包自动更新总开关：SSHK_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
  *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。 */
-const autoUpdateDisabled = ['0', 'false'].includes(String(process.env.SSHK_AUTO_UPDATE ?? '').toLowerCase())
+const autoUpdateDisabled = envOff(process.env.SSHK_AUTO_UPDATE)
 if (updateDevCheck) {
   const fakeVersion = String(process.env.SSHK_UPDATE_DEV_VERSION ?? '').trim()
   if (fakeVersion) {
@@ -276,10 +278,8 @@ function migrateLegacyVisionConfig(): void {
   cfg.set('tools.badge-studio.vision', vision)
 }
 
-/** D18：只有 env=1/true 才允许备份包加密携带 / 还原密钥（功能开关，非安全边界） */
-function secretMigrationEnabled(): boolean {
-  return ['1', 'true'].includes(String(process.env.SSHK_TOOLS_ALLOW_SECRET_MIGRATION ?? '').trim().toLowerCase())
-}
+/** D18：备份口令「填了就生效」（2026-11-17 用户验收项1：删除 SSHK_TOOLS_ALLOW_SECRET_MIGRATION env 门控——
+ *  预设导出已提供「包含密钥」UI 开关，备份沿用同一自然语义：填口令=加密携带密钥，留空=不迁移） */
 
 /** H6 NeDB 防膨胀：超阈集合按需压缩 + 全量压缩；失败只告警，绝不影响使用 */
 async function compactDatabase(reason: 'daily' | 'startup' | 'quit'): Promise<void> {
@@ -434,7 +434,7 @@ async function registerIpc(): Promise<void> {
       outZipPath: out,
       appVersion: app.getVersion(),
       secretsJson: services!.exportSecretsJson(),
-      migrationPassphrase: secretMigrationEnabled() ? (passphrase || undefined) : undefined,
+      migrationPassphrase: passphrase || undefined,
     })
     return { counts: manifest.counts, file: out }
   })
@@ -449,7 +449,7 @@ async function registerIpc(): Promise<void> {
       snapshotDir: join(services!.outputRoot, '.tmp', 'import', 'pre-import-backup'),
       dbDir,
       settingsPath: defaultConfigPath(app.getPath('userData')),
-      migrationPassphrase: secretMigrationEnabled() ? (passphrase || undefined) : undefined,
+      migrationPassphrase: passphrase || undefined,
     })
     if (result.secretsJson) services!.importSecretsJson(result.secretsJson)
     return { counts: result.manifest.counts, secretsRestored: result.secretsRestored, secretsMessage: result.secretsMessage }
