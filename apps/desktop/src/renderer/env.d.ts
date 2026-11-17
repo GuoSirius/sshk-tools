@@ -76,7 +76,7 @@ interface Window {
       confirmClose(): Promise<boolean>
     }
     update: {
-      check(): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }>
+      check(): Promise<{ dev?: boolean; disabled?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }>
       download(): Promise<boolean>
       quitAndInstall(): Promise<{ dev?: boolean } | void>
       onState(callback: (payload: UpdateState) => void): void

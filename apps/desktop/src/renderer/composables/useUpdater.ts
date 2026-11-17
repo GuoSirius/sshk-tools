@@ -6,7 +6,7 @@ import { ref, type Ref } from 'vue'
  * 渲染层不再各写一份 toast 或轮询。
  */
 export interface UpdateState {
-  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev'
+  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev' | 'disabled'
   version?: string
   percent?: number
   error?: string

@@ -41,13 +41,15 @@ const updateStatusText = computed(() => {
     case 'downloaded': return '待安装'
     case 'error': return '检查失败'
     case 'dev': return '开发版本'
+    case 'disabled': return '已禁用'
     default: return '未知'
   }
 })
 async function checkUpdate(): Promise<void> {
   if (updaterState.value.phase === 'checking' || updaterState.value.phase === 'downloading' || updaterState.value.phase === 'available') return
   const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
-  if (result.dev) ElMessage.info('开发环境不检查更新')
+  if (result.disabled) ElMessage.info('自动更新已禁用（SSHK_AUTO_UPDATE=0）')
+  else if (result.dev) ElMessage.info('开发环境不检查更新')
   else if (result.error) ElMessage.error('检查更新失败：' + String(result.error))
   else if (result.updateAvailable) ElMessage.success(`发现新版本 ${String(result.version ?? '')}，已开始下载`)
   else ElMessage.success('当前已是最新版本')
@@ -886,6 +888,7 @@ async function cleanupOrphans(): Promise<void> {
               </div>
               <div class="card-actions">
                 <el-button
+                  v-if="updaterState.phase !== 'disabled'"
                   size="small"
                   :loading="updaterState.phase === 'checking' || updaterState.phase === 'downloading'"
                   @click="checkUpdate"
@@ -895,7 +898,8 @@ async function cleanupOrphans(): Promise<void> {
                 <el-button v-if="updaterState.phase === 'downloaded'" size="small" type="primary" @click="installUpdate">立即安装</el-button>
               </div>
               <div v-if="updaterState.phase === 'error'" class="warning-line">{{ updaterState.error }}</div>
-              <div class="hint">自动更新默认开启（见「常规」）；新版本后台下载，完成后点「立即安装」重启生效。若需在退出应用时自动安装，请在「常规 → 自动安装更新」开启（默认关闭）。</div>
+              <div v-if="updaterState.phase === 'disabled'" class="hint">自动更新已被环境变量 SSHK_AUTO_UPDATE=0 禁用：不检查、不下载、不提示新版本（内网/定制分发场景）。</div>
+              <div v-else class="hint">自动更新默认开启（见「常规」）；新版本后台下载，完成后点「立即安装」重启生效。若需在退出应用时自动安装，请在「常规 → 自动安装更新」开启（默认关闭）。</div>
             </section>
 
             <section class="settings-card">

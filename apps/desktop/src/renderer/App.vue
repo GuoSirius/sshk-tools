@@ -317,7 +317,9 @@ onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverT
 async function checkUpdate(): Promise<void> {
   if (updater.value.phase === 'checking' || updater.value.phase === 'downloading' || updater.value.phase === 'available') return
   const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
-  if (result.dev) {
+  if (result.disabled) {
+    ElMessage.info('自动更新已禁用（SSHK_AUTO_UPDATE=0）')
+  } else if (result.dev) {
     ElMessage.info('开发环境不检查更新')
   } else if (result.error) {
     ElMessage.error('检查更新失败：' + String(result.error))
@@ -361,12 +363,15 @@ onMounted(async () => {
         <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
       <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
-      <el-button
-        v-if="updater.phase === 'downloaded'"
-        size="small"
-        type="success"
-        @click="installUpdate"
-      >立即更新 v{{ updater.version }}</el-button>
+      <!-- SSHK_AUTO_UPDATE=0 时自动更新整体禁用（phase=disabled）：顶栏不渲染任何更新入口 -->
+      <template v-if="updater.phase !== 'disabled'">
+        <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
+        <el-button
+          v-if="updater.phase === 'downloaded'"
+          size="small"
+          type="success"
+          @click="installUpdate"
+        >立即更新 v{{ updater.version }}</el-button>
       <!-- 有可用包：状态指示（后台自动下载中），不再触发 checkUpdate——点它会重新检查导致「检查中→发现新版本」来回跳 -->
       <el-button
         v-else-if="updater.phase === 'available'"
@@ -399,6 +404,7 @@ onMounted(async () => {
         <template v-else-if="updater.phase === 'error'">更新出错</template>
         <template v-else-if="updater.phase === 'dev'">开发版</template>
       </el-button>
+      </template>
       <!-- 验证引导：常用入口直接放顶栏（曾放「更多」下拉，走查频繁点击不方便） -->
       <el-button v-if="canShowVerifyGuide" size="small" text @click="verifyGuideOpen = true">验证引导</el-button>
       <el-dropdown trigger="click" @command="onMoreCommand">

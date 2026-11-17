@@ -57,6 +57,9 @@ const isDev = !app.isPackaged
  *   - SSHK_UPDATE_DEV_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
 const updateDevCheck = isDev && ['1', 'true'].includes(String(process.env.SSHK_UPDATE_DEV_CHECK ?? '').toLowerCase())
+/** 分发包自动更新总开关：SSHK_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
+ *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。 */
+const autoUpdateDisabled = ['0', 'false'].includes(String(process.env.SSHK_AUTO_UPDATE ?? '').toLowerCase())
 if (updateDevCheck) {
   const fakeVersion = String(process.env.SSHK_UPDATE_DEV_VERSION ?? '').trim()
   if (fakeVersion) {
@@ -504,6 +507,7 @@ async function registerIpc(): Promise<void> {
   // autoUpdater 全生命周期状态：检查 → 发现 → 下载进度 → 完成 → 失败，统一推给渲染层。
   // 渲染层据此展示状态指示、进度条与「立即安装」提示，告别一次性 toast。
   handleOk(IPC_CHANNELS.updateCheck, async () => {
+    if (autoUpdateDisabled) { pushUpdate({ phase: 'disabled' }); return { disabled: true } }
     if (isDev && !updateDevCheck) { pushUpdate({ phase: 'dev' }); return { dev: true } }
     try {
       const result = await autoUpdater.checkForUpdates()
@@ -515,11 +519,13 @@ async function registerIpc(): Promise<void> {
     }
   })
   handleOk(IPC_CHANNELS.updateDownload, async () => {
+    if (autoUpdateDisabled) return false
     if (isDev && !updateDevCheck) return false
     await autoUpdater.downloadUpdate()
     return true
   })
   handleOk(IPC_CHANNELS.updateQuitAndInstall, () => {
+    if (autoUpdateDisabled) return { dev: false }
     if (updateDevCheck) {
       // dev 测试：只验证下载流程，绝不真装（否则会替换掉正在开发的 install 目录）
       logger.info('updater', 'dev 更新测试模式：拦截安装，仅下载不落盘安装')
@@ -881,7 +887,7 @@ function migrateLegacyUserData(): void {
 
 type UpdatePhase =
   | 'idle' | 'checking' | 'available' | 'not-available'
-  | 'downloading' | 'downloaded' | 'error' | 'dev'
+  | 'downloading' | 'downloaded' | 'error' | 'dev' | 'disabled'
 interface UpdateState {
   phase: UpdatePhase
   version?: string
@@ -934,6 +940,11 @@ function wireAutoUpdater(): void {
 }
 
 function setupAutoUpdate(): void {
+  // SSHK_AUTO_UPDATE=0：自动更新机制整体禁用——不挂监听、不检查，推 disabled 让渲染层隐藏全部更新入口
+  if (autoUpdateDisabled) {
+    pushUpdate({ phase: 'disabled' })
+    return
+  }
   if (isDev && !updateDevCheck) return
   if (updateDevCheck) logger.info('updater', 'dev 更新测试模式已启用：连接 GitHub 更新源，下载但绝不安装')
   wireAutoUpdater()
