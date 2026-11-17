@@ -267,7 +267,7 @@ watch(() => props.open, (open) => {
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
-        <el-button type="primary" size="small" :loading="busy" @click="renew">续期 72h</el-button>
+        <el-button type="primary" size="small" :loading="busy" @click="renew">续期</el-button>
         <el-button type="danger" size="small" plain :loading="busy" @click="revoke">撤销分享</el-button>
         <el-button type="warning" size="small" :loading="busy" @click="regenerate">重新生成</el-button>
         <el-button size="small" @click="close">关闭</el-button>
