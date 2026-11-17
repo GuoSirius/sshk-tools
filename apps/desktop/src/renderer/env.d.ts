@@ -124,7 +124,7 @@ interface Window {
     }
     os: {
       pickFile(opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }): Promise<string[]>
-      pickDir(): Promise<string>
+      pickDir(opts?: { defaultPath?: string }): Promise<string>
       pickSave(opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string>
       readDataUri(file: string): Promise<string>
       writeText(path: string, content: string): Promise<boolean>

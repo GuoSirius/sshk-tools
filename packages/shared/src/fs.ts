@@ -155,6 +155,8 @@ export interface FsTransferInput {
   destProfileId?: string
   /** 删除任务：dir 递归删除 / file 单文件 */
   remoteKind?: FsEntryKind
+  /** 入队即已确认覆盖同名（如系统另存为对话框已提示替换），跳过引擎 conflict 二次确认 */
+  overwrite?: boolean
   size?: number
 }
 
@@ -227,6 +229,8 @@ export const FS_MEDIA_PLAY_LIMIT = 64 * 1024 * 1024
 export const FS_TEXT_EDIT_LIMIT = 256 * 1024
 /** 图片预览阈值（字节） */
 export const FS_IMAGE_PREVIEW_LIMIT = 10 * 1024 * 1024
+/** PDF 在线预览阈值（字节）：base64 过 IPC + Blob URL 交给 Chromium 内置 PDF viewer */
+export const FS_PDF_PREVIEW_LIMIT = 50 * 1024 * 1024
 
 function extOf(name: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(String(name ?? '').trim())

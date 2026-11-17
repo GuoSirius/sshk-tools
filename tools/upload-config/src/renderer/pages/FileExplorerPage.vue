@@ -26,6 +26,7 @@ import {
 import {
   FS_IMAGE_PREVIEW_LIMIT,
   FS_MEDIA_PLAY_LIMIT,
+  FS_PDF_PREVIEW_LIMIT,
   FS_TEXT_EDIT_LIMIT,
   fsFormatSize,
   fsMediaMime,
@@ -86,7 +87,13 @@ const deleteTargets = ref<FsEntry[]>([])
 const deleteInput = ref('')
 
 // ── 预览 / 编辑 / 播放 ──
-const preview = ref({ open: false, name: '', src: '', scale: 1 })
+const preview = ref({ open: false, name: '', src: '', pdfUrl: '', scale: 1 })
+/** 关闭预览：PDF 的 Blob URL 释放内存（图片走 data URI 无需释放） */
+function onPreviewClose(): void {
+  if (preview.value.pdfUrl) { URL.revokeObjectURL(preview.value.pdfUrl); preview.value.pdfUrl = '' }
+  preview.value.src = ''
+  preview.value.scale = 1
+}
 const editor = ref({
   open: false, path: '', name: '', content: '', readonly: false, saving: false,
   etag: '', modified: 0, size: 0, conflict: false,
@@ -349,10 +356,7 @@ function fileIcon(entry: FsEntry): typeof Document {
 /** 音视频在线播放（二期）：超阈值引导下载后本地播放 */
 function openPlayer(entry: FsEntry): void {
   if ((entry.size ?? 0) > FS_MEDIA_PLAY_LIMIT) {
-    ElMessageBox.confirm(`文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${fsFormatSize(FS_MEDIA_PLAY_LIMIT)}）。是否直接下载该文件？`, '文件过大', {
-      type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
-      closeOnClickModal: false, closeOnPressEscape: false,
-    }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 取消 */ })
+    confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${fsFormatSize(FS_MEDIA_PLAY_LIMIT)}）`, '文件过大')
     return
   }
   player.value = { open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true }
@@ -364,24 +368,42 @@ function openPlayer(entry: FsEntry): void {
     .catch((err) => {
       player.value.open = false
       const msg = (err as Error).message ?? ''
-      if (/过大|超过/.test(msg)) {
-        ElMessageBox.confirm(`${msg}。是否直接下载该文件？`, '文件过大', {
-          type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
-          closeOnClickModal: false, closeOnPressEscape: false,
-        }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 取消 */ })
-      } else {
-        ElMessage.warning(friendlyError(err))
-      }
+      if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
+      else ElMessage.warning(friendlyError(err))
     })
     .finally(() => { player.value.loading = false })
 }
 
+/** 引导下载确认框（打开/预览失败、文件过大等场景统一入口，用户决定是否下载） */
+function confirmDownload(entry: FsEntry, message: string, title: string): void {
+  ElMessageBox.confirm(`${message}。是否下载到本地？`, title, {
+    type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
+    closeOnClickModal: false, closeOnPressEscape: false,
+  }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 取消 */ })
+}
+
+/** PDF 在线预览：base64 → Blob URL，交给 Chromium 内置 PDF viewer（上限 FS_PDF_PREVIEW_LIMIT） */
+async function openPdf(entry: FsEntry): Promise<void> {
+  if (!profileId.value) return
+  try {
+    const r = await window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_PDF_PREVIEW_LIMIT })
+    const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0))
+    onPreviewClose()
+    preview.value = { open: true, name: entry.name, src: '', pdfUrl: URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), scale: 1 }
+  } catch (err) {
+    const msg = (err as Error).message ?? ''
+    if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
+    else ElMessage.warning(friendlyError(err))
+  }
+}
+
 async function openFile(entry: FsEntry): Promise<void> {
   if (!profileId.value) return
+  if (/\.pdf$/i.test(entry.name)) { void openPdf(entry); return }
   if (isFsImageName(entry.name)) {
     try {
       const r = await window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_IMAGE_PREVIEW_LIMIT })
-      preview.value = { open: true, name: entry.name, src: dataUriOf(entry.name, r.contentBase64), scale: 1 }
+      preview.value = { open: true, name: entry.name, src: dataUriOf(entry.name, r.contentBase64), pdfUrl: '', scale: 1 }
     } catch (err) {
       ElMessage.warning(friendlyError(err))
     }
@@ -399,14 +421,8 @@ async function openFile(entry: FsEntry): Promise<void> {
     } catch (err) {
       const msg = (err as Error).message ?? ''
       // 仅「超阈值」引导下载；其余错误（网络/权限等）原样提示
-      if (/过大|超过/.test(msg)) {
-        ElMessageBox.confirm(`${msg}。是否直接下载该文件？`, '文件过大', {
-          type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
-          closeOnClickModal: false, closeOnPressEscape: false,
-        }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 保持关闭 */ })
-      } else {
-        ElMessage.warning(friendlyError(err))
-      }
+      if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
+      else ElMessage.warning(friendlyError(err))
     }
     return
   }
@@ -414,8 +430,8 @@ async function openFile(entry: FsEntry): Promise<void> {
     openPlayer(entry)
     return
   }
-  // 二进制 / 未知扩展：只有下载
-  void downloadEntries([entry])
+  // 二进制 / 未知扩展：能打开的直接打开做不到，先告知用户再由其决定是否下载
+  confirmDownload(entry, '该文件类型暂不支持在线预览，需要下载到本地查看', '无法在线预览')
 }
 
 function dataUriOf(name: string, base64: string): string {
@@ -507,16 +523,32 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
 }
 
 // ── 下载 ──
+/** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
+ *  多文件选目标目录（默认通道下载落点），同名冲突仍由传输队列逐个确认 */
 async function downloadEntries(list0: FsEntry[]): Promise<void> {
   const files = list0.filter((e) => e.kind === 'file')
   if (!files.length || !profileId.value) return
   const base = await window.api.fs.downloadDir(profileId.value)
+  const single = files.length === 1
+  let destDir = base
+  let singleDestPath = ''
+  if (single) {
+    const picked = await window.api.os.pickSave({ fileName: files[0]!.name, defaultPath: base })
+    if (!picked) return
+    singleDestPath = picked
+  } else {
+    const dir = await window.api.os.pickDir({ defaultPath: base })
+    if (!dir) return
+    destDir = dir
+  }
   const inputs = files.map((f) => ({
     kind: 'download' as const,
-    profileId: profileId.value,
+    profileId: profileId.value!,
     name: f.name,
     remotePath: f.path,
-    destPath: `${base.replace(/[\\/]+$/, '')}/${f.name}`,
+    destPath: single ? singleDestPath : `${destDir.replace(/[\\/]+$/, '')}/${f.name}`,
+    // 单文件已在系统对话框确认替换 → 跳过引擎 conflict 二次确认
+    ...(single ? { overwrite: true } : {}),
     size: f.size ?? 0,
   }))
   const { taskIds } = await window.api.fs.transferStart(inputs)
@@ -615,6 +647,32 @@ function openMove(mode: 'copy' | 'move'): void {
   moveDirInput.value = path.value
   moveDestProfile.value = profileId.value
   moveOpen.value = true
+}
+
+/** 目标目录级联（移动/复制/复制到共用）：逐级懒加载只列目录，点圈选中回填手输框。
+ *  props 用单例对象：每次渲染重建会触发 cascader 根节点重拉；通道切换靠模板 :key 重挂载刷新。
+ *  坑（同 file-picker）：不写 leaf 字段——EP 对「已加载且无子」自动推断叶子，显式 leaf 会钉死非叶子 */
+const moveDirProps = {
+  lazy: true,
+  checkStrictly: true,
+  emitPath: false,
+  lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
+    const pid = moveDestProfile.value || profileId.value
+    if (!pid) { resolve([]); return }
+    const parent = node.level === 0 ? '' : String(node.value ?? '')
+    try {
+      const page = await window.api.fs.list({ profileId: pid, path: parent })
+      resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
+    } catch {
+      resolve([])
+    }
+  },
+}
+const moveCascaderRef = ref<{ togglePopperVisible: (visible: boolean) => void } | null>(null)
+/** 点单选圈：路径回填手输框并收起面板（checkStrictly 下 EP 不会自动收起） */
+function onMoveDirPicked(v: unknown): void {
+  moveDirInput.value = String(v ?? '')
+  moveCascaderRef.value?.togglePopperVisible(false)
 }
 /** 行内直达（§3.2 行操作列）：单选该条目后走「复制到/移动到」弹框 */
 function rowCopy(entry: FsEntry): void {
@@ -1101,7 +1159,18 @@ function onKeydown(event: KeyboardEvent): void {
           </el-select>
         </template>
         <div class="hint" style="margin-bottom: 8px">目标目录（通道根相对路径，如 a/b；留空为根目录）：</div>
-        <el-input v-model="moveDirInput" placeholder="a/b" @keyup.enter="submitMove" />
+        <el-input v-model="moveDirInput" placeholder="a/b，也可从下方目录树选择" @keyup.enter="submitMove" />
+        <el-cascader
+          ref="moveCascaderRef"
+          :key="moveDestProfile || profileId || ''"
+          class="fs-move-cascader"
+          :props="moveDirProps"
+          size="small"
+          placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
+          clearable
+          style="width: 100%; margin-top: 8px"
+          @change="onMoveDirPicked"
+        />
         <div class="fs-crumb" style="margin-top: 10px; display: inline-block" @click="moveDirInput = path">填当前目录：{{ path || '(根)' }}</div>
       </div>
       <template #footer>
@@ -1121,14 +1190,17 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 图片预览 -->
-    <el-dialog v-model="preview.open" :title="preview.name" width="720px" close-on-click-modal="false" close-on-press-escape="false" class="fs-preview-dialog">
+    <el-dialog v-model="preview.open" :title="preview.name" width="720px" close-on-click-modal="false" close-on-press-escape="false" class="fs-preview-dialog" @close="onPreviewClose">
       <div class="fs-preview-body">
-        <img :src="preview.src" :style="{ transform: `scale(${preview.scale})` }" alt="preview" />
+        <iframe v-if="preview.pdfUrl" :src="preview.pdfUrl" class="fs-preview-pdf" title="PDF 预览" />
+        <img v-else :src="preview.src" :style="{ transform: `scale(${preview.scale})` }" alt="preview" />
       </div>
       <template #footer>
-        <el-button size="small" type="primary" plain @click="preview.scale = Math.max(0.2, preview.scale - 0.2)">缩小</el-button>
-        <el-button size="small" type="primary" plain @click="preview.scale = 1">复位</el-button>
-        <el-button size="small" type="primary" plain @click="preview.scale = Math.min(5, preview.scale + 0.2)">放大</el-button>
+        <template v-if="!preview.pdfUrl">
+          <el-button size="small" type="primary" plain @click="preview.scale = Math.max(0.2, preview.scale - 0.2)">缩小</el-button>
+          <el-button size="small" type="primary" plain @click="preview.scale = 1">复位</el-button>
+          <el-button size="small" type="primary" plain @click="preview.scale = Math.min(5, preview.scale + 0.2)">放大</el-button>
+        </template>
         <el-button size="small" @click="preview.open = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -1161,33 +1233,37 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 传输队列抽屉 -->
     <el-drawer v-model="drawerOpen" title="传输队列" direction="btt" size="45%" close-on-click-modal="false" close-on-press-escape="false">
-      <div class="fs-drawer-toolbar">
-        <el-button size="small" text type="warning" @click="clearFinishedTasks">清理已完结</el-button>
-        <span class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
-      </div>
-      <div class="fs-task-list">
-        <div v-if="!taskList.length" class="fs-empty"><p>暂无传输任务</p></div>
-        <div v-for="t in taskList" :key="t.id" class="fs-task" :class="`is-${t.status}`">
-          <div class="fs-task-head">
-            <el-tag size="small" :type="kindTagType(t)">{{ kindLabel(t) }}</el-tag>
-            <span class="fs-task-name" :title="t.remotePath ?? t.localPath">{{ t.name }}</span>
-            <span class="fs-task-meta" :title="t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName">
-              {{ t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName }}
-            </span>
-            <span class="fs-spacer" />
-            <span v-if="t.status === 'running'" class="fs-task-speed">{{ fmtSpeed(t.speed) }}</span>
-            <span class="fs-task-status">{{ statusText(t) }}</span>
-            <el-button v-if="t.status === 'running' || t.status === 'queued'" size="small" text type="danger" @click="cancelTask(t.id)">取消</el-button>
-            <el-button v-if="t.status === 'conflict'" size="small" text type="warning" @click="retryTask(t, true)">覆盖</el-button>
-            <el-button v-if="t.status === 'failed' || t.status === 'canceled'" size="small" text type="primary" @click="retryTask(t)">重试</el-button>
+      <!-- 全局 theme.css 把 .el-drawer__body 设为 overflow:hidden（防设置抽屉双滚动条），
+           队列滚动由本容器自管：height:100% + 内部列表 flex:1/min-height:0 -->
+      <div class="fs-queue-wrap">
+        <div class="fs-drawer-toolbar">
+          <el-button size="small" text type="warning" @click="clearFinishedTasks">清理已完结</el-button>
+          <span class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
+        </div>
+        <div class="fs-task-list">
+          <div v-if="!taskList.length" class="fs-empty"><p>暂无传输任务</p></div>
+          <div v-for="t in taskList" :key="t.id" class="fs-task" :class="`is-${t.status}`">
+            <div class="fs-task-head">
+              <el-tag size="small" :type="kindTagType(t)">{{ kindLabel(t) }}</el-tag>
+              <span class="fs-task-name" :title="t.remotePath ?? t.localPath">{{ t.name }}</span>
+              <span class="fs-task-meta" :title="t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName">
+                {{ t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName }}
+              </span>
+              <span class="fs-spacer" />
+              <span v-if="t.status === 'running'" class="fs-task-speed">{{ fmtSpeed(t.speed) }}</span>
+              <span class="fs-task-status">{{ statusText(t) }}</span>
+              <el-button v-if="t.status === 'running' || t.status === 'queued'" size="small" text type="danger" @click="cancelTask(t.id)">取消</el-button>
+              <el-button v-if="t.status === 'conflict'" size="small" text type="warning" @click="retryTask(t, true)">覆盖</el-button>
+              <el-button v-if="t.status === 'failed' || t.status === 'canceled'" size="small" text type="primary" @click="retryTask(t)">重试</el-button>
+            </div>
+            <el-progress
+              v-if="t.status !== 'failed' && t.status !== 'canceled'"
+              :percentage="percentOf(t)"
+              :status="t.status === 'success' ? 'success' : t.status === 'conflict' ? 'warning' : undefined"
+              :stroke-width="5"
+            />
+            <div v-if="t.error" class="fs-task-error">{{ t.error }}</div>
           </div>
-          <el-progress
-            v-if="t.status !== 'failed' && t.status !== 'canceled'"
-            :percentage="percentOf(t)"
-            :status="t.status === 'success' ? 'success' : t.status === 'conflict' ? 'warning' : undefined"
-            :stroke-width="6"
-          />
-          <div v-if="t.error" class="fs-task-error">{{ t.error }}</div>
         </div>
       </div>
     </el-drawer>
@@ -1274,20 +1350,24 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-delete-list { font-size: 12px; opacity: .7; max-height: 120px; overflow: auto; word-break: break-all; }
 .fs-preview-body { display: flex; align-items: center; justify-content: center; min-height: 320px; overflow: auto; background: var(--el-fill-color-dark); border-radius: 8px; }
 .fs-preview-body img { max-width: 100%; max-height: 60vh; transition: transform .15s; }
+/* PDF：Chromium 内置 viewer，iframe 撑满弹框可视区 */
+.fs-preview-body .fs-preview-pdf { width: 100%; height: 60vh; border: none; border-radius: 8px; background: var(--el-bg-color); }
 .fs-editor-body { height: 60vh; }
 .fs-conflict-hint { color: var(--el-color-warning); font-size: 12px; margin-right: 12px; }
 .fs-move-body { display: flex; flex-direction: column; }
 
-.fs-drawer-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.fs-task-list { overflow: auto; display: flex; flex-direction: column; gap: 10px; }
-.fs-task { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 8px 12px; }
-.fs-task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.fs-task-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+/* 传输队列抽屉：全局 theme.css 将 .el-drawer__body overflow:hidden，滚动由本容器自管 */
+.fs-queue-wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.fs-drawer-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex: none; }
+.fs-task-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.fs-task { border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 6px 10px; }
+.fs-task-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.fs-task-name { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
 .fs-task-meta { font-size: 12px; opacity: .6; }
 .fs-task-speed { font-size: 12px; color: var(--el-color-primary); }
 .fs-task-status { font-size: 12px; }
 .fs-task.is-failed .fs-task-status { color: var(--el-color-danger); }
 .fs-task.is-conflict .fs-task-status { color: var(--el-color-warning); }
 .fs-task.is-success .fs-task-status { color: var(--el-color-success); }
-.fs-task-error { font-size: 12px; color: var(--el-color-danger); margin-top: 4px; word-break: break-all; }
+.fs-task-error { font-size: 12px; color: var(--el-color-danger); margin-top: 2px; word-break: break-all; }
 </style>

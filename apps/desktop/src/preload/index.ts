@@ -130,7 +130,7 @@ const api = {
   os: {
     pickFile: (opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }): Promise<string[]> =>
       invoke(IPC_CHANNELS.osPickFile, opts),
-    pickDir: (): Promise<string> => invoke(IPC_CHANNELS.osPickDir),
+    pickDir: (opts?: { defaultPath?: string }): Promise<string> => invoke(IPC_CHANNELS.osPickDir, opts),
     /** 图片预览：本地图片转 data URI（限 10MB） */
     readDataUri: (file: string): Promise<string> => invoke(IPC_CHANNELS.osReadDataUri, file),
     /** 文本写盘：路径来自 pickSave */

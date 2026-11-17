@@ -113,6 +113,8 @@ class FsTransferEngine {
         startedAt: Date.now(),
       }
       this.tasks.set(id, task)
+      // 入参已确认覆盖（如系统另存为对话框做过替换确认）：直接放行引擎冲突检查
+      if (input.overwrite) this.overwrite.add(id)
       ids.push(id)
       this.queued.push(id)
     }

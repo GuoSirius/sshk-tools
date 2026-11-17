@@ -736,9 +736,12 @@ async function registerIpc(): Promise<void> {
     writeFileSync(target, Buffer.from(String(base64), 'base64'))
     return true
   })
-  handleOk(IPC_CHANNELS.osPickDir, async (_event) => {
+  handleOk(IPC_CHANNELS.osPickDir, async (_event, opts?: { defaultPath?: string }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
-    const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory', 'createDirectory'],
+      ...(opts?.defaultPath ? { defaultPath: opts.defaultPath } : {}),
+    })
     return result.canceled ? '' : (result.filePaths[0] ?? '')
   })
   handleOk(IPC_CHANNELS.osClipboardWrite, (_event, text: string) => {
