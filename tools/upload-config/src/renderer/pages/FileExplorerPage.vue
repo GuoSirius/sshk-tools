@@ -34,6 +34,7 @@ import {
   isFsMediaName,
   isFsTextName,
   isFsVideoName,
+  normalizeUploadConfig,
   type FsChannelInfo,
   type FsEntry,
   type FsListPage,
@@ -523,6 +524,18 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
 }
 
 // ── 下载 ──
+/** 行内复制外链：baseUrl + 编码后的文件路径（与 EDM 上传回填同一拼接规则）；
+ *  未配置 baseUrl 的通道给出引导（远程/云 profile 均可配） */
+async function rowLink(entry: FsEntry): Promise<void> {
+  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
+  const p = [...cfg.remote.profiles, ...cfg.cloud.profiles].find((x) => x.id === profileId.value)
+  const base = p?.baseUrl?.trim().replace(/\/+$/, '')
+  if (!base) { ElMessage.warning('当前通道未配置 baseUrl（外链域名前缀），无法生成链接；请到「通道配置」填写后再试'); return }
+  const url = `${base}/${entry.path.split('/').map(encodeURIComponent).join('/')}`
+  await window.api.os.clipboardWrite(url)
+  ElMessage.success(`链接已复制：${url}`)
+}
+
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
  *  多文件选目标目录（默认通道下载落点），同名冲突仍由传输队列逐个确认 */
 async function downloadEntries(list0: FsEntry[]): Promise<void> {
@@ -954,8 +967,9 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 路径区 -->
     <div class="fs-path-bar">
-      <el-button size="small" text type="primary" class="fs-nav-btn" :icon="Back" :disabled="!path" title="上一级 (Backspace)" @click="goUp" />
-      <el-button size="small" text type="primary" class="fs-nav-btn" :icon="Refresh" title="刷新 (F5)" @click="refresh" />
+      <!-- 导航：图标+文字（纯图标易被误读成历史后退/前进，实际只有「上一级」语义） -->
+      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Back" title="回到上一级目录 (Backspace)" @click="goUp">上一级</el-button>
+      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Refresh" title="刷新当前目录 (F5)" @click="refresh">刷新</el-button>
       <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
         <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
         <template v-for="(seg, i) in crumbs" :key="i">
@@ -1081,6 +1095,7 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-op">
             <el-button size="small" text :type="entry.kind === 'dir' ? 'primary' : 'primary'" @click.stop="rowOpen(entry)">打开</el-button>
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
+            <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="rowLink(entry)">链接</el-button>
             <el-button size="small" text type="warning" v-if="hasWritable" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
             <el-button v-if="entry.kind === 'dir'" size="small" text type="success" @click.stop="showUsage(entry)">统计</el-button>
@@ -1300,7 +1315,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; position: relative; }
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
-.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 150px 170px 220px; align-items: center; padding: 0 10px; }
+/* 操作列 252px：7 个紧凑按钮（打开/下载/链接/复制/移动/重命名/删除）= 6×32+44+12 = 248px */
+.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 130px 150px 252px; align-items: center; padding: 0 10px; }
 /* 表头不透明底色（用户反馈 2026-11-17：此前 opacity:.75 连背景一起半透明，滚动后与内容重叠）；muted 观感用文字色实现 */
 .fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 2; font-size: 12px; color: var(--el-text-color-secondary); height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
@@ -1314,7 +1330,9 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 /* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
-.fs-path-bar .fs-nav-btn .el-icon { font-size: 17px; }
+/* 上一级/刷新：图标+文字按钮（2026-11-17 用户反馈纯图标不明显） */
+.fs-path-bar .fs-nav-btn { font-weight: 600; }
+.fs-path-bar .fs-nav-btn .el-icon { font-size: 15px; }
 /* 统计 loading：目录名旁旋转图标（成功色） */
 .fs-usage-spin { color: var(--el-color-success); margin-left: 2px; font-size: 13px; }
 /* 操作列：表头居中（用户 2026-11-17），行内按钮靠右且间距收紧 */
@@ -1325,7 +1343,7 @@ function onKeydown(event: KeyboardEvent): void {
    撑爆 220px 固定列宽，flex-end 下溢出向左绘制盖住修改时间列——压缩到 0 4px 后约 214px 放得下 */
 .fs-col-op .el-button.is-text { padding: 0 4px; height: 22px; min-height: 0; white-space: nowrap; }
 /* SFTP 权限列（§3.2：仅 SFTP 显示） */
-.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 150px 160px 66px 220px; }
+.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 130px 145px 62px 252px; }
 
 .fs-more { text-align: center; padding: 8px 0; }
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
