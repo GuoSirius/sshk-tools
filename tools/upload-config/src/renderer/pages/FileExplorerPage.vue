@@ -1141,7 +1141,8 @@ function onKeydown(event: KeyboardEvent): void {
 
 .fs-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-.fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 4px 0; position: relative; }
+/* 不能给滚动容器垂直 padding：内容裁切在 padding box，顶缝会露出滚动的行（sticky 表头盖不到） */
+.fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; position: relative; }
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
 .fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 110px 170px 210px; align-items: center; padding: 0 10px; }
