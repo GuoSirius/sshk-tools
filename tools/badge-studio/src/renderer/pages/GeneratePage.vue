@@ -337,7 +337,7 @@ function locateInHtml(term: string): void {
                   </el-select>
                 </el-form-item>
               </div>
-              <el-form-item label=" ">
+              <el-form-item label=" " class="pos-hint-item">
                 <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
               </el-form-item>
               <el-form-item label="数值列">
@@ -507,6 +507,9 @@ function locateInHtml(term: string): void {
 .grow-item { flex: 1 1 0; min-width: 0; }
 .grow-item :deep(.el-form-item__content) { flex-wrap: nowrap; min-width: 0; }
 .pos-note { width: 100%; margin-top: 2px; }
+/* 位置行下方的说明：上收紧贴选择行（否则独立 form-item 间距太大，看不出在描述谁） */
+.pos-hint-item { margin-top: -8px; }
+.pos-hint-item :deep(.el-form-item__content) { line-height: 1.4; }
 /* 搜索计数常驻占位：预留固定宽度，未命中时不可见，命中显示——布局零突变 */
 .search-pos {
   min-width: 92px;
