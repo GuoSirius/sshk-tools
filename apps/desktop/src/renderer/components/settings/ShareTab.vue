@@ -81,15 +81,26 @@ async function shareControl(action: 'start' | 'restart' | 'stop' | 'clear'): Pro
 }
 async function revokeRoute(row: ShareRoute): Promise<void> {
   try {
+    await ElMessageBox.confirm(
+      `确认撤销「${row.label}」的分享路由？该链接会立即失效且不可恢复。`,
+      '撤销分享路由',
+      {
+        type: 'warning', confirmButtonText: '确认撤销', cancelButtonText: '取消',
+        closeOnClickModal: false, closeOnPressEscape: false,
+      },
+    )
+  } catch { return }
+  try {
     const ok = await callHostApi<boolean>(SHARE_SPECS.revoke, row.id, '*')
     if (ok) { ElMessage.success('已撤销'); await refreshShare() }
     else ElMessage.warning('路由已不存在')
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 async function renewRoute(row: ShareRoute): Promise<void> {
+  const hours = Math.max(1, Math.floor(Number(appConfig.shareDefaultTtlHours) || 72))
   try {
-    await callHostApi(SHARE_SPECS.renew, row.id, 72, '*')
-    ElMessage.success('已续期 72 小时')
+    await callHostApi(SHARE_SPECS.renew, row.id, hours, '*')
+    ElMessage.success(`已续期 ${hours} 小时`)
     await refreshShare()
   } catch (err) { ElMessage.error((err as Error).message) }
 }
@@ -150,6 +161,10 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
             <el-input-number v-model="appConfig.sharePort" :min="0" :max="65535" />
             <FormHint inline>0 = 随机；被占用时自动回落并告警</FormHint>
           </el-form-item>
+          <el-form-item label="默认分享时长">
+            <el-input-number v-model="appConfig.shareDefaultTtlHours" :min="1" :max="720" />
+            <FormHint inline>单位小时；新建与续期默认用此时长</FormHint>
+          </el-form-item>
           <el-form-item class="full" label="分享地址 IP">
             <div class="share-ip-row">
               <el-select v-model="shareIpManual" style="width: 110px">
@@ -180,13 +195,14 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
         <el-input v-model="shareRouteFilter" clearable placeholder="按工具 / 标签过滤" size="small" />
       </div>
       <el-table :data="filteredRoutes" size="small" max-height="280" empty-text="暂无分享路由">
+        <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="toolId" label="工具" width="120" show-overflow-tooltip />
         <el-table-column prop="label" label="标签" min-width="120" show-overflow-tooltip />
         <el-table-column label="剩余" width="90">
           <template #default="{ row }"><span :class="{ 'expired-text': row.expiresAt <= Date.now() }">{{ ttlLeft(row.expiresAt) }}</span></template>
         </el-table-column>
         <el-table-column prop="hits" label="访问数" width="80" />
-        <el-table-column label="操作" width="150" align="center">
+        <el-table-column label="操作" width="150" align="center" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="renewRoute(row)">续期</el-button>
             <el-button size="small" type="danger" plain @click="revokeRoute(row)">撤销</el-button>
@@ -199,6 +215,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
     <section class="settings-card">
       <div class="card-title">访问日志 <span class="muted">（最近 {{ shareStatus?.logs.length ?? 0 }} 条）</span></div>
       <el-table :data="shareStatus?.logs ?? []" size="small" max-height="240" empty-text="暂无访问记录">
+        <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column label="时间" width="90">
           <template #default="{ row }">{{ logTime(row.at) }}</template>
         </el-table-column>
@@ -215,6 +232,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 </template>
 
 <style scoped>
+.share-tab { display: flex; flex-direction: column; gap: 14px; }
 .share-status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .share-actions { justify-content: flex-start; gap: 8px; }
 .share-ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }

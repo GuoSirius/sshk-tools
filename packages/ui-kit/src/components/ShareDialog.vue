@@ -29,6 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:open': [boolean] }>()
 
 const SPEC = {
+  configGet: { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取应用配置' },
   create: { group: 'shareHub', method: 'create', channel: IPC_CHANNELS.shareHubCreate, label: '创建分享' },
   list: { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' },
   revoke: { group: 'shareHub', method: 'revoke', channel: IPC_CHANNELS.shareHubRevoke, label: '撤销分享' },
@@ -89,13 +90,23 @@ const minutesLeft = computed(() => {
 })
 const expired = computed(() => ticket.value !== null && minutesLeft.value <= 0)
 
+async function resolveTtlHours(): Promise<number> {
+  if (props.defaultTtlHours !== undefined) return Math.max(1, Math.floor(props.defaultTtlHours))
+  try {
+    const raw = await callHostApi<unknown>(SPEC.configGet, 'app.shareHub.defaultTtlHours')
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return Math.floor(n)
+  } catch { /* 配置不可读时用默认值 */ }
+  return 72
+}
+
 async function createTicket(): Promise<void> {
   const t = await callHostApi<ShareRouteTicket>(SPEC.create, {
     toolId: props.toolId,
     label: props.label,
     root: props.defaultRoot,
     entry: props.defaultEntry ?? '',
-    ttlHours: props.defaultTtlHours ?? 72,
+    ttlHours: await resolveTtlHours(),
     password: props.password,
   })
   ticket.value = t
@@ -167,9 +178,9 @@ async function renew(): Promise<void> {
   if (!ticket.value) return
   busy.value = true
   try {
-    ticket.value = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, 72, props.toolId)
+    ticket.value = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, await resolveTtlHours(), props.toolId)
     saveTicket(ticket.value)
-    ElMessage.success('已续期 72 小时，新链接已刷新')
+    ElMessage.success('已续期，新链接已刷新')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
 }

@@ -17,6 +17,7 @@ export const appConfig = reactive({
   shareAutoStart: true,
   sharePort: 0,
   sharePreferredIp: '',
+  shareDefaultTtlHours: 72,
 })
 
 async function str(key: string, fallback: string): Promise<string> {
@@ -40,6 +41,8 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.shareAutoStart = await bool('app.shareHub.autoStart', true)
   appConfig.sharePort = await num('app.shareHub.port', 0)
   appConfig.sharePreferredIp = (await str('app.shareHub.preferredIp', '')) === 'null' ? '' : await str('app.shareHub.preferredIp', '')
+  const ttl = await num('app.shareHub.defaultTtlHours', 72)
+  appConfig.shareDefaultTtlHours = ttl > 0 ? Math.floor(ttl) : 72
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
@@ -53,6 +56,7 @@ export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean
         ['app.shareHub.autoStart', appConfig.shareAutoStart],
         ['app.shareHub.port', Number(appConfig.sharePort) || 0],
         ['app.shareHub.preferredIp', appConfig.sharePreferredIp.trim()],
+        ['app.shareHub.defaultTtlHours', Math.max(1, Math.floor(Number(appConfig.shareDefaultTtlHours) || 72))],
       ]
     : [
         ['app.outputDir', appConfig.outputDir.trim() || null],

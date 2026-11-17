@@ -1371,7 +1371,6 @@ function onKeydown(event: KeyboardEvent): void {
       :label="shareDialog.label"
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
-      :default-ttl-hours="72"
     />
   </div>
 </template>
