@@ -1103,19 +1103,16 @@ function onPaneScroll(e: Event): void {
           </div>
           <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
           <span v-else-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
-          <!-- 删除/移除改为右上角 icon 悬浮钮：替代文字按钮省出行高，后续可并排其他小操作（2026-11-17 用户反馈） -->
+          <!-- 删除/移除改为右上角 icon 悬浮钮：删除(垃圾桶)=移出本次上传，移除(✕)=取消已选，图形区分避免歧义（2026-11-17 用户反馈） -->
           <button
             v-if="tab === 'selected'"
             type="button"
             class="thumb-del"
-            title="移除"
+            title="移除已选"
             @click.stop="removePoolKey(itemKey(item))"
           >
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 6h18" />
-              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6M14 11v6" />
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
           <button
