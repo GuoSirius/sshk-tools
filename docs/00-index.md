@@ -2,7 +2,7 @@
 
 - 状态：**M0~M7 全部落地；R1–R24 / N1–N18 / 工具插件化 / 工具包自包含 / Badge 图片识别 / Model 预设 / 共享上传·编辑器 / 创建工具向导全部实现。当前进入「收尾打磨阶段」——重点转向细节验证与健壮性，不再追新功能。测试数量随迭代增长（历史快照见下方变更记录，当前数以最近 `pnpm verify` 输出为准，本轮收尾起始为 224 tests / 41 files）。全量遗留项见 `02-architecture/遗留事项与收尾总账.md`，优化候选见 `02-architecture/优化建议与开发计划.md`。**
 - 版本：v1.3
-- 最后更新：2026-11-16（北京时间）
+- 最后更新：2026-11-17（北京时间；file-picker 通用化落地 + 文档沉淀）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -28,7 +28,8 @@
 | 文档治理与安全 | `plans/07-文档治理与安全.md` | 规划待确认 | M2-M5 / 删历史钩子写法 / 安全与密钥体系 / 升级 SOP / 文档归类规则 |
 | 工具开发指南 | `02-architecture/工具开发指南.md` | 已落（N16） | 从零建工具：目录结构、manifest 字段、入口契约、门禁、常见报错 |
 | 上传能力规划（R26） | `02-architecture/上传能力规划.md` | 已落地（T1–T8 + 复核 12 项 + N1–N13） | 应用级共享上传：多 profile、Provider 架构、upload-config 工具、真实链路待验（V7 等） |
-| 代码编辑与富文本共享能力规划（R27） | `02-architecture/代码编辑与富文本共享能力规划.md` | 已落地（E-T1–E-T5） | packages/code-editor + rich-text、语言注册、Monaco/wangEditor 坑清单、全屏二次根治 §七 |
+| 代码编辑与富文本共享能力规划（R27） | `02-architecture/代码编辑与富文本共享能力规划.md` | 已落地（E-T1–E-T5） | packages/code-editor + rich-text、语言注册、Monaco/wangEditor 坑清单、全屏二次根治 §七、图片库迁出 §八 |
+| **文件选择弹框通用化与图片库迁移（file-picker）** | `02-architecture/文件选择弹框通用化与图片库迁移.md` | 已落地（`f015755`，2026-11-17） | @sshk/file-picker 全参数化弹框、参数契约与 kind 线程、旧图片库迁移映射、EP cascader 两个坑（leaf 钉死/挂载竞态）、FormGrid combo 修复 |
 | R26-R27 协同开工方案 | `02-architecture/R26-R27协同开工方案.md` | 已完成（B0–B8 全落地） | 协同契约、依赖清单、批次顺序、实测坑（cpu-features shim 等） |
 | CSS 引用与共享样式规划（R28） | `02-architecture/CSS引用与共享样式规划.md` | 已落地（`561dab8`） | §一–§四 初稿已被否定保留作历史；§五 最终方案=显式 link + 逻辑 URI |
 | **EDM 目录结构与模板片段维护规划** | `02-architecture/EDM目录结构与模板片段维护规划.md` | R1–R11 已落地 | EDM 系统/自定义双轨目录、`css` 就近规则、元数据与黑白名单、Monaco 编辑器选型 |
