@@ -491,15 +491,17 @@ function locateInHtml(term: string): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
-/* badge 配置折叠面板：去 el-collapse 默认分隔线，标题行放关键配置摘要，收起时仍可见 */
+/* badge 配置折叠面板：去 el-collapse 默认分隔线，标题行放关键配置摘要，收起时仍可见。
+   header/wrap 在暗色下自带 #141414 实底，标题与内容统一留 12px 内边距，
+   否则标题贴左缘、展开箭头贴右缘、表单内容贴边（2026-11-17 用户反馈） */
 .badge-cfg { border-top: 0; border-bottom: 0; }
-.badge-cfg :deep(.el-collapse-item__header) { height: auto; padding: 2px 0; border-bottom: 0; }
+.badge-cfg :deep(.el-collapse-item__header) { height: auto; padding: 2px 12px; border-bottom: 0; }
 .badge-cfg :deep(.el-collapse-item__wrap) { border-bottom: 0; }
-.badge-cfg :deep(.el-collapse-item__content) { padding-bottom: 2px; }
+.badge-cfg :deep(.el-collapse-item__content) { padding: 2px 12px 2px; }
 .cfg-title { margin-bottom: 0; }
 .cfg-summary { margin-left: 10px; visibility: hidden; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .cfg-summary.on { visibility: visible; }
-.badge-cfg-form { width: 100%; padding: 0 6px; }
+.badge-cfg-form { width: 100%; }
 .badge-cfg-form :deep(.el-form-item) { margin-bottom: 10px; }
 .badge-cfg-form :deep(.el-select) { width: 100%; }
 /* 两个字段并排一行：各占一半，不换行（2026-11-17 用户反馈） */
