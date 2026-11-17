@@ -12,13 +12,13 @@ import {
   Folder,
   FolderAdd,
   Grid,
+  Loading,
   Menu as MenuIcon,
   Picture,
   Plus,
   Rank,
   Refresh,
   Search,
-  Top,
   TrendCharts,
   Upload,
   VideoCamera,
@@ -100,7 +100,9 @@ const searchEntries = ref<FsEntry[]>([])
 const searchTruncated = ref(false)
 
 // ── 容量统计（二期）──
-const usageLoading = ref(false)
+/** 统计中的目录路径集合（支持多个目录并行统计，行内显示 loading） */
+const usageLoadingPaths = ref(new Set<string>())
+function isUsageLoading(p: string): boolean { return usageLoadingPaths.value.has(p) }
 /** 已统计的目录容量（path → 结果），直接显示在列表「类型/大小」列 */
 const usageResults = ref(new Map<string, { size: number; files: number; truncated: boolean }>())
 
@@ -213,6 +215,7 @@ watch(profileId, () => {
   localStorage.setItem('sshk.fs.profileId', profileId.value)
   path.value = ''
   usageResults.value = new Map()
+  usageLoadingPaths.value = new Set()
   if (profileId.value) void list()
 })
 watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
@@ -276,8 +279,8 @@ function exitSearch(): void {
 
 // ── 目录容量统计（二期）：结果直接写入列表「类型/大小」列 ──
 async function showUsage(entry: FsEntry): Promise<void> {
-  if (!profileId.value || usageLoading.value) return
-  usageLoading.value = true
+  if (!profileId.value || usageLoadingPaths.value.has(entry.path)) return
+  usageLoadingPaths.value = new Set(usageLoadingPaths.value).add(entry.path)
   try {
     const r = await window.api.fs.usage({ profileId: profileId.value, path: entry.path })
     usageResults.value = new Map(usageResults.value).set(entry.path, { size: r.size, files: r.files, truncated: r.truncated })
@@ -285,13 +288,16 @@ async function showUsage(entry: FsEntry): Promise<void> {
   } catch (err) {
     ElMessage.error(friendlyError(err))
   } finally {
-    usageLoading.value = false
+    const next = new Set(usageLoadingPaths.value)
+    next.delete(entry.path)
+    usageLoadingPaths.value = next
   }
 }
 
-/** 「类型/大小」列文案：文件=大小；目录=类型（统计过则附容量与文件数） */
+/** 「类型/大小」列文案：文件=大小；目录=类型（统计过则附容量与文件数，统计中显示 loading 文案） */
 function sizeCell(entry: FsEntry): string {
   if (entry.kind === 'file') return fsFormatSize(entry.size)
+  if (isUsageLoading(entry.path)) return '目录 · 统计中…'
   const u = usageResults.value.get(entry.path)
   if (!u) return '目录'
   return `目录 · ${fsFormatSize(u.size)} / ${u.files} 文件${u.truncated ? ' ∗' : ''}`
@@ -457,21 +463,48 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
     ElMessage.success(`已加入传输队列：${taskIds.length} 个文件`)
     // 上传完成后列表要能看到新文件：延迟刷新一次（完成后事件里也会刷）
     setTimeout(() => { if (runningCount.value === 0) void list(false) }, 2500)
+  } else {
+    ElMessage.warning('没有可上传的文件（通道不可用或文件无效）')
   }
 }
 
-// ── 拖拽上传 ──
+// ── 拖拽上传（window 级监听：Chromium 只有在 dragover preventDefault 后 drop 才会触发，
+//    挂在页面根 div 上时悬浮层/子元素易吞事件导致"拖了没反应"；
+//    dragenter/dragleave 用计数法防子元素间来回触发闪烁。drop 只接受落在文件系统页面内的目标） ──
 const dragOver = ref(false)
-async function onDrop(event: DragEvent): Promise<void> {
+const rootRef = ref<HTMLElement | null>(null)
+let dragDepth = 0
+function isFsTarget(e: Event): boolean {
+  return rootRef.value?.contains(e.target as Node) ?? false
+}
+function onWindowDragEnter(e: DragEvent): void {
+  if (!isFsTarget(e)) return
+  dragDepth++
+  dragOver.value = true
+}
+function onWindowDragOver(e: DragEvent): void {
+  // 全窗口 preventDefault：拖到页面外区域松手也不会触发浏览器默认行为（打开文件）
+  e.preventDefault()
+  if (isFsTarget(e) && dragDepth > 0) dragOver.value = true
+}
+function onWindowDragLeave(e: DragEvent): void {
+  if (!isFsTarget(e)) return
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) dragOver.value = false
+}
+async function onWindowDrop(e: DragEvent): Promise<void> {
+  e.preventDefault()
+  dragDepth = 0
   dragOver.value = false
-  const files = [...(event.dataTransfer?.files ?? [])]
+  if (!isFsTarget(e)) return
+  const files = [...(e.dataTransfer?.files ?? [])]
+  if (!files.length) return
   const paths = files.map((f) => window.api.fs.pathForFile(f)).filter(Boolean)
-  if (!paths.length || !profileId.value) return
+  if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传」按钮选择'); return }
+  if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道'); return }
   const flat = await window.api.fs.flattenLocal(paths)
   await enqueueUploads(flat)
 }
-function onDragOver(): void { dragOver.value = true }
-function onDragLeave(): void { dragOver.value = false }
 
 // ── 下载 ──
 async function downloadEntries(list0: FsEntry[]): Promise<void> {
@@ -806,8 +839,19 @@ onMounted(() => {
     for (const t of list0) tasks.value.set(t.id, t)
     tasks.value = new Map(tasks.value)
   })
+  // 拖拽上传：window 级监听（见 onWindowDrop 注释）
+  window.addEventListener('dragenter', onWindowDragEnter)
+  window.addEventListener('dragover', onWindowDragOver)
+  window.addEventListener('dragleave', onWindowDragLeave)
+  window.addEventListener('drop', onWindowDrop)
 })
-onBeforeUnmount(() => { if (refreshTimer !== undefined) window.clearTimeout(refreshTimer) })
+onBeforeUnmount(() => {
+  if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
+  window.removeEventListener('dragenter', onWindowDragEnter)
+  window.removeEventListener('dragover', onWindowDragOver)
+  window.removeEventListener('dragleave', onWindowDragLeave)
+  window.removeEventListener('drop', onWindowDrop)
+})
 
 // ── 键盘（§3.3） ──
 function onKeydown(event: KeyboardEvent): void {
@@ -828,7 +872,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div class="fs-page" tabindex="0" @keydown="onKeydown" @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onDrop">
+  <div ref="rootRef" class="fs-page" tabindex="0" @keydown="onKeydown">
     <!-- 通道切换条 -->
     <div class="fs-channel-bar">
       <el-select v-model="profileId" size="small" class="fs-channel-select" placeholder="选择上传通道" filterable>
@@ -889,9 +933,7 @@ function onKeydown(event: KeyboardEvent): void {
     <!-- 工具栏（§3.1 并集：常用操作外置，仅次要项进「更多▾」） -->
     <div class="fs-toolbar">
       <el-dropdown @command="(c: unknown) => (String(c) === 'dir' ? uploadDirs() : String(c) === 'output' ? uploadFromOutput() : uploadFiles())">
-        <el-button size="small" type="success" :icon="Upload" :disabled="!profileId">
-          上传<el-icon class="el-icon--right"><Top style="transform: rotate(180deg)" /></el-icon>
-        </el-button>
+        <el-button size="small" type="success" :icon="Upload" :disabled="!profileId">上传</el-button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="file">上传文件</el-dropdown-item>
@@ -973,6 +1015,7 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
+            <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
           </span>
           <span class="fs-col-size" :title="sizeCell(entry)">{{ sizeCell(entry) }}</span>
           <span class="fs-col-time" :title="fmtTime(entry.modified)">{{ fmtTime(entry.modified) }}</span>
@@ -1196,6 +1239,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 /* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
 .fs-path-bar .fs-nav-btn .el-icon { font-size: 17px; }
+/* 统计 loading：目录名旁旋转图标（成功色） */
+.fs-usage-spin { color: var(--el-color-success); margin-left: 2px; font-size: 13px; }
 /* 操作列：表头居中（用户 2026-11-17），行内按钮靠右且间距收紧 */
 .fs-thead .fs-col-op { justify-content: center; }
 .fs-col-op { display: flex; justify-content: flex-end; gap: 0; }
