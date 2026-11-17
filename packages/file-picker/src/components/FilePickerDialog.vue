@@ -1103,22 +1103,35 @@ function onPaneScroll(e: Event): void {
           </div>
           <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
           <span v-else-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
-          <el-button
+          <!-- 删除/移除改为右上角 icon 悬浮钮：替代文字按钮省出行高，后续可并排其他小操作（2026-11-17 用户反馈） -->
+          <button
             v-if="tab === 'selected'"
-            size="small"
-            text
-            type="danger"
-            class="thumb-remove"
+            type="button"
+            class="thumb-del"
+            title="移除"
             @click.stop="removePoolKey(itemKey(item))"
-          >移除</el-button>
-          <el-button
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+            </svg>
+          </button>
+          <button
             v-else-if="item.origin === 'upload'"
-            size="small"
-            text
-            type="danger"
-            class="thumb-remove"
+            type="button"
+            class="thumb-del"
+            title="删除"
             @click.stop="removeUploaded(item)"
-          >删除</el-button>
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+            </svg>
+          </button>
         </div>
       </div>
       <div v-else class="gallery-empty">{{ emptyStateText }}</div>
@@ -1179,7 +1192,7 @@ function onPaneScroll(e: Event): void {
 .drop-hint.active { background: rgba(64, 158, 255, 0.08); }
 .drop-hint.busy { opacity: 0.6; cursor: wait; }
 /* 上传总体进度条 */
-.upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-top: 10px; margin-bottom: 0; }
 .up-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
 /* 上传中/失败任务卡片：与成功缩略图同网格，进度直接叠在图片上 */
 .task-cell { border-color: var(--sshk-border, rgba(128, 128, 128, 0.3)); }
@@ -1270,7 +1283,17 @@ function onPaneScroll(e: Event): void {
 .thumb-cell:hover .thumb-name { opacity: 1; }
 .copy-link:hover { background: color-mix(in srgb, var(--sshk-accent, #4f8cff) 22%, transparent); color: var(--sshk-accent, #4f8cff); opacity: 1; }
 .thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
-.thumb-remove { margin-top: -4px; }
+/* 删除/移除 icon：右上角悬浮小钮（替代文字按钮），毛玻璃暗底与左上复选框呼应，hover 红色填充 */
+.thumb-del {
+  position: absolute; top: 5px; right: 5px; z-index: 2;
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
+  display: grid; place-items: center; cursor: pointer;
+  background: rgba(0, 0, 0, 0.34);
+  color: var(--el-color-danger);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.thumb-del:hover { background: color-mix(in srgb, var(--el-color-danger) 30%, transparent); }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }
 .load-more { text-align: center; padding: 10px 0 2px; font-size: 12px; opacity: 0.6; }
 .load-more--action { display: flex; align-items: center; justify-content: center; gap: 10px; }
@@ -1280,18 +1303,19 @@ function onPaneScroll(e: Event): void {
   height: 75vh;
   min-height: 460px;
   max-height: 92vh;
+  padding-bottom: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-:global(.file-picker-dialog .el-dialog__header) { flex: 0 0 auto; padding: 16px 16px 12px !important; margin-right: 0 !important; }
+:global(.file-picker-dialog .el-dialog__header) { flex: 0 0 auto; padding: 0 !important; margin-right: 0 !important; }
 :global(.file-picker-dialog .el-dialog__body) {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 12px 16px !important;
+  padding: 12px 0 0 !important;
 }
 :global(.file-picker-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 16px 16px !important; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
