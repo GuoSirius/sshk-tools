@@ -161,15 +161,10 @@ watch(() => props.open, (open) => {
       <!-- 已创建：链接 + 二维码 + 管理 -->
       <template v-else>
         <div class="share-link-head">
-          <el-tag :type="expired ? 'danger' : 'success'" effect="dark" size="small">
-            {{ expired ? '已过期' : `剩余约 ${minutesLeft} 分钟` }}
-          </el-tag>
           <el-select v-if="ticket.urls.length > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
             <el-option v-for="(u, i) in ticket.urls" :key="u" :label="u" :value="i" />
           </el-select>
-        </div>
-        <div class="share-link-row">
-          <el-input :model-value="activeUrl" readonly size="small" />
+          <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
         </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
@@ -177,6 +172,11 @@ watch(() => props.open, (open) => {
             <p>手机扫码直达</p>
             <p class="muted">链接含 96bit 随机 token{{ password ? ' 与访问口令' : '' }}，仅限可信局域网访问。</p>
           </div>
+        </div>
+        <div class="share-expire-row">
+          <el-tag :type="expired ? 'danger' : 'success'" effect="dark" size="small">
+            {{ expired ? '已过期' : `剩余约 ${minutesLeft} 分钟` }}
+          </el-tag>
         </div>
 
         <template v-if="showMine && myRoutes.length">
@@ -196,7 +196,6 @@ watch(() => props.open, (open) => {
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
-        <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
         <el-button type="primary" size="small" :loading="busy" @click="renew">续期 72h</el-button>
         <el-button type="danger" size="small" plain :loading="busy" @click="revoke()">撤销</el-button>
         <el-button type="warning" size="small" :loading="busy" @click="doCreate">重新生成</el-button>
@@ -210,13 +209,13 @@ watch(() => props.open, (open) => {
 .share-tip { margin: 0 0 12px; line-height: 1.6; }
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
-.share-link-row { display: flex; align-items: center; }
-.share-link-row .el-input { flex: 1; min-width: 0; }
+.share-link-head .el-button { flex: none; margin-left: auto; }
 .share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 14px; }
 .share-qr { flex: none; width: 132px; height: 132px; border: 1px solid var(--el-border-color); border-radius: 6px; overflow: hidden; background: #fff; }
 .share-qr :deep(svg) { width: 100%; height: 100%; display: block; }
 .share-qr-tip { margin-top: 8px; max-width: 380px; }
 .share-qr-tip p { margin: 0 0 4px; }
+.share-expire-row { display: flex; justify-content: center; margin-top: 14px; }
 .mine-row { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 0; text-align: center; }
 .mine-label { max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .muted { opacity: 0.6; font-size: 12px; }
