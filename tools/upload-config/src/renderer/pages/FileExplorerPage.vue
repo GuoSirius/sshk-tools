@@ -1200,8 +1200,11 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-thead .fs-col-op { justify-content: center; }
 .fs-col-op { display: flex; justify-content: flex-end; gap: 0; }
 .fs-col-op .el-button + .el-button { margin-left: 2px; }
+/* 操作列按钮紧凑化：EP small text 默认 padding 5px 11px，6 个按钮（打开/下载/复制/移动/重命名/删除）约 298px
+   撑爆 220px 固定列宽，flex-end 下溢出向左绘制盖住修改时间列——压缩到 0 4px 后约 214px 放得下 */
+.fs-col-op .el-button.is-text { padding: 0 4px; height: 22px; min-height: 0; white-space: nowrap; }
 /* SFTP 权限列（§3.2：仅 SFTP 显示） */
-.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 150px 160px 66px 210px; }
+.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 150px 160px 66px 220px; }
 
 .fs-more { text-align: center; padding: 8px 0; }
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
