@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 统一分享对话框（plans/09 · 工具接入零成本）：创建 → 展示多 IP 链接 → 复制 → 二维码 → 倒计时 → 续期/撤销。
+ * 统一分享对话框（plans/09 · 工具接入零成本）：打开即复用有效链接/自动创建 → 二维码 → 复制 → 倒计时 → 续期/撤销/重新生成。
  * 工具只需 <ShareDialog v-model="open" :tool-id="..." :label="..." :default-root="..." />，
  * 底层统一走宿主 ShareHub（@sshk/ui-kit callHostApi 兜底），工具不自建服务、不占端口。
  */
@@ -9,7 +9,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 import { callHostApi, type HostApiSpec } from '../host-api'
 import { IPC_CHANNELS } from '@sshk/shared'
-import type { ShareRouteTicket } from '@sshk/shared'
+import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
 const props = defineProps<{
   open: boolean
@@ -30,6 +30,7 @@ const emit = defineEmits<{ 'update:open': [boolean] }>()
 
 const SPEC = {
   create: { group: 'shareHub', method: 'create', channel: IPC_CHANNELS.shareHubCreate, label: '创建分享' },
+  list: { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' },
   revoke: { group: 'shareHub', method: 'revoke', channel: IPC_CHANNELS.shareHubRevoke, label: '撤销分享' },
   renew: { group: 'shareHub', method: 'renew', channel: IPC_CHANNELS.shareHubRenew, label: '续期分享' },
 } satisfies Record<string, HostApiSpec>
@@ -38,7 +39,36 @@ const busy = ref(false)
 const ticket = ref<ShareRouteTicket | null>(null)
 const activeUrlIndex = ref(0)
 const nowTick = ref(Date.now())
+const loadError = ref('')
 let tickTimer: ReturnType<typeof setInterval> | null = null
+
+/** 同一分享目标跨重启复用链接；key 只对四元组取短哈希，不把路径/中文直接塞进 localStorage 键 */
+const storageKey = computed(() => {
+  const raw = [props.toolId, props.label, props.defaultRoot, props.defaultEntry ?? ''].join('|')
+  let h = 2166136261
+  for (let i = 0; i < raw.length; i++) {
+    h ^= raw.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return `sshk:share-dialog:${(h >>> 0).toString(36)}`
+})
+
+function saveTicket(t: ShareRouteTicket | null): void {
+  try {
+    if (t) localStorage.setItem(storageKey.value, JSON.stringify(t))
+    else localStorage.removeItem(storageKey.value)
+  } catch { /* localStorage 不可用时退化为内存态 */ }
+}
+
+function readTicket(): ShareRouteTicket | null {
+  try {
+    const raw = localStorage.getItem(storageKey.value)
+    if (!raw) return null
+    const t = JSON.parse(raw) as ShareRouteTicket
+    if (!t?.id || !Array.isArray(t.urls) || !t.urls.length || typeof t.expiresAt !== 'number') return null
+    return t
+  } catch { return null }
+}
 
 const activeUrl = computed(() => ticket.value?.urls[activeUrlIndex.value] ?? '')
 /** 二维码 PNG（第三方 qrcode 包生成，切换 IP 时重算） */
@@ -69,16 +99,36 @@ async function createTicket(): Promise<void> {
     password: props.password,
   })
   ticket.value = t
+  saveTicket(t)
   activeUrlIndex.value = 0
   if (t.urls[0]) await copyUrl(t.urls[0])
   ElMessage.success('分享已创建，链接已复制')
 }
 
-async function doCreate(): Promise<void> {
+/** 打开即准备链接：有效期 + 路由列表双重校验，有效则复用，失效/撤销/未创建才自动创建 */
+async function ensureTicket(): Promise<void> {
+  if (busy.value) return
   busy.value = true
-  try { await createTicket() }
-  catch (err) { ElMessage.error((err as Error).message) }
-  finally { busy.value = false }
+  loadError.value = ''
+  try {
+    const saved = readTicket()
+    if (saved && saved.expiresAt > Date.now()) {
+      let alive = true
+      try {
+        const routes = await callHostApi<ShareRouteInfo[]>(SPEC.list, props.toolId)
+        alive = routes.some((r) => r.id === saved.id && r.expiresAt > Date.now())
+      } catch { /* 校验接口失败时信任本地未过期记录 */ }
+      if (alive) { ticket.value = saved; return }
+    }
+    ticket.value = null
+    saveTicket(null)
+    await createTicket()
+  } catch (err) {
+    loadError.value = (err as Error).message
+    ElMessage.error(loadError.value)
+  } finally {
+    busy.value = false
+  }
 }
 
 /** 重新生成：二次确认后先撤旧路由（旧链立即失效）再创建新路由 */
@@ -99,6 +149,7 @@ async function regenerate(): Promise<void> {
   try {
     await callHostApi(SPEC.revoke, oldId, props.toolId)
     ticket.value = null
+    saveTicket(null)
     await createTicket()
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
@@ -109,7 +160,7 @@ async function copyUrl(url?: string): Promise<void> {
   if (!target) return
   try {
     await callHostApi({ group: 'os', method: 'clipboardWrite', channel: IPC_CHANNELS.osClipboardWrite, label: '写剪贴板' }, target)
-  } catch { /* 剪贴板不可用时用户可手动复制输入框内容 */ }
+  } catch { /* 剪贴板不可用时用户可点首行「复制」 */ }
 }
 
 async function renew(): Promise<void> {
@@ -117,6 +168,7 @@ async function renew(): Promise<void> {
   busy.value = true
   try {
     ticket.value = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, 72, props.toolId)
+    saveTicket(ticket.value)
     ElMessage.success('已续期 72 小时，新链接已刷新')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
@@ -138,6 +190,7 @@ async function revoke(): Promise<void> {
   try {
     await callHostApi(SPEC.revoke, ticket.value.id, props.toolId)
     ticket.value = null
+    saveTicket(null)
     ElMessage.success('已撤销分享')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
@@ -149,6 +202,7 @@ watch(() => props.open, (open) => {
   if (open) {
     ticket.value = null
     activeUrlIndex.value = 0
+    void ensureTicket()
     if (!tickTimer) tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
   } else if (tickTimer) {
     clearInterval(tickTimer); tickTimer = null
@@ -167,18 +221,12 @@ watch(() => props.open, (open) => {
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
     <div class="share-dialog">
-      <!-- 未创建：展示信息与创建按钮 -->
       <template v-if="!ticket">
-        <p class="share-tip">将创建一个局域网只读分享链接（默认 72 小时有效，可随时撤销）。同一服务多路由并存，旧链接不受影响。</p>
-        <el-descriptions :column="1" size="small" border>
-          <el-descriptions-item label="分享名称">{{ label }}</el-descriptions-item>
-          <el-descriptions-item label="入口">{{ defaultEntry || '目录列表页' }}</el-descriptions-item>
-          <el-descriptions-item label="有效期">{{ defaultTtlHours ?? 72 }} 小时</el-descriptions-item>
-          <el-descriptions-item v-if="password" label="访问口令">已设置（链接带 key）</el-descriptions-item>
-        </el-descriptions>
+        <div v-loading="!loadError" element-loading-text="正在准备分享链接…" class="share-loading">
+          <p v-if="loadError" class="share-error">分享创建失败：{{ loadError }}，可点「重试」或关闭。</p>
+        </div>
       </template>
 
-      <!-- 已创建：链接 + 二维码 + 倒计时 -->
       <template v-else>
         <div class="share-link-head">
           <el-select v-if="ticket.urls.length > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
@@ -198,13 +246,13 @@ watch(() => props.open, (open) => {
             {{ expired ? '已过期' : `剩余约 ${minutesLeft} 分钟` }}
           </el-tag>
         </div>
-
+        <el-divider class="share-bottom-divider" />
       </template>
     </div>
 
     <template #footer>
       <template v-if="!ticket">
-        <el-button type="success" size="small" :loading="busy" @click="doCreate">创建并复制链接</el-button>
+        <el-button v-if="loadError" type="success" size="small" @click="ensureTicket">重试</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
@@ -218,7 +266,8 @@ watch(() => props.open, (open) => {
 </template>
 
 <style scoped>
-.share-tip { margin: 0 0 12px; line-height: 1.6; }
+.share-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; }
+.share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }
@@ -228,5 +277,6 @@ watch(() => props.open, (open) => {
 .share-qr-tip { margin-top: 8px; max-width: 380px; }
 .share-qr-tip p { margin: 0 0 4px; }
 .share-expire-row { display: flex; justify-content: center; margin-top: 14px; }
+.share-bottom-divider { margin: 14px 0 0; }
 .muted { opacity: 0.6; font-size: 12px; }
 </style>
