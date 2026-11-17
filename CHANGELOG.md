@@ -97,6 +97,7 @@
 
 ### 🐛 缺陷修复 (Bug Fixes)
 
+* **share:** 分享对话框布局按截图调整——IP 下拉铺满、二维码与说明上下居中、所有操作沉底且关闭最右、「本工具其它分享」居中。
 * **fs:** 云移动遇到 Bucket ACL 拒绝删源不再刷裸堆栈——明确提示「目标已生成、源删除失败（等同复制成功）」，权限/网络/认证/路径类错误统一按业务失败归类。
 * **fs-explorer:** 操作列按钮溢出盖住修改时间列——EP small text 默认 padding 5px 11px 使 6 个按钮约 298px 撑爆 220px 列宽，紧凑化 padding 至 0 4px（约 214px）并将 SFTP 模式操作列 210px 提至 220px ([c36e502](https://github.com/GuoSirius/sshk-tools/commit/c36e5022e8ff9ef512d159b52c0841820f67cb29))
 * **fs:** 验收反馈批量修复——行复选框 bug、工具栏对齐 §3.1、统计入表、彩色化 ([709667e](https://github.com/GuoSirius/sshk-tools/commit/709667e6f32b8daf7f3be95ff5945ca74f962c49))
