@@ -22,6 +22,12 @@ import {
 const jsonViewOpen = ref(false)
 const statsJson = computed(() => JSON.stringify(statRows.value, null, 2))
 
+// ── badge 配置：折叠展开（默认收起给预览腾空间）+ 收起时的关键配置摘要 ──
+const cfgOpen = ref<string[]>([])
+const cfgCollapsed = computed(() => !cfgOpen.value.includes('cfg'))
+const textPositionLabel = computed(() => badgePositionOptions.find((o) => o.value === badgePositionText.value)?.label ?? '—')
+const imagePositionLabel = computed(() => badgePositionOptions.find((o) => o.value === badgePositionImage.value)?.label ?? '—')
+
 /**
  * Badge Studio——生成海报页：
  * 模板与布局从单文件原样迁移；状态/业务在 ../state（模块单例），
@@ -301,41 +307,49 @@ function locateInHtml(term: string): void {
 
     <div class="col side-preview">
       <div class="panel">
-        <div class="panel-title">badge 配置（作用于预览与生成）</div>
-        <div class="cfg-row">
-          <span>属性名</span>
-          <el-input v-model="badgeAttr" size="small" style="width: 180px" />
-        </div>
-        <div class="cfg-row">
-          <span>海报名</span>
-          <el-input v-model="posterName" size="small" placeholder="海报名称（列表与导出文件名）" style="max-width: 320px" />
-        </div>
-        <div class="cfg-row">
-          <span>文本位置</span>
-          <el-select v-model="badgePositionText" size="small" style="width: 160px">
-            <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-          <span>图片位置</span>
-          <el-select v-model="badgePositionImage" size="small" style="width: 160px">
-            <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-          <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
-        </div>
-        <div class="cfg-row">
-          <span>数值列</span>
-          <el-select
-            v-model="clicksField"
-            size="small"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入自定义列名"
-            style="width: 200px"
-          >
-            <el-option v-for="field in fieldOptions" :key="field" :label="field" :value="field" />
-          </el-select>
-          <span class="muted">内置两列或左侧表格里的任意自定义数值列</span>
-        </div>
+        <!-- 表单布局按项目约定（el-form label-width=auto）统一；折叠给下方预览腾空间（2026-11-17 用户反馈） -->
+        <el-collapse v-model="cfgOpen" class="badge-cfg">
+          <el-collapse-item name="cfg">
+            <template #title>
+              <span class="panel-title cfg-title">badge 配置（作用于预览与生成）</span>
+              <span class="muted cfg-summary" :class="{ on: cfgCollapsed }">
+                {{ badgeAttr }} · {{ textPositionLabel }}/{{ imagePositionLabel }} · 列 {{ clicksField || '—' }}
+              </span>
+            </template>
+            <el-form label-width="auto" size="small" class="badge-cfg-form">
+              <el-form-item label="属性名">
+                <el-input v-model="badgeAttr" />
+              </el-form-item>
+              <el-form-item label="海报名">
+                <el-input v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
+              </el-form-item>
+              <el-form-item label="文本位置">
+                <el-select v-model="badgePositionText" class="pos-select">
+                  <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+                <span class="pos-gap">图片位置</span>
+                <el-select v-model="badgePositionImage" class="pos-select">
+                  <el-option v-for="opt in badgePositionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label=" ">
+                <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
+              </el-form-item>
+              <el-form-item label="数值列">
+                <el-select
+                  v-model="clicksField"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择或输入自定义列名"
+                >
+                  <el-option v-for="field in fieldOptions" :key="field" :label="field" :value="field" />
+                </el-select>
+                <div class="muted pos-note">内置两列或左侧表格里的任意自定义数值列</div>
+              </el-form-item>
+            </el-form>
+          </el-collapse-item>
+        </el-collapse>
       </div>
       <div class="panel preview-panel">
         <div class="panel-title">badge 副本预览（{{ posterWidth }}px）</div>
@@ -472,6 +486,20 @@ function locateInHtml(term: string): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
+/* badge 配置折叠面板：去 el-collapse 默认分隔线，标题行放关键配置摘要，收起时仍可见 */
+.badge-cfg { border-top: 0; border-bottom: 0; }
+.badge-cfg :deep(.el-collapse-item__header) { height: auto; padding: 2px 0; border-bottom: 0; }
+.badge-cfg :deep(.el-collapse-item__wrap) { border-bottom: 0; }
+.badge-cfg :deep(.el-collapse-item__content) { padding-bottom: 2px; }
+.cfg-title { margin-bottom: 0; }
+.cfg-summary { margin-left: 10px; visibility: hidden; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.cfg-summary.on { visibility: visible; }
+.badge-cfg-form { width: 100%; }
+.badge-cfg-form :deep(.el-form-item) { margin-bottom: 10px; }
+.badge-cfg-form :deep(.el-select) { width: 100%; }
+.pos-select { width: calc(50% - 24px) !important; flex: none; }
+.pos-gap { flex: none; margin: 0 4px; }
+.pos-note { width: 100%; margin-top: 2px; }
 /* 搜索计数常驻占位：预留固定宽度，未命中时不可见，命中显示——布局零突变 */
 .search-pos {
   min-width: 92px;

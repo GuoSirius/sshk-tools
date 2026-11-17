@@ -20,67 +20,67 @@ html.dark {
   --sshk-hover: #1c2540;
 }
 
-/* ── 表单控件尺寸统一（2026-11-16 用户反馈：small/默认档混用高矮不一） ──
-   规则：全项目输入框 / 选择器 / 按钮等一律 32px（Element Plus 默认档）。
-   size="small" 无需逐处删除——此处把 small 档的尺寸拉平到默认档，
-   表格等密集场景仍可写 small（语义保留），高度与默认档完全一致。
+/* ── 表单控件尺寸统一（2026-11-17 用户反馈：32px 偏大偏高，全项目统一降到 EP small 档 24px） ──
+   策略反转（原为 small→32 拉平）：small 档回归 EP 原生 24px，【默认档】也压到 24px，
+   全项目输入框 / 选择器 / 按钮等一律 24px。size="small" 无需逐处增删——两种档位高度一致。
    改这一处即全项目（应用 + 全部工具页，同一 renderer bundle）生效。 */
 :root {
-  --el-component-size-small: 32px;
+  --el-component-size: 24px;
+  --el-component-size-small: 24px;
 }
 /* 注意：这里一律不覆盖 border-radius——单选按钮组/按钮组的组内圆角
    （中间段 0、首尾圆）由 EP 的组规则按位置控制，全局覆盖会把
    中间段也加出圆角（用户反馈 2026-11-16 截图）。 */
-.el-button--small {
-  --el-button-size: 32px;
-  padding: 8px 15px;
-  font-size: 14px;
+.el-button {
+  --el-button-size: 24px;
+  padding: 5px 11px;
+  font-size: 12px;
 }
-.el-input--small { font-size: 14px; }
-.el-select--small .el-select__wrapper {
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 14px;
-  line-height: 24px;
+.el-input { font-size: 12px; }
+.el-select .el-select__wrapper {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 20px;
 }
-.el-radio-button--small .el-radio-button__inner {
-  padding: 8px 15px;
-  font-size: 14px;
+.el-radio-button .el-radio-button__inner {
+  padding: 5px 11px;
+  font-size: 12px;
 }
 /* 数字输入框：加减按钮撑满全高、左右对称同底色（EP 的 + 钮默认透明底，
    暗色主题下只剩边框，看着像缺失/错位；用户反馈 2026-11-16） */
-.el-input-number--small { width: 150px; line-height: 30px; }
+.el-input-number--small { width: 150px; line-height: 22px; }
 .el-input-number .el-input-number__increase,
 .el-input-number .el-input-number__decrease {
   top: 1px;
   bottom: 1px;
   height: auto;
-  width: 32px;
-  font-size: 14px;
+  width: 24px;
+  font-size: 12px;
 }
 .el-input-number .el-input-number__increase {
   background: var(--el-fill-color-light);
 }
 
-/* ── small 拉平的配套修正（与 32px 控件同排的次级元素） ── */
-/* tag：与 32px 控件等高（用户两轮反馈 24px 仍不匹配） */
+/* ── 24px 统一的配套次级元素 ── */
+/* tag：与 24px 控件等高（EP small tag 原生 20px，拉到 24 对齐同排控件） */
 .el-tag--small {
-  height: 32px;
-  padding: 0 12px;
-  --el-icon-size: 14px;
+  height: 24px;
+  padding: 0 10px;
+  --el-icon-size: 12px;
 }
-/* 分页：small 页码 24px → 32px，与同排的每页条数选择器等高 */
-.el-pagination--small {
-  --el-pagination-button-height-small: 32px;
-  --el-pagination-button-width-small: 32px;
-  --el-pagination-font-size-small: 14px;
+/* 分页：统一 24px（EP small 原生即 24，显式声明防默认档页码混入 32px） */
+.el-pagination {
+  --el-pagination-button-height: 24px;
+  --el-pagination-button-width: 24px;
+  --el-pagination-font-size: 12px;
+  --el-pagination-button-height-small: 24px;
+  --el-pagination-button-width-small: 24px;
+  --el-pagination-font-size-small: 12px;
 }
-/* 复选/单选：small 字号 12px → 14px，与控件文字一致 */
-.el-checkbox--small { padding: 0 15px 0 9px; }
-.el-checkbox--small .el-checkbox__label { font-size: 14px; }
-.el-checkbox--small .el-checkbox__inner { width: 14px; height: 14px; }
-.el-radio--small { padding: 0 15px 0 9px; height: 32px; }
-.el-radio--small .el-radio__label { font-size: 14px; }
+/* 复选/单选文字与控件字号一致 */
+.el-checkbox .el-checkbox__label { font-size: 12px; }
+.el-radio .el-radio__label { font-size: 12px; }
 
 * { box-sizing: border-box; }
 

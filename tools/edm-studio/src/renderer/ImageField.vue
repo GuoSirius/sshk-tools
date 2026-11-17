@@ -96,7 +96,7 @@ async function copyUrl(): Promise<void> {
 
 <style scoped>
 .image-field { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; }
-/* 全行统一默认高度（输入框 32px，按钮同为 32px 等高），thumb 36px 视觉居中 */
+/* 全行统一默认高度（控件由 theme.css 统一拉平，现为 24px），thumb 36px 视觉居中 */
 .image-field :deep(.el-input) { flex: 1; min-width: 0; }
 .thumb { flex: none; width: 36px; height: 36px; border-radius: 4px; border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); }
 .thumb-error { display: flex; align-items: center; justify-content: center; color: var(--el-text-color-placeholder); background: var(--el-fill-color-light, rgba(128, 128, 128, 0.1)); font-size: 16px; }
