@@ -1,5 +1,5 @@
 import { computed, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
@@ -157,6 +157,7 @@ export async function loadConfigAndRecent(): Promise<void> {
   const savedLayout = (await host.config.get(configKey('ocrLayout'))) as Partial<OcrLayoutConfig> | null
   if (savedLayout && typeof savedLayout === 'object') Object.assign(ocrLayout, savedLayout)
   await loadProviders()
+  snapshotWorkspaceBaseline() // 初始基线：新建海报空工作区，此后变化计入返回列表 dirty
 }
 
 export async function loadProviders(): Promise<void> {
@@ -447,12 +448,18 @@ export async function markBeforeGenerate(): Promise<void> {
 
 export async function generate(): Promise<void> {
   if (!hasHtml.value) {
-    ElMessage.warning('请先选择或粘贴邮件 HTML')
+    ElMessage.warning('请先选择或粘贴邮件 HTML（数据可空，但 HTML 是生成的前提）')
     return
   }
+  // 流程定版（用户 2026-11-18）：数据可填可不填——没有点击数据时二次确认由用户抉择
   if (!hasStats.value) {
-    ElMessage.warning('请先解析点击统计数据')
-    return
+    try {
+      await ElMessageBox.confirm(
+        '尚未提供点击统计数据，生成的副本将不注入任何 badge 数据（角标不会出现）。确定继续生成吗？',
+        '无数据生成确认',
+        { type: 'warning', confirmButtonText: '继续生成', cancelButtonText: '先去补数据', closeOnClickModal: false, closeOnPressEscape: false },
+      )
+    } catch { return }
   }
   generating.value = true
   try {
@@ -490,6 +497,7 @@ export async function generate(): Promise<void> {
         ? `已生成 badge 副本（${res.badgedRel}）；${unmatched} 个 URL 未被标记，见表格红色行`
         : `已生成 badge 副本（${res.badgedRel}），全部 URL 均已标记`,
     )
+    snapshotWorkspaceBaseline() // 生成即保存了名称/配置/内容/统计快照 → 基线重置，返回列表不再误报 dirty
     await loadPosters()
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -585,13 +593,20 @@ export async function batchExportHtml(): Promise<void> {
   ElMessage.success('已批量导出 ' + count + ' 个海报（HTML + 长图，按名称分目录）：' + outPath)
 }
 
-/** 只保存名称与角标配置（含位置），不触发重新生成 */
+/** 只保存名称与角标配置（不触发重新生成）；流程定版（用户 2026-11-18）：
+ *  海报名必填（为空 → 发「聚焦提示」自动展开配置并高亮，不保存）；HTML/数据可空不影响保存；
+ *  新海报（无 id）直接创建草稿记录（main upsert），生成后续按返回 id 覆盖 */
+export const nameAttention = ref(0)
 export async function savePosterMeta(): Promise<void> {
-  if (!currentPosterId.value) { ElMessage.warning('新海报请先生成一次，再使用保存修改'); return }
+  if (!posterName.value.trim()) {
+    nameAttention.value += 1 // GeneratePage watch：展开配置折叠面板并聚焦海报名输入
+    ElMessage.warning('海报名必填，请填写后再保存')
+    return
+  }
   try {
-    await host.badge.savePosterMeta({
-      posterId: currentPosterId.value,
-      name: posterName.value.trim() || undefined,
+    const res = await host.badge.savePosterMeta({
+      posterId: currentPosterId.value || undefined,
+      name: posterName.value.trim(),
       configSnapshot: {
         badgeAttr: badgeAttr.value,
         clicksField: clicksField.value,
@@ -599,7 +614,9 @@ export async function savePosterMeta(): Promise<void> {
         badgePositionImage: badgePositionImage.value,
       },
     })
-    ElMessage.success('已保存修改（名称与角标配置），无需重新生成')
+    if (res?.posterId) currentPosterId.value = res.posterId
+    resetMetaBaseline()
+    ElMessage.success('已保存（名称与角标配置），无需重新生成')
     await loadPosters()
   } catch (err) {
     ElMessage.error('保存失败：' + (err as Error).message)
@@ -610,6 +627,7 @@ export function onPosterCommand(cmd: string, row: PosterRecord): void {
   if (cmd === 'copy') void copyCode(row)
   else if (cmd === 'download-png') void downloadPosterPng(row)
   else if (cmd === 'share') void openShare(row)
+  else if (cmd === 'export') void exportPosterHtml(row)
   else if (cmd === 'regenerate') void regeneratePoster(row)
   else if (cmd === 'delete') { deleteTarget.value = row; deleteOpen.value = true }
 }
@@ -898,21 +916,23 @@ export function posterLinkState(row: PosterRecord): { type: '自身' | '顶部' 
 
 /** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */
 export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> {
-  if (!row.source.htmlPath) return
-  try {
-    const { html } = await host.badge.readHtml(row.source.htmlPath)
-    pastedHtml.value = html
-    statRows.value = toStatRows(row.statsSnapshot ?? [], [])
-    // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）
-    const savedMarks = (row as PosterRecord & { markCounts?: Record<string, number> }).markCounts
-    if (savedMarks) {
-      for (const r of statRows.value) r.matched = savedMarks[r.url] ?? 0
+  // 草稿海报（保存了名字还没生成）：无源 HTML，只回显名称/配置，其余保持空工作区
+  if (row.source.htmlPath) {
+    try {
+      const { html } = await host.badge.readHtml(row.source.htmlPath)
+      pastedHtml.value = html
+      statRows.value = toStatRows(row.statsSnapshot ?? [], [])
+      // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）
+      const savedMarks = (row as PosterRecord & { markCounts?: Record<string, number> }).markCounts
+      if (savedMarks) {
+        for (const r of statRows.value) r.matched = savedMarks[r.url] ?? 0
+      }
+    } catch (err) {
+      ElMessage.error('载入海报失败：' + (err as Error).message)
+      return
     }
-  } catch (err) {
-    ElMessage.error('载入海报失败：' + (err as Error).message)
-    return
+    syncCsvFromRows()
   }
-  syncCsvFromRows()
   // 已知信息全量回显：名称 / 属性 / 数值列 / 海报尺寸 / 截图像素比 / 角标位置
   posterName.value = row.name
   badgeAttr.value = row.configSnapshot.badgeAttr || badgeAttr.value
@@ -931,5 +951,66 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
       const { html: badged } = await host.badge.readHtml(row.outputs.badged)
       previewHtml.value = badged
     } catch { /* 预览读取失败不阻塞编辑 */ }
+  }
+  snapshotWorkspaceBaseline() // 载入即基线：此后工作区变化才计入 dirty
+}
+
+// ── 返回列表的未保存修改检测（用户 2026-11-18：返回时二次确认，保存/丢弃/留页由用户抉择）──
+// 基线分两组：meta（保存修改即持久化）与 content（仅生成时持久化到产物/快照）。
+interface WorkspaceBaseline {
+  name: string; badgeAttr: string; posText: string; posImage: string; clicksField: string
+  html: string; stats: string; rows: number
+}
+let metaBaseline: WorkspaceBaseline | null = null
+let contentBaseline: WorkspaceBaseline | null = null
+
+function takeBaseline(): WorkspaceBaseline {
+  return {
+    name: posterName.value,
+    badgeAttr: badgeAttr.value,
+    posText: badgePositionText.value,
+    posImage: badgePositionImage.value,
+    clicksField: clicksField.value,
+    html: pastedHtml.value,
+    stats: pastedStats.value,
+    rows: statRows.value.length,
+  }
+}
+function snapshotAll(): void { metaBaseline = takeBaseline(); contentBaseline = takeBaseline() }
+function resetMetaBaseline(): void { if (metaBaseline) metaBaseline = takeBaseline() }
+
+/** 进入生成页（应用启动/新建/载入海报）时记录基线；生成成功也重置（生成即保存了内容与配置） */
+export function snapshotWorkspaceBaseline(): void { snapshotAll() }
+
+/** 工作区是否有未保存/未生成的修改 */
+export function workspaceDirty(): boolean {
+  const cur = takeBaseline()
+  const metaDirty = !metaBaseline || cur.name !== metaBaseline.name || cur.badgeAttr !== metaBaseline.badgeAttr
+    || cur.posText !== metaBaseline.posText || cur.posImage !== metaBaseline.posImage || cur.clicksField !== metaBaseline.clicksField
+  const contentDirty = !contentBaseline || cur.html !== contentBaseline.html || cur.stats !== contentBaseline.stats || cur.rows !== contentBaseline.rows
+  return metaDirty || contentDirty
+}
+
+/** 返回列表：dirty 时二次确认（保存并返回 / 不保存直接返回 / 留页），路由跳转由调用方（壳组件）执行 */
+export async function backToListConfirm(): Promise<boolean> {
+  if (!workspaceDirty()) return true
+  try {
+    await ElMessageBox.confirm(
+      '当前工作区有未保存的修改（或已修改但未重新生成）。返回列表前要保存吗？',
+      '未保存的修改',
+      {
+        type: 'warning',
+        confirmButtonText: '保存并返回',
+        cancelButtonText: '不保存返回',
+        // 关闭（X/ESC）= 留在本页继续编辑
+        distinguishCancelAndClose: true,
+        closeOnClickModal: false, closeOnPressEscape: false,
+      },
+    )
+    await savePosterMeta()
+    return true
+  } catch (action) {
+    if (action === 'cancel') return true // 不保存直接返回
+    return false // close = 留在页面
   }
 }

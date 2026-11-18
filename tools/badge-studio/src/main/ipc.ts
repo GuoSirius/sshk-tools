@@ -331,6 +331,9 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       })
     } else {
       await deps.repository.insert<Poster>('posters', {
+        // 记录 _id 必须与 posterId（文件目录 id）一致：渲染层后续 保存修改/截图/分享 都按
+        // generate 返回的 posterId 查库；缺省时 repository 会另生成 _id → 查不到（2026-11-18 事故）
+        _id: posterId,
         name: input.name,
         source,
         sourceHash,
@@ -385,16 +388,41 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   ipc.handle(IPC_CHANNELS.badgeListPosters, wrap(() => deps.repository.list('posters')))
 
   // ⑦ 删除（软删除归档；产物文件保留，硬删清理目录走二次确认流程）
-  // ④c 保存修改：只更新名称与配置快照，不触发重新生成（改个名字不必重跑）
-  ipc.handle(IPC_CHANNELS.badgeSavePosterMeta, wrap(async (payload: { posterId: string; name?: string; configSnapshot?: Poster['configSnapshot'] }) => {
-    const poster = await deps.repository.get<Poster>('posters', payload.posterId)
-    if (!poster) throw new Error('海报不存在（新海报请先生成一次）')
-    await deps.repository.update<Poster>('posters', payload.posterId, {
-      ...(payload.name ? { name: payload.name } : {}),
-      ...(payload.configSnapshot ? { configSnapshot: payload.configSnapshot } : {}),
-      updatedAt: now(),
+  // ④c 保存修改：upsert——只更新名称与配置快照，不触发重新生成（改个名字不必重跑）。
+  //     流程定版（用户 2026-11-18）：创建新海报时海报名必填即可保存（HTML/数据可空，只影响生成），
+  //     不存在则建 status=draft 草稿记录并回传 posterId；渲染层后续生成按该 id 覆盖。
+  ipc.handle(IPC_CHANNELS.badgeSavePosterMeta, wrap(async (payload: { posterId?: string; name?: string; configSnapshot?: Partial<Poster['configSnapshot']> }) => {
+    const name = payload.name?.trim()
+    if (!name) throw new Error('海报名必填')
+    const existing = payload.posterId ? await deps.repository.get<Poster>('posters', payload.posterId) : null
+    if (existing) {
+      await deps.repository.update<Poster>('posters', existing._id, {
+        name,
+        ...(payload.configSnapshot
+          ? { configSnapshot: { ...existing.configSnapshot, ...payload.configSnapshot } }
+          : {}),
+        updatedAt: now(),
+      })
+      return { posterId: existing._id }
+    }
+    const posterId = payload.posterId || entityId('pst')
+    await deps.repository.insert<Poster>('posters', {
+      _id: posterId,
+      name,
+      source: { type: 'upload', htmlPath: '' },
+      datasources: [],
+      configSnapshot: {
+        badgeAttr: payload.configSnapshot?.badgeAttr ?? 'data-edm-badge',
+        clicksField: payload.configSnapshot?.clicksField ?? 'clicks',
+        posterWidth: payload.configSnapshot?.posterWidth ?? 680,
+        scale: payload.configSnapshot?.scale ?? 2,
+        badgePositionText: payload.configSnapshot?.badgePositionText,
+        badgePositionImage: payload.configSnapshot?.badgePositionImage,
+      },
+      outputs: {},
+      status: 'draft',
     })
-    return true
+    return { posterId }
   }))
   ipc.handle(IPC_CHANNELS.badgeDeletePoster, wrap(async (posterId: string) => {
     await deps.repository.archive('posters', posterId)

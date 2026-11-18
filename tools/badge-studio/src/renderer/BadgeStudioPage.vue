@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ToolPageLayout, ConfirmDialog, ShareDialog, provideToolId } from '@sshk/ui-kit'
 import { ArrowDown } from '@element-plus/icons-vue'
 import GeneratePage from './pages/GeneratePage.vue'
@@ -9,6 +10,7 @@ import {
   hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, shareDialog, openShare,
+  backToListConfirm,
   selectedPosters, batchExportHtml, batchDeletePosters,
   currentPage, pageSize, posters, onPageChange,
   deleteOpen, deleteTarget, confirmDelete,
@@ -29,6 +31,13 @@ const pages: Record<string, unknown> = { generate: GeneratePage, posters: Poster
 const active = computed(() => pages[tab.value] ?? GeneratePage)
 const isPosters = computed(() => tab.value === 'posters')
 
+const router = useRouter()
+const route = useRoute()
+/** 返回列表（流程定版 2026-11-18）：工作区 dirty 时二次确认（保存并返回/不保存返回/留页） */
+async function backToList(): Promise<void> {
+  if (await backToListConfirm()) void router.push('/tool/' + String(props.toolId ?? route.params.toolId) + '/posters')
+}
+
 onMounted(() => {
   void loadConfigAndRecent()
   void loadPosters()
@@ -42,6 +51,9 @@ onMounted(() => {
   >
     <template #actions>
       <template v-if="!isPosters">
+        <!-- 按钮按工作流排序（用户 2026-11-18 定版）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
+             生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿） -->
+        <el-button size="small" plain @click="backToList">返回列表</el-button>
         <el-button size="small" @click="pickHtml">选择 HTML</el-button>
         <el-button size="small" @click="pickStats">选择数据源</el-button>
         <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
@@ -59,12 +71,12 @@ onMounted(() => {
           </template>
         </el-dropdown>
         <el-button size="small" :disabled="!hasHtml || !hasStats" @click="markBeforeGenerate">批量补属性</el-button>
-        <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml || !hasStats" @click="generate">
+        <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml" @click="generate">
           生成海报
         </el-button>
-        <el-button size="small" :disabled="!currentPosterId" @click="savePosterMeta">保存修改</el-button>
+        <el-button size="small" @click="savePosterMeta">保存修改</el-button>
         <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
-        <el-button type="success" size="small" :loading="downloading" @click="downloadPoster">下载图片</el-button>
+        <el-button type="success" size="small" :loading="downloading" :disabled="!currentPosterId" @click="downloadPoster">下载图片</el-button>
         <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentPosterId" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
           分享
         </el-button>

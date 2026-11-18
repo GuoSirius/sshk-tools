@@ -171,7 +171,7 @@ interface Window {
       sourceState(payload?: { posterIds?: string[] }): Promise<{ rows: { posterId: string; stale: boolean; sourceRel: string | null; mailId: string | null }[] }>
       savePosterPng(payload: { posterId: string; base64: string }): Promise<string>
       listPosters(): Promise<PosterRecord[]>
-      savePosterMeta(payload: { posterId: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<boolean>
+      savePosterMeta(payload: { posterId?: string; name?: string; configSnapshot?: { badgeAttr: string; clicksField: string; badgePositionText?: string; badgePositionImage?: string } }): Promise<{ posterId: string }>
       deletePoster(posterId: string): Promise<boolean>
       downloadPng(payload: { posterId: string; outPath: string }): Promise<{ outPath: string }>
       templateDownload(fmt: 'xlsx' | 'csv' | 'json'): Promise<{ base64: string; fileName: string }>

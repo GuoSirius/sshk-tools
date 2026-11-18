@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CodeEditor, formatHtml, compactHtml } from '@sshk/code-editor'
 import { Document, Delete } from '@element-plus/icons-vue'
@@ -15,7 +15,15 @@ import {
   clicksField, fieldOptions, posterWidth, previewHtml, previewFrame,
   statsWarnings, customMetricKeys, removeMetric, metricOf, setMetric,
   removeRow, syncCsvFromRows, newMetricKey, addMetric,
+  nameAttention,
 } from '../state'
+
+/** 海报名聚焦提示（用户 2026-11-18：保存时名字为空 → 自动展开配置并聚焦输入框） */
+const nameInputRef = ref<{ focus: () => void } | null>(null)
+watch(nameAttention, () => {
+  cfgOpen.value = ['cfg']
+  void nextTick(() => nameInputRef.value?.focus())
+})
 
 /** E-T5：第二个工具零配置复用 @sshk/code-editor —— 统计表 JSON 只读视图 */
 const jsonViewOpen = ref(false)
@@ -350,7 +358,7 @@ function askClearRows(): void {
             <el-form label-width="auto" size="small" class="badge-cfg-form">
               <div class="form-inline-row">
                 <el-form-item label="海报名" class="grow-item">
-                  <el-input clearable v-model="posterName" placeholder="海报名称（列表与导出文件名）" />
+                  <el-input ref="nameInputRef" clearable v-model="posterName" placeholder="海报名称（必填；列表与导出文件名）" />
                 </el-form-item>
                 <el-form-item label="属性名" class="grow-item">
                   <el-input clearable v-model="badgeAttr" />
