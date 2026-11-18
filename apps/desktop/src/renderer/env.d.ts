@@ -31,7 +31,7 @@ interface LlmProvider {
 
 /** 主进程推送的 autoUpdater 全生命周期状态 */
 interface UpdateState {
-  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev'
+  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev' | 'disabled'
   version?: string
   percent?: number
   error?: string
@@ -80,6 +80,8 @@ interface Window {
       download(): Promise<boolean>
       quitAndInstall(): Promise<{ dev?: boolean } | void>
       onState(callback: (payload: UpdateState) => void): void
+      /** 拉取主进程当前更新状态（启动兜底：订阅推送前主进程可能已推过 disabled/dev，落空需拉取对齐） */
+      getState(): Promise<UpdateState | null>
     }
     llm: {
       chat(

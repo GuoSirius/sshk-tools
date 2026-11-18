@@ -16,6 +16,7 @@ import QRCode from 'qrcode'
 import { callHostApi, type HostApiSpec } from '../host-api'
 import { shareDialogStorageKey, readShareTicket } from '../share-ticket'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import FormHint from './FormHint.vue'
 import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
 const props = defineProps<{
@@ -200,9 +201,11 @@ function stageTtl(mode: 'extend' | 'reset' | 'permanent'): void {
 /** 暂存描述（实时取数字框当前值，应用时以此为准） */
 const pendingTtlText = computed(() => {
   switch (pendingTtl.value) {
-    case 'extend': return `将在当前到期上累加 ${ttlHours.value} 小时`
+    case 'extend': return permanent.value
+      ? '当前已是永久有效，续期不会改变有效期'
+      : `将在当前到期上累加 ${ttlHours.value} 小时`
     case 'reset': return `有效期将更新为 ${ttlHours.value} 小时（从当前重新计时）`
-    case 'permanent': return '将设为永久有效'
+    case 'permanent': return permanent.value ? '当前已是永久有效' : '将设为永久有效'
     default: return ''
   }
 })
@@ -356,7 +359,7 @@ watch(() => props.open, (open) => {
   <el-dialog
     :model-value="open"
     :title="`分享 · ${label}`"
-    width="560px"
+    :width="phase === 'form' ? '460px' : '560px'"
     align-center
     :close-on-click-modal="false"
     :close-on-press-escape="false"
@@ -371,20 +374,35 @@ watch(() => props.open, (open) => {
         <p class="share-error">分享状态读取失败：{{ loadError }}，可点「重试」或关闭。</p>
       </div>
 
-      <!-- 创建态（无票 / 撤销后统一回这里）：固定高度居中表单，点「创建分享」才生效 -->
+      <!-- 创建态（无票 / 撤销后统一回这里）：居中卡片式设置，点「创建分享」才生效 -->
       <template v-else-if="phase === 'form'">
         <div class="share-form">
-          <p class="share-form-title">当前未创建分享链接{{ formHint }}。</p>
-          <div class="share-form-tip">点「创建分享」后才会创建链接并自动复制；下方设置随创建生效。</div>
-          <div class="share-field">
-            <span class="field-label">有效期</span>
-            <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-num" :disabled="permanentSel" />
-            <span class="ttl-unit">小时</span>
-            <el-checkbox v-model="permanentSel" class="perm-check">永久有效</el-checkbox>
+          <div class="form-hero">
+            <div class="hero-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7" />
+                <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.8-1.7" />
+              </svg>
+            </div>
+            <p class="hero-title">{{ formHint ? '分享链接已撤销' : '还没有分享链接' }}</p>
+            <p class="hero-sub">确认下方设置后点「创建分享」，创建成功会自动复制链接。</p>
           </div>
-          <div class="share-field">
-            <span class="field-label">目录访问</span>
-            <el-checkbox v-model="allowIndex" class="allow-index-check" title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问">允许访问目录</el-checkbox>
+          <div class="form-card">
+            <div class="form-row">
+              <span class="row-label">有效期</span>
+              <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-num" :disabled="permanentSel" />
+              <span class="row-unit">小时</span>
+              <el-checkbox v-model="permanentSel" class="row-check">永久有效</el-checkbox>
+            </div>
+            <el-divider class="card-divider" />
+            <div class="form-row">
+              <span class="row-label">目录访问</span>
+              <el-checkbox v-model="allowIndex" class="row-check">允许访问目录</el-checkbox>
+              <FormHint
+                inline
+                detail="开启后访客可通过裸链接/目录路径浏览文件列表；关闭时仅具体文件链接可访问。创建后仍可随时更改。"
+              >跟随应用设置</FormHint>
+            </div>
           </div>
         </div>
       </template>
@@ -394,12 +412,12 @@ watch(() => props.open, (open) => {
         <div class="share-ttl-row">
           <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" />
           <span class="ttl-unit">小时</span>
-          <!-- 三按钮只暂存选择（选中变实心高亮），点「应用更改」才生效 -->
-          <el-button type="primary" size="small" :plain="pendingTtl !== 'extend'" :loading="busy" :disabled="permanent" @click="stageTtl('extend')">续期 TTL</el-button>
+          <!-- 三按钮只暂存选择（选中变实心高亮），点「应用更改」才生效；permanent 下三按钮均可选（续期对永久是安全 no-op） -->
+          <el-button type="primary" size="small" :plain="pendingTtl !== 'extend'" :loading="busy" @click="stageTtl('extend')">续期 TTL</el-button>
           <el-button type="warning" size="small" :plain="pendingTtl !== 'reset'" :loading="busy" @click="stageTtl('reset')">更新 TTL</el-button>
-          <el-button type="success" size="small" :plain="pendingTtl !== 'permanent'" :loading="busy" :disabled="permanent" @click="stageTtl('permanent')">永久有效</el-button>
+          <el-button type="success" size="small" :plain="pendingTtl !== 'permanent'" :loading="busy" @click="stageTtl('permanent')">永久有效</el-button>
         </div>
-        <div v-if="pendingTtl" class="share-form-tip">
+        <div v-if="pendingTtl" class="pending-tip-row">
           <span class="dirty-tip">{{ pendingTtlText }}，点「应用更改」后生效（链接不变）。</span>
         </div>
         <div class="share-link-head">
@@ -458,18 +476,41 @@ watch(() => props.open, (open) => {
 .share-dialog { min-height: 340px; display: flex; flex-direction: column; }
 .share-loading { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 340px; text-align: center; }
 .share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
-.share-form { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 0 24px; }
-.share-form-title { margin: 0; line-height: 1.6; }
-.share-form-tip { margin: -6px 0 4px; font-size: 12px; opacity: 0.65; }
-.share-field { display: flex; align-items: center; gap: 10px; }
-.share-field .field-label { flex: none; width: 64px; font-size: 12px; opacity: 0.7; }
-.share-field .ttl-num { flex: none; width: 150px; }
-.share-field .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; margin-right: 4px; }
-.dirty-tip { color: var(--el-color-warning); opacity: 1; }
+
+/* ── 创建态：居中 hero + 设置卡片，紧凑不空旷 ── */
+.share-form { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 0 8px; }
+.form-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding-top: 6px; }
+.hero-badge {
+  flex: none; width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
+  margin-bottom: 4px;
+}
+.hero-badge svg { width: 24px; height: 24px; }
+.hero-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.hero-sub { margin: 0; font-size: 12px; opacity: 0.65; line-height: 1.5; }
+.form-card {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+  padding: 4px 16px;
+}
+.form-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.form-row .row-label { flex: none; width: 56px; font-size: 13px; opacity: 0.75; }
+.form-row .ttl-num { flex: none; width: 130px; }
+.form-row .row-unit { flex: none; font-size: 12px; opacity: 0.7; }
+.form-row .row-check { flex: none; height: auto; }
+.form-row .row-check :deep(.el-checkbox__label) { font-size: 12px; }
+.form-row .sshk-form-hint { flex: 1; min-width: 0; }
+.card-divider { margin: 0; }
+
+/* ── 已有链接态 ── */
+.dirty-tip { color: var(--el-color-warning); opacity: 1; font-size: 12px; }
+.pending-tip-row { margin-top: 8px; font-size: 12px; opacity: 0.9; }
 .allow-index-check { flex: none; height: auto; }
 .allow-index-check :deep(.el-checkbox__label) { font-size: 12px; }
-.perm-check { flex: none; height: auto; }
-.perm-check :deep(.el-checkbox__label) { font-size: 12px; }
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }

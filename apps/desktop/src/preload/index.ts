@@ -68,6 +68,9 @@ const api = {
     onState: (callback: (payload: unknown) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.updateState, (_event, payload) => callback(payload))
     },
+    /** 拉取主进程当前状态：订阅推送前主进程可能已推过 disabled/dev（窗口未建落空），启动时拉一次兜底 */
+    getState: (): Promise<{ phase: string; version?: string; percent?: number; error?: string } | null> =>
+      invoke(IPC_CHANNELS.updateGetState),
   },
   llm: {
     /** 密钥在主进程注入，渲染层只传 provider 元信息 */

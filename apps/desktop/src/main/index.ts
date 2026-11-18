@@ -523,6 +523,7 @@ async function registerIpc(): Promise<void> {
   // ── 更新 ──
   // autoUpdater 全生命周期状态：检查 → 发现 → 下载进度 → 完成 → 失败，统一推给渲染层。
   // 渲染层据此展示状态指示、进度条与「立即安装」提示，告别一次性 toast。
+  handleOk(IPC_CHANNELS.updateGetState, () => updateState)
   handleOk(IPC_CHANNELS.updateCheck, async () => {
     if (autoUpdateDisabled) { pushUpdate({ phase: 'disabled' }); return { disabled: true } }
     if (isDev && !updateDevCheck) { pushUpdate({ phase: 'dev' }); return { dev: true } }

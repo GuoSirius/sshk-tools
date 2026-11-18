@@ -29,6 +29,8 @@ export const IPC_CHANNELS = {
   updateQuitAndInstall: 'update:quitAndInstall',
   /** 主进程 → 渲染层：autoUpdater 全生命周期状态推送（检查/发现/下载进度/完成/失败） */
   updateState: 'update:state',
+  /** 渲染层启动时拉取主进程当前更新状态（订阅推送前主进程可能已推过 disabled/dev，推送落空需拉取兜底） */
+  updateGetState: 'update:getState',
   /** ── ShareHub 常驻分享服务（plans/09）：单端口多路由，6 通道 ──
    *  create/list/revoke/renew/status 供工具与宿主共用；control 仅宿主「分享服务」tab 可用。
    *  生命周期/状态持久化由主进程 ShareHub 单例统一承担，工具不自建服务。 */

@@ -21,6 +21,10 @@ function ensureRegistered(): void {
   window.api.update.onState((payload: UpdateState) => {
     if (payload && typeof payload === 'object') state.value = payload
   })
+  // 启动兜底：订阅前主进程可能已推过 disabled/dev（当时窗口未建，推送落空），拉一次当前状态对齐
+  void window.api.update.getState().then((s) => {
+    if (s && typeof s.phase === 'string' && s.phase !== 'idle') state.value = s as UpdateState
+  }).catch(() => { /* IPC 不可用时维持 idle 初始态 */ })
 }
 
 /** 全局共享同一份更新状态：顶栏指示器、更新横幅、设置页卡片都从这里读 */
