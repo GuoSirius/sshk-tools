@@ -32,7 +32,8 @@ async function onDeveloperModeChange(next: unknown): Promise<void> {
         '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
         '验证并开启',
       )
-      await callHostApi<boolean>(DEV_KEY_SPEC, String(secret ?? ''), 'developerMode')
+      if (secret === null) { appConfig.developerMode = false; return } // 用户取消：静默复位开关（2026-11-18）
+      await callHostApi<boolean>(DEV_KEY_SPEC, secret, 'developerMode')
     }
     appConfig.developerMode = true
     ElMessage.success('验证通过，点「保存应用配置」后生效')

@@ -230,7 +230,8 @@ async function openDevTools(): Promise<void> {
   } catch { /* 打包版需要密钥 */ }
   try {
     const secret = await promptSecret('开发者工具', '打开开发者工具需要访问密钥', '验证并开启')
-    await window.api.app.toggleDevTools(String(secret ?? ''))
+    if (secret === null) return // 用户取消：不发起校验、不报错（2026-11-18）
+    await window.api.app.toggleDevTools(secret)
   } catch (err) {
     const message = (err as Error).message
     if (message && message !== 'cancel') ElMessage.error(message)

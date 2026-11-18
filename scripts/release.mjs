@@ -3,7 +3,7 @@
  * release.mjs —— 发布 + changelog 完整流程（#39）。
  *
  * 流程（先构建后发布，杜绝发布后构建失败）：
- *   前置检验（git 干净 / main 且与远程同步 / pnpm verify 全绿）
+ *   前置检验（未提交变更询问是否忽略、默认忽略 / main 且与远程同步 / pnpm verify 全绿）
  *   → 版本选择（上下箭头，实时预览 current → next）
  *   → changelog 预览 + 二次确认
  *   → bump 全部 package.json + 生成 CHANGELOG.md（快照写入前内容）
@@ -137,7 +137,12 @@ const dirty = git(['status', '--porcelain']).split('\n').filter(Boolean)
 if (dirty.length && !DRY_RUN) {
   console.error(RED('工作区有未提交变更：'))
   for (const line of dirty) console.error(`  ${line}`)
-  die('请先提交或暂存（stash）后再发布')
+  // 用户 2026-11-18：未提交变更不再硬阻断，由用户决定是否忽略，默认忽略继续
+  const ignore = await confirm({ message: '是否忽略未提交变更并继续发布？（默认忽略）', default: true })
+  if (!ignore) die('已退出发布流程，请先提交或暂存（stash）后再发布')
+  ok('已忽略未提交变更，继续发布')
+} else if (dirty.length) {
+  console.log(DIM(`  [dry-run] 工作区有 ${dirty.length} 个未提交变更（dry-run 不询问，仅提示）`))
 }
 git(['fetch', 'origin', 'main'])
 const ahead = git(['rev-list', '--count', 'origin/main..HEAD'])
