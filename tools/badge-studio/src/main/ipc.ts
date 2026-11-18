@@ -415,7 +415,11 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   // ⑨ 海报分享解析（plans/09）：posterId → { root, entry, label } 绝对路径。
   //    分享服务本体（token/TTL/状态/二维码/续期/撤销）统一由宿主 ShareHub + ShareDialog 承担，
   //    工具 main 只做「业务 id → 产物绝对路径」解析（这里最清楚 outputRoot 布局）。
+  //    posterId 为空 = 列表级分享：root 仍为产物根（root 不变则前缀互通），entry='' 走目录列表页。
   ipc.handle(IPC_CHANNELS.badgeShareResolve, wrap(async (payload: { posterId: string }) => {
+    if (!payload.posterId) {
+      return { root: deps.outputRoot, entry: '', label: '海报列表' }
+    }
     const poster = await deps.repository.get<Poster>('posters', payload.posterId)
     if (!poster?.outputs.badged) throw new Error('海报尚未生成，无法分享')
     // serve 产物根（html + assets 同源可访问）；entry 为 badged 相对路径

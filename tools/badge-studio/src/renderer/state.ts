@@ -3,7 +3,9 @@ import { ElMessage } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
 import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
-import type { LlmProviderInfo } from '@sshk/shared'
+import type { LlmProviderInfo, ShareRouteInfo } from '@sshk/shared'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { callHostApi, readShareTicket, type HostApiSpec } from '@sshk/ui-kit'
 import { host } from './host'
 
 /**
@@ -785,6 +787,57 @@ export async function openShare(poster: Pick<PosterRecord, '_id' | 'name'>): Pro
   } finally {
     shareDialog.loading = false
   }
+}
+
+// ── 列表级分享 + 行级复制链接（用户 2026-11-18）──────────────────────────
+// 顶部「分享列表」= root 为产物根、entry 为空的目录分享（顶部长时效/永久为主）；
+// 行「复制链接」优先取该行自己的分享（更多 → 分享页面创建），否则用列表前缀 + 行产物相对路径。
+
+/** shareHub.list 通道 spec：复制前校验路由仍在（撤销/过期不复制死链） */
+const SHARE_LIST_SPEC: HostApiSpec = { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' }
+const LIST_SHARE_LABEL = '海报列表'
+
+/** 打开列表分享对话框（右上角「分享列表」）：root=产物根、entry=''；TTL 在对话框内自行调（0=永久） */
+export async function openListShare(): Promise<void> {
+  shareDialog.loading = true
+  try {
+    const resolved = await host.badge.shareResolve({ posterId: '' }) as { root: string; entry: string; label: string }
+    Object.assign(shareDialog, { open: true, root: resolved.root, entry: resolved.entry, label: resolved.label })
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    shareDialog.loading = false
+  }
+}
+
+/** 校验路由存活（撤销/过期的不复制）；list 失败时信任本地未过期记录 */
+async function ticketAlive(toolId: string, ticket: { id: string; expiresAt: number }): Promise<boolean> {
+  if (ticket.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && ticket.expiresAt <= Date.now()) return false
+  try {
+    const routes = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolId)
+    return routes.some((r) => r.id === ticket.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
+  } catch { return true }
+}
+
+/** 行级「复制链接」：自己有分享用自己（含口令链接），否则用列表分享前缀拼本行产物路径 */
+export async function copyPosterLink(row: PosterRecord): Promise<void> {
+  const resolved = await host.badge.shareResolve({ posterId: row._id }) as { root: string; entry: string; label: string }
+  // ① 本行自己的分享
+  const own = readShareTicket(toolId.value, resolved.label, resolved.root, resolved.entry)
+  if (own && await ticketAlive(toolId.value, own)) {
+    await host.os.clipboardWrite(own.urls[0] ?? '')
+    ElMessage.success('已复制本海报的分享链接')
+    return
+  }
+  // ② 列表分享前缀 + 本行产物相对路径
+  const list = readShareTicket(toolId.value, LIST_SHARE_LABEL, resolved.root, '')
+  if (list && await ticketAlive(toolId.value, list)) {
+    const prefix = (list.urls[0] ?? '').replace(/\/+$/, '')
+    await host.os.clipboardWrite(prefix + '/' + resolved.entry)
+    ElMessage.success('已复制分享链接（来自列表分享）')
+    return
+  }
+  ElMessage.warning('还没有可用分享：点右上角「分享列表」生成链接前缀，或在「更多 → 分享页面」为本海报单独分享')
 }
 
 /** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { compactHtml, formatHtml } from './source-format'
+import { compactHtml, formatHtml } from './format'
 
-describe('source-format', () => {
+describe('formatHtml/compactHtml', () => {
   it('格式化 HTML 为可读多行', async () => {
     const out = await formatHtml('<div><b>x</b><p>hi</p></div>')
     expect(out).toContain('\n  <b>x</b>')

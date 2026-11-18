@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url'
 import type { Alias, Plugin } from 'vite'
 import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { collectBuiltinToolInfo, resolveBuiltinSelectionFromEnv } from './src/main/builtin-selection'
-import { envOff } from '../../packages/shared/src/env'
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const pkg = (rel: string): string => fileURLToPath(new URL(`../../${rel}`, import.meta.url))
@@ -56,8 +55,13 @@ const BUILTIN_DEFINE = { __SSHK_BUILD_TOOLS__: JSON.stringify({ mode: BUILTIN.mo
 /**
  * 分发期固定旋钮：打包版没有 .env（env-load 静默跳过），运行时读不到构建时的
  * SSHK_AUTO_UPDATE——构建期读一次并注入产物，SSHK_AUTO_UPDATE=0 打包后立即生效。
+ * 语义同 shared getEnvBool（'0'/'false' 显式关）：此处内联实现，配置文件不依赖运行时模块。
  */
-const AUTO_UPDATE_DEFINE = { __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(envOff(process.env.SSHK_APP_AUTO_UPDATE)) }
+const AUTO_UPDATE_DEFINE = {
+  __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(
+    ['0', 'false'].includes(String(process.env.SSHK_APP_AUTO_UPDATE ?? '').trim().toLowerCase()),
+  ),
+}
 
 /**
  * 构建期烤入 env（用户 2026-11-18 拍板）：.env 中声明的 SSHK_ 前缀键整批注入

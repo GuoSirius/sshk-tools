@@ -3,8 +3,10 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
+import { CodeEditor } from '@sshk/code-editor'
 import type { ToolConfigField, ToolConfigGroup } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
+import BadgeStylePreview from './components/settings/BadgeStylePreview.vue'
 
 /**
  * 工具级配置：只读写 tools.<toolId>.*，字段由工具包 manifest 的 configGroups 驱动。
@@ -116,12 +118,13 @@ async function load(): Promise<void> {
       }
     } else if (field.optionsSource === 'llm:providers') {
       // 应用级 Provider 清单（手输 id 易错，改下拉选择，2026-11-18 用户反馈）：
-      // 列表第一项「跟随应用激活 Provider」即默认值（value='' 走 fallbackKey 生效值）
+      // 列表第一项「跟随应用激活 Provider」即默认值（value='' 走 fallbackKey 生效值）；
+      // 已禁用的 Provider 不进下拉（禁用语义 = 所有工具不可用）
       try {
         const list = await window.api.llm.providers()
         dynamicOptions[field.key] = [
           { label: '（跟随应用激活 Provider）', value: '' },
-          ...list.map((p) => ({ label: p.name, value: p._id })),
+          ...list.filter((p) => p.enabled !== false).map((p) => ({ label: p.name, value: p._id })),
         ]
       } catch {
         dynamicOptions[field.key] = [{ label: '（Provider 清单未就绪）', value: '' }]
@@ -247,6 +250,8 @@ watch(() => props.section, (section) => {
             :data-group="group.id"
           >
             <div class="panel-head"><el-icon><Setting /></el-icon>{{ group.label }}</div>
+            <!-- 实时预览卡片（manifest 组声明 preview 时渲染）：编辑 CSS 立刻看真实效果（2026-11-18） -->
+            <BadgeStylePreview v-if="group.preview === 'badge-css'" :values="values" />
             <!-- plans/01 全局表单规范：开关项 3 列同行（文字与开关同排）；其余 2 列栅格 + dir/file/textarea/full 独占整行 -->
             <el-form size="small" label-position="top">
               <FormGrid v-if="booleanFields(group).length" :cols="3">
@@ -272,6 +277,13 @@ watch(() => props.section, (section) => {
                     v-model="values[field.key]"
                     :min="field.min"
                     :max="field.max"
+                  />
+                  <CodeEditor
+                    v-else-if="field.type === 'textarea' && field.codeEditor"
+                    v-model="values[field.key] as string"
+                    language="css"
+                    height="120px"
+                    :path="`config-${toolId}-${field.key}`"
                   />
                   <el-input clearable v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
                   <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">

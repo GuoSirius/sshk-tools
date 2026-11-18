@@ -30,9 +30,12 @@ export interface HostApiSpec {
   label: string
 }
 
-/** 版本漂移时的统一话术：先重载窗口（会重新注入 preload），不行再完全重启应用 */
+/** 版本漂移时的统一话术：重载窗口（会重新注入 preload）让新能力生效，不行再完全重启应用 */
 export const HOST_API_STALE_HINT =
-  '宿主能力尚未就绪：界面已更新，但当前窗口仍在使用启动时的旧桥接。请点页面顶部「重载窗口」；若仍失败，请完全退出应用并重新启动（开发模式重启 pnpm dev）。'
+  '宿主能力尚未就绪：界面已更新，但当前窗口仍在使用启动时的旧桥接。若页面顶部有「重载窗口」按钮请点击重载；否则请完全退出应用并重新启动（开发模式重启 pnpm dev）。'
+
+/** 主进程未注册该通道 / 桥接快照过旧的典型报错特征；业务错误（如「海报尚未生成」）不应误套本话术 */
+const STALE_BRIDGE_ERROR = /no handler registered|is not a function|not registered|no handler|unknown channel|无法识别的通道/i
 
 function apiBag(): ApiBag {
   return (globalThis as unknown as { api?: ApiBag }).api ?? {}
@@ -63,7 +66,11 @@ export async function callHostApi<T>(spec: HostApiSpec, ...args: unknown[]): Pro
     try {
       return (await (generic as AnyFn)(spec.channel, ...args)) as T
     } catch (err) {
-      throw new Error(`${HOST_API_STALE_HINT}（${(err as Error).message}）`)
+      const msg = (err as Error).message ?? ''
+      // 通用通道走通且主进程已应答 = 桥接其实可用，错误是业务本身的（如「海报尚未生成」），
+      // 原样抛出让用户看到真实原因；只有「handler 未注册 / 桥接过旧」特征才套重载话术
+      if (STALE_BRIDGE_ERROR.test(msg)) throw new Error(`${HOST_API_STALE_HINT}（${msg}）`)
+      throw err instanceof Error ? err : new Error(msg)
     }
   }
   throw new Error(HOST_API_STALE_HINT)

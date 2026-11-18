@@ -555,6 +555,11 @@ async function registerIpc(): Promise<void> {
   // ── LLM（宿主能力：工具可依赖，应用不依赖工具） ──
   handleOk(IPC_CHANNELS.llmChat, (_event, provider: LlmProvider, messages: unknown, options?: { onDelta?: boolean; model?: string }) => {
     const p = readProvider(_event, provider)
+    // 禁用拦截（2026-11-18）：应用级 Provider 被禁用后，即使渲染层缓存了元数据直连调用也拒绝
+    const stored = services!.host.listProviders().find((s) => s._id === p._id)
+    if (stored && stored.enabled === false) {
+      throw new Error(`Provider「${stored.name}」已禁用，请先在「模型控制台」启用后再调用`)
+    }
     const apiKey = services!.getApiKey(p._id)
     // 模型链优先级：options.model（工具自选）→ provider.model（默认）→ provider.fallbackModel（回退）
     const toolModel = typeof options?.model === 'string' && options.model.trim() ? options.model.trim() : ''
@@ -915,6 +920,8 @@ interface UpdateState {
 /** 主进程持有唯一更新状态，事件触发时推给渲染层（单一真相源，避免重复 toast） */
 let updateState: UpdateState = { phase: 'idle' }
 let latestVersion: string | undefined
+/** 下载进度日志节流游标：每跨 10% 落一条（download-progress 高频，不逐条刷日志） */
+let progressLogMark = 0
 function pushUpdate(patch: Partial<UpdateState>): void {
   const prevPhase = updateState.phase
   updateState = { ...updateState, ...patch }
@@ -934,18 +941,30 @@ function wireAutoUpdater(): void {
   // dev 测试模式强制关自动安装（用户验收项7：只验下载流程，不执行安装）。
   autoUpdater.autoInstallOnAppQuit = updateDevCheck ? false : Boolean(services?.config.get('app.autoInstallOnAppQuit'))
   autoUpdater.on('checking-for-update', () => {
+    progressLogMark = 0
     pushUpdate({ phase: 'checking', error: undefined })
   })
   autoUpdater.on('update-available', (info: { version: string }) => {
     latestVersion = info.version
     pushUpdate({ phase: 'available', version: info.version, error: undefined })
+    // autoDownload=true：update-available 后 electron-updater 立即开下，但首个 download-progress
+    // 要等首字节到达——GitHub 直连经常长时间挂起（2026-11-18 实测 available 卡几分钟无进度）。
+    // 乐观推 downloading 0%：UI 立刻进入「下载中」，首字节后真实进度覆盖；出错由 error 事件纠正。
+    pushUpdate({ phase: 'downloading', version: info.version, percent: 0, error: undefined })
   })
   autoUpdater.on('update-not-available', (info: { version: string }) => {
     latestVersion = info.version
     pushUpdate({ phase: 'not-available', version: info.version, percent: undefined, error: undefined })
   })
   autoUpdater.on('download-progress', (p: { percent: number }) => {
-    pushUpdate({ phase: 'downloading', version: latestVersion, percent: Math.round(p.percent), error: undefined })
+    const percent = Math.round(p.percent)
+    if (!Number.isFinite(percent)) return // 防 NaN 污染进度条（?? 不兜 NaN）
+    pushUpdate({ phase: 'downloading', version: latestVersion, percent, error: undefined })
+    // 节流落盘：每 10% 记一条，便于诊断「下载中无进度」类网络问题（GitHub 直连卡顿）
+    if (percent - progressLogMark >= 10 || percent === 100) {
+      progressLogMark = percent
+      logger.info('updater', `下载进度 ${percent}%`)
+    }
   })
   autoUpdater.on('update-downloaded', (info: { version: string }) => {
     pushUpdate({ phase: 'downloaded', version: info.version, percent: 100, error: undefined })

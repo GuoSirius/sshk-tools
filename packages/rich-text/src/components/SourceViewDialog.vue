@@ -8,9 +8,8 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { IDomEditor } from '@wangeditor/editor'
-import { CodeEditor } from '@sshk/code-editor'
+import { CodeEditor, compactHtml, formatHtml } from '@sshk/code-editor'
 import { toDisplayHtml, toStoredHtml } from '../display'
-import { compactHtml, formatHtml } from '../source-format'
 
 const props = defineProps<{
   open: boolean

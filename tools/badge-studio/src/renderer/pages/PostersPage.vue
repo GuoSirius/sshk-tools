@@ -8,7 +8,7 @@ import {
   posters, listLoading, pagedPosters, currentPage, pageSize,
   onSelectionChange,
   loadPosterIntoWorkspace, onPosterCommand, exportPosterHtml,
-  sourceStates, staleCount,
+  sourceStates, staleCount, openListShare, copyPosterLink,
 } from '../state'
 import { host } from '../host'
 
@@ -111,6 +111,9 @@ onBeforeUnmount(() => { batchProgress.active = false })
       <span v-if="batchProgress.active" class="muted">
         {{ batchProgress.current }}（{{ batchProgress.succeeded }}/{{ batchProgress.total }}）
       </span>
+      <!-- 列表级分享（右上角，2026-11-18）：整目录分享出链接前缀，行「复制链接」用它拼各行真实链接；
+           顶部分享适合长时效/永久（对话框内时长可调，0=永久），行级单独分享（更多 → 分享页面）优先生效 -->
+      <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
     </div>
     <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
@@ -133,19 +136,20 @@ onBeforeUnmount(() => { batchProgress.active = false })
             <span v-if="row.outputs.poster" class="ok"> / {{ row.outputs.poster }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" align="center" fixed="right">
+        <el-table-column label="操作" width="280" align="center" fixed="right">
           <template #default="{ row }">
-            <!-- 操作列约定：实体按钮 ≤3（常用优先），其余一律进「更多」下拉；新增操作先入下拉，确认高频才提升为按钮。宽度随内容同步调整 -->
+            <!-- 操作列约定（用户 2026-11-18 定版）：编辑/复制链接/导出高频外显；分享/复制代码/下载图片/重新打标/删除进「更多」 -->
             <div class="op-row">
               <el-button size="small" type="primary" plain @click="editPoster(row)">编辑</el-button>
+              <el-button size="small" type="warning" plain title="优先复制本海报自己的分享链接；没有则用列表分享前缀拼本行产物路径" @click="copyPosterLink(row)">复制链接</el-button>
               <el-button size="small" type="success" plain @click="exportPosterHtml(row)">导出</el-button>
               <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
                 <el-button size="small" plain>更多</el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item command="share">分享页面</el-dropdown-item>
                     <el-dropdown-item command="copy">复制代码</el-dropdown-item>
                     <el-dropdown-item v-if="row.outputs.poster" command="download-png">下载图片</el-dropdown-item>
-                    <el-dropdown-item command="share">分享页面</el-dropdown-item>
                     <el-dropdown-item v-if="sourceStates[row._id]?.stale" command="regenerate">重新打标（用新源覆盖）</el-dropdown-item>
                     <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
                   </el-dropdown-menu>

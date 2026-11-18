@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, FormGrid } from '@sshk/ui-kit'
 import { applyFallbackModels } from '../model-fallback'
 import { host } from '../host'
@@ -153,6 +153,24 @@ function askRemove(row: Provider): void {
   removeOpen.value = true
 }
 
+/** 行级启用/禁用（用户 2026-11-18）：禁用属危险操作——影响所有工具的可用模型来源，必须二次确认 */
+async function toggleEnabled(row: Provider): Promise<void> {
+  if (row.enabled) {
+    try {
+      await ElMessageBox.confirm(
+        `确定禁用「${row.name}」？禁用后所有工具都无法再经该 Provider 发起调用（下拉选择与模型链中移除），可随时重新启用。`,
+        '禁用确认',
+        { type: 'warning', confirmButtonText: '确认禁用', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+      )
+    } catch { return }
+  }
+  const idx = providers.value.findIndex((p) => p._id === row._id)
+  if (idx < 0) return
+  providers.value[idx] = { ...providers.value[idx]!, enabled: !row.enabled }
+  await persist()
+  ElMessage.success(row.enabled ? '已禁用' : '已启用')
+}
+
 async function doRemove(): Promise<void> {
   const target = removeTarget.value
   if (!target) return
@@ -222,7 +240,12 @@ async function revealKey(): Promise<void> {
 
     <el-table v-else :data="providers" size="small">
       <el-table-column type="index" label="#" width="50" align="center" />
-      <el-table-column prop="name" label="名称" min-width="120" />
+      <el-table-column prop="name" label="名称" min-width="120">
+        <template #default="{ row }">
+          <span>{{ row.name }}</span>
+          <el-tag v-if="row.enabled === false" size="small" type="danger" style="margin-left: 6px">已禁用</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="kind" label="类型" width="80">
         <template #default="{ row }">
           <el-tag size="small" :type="row.kind === 'local' ? 'success' : 'info'">
@@ -251,11 +274,14 @@ async function revealKey(): Promise<void> {
           <span v-else class="muted">未测试</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="210" align="center" fixed="right">
+      <el-table-column label="操作" width="280" align="center" fixed="right">
         <template #default="{ row }">
           <div class="op-row">
             <el-button size="small" type="primary" plain :loading="testingId === row._id" @click="testProvider(row)">测试</el-button>
             <el-button size="small" plain @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" type="warning" plain @click="toggleEnabled(row)">
+              {{ row.enabled === false ? '启用' : '禁用' }}
+            </el-button>
             <el-button size="small" type="danger" plain @click="askRemove(row)">删除</el-button>
           </div>
         </template>

@@ -62,6 +62,3 @@ export * from './tool-skeleton'
 
 /** U2 验证引导：步骤数据单一来源（页内引导与验证清单文档共用） */
 export * from './verify-steps'
-
-/** 环境变量布尔判定助手（envOn/envOff，收值不收名以配合 check:env 扫描） */
-export * from './env'

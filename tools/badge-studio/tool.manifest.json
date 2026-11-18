@@ -207,58 +207,69 @@
     {
       "id": "config-badge-style",
       "label": "角标样式覆盖",
+      "preview": "badge-css",
       "fields": [
         {
           "key": "badgeStyleCss.common",
           "label": "公共样式",
           "type": "textarea",
+          "codeEditor": true,
           "full": true,
           "hint": "所有位置共享；后于内置默认生效"
         },
         {
           "key": "badgeStyleCss.positions.topLeft",
           "label": "左上",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.topCenter",
           "label": "上中",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.topRight",
           "label": "右上",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.leftCenter",
           "label": "左中",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.center",
           "label": "居中",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.rightCenter",
           "label": "右中",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.bottomLeft",
           "label": "左下",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.bottomCenter",
           "label": "下中",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         },
         {
           "key": "badgeStyleCss.positions.bottomRight",
           "label": "右下",
-          "type": "textarea"
+          "type": "textarea",
+          "codeEditor": true
         }
       ]
     },

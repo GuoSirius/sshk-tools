@@ -22,6 +22,8 @@ export interface ToolConfigField {
   options?: { label: string; value: string }[]
   /** 动态选项源：从宿主能力实时拉取（如全局上传 profile / 应用级 Provider 清单），避免 manifest 写死 */
   optionsSource?: 'upload:remote' | 'upload:cloud' | 'upload:all' | 'llm:providers'
+  /** 代码编辑器渲染（Monaco，css 高亮）：替代裸 textarea，适合 CSS 覆盖类配置 */
+  codeEditor?: boolean
   min?: number
   max?: number
   hint?: string
@@ -34,6 +36,8 @@ export interface ToolConfigGroup {
   /** 可选图标（SVG path d），挂成二级菜单时显示；缺省用圆点 */
   icon?: string
   fields: ToolConfigField[]
+  /** 实时预览卡片（宿主内置实现）：'badge-css' = 角标样式九宫格预览（编辑 CSS 时同步看位置/颜色效果） */
+  preview?: string
 }
 
 /**

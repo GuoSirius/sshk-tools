@@ -14,3 +14,5 @@ export { createSafeHost } from './safe-host'
 export type { SafeHostChannelMap } from './safe-host'
 export { logFront } from './front-log'
 export type { FrontLogLevel } from './front-log'
+/** 分享凭证存取（ShareDialog 与工具页「复制链接」共用同一把键） */
+export { shareDialogStorageKey, readShareTicket, isTicketAlive } from './share-ticket'

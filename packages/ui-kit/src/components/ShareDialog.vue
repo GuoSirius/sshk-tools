@@ -9,6 +9,7 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 import { callHostApi, type HostApiSpec } from '../host-api'
+import { shareDialogStorageKey, readShareTicket } from '../share-ticket'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
@@ -44,16 +45,8 @@ const loadError = ref('')
 const ttlHours = ref(72)
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
-/** 同一分享目标跨重启复用链接；key 只对四元组取短哈希，不把路径/中文直接塞进 localStorage 键 */
-const storageKey = computed(() => {
-  const raw = [props.toolId, props.label, props.defaultRoot, props.defaultEntry ?? ''].join('|')
-  let h = 2166136261
-  for (let i = 0; i < raw.length; i++) {
-    h ^= raw.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return `sshk:share-dialog:${(h >>> 0).toString(36)}`
-})
+/** 同一分享目标跨重启复用链接；键构造收敛在 share-ticket.ts（工具页「复制链接」读同一把键） */
+const storageKey = computed(() => shareDialogStorageKey(props.toolId, props.label, props.defaultRoot, props.defaultEntry))
 
 function saveTicket(t: ShareRouteTicket | null): void {
   try {
@@ -63,13 +56,7 @@ function saveTicket(t: ShareRouteTicket | null): void {
 }
 
 function readTicket(): ShareRouteTicket | null {
-  try {
-    const raw = localStorage.getItem(storageKey.value)
-    if (!raw) return null
-    const t = JSON.parse(raw) as ShareRouteTicket
-    if (!t?.id || !Array.isArray(t.urls) || !t.urls.length || typeof t.expiresAt !== 'number') return null
-    return t
-  } catch { return null }
+  return readShareTicket(props.toolId, props.label, props.defaultRoot, props.defaultEntry)
 }
 
 const activeUrl = computed(() => ticket.value?.urls[activeUrlIndex.value] ?? '')

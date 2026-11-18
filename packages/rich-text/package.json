@@ -16,7 +16,6 @@
     "@wangeditor/editor": "latest",
     "element-plus": "latest",
     "marked": "latest",
-    "prettier": "latest",
     "turndown": "latest",
     "vue": "latest"
   },
