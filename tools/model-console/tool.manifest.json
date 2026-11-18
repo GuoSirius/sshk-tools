@@ -47,7 +47,6 @@
           "key": "defaultProviderId",
           "label": "默认 Provider",
           "type": "select",
-          "devOnly": true,
           "optionsSource": "llm:providers",
           "fallbackKey": "app.llm.activeProviderId",
           "hint": "下拉选择 Provider；选「跟随应用激活」则用应用当前激活的 Provider（生效值在下方展示）"

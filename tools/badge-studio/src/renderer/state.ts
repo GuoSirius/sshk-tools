@@ -243,8 +243,10 @@ export async function loadEdmMails(): Promise<void> {
   edmMailsLoading.value = true
   try {
     edmMails.value = ((await host.edm.api('mail:list')) as EdmMailOption[]) ?? []
-  } catch (err) {
-    ElMessage.warning(`EDM 邮件列表获取失败：${(err as Error).message}`)
+  } catch {
+    // 静默降级（2026-11-18）：构建含 SSHK_BUILD_TOOLS 裁剪时 edm-studio 可能未装（edm:api 无 handler），
+    // 每次进页面弹全局 toast 很吵——列表置空即可，源邮件下拉自然无选项
+    edmMails.value = []
   } finally {
     edmMailsLoading.value = false
   }
@@ -901,6 +903,9 @@ function routeAlive(id: string): boolean {
 
 /** 行链接状态：类型（自身/顶部/未分享）+ 可访问性（可访问/已失效）。语义与 copyPosterLink 的取链优先级一致 */
 export function posterLinkState(row: PosterRecord): { type: '自身' | '顶部' | null; alive: boolean } {
+  // 显式建立对路由快照的响应式依赖：refreshShareLinks 每次替换新数组必须触发行内重算——
+  // 否则 localStorage 票（非响应式）+ shareRoot 值不变时，新建分享后表格不重渲染、复制链接不出现（2026-11-18 实测根因）
+  void shareRouteRows.value
   if (!shareRoot.value) return { type: null, alive: false }
   const entry = (row.outputs.badged ?? '').replaceAll('\\', '/').replace(/^\/+/, '')
   if (!entry) return { type: null, alive: false }

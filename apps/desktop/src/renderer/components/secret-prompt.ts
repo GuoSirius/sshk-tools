@@ -29,12 +29,14 @@ export async function promptSecret(
           showPassword: true,
           placeholder,
           autofocus: true,
+          // 显式铺满：message-box 内嵌自定义组件时部分构建环境不继承 100% 宽度（2026-11-18 构建版实测）
+          style: 'width:100%',
         })
     },
   })
   await ElMessageBox({
     title,
-    message: h('div', { style: 'display:flex;flex-direction:column;gap:10px' }, [
+    message: h('div', { style: 'display:flex;flex-direction:column;gap:10px;width:100%' }, [
       h('p', { style: 'margin:0;font-size:13px;line-height:1.6;color:var(--el-text-color-regular)' }, tip),
       h(SecretInput),
     ]),
