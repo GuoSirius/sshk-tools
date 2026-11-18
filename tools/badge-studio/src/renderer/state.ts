@@ -1014,3 +1014,40 @@ export async function backToListConfirm(): Promise<boolean> {
     return false // close = 留在页面
   }
 }
+
+// ── 新建海报（用户 2026-11-18 列表页入口）：清空工作区开新海报，路由跳转由调用方（壳组件）执行 ──
+
+/** 清空海报工作区（不触配置/列表），并重置 dirty 基线 */
+function clearPosterWorkspace(): void {
+  posterName.value = ''
+  htmlPath.value = ''
+  pastedHtml.value = ''
+  sourceMailId.value = null
+  statsFile.value = ''
+  pastedStats.value = ''
+  statRows.value = []
+  statsWarnings.value = []
+  definedMetrics.value = []
+  previewHtml.value = ''
+  currentPosterId.value = ''
+  imageFiles.value = []
+  snapshotWorkspaceBaseline()
+}
+
+/** 新建海报：工作区有内容（dirty 或已载入海报）时二次确认丢弃，确认后清空并返回 true */
+export async function startNewPosterConfirm(): Promise<boolean> {
+  if (workspaceDirty() || currentPosterId.value || hasHtml.value) {
+    try {
+      await ElMessageBox.confirm(
+        '当前工作区有内容，新建海报会清空未保存的修改。确认继续吗？',
+        '新建海报',
+        {
+          confirmButtonText: '确认新建', cancelButtonText: '取消', type: 'warning',
+          closeOnClickModal: false, closeOnPressEscape: false,
+        },
+      )
+    } catch { return false }
+  }
+  clearPosterWorkspace()
+  return true
+}

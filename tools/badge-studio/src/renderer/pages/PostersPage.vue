@@ -7,7 +7,7 @@ import {
   posters, listLoading, pagedPosters, currentPage, pageSize,
   onSelectionChange,
   loadPosterIntoWorkspace, onPosterCommand,
-  sourceStates, staleCount, openListShare, copyPosterLink,
+  sourceStates, staleCount, copyPosterLink,
   shareDialog, refreshShareLinks, posterLinkState,
 } from '../state'
 
@@ -15,6 +15,7 @@ import {
  * Badge Studio——海报列表页：
  * 「编辑」把海报完整载入工作区并跳回生成页（草稿海报只回显名称/配置，回路完整）；
  * 状态/批量导出/删除在 ../state，壳 actions 槽的批量按钮同样消费单例。
+ * 列表级分享「分享列表」按钮在壳页 actions 槽（与批量按钮同行）。
  * 操作列条件化（用户 2026-11-18）：复制链接/导出/复制代码/下载图片/分享/重新打标
  * 均按产物与链接状态条件显示，编辑/删除恒可用。
  */
@@ -53,11 +54,6 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
       :title="`有 ${staleCount} 个海报的源邮件已重新生成，产物仍是旧数据`"
       description="点对应行「重新打标」即可用新源覆盖重生成（统计与角标配置沿用该海报已存的快照）。"
     />
-    <div class="list-top-bar">
-      <!-- 列表级分享（右上角，2026-11-18）：整目录分享出链接前缀，行「复制链接」用它拼各行真实链接；
-           顶部分享适合长时效/永久（对话框内时长可调，0=永久），行级单独分享（更多 → 分享页面）优先生效 -->
-      <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
-    </div>
     <div v-if="posters.length > 0" class="table-flex-wrap">
       <el-table v-loading="listLoading" :data="pagedPosters" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="index" label="#" width="46" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
@@ -88,7 +84,7 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
             <el-tag v-else size="small" type="info" effect="plain">未分享</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
+        <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
             <!-- 操作列条件化（用户 2026-11-18 定版）：编辑/删除恒可用；复制链接有可用票才显示；
                  导出/复制代码/分享依赖 badged 产物、下载图片依赖截图产物、重新打标依赖源更新——全部条件显示 -->
@@ -128,7 +124,6 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
 .poster-list-panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .stale-banner { margin-bottom: 10px; }
 .stale-tag { margin-left: 6px; }
-.list-top-bar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 10px; }
 .table-flex-wrap { flex: 1; min-height: 0; }
 .panel {
   border: 1px solid rgba(128, 128, 128, 0.25);
@@ -140,6 +135,7 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
   gap: 6px;
   justify-content: center;
   align-items: center;
+  padding: 0 10px; /* 用户 2026-11-18：操作两侧留白，按钮不贴单元格边缘 */
 }
 .op-row .el-button + .el-button { margin-left: 0; }
 </style>

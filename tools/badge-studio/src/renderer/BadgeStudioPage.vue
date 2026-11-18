@@ -10,8 +10,8 @@ import {
   hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, shareDialog, openShare,
-  backToListConfirm,
-  selectedPosters, batchExportHtml, batchDeletePosters,
+  backToListConfirm, startNewPosterConfirm,
+  selectedPosters, batchExportHtml, batchDeletePosters, openListShare,
   currentPage, pageSize, posters, onPageChange,
   deleteOpen, deleteTarget, confirmDelete,
 } from './state'
@@ -36,6 +36,10 @@ const route = useRoute()
 /** 返回列表（流程定版 2026-11-18）：工作区 dirty 时二次确认（保存并返回/不保存返回/留页） */
 async function backToList(): Promise<void> {
   if (await backToListConfirm()) void router.push('/tool/' + String(props.toolId ?? route.params.toolId) + '/posters')
+}
+/** 新建海报（2026-11-18 列表页入口）：工作区有内容时二次确认丢弃，清空后跳回生成页 */
+async function startNewPoster(): Promise<void> {
+  if (await startNewPosterConfirm()) void router.push('/tool/' + String(props.toolId ?? route.params.toolId) + '/generate')
 }
 
 onMounted(() => {
@@ -82,8 +86,11 @@ onMounted(() => {
         </el-button>
       </template>
       <template v-else>
+        <!-- 列表页按钮合并一行（用户 2026-11-18）：新建（primary）+ 批量导出/删除 + 分享列表，均右对齐 -->
+        <el-button type="primary" size="small" @click="startNewPoster">新建海报</el-button>
         <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
+        <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
       </template>
     </template>
 

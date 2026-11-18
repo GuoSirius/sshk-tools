@@ -1,9 +1,12 @@
 <script setup lang="ts">
 /**
  * 统一分享对话框（plans/09 · 工具接入零成本）。
- * ⚠️ 生效原则（用户 2026-11-18 定版）：弹框内一切信息变动（创建 / 更新时长 / 永久 / 目录开关 / 重新生成）
- *    都不立即生效——打开弹框只「看一下」，必须用户点确认按钮（创建分享 / 应用更改）才真正生效。
- * 流程：打开 → 读取现状（有效票复用展示 / 无票出创建表单）→ 用户调整暂存项 → 点确认才调 IPC。
+ * 界面（用户 2026-11-18 定版）：恢复上一版布局——TTL 三按钮（续期 TTL=在当前到期上累加 /
+ * 更新 TTL=从当前重新计时 / 永久有效=0）+ 链接行（下拉+目录开关+复制）+ 二维码 + 剩余时间；
+ * 新建与再分享统一为一个界面：无票（含撤销后）出创建态（同一套设置行，点「创建分享」才建），
+ * 有票直接展示链接与二维码。
+ * 生效原则：打开弹框只读现状不自动创建（防误建）；有票后 TTL 三按钮点击即确认生效（按钮本身即确认）；
+ *          目录开关变更需二次确认后才 renew patch 生效（链接不变），失败回滚勾选。
  * 工具只需 <ShareDialog v-model="open" :tool-id="..." :label="..." :default-root="..." />，
  * 底层统一走宿主 ShareHub（@sshk/ui-kit callHostApi 兜底），工具不自建服务、不占端口。
  */
@@ -38,25 +41,24 @@ const SPEC = {
   renew: { group: 'shareHub', method: 'renew', channel: IPC_CHANNELS.shareHubRenew, label: '更新分享设置' },
 } satisfies Record<string, HostApiSpec>
 
-/** 弹框五态：loading 读取现状 / form 无票（创建表单）/ ready 有票（链接+暂存编辑）/ error 读取失败 / idle 已撤销 */
-type Phase = 'loading' | 'form' | 'ready' | 'error' | 'idle'
+/** 四态：loading 读取现状 / form 无票（统一创建态，撤销后也回这里）/ ready 有票（链接+TTL三按钮）/ error 读取失败 */
+type Phase = 'loading' | 'form' | 'ready' | 'error'
 const phase = ref<Phase>('loading')
 const busy = ref(false)
 const loadError = ref('')
 const ticket = ref<ShareRouteTicket | null>(null)
 const activeUrlIndex = ref(0)
 const nowTick = ref(Date.now())
-
-/** ── 暂存项（用户确认前不生效）── */
+/** 数字框时长：默认读应用设置 app.shareHub.defaultTtlHours；ready 态供三按钮取值，form 态随创建生效 */
 const ttlHours = ref(72)
+/** form 态「永久有效」勾选（有票后由 ticket.expiresAt 判定，不用勾选） */
 const permanentSel = ref(false)
+/** 允许访问目录：form 态随创建生效（默认读应用设置）；ready 态为当前生效值，变更需二次确认。
+ *  生效值单独跟踪（allowIndexEffective）：ticket 类型不含 allowIndex，勾选态需与生效值比对判断变更与回滚 */
 const allowIndex = ref(false)
-/** 打开/最近一次生效时的基线快照，dirty 据此判断 */
-const baseline = ref({ hours: 72, permanent: false, allowIndex: false })
-const dirty = computed(() =>
-  ttlHours.value !== baseline.value.hours ||
-  permanentSel.value !== baseline.value.permanent ||
-  allowIndex.value !== baseline.value.allowIndex)
+const allowIndexEffective = ref(false)
+/** form 态补充提示（如「（当前链接已撤销）」） */
+const formHint = ref('')
 
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
@@ -112,10 +114,11 @@ async function resolveAppAllowIndex(): Promise<boolean> {
   } catch { return false }
 }
 
-/** 打开弹框：只读取现状，不创建、不修改。有有效票 → ready（复用展示）；无票 → form（创建表单等用户确认） */
+/** 打开弹框：只读取现状，不创建、不修改。有有效票 → ready（复用展示）；无票 → form（创建态等用户确认） */
 async function loadTicket(): Promise<void> {
   phase.value = 'loading'
   loadError.value = ''
+  formHint.value = ''
   try {
     const hours = await resolveTtlHours()
     ttlHours.value = hours > 0 ? hours : 72
@@ -133,16 +136,13 @@ async function loadTicket(): Promise<void> {
     if (savedAlive && saved) {
       ticket.value = saved
       activeUrlIndex.value = 0
-      permanentSel.value = saved.expiresAt === SHARE_PERMANENT_EXPIRES_AT
-      if (!permanentSel.value && hit && hit.ttlHours > 0) ttlHours.value = hit.ttlHours
       if (hit) allowIndex.value = hit.allowIndex !== false
-      baseline.value = { hours: ttlHours.value, permanent: permanentSel.value, allowIndex: allowIndex.value }
+      allowIndexEffective.value = allowIndex.value
       phase.value = 'ready'
       return
     }
     ticket.value = null
     saveTicket(null)
-    baseline.value = { hours: ttlHours.value, permanent: false, allowIndex: allowIndex.value }
     phase.value = 'form'
   } catch (err) {
     loadError.value = (err as Error).message
@@ -150,11 +150,16 @@ async function loadTicket(): Promise<void> {
   }
 }
 
-function snapshotBaseline(): void {
-  baseline.value = { hours: ttlHours.value, permanent: permanentSel.value, allowIndex: allowIndex.value }
+function validateTtl(): boolean {
+  if (permanentSel.value) return true
+  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 1) {
+    ElMessage.warning('时长需为不小于 1 的整数小时（或勾选「永久有效」）')
+    return false
+  }
+  return true
 }
 
-/** 确认创建（form 态唯一生效入口）：按暂存项创建路由并复制链接 */
+/** 创建分享（form 态唯一生效入口）：按当前设置创建路由并复制链接 */
 async function createTicket(): Promise<void> {
   if (!validateTtl()) return
   busy.value = true
@@ -171,7 +176,8 @@ async function createTicket(): Promise<void> {
     ticket.value = t
     saveTicket(t)
     activeUrlIndex.value = 0
-    snapshotBaseline()
+    formHint.value = ''
+    allowIndexEffective.value = allowIndex.value
     phase.value = 'ready'
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success(permanentSel.value ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
@@ -180,34 +186,56 @@ async function createTicket(): Promise<void> {
   } finally { busy.value = false }
 }
 
-function validateTtl(): boolean {
-  if (permanentSel.value) return true
-  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 1) {
-    ElMessage.warning('时长需为不小于 1 的整数小时（或勾选「永久有效」）')
-    return false
+/** TTL 三操作统一入口（用户 2026-11-18 恢复上一版）：均复用 token，URL 不变；点按钮本身即确认生效 */
+async function applyTtl(mode: 'extend' | 'reset' | 'permanent'): Promise<void> {
+  if (!ticket.value) return
+  const hours = mode === 'permanent' ? 0 : ttlHours.value
+  if (mode !== 'permanent' && (!Number.isInteger(hours) || hours < 1)) {
+    ElMessage.warning('时长需为不小于 1 的整数小时'); return
   }
-  return true
-}
-
-/** 确认应用（ready 态唯一生效入口）：一次 renew 同时提交 时长/永久/目录开关 暂存项；token/链接/二维码不变 */
-async function applyChanges(): Promise<void> {
-  if (!ticket.value || !dirty.value || busy.value) return
-  if (!validateTtl()) return
   busy.value = true
   try {
-    // ttlHours=null = 不改有效期只改属性；0 = 永久；其余 = 从当前重新计时
-    const hours = permanentSel.value ? 0 : (ttlHours.value !== baseline.value.hours ? ttlHours.value : null)
-    const next = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, hours, props.toolId, 'reset', { allowIndex: allowIndex.value })
+    const next = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, hours, props.toolId, mode === 'reset' ? 'reset' : 'extend')
     ticket.value = next
     saveTicket(next)
-    const msgs: string[] = []
-    if (hours === 0) msgs.push('已设为永久有效')
-    else if (hours !== null) msgs.push(`有效期已更新为 ${hours} 小时（从当前重新计时）`)
-    if (allowIndex.value !== baseline.value.allowIndex) msgs.push(allowIndex.value ? '已允许访问目录' : '已禁止访问目录')
-    snapshotBaseline()
-    ElMessage.success(`${msgs.join('；')}，链接不变`)
+    const msg = mode === 'permanent' ? '已设为永久有效，链接不变'
+      : mode === 'extend' ? `已累加 ${hours} 小时，链接不变`
+      : `已更新为 ${hours} 小时（从当前重新计时），链接不变`
+    ElMessage.success(msg)
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { busy.value = false }
+}
+
+/** 目录开关变更（ready 态）：二次确认后 renew patch 只改属性不改有效期/token（链接与二维码不变），失败回滚勾选 */
+async function onAllowIndexChange(next: boolean): Promise<void> {
+  if (!ticket.value) return
+  const current = allowIndexEffective.value
+  if (next === current) return
+  try {
+    await ElMessageBox.confirm(
+      next
+        ? '开启后访客打开裸链接/目录路径时可以浏览文件列表。确认开启吗？'
+        : '关闭后访客仅能访问具体文件链接，无法浏览目录列表。确认关闭吗？',
+      '更改目录访问权限',
+      {
+        confirmButtonText: '确认更改', cancelButtonText: '取消', type: 'warning',
+        closeOnClickModal: false, closeOnPressEscape: false,
+      },
+    )
+  } catch {
+    allowIndex.value = current // 用户取消：恢复勾选为当前生效值
+    return
+  }
+  busy.value = true
+  try {
+    const t = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, null, props.toolId, 'reset', { allowIndex: next })
+    ticket.value = t
+    allowIndex.value = next
+    allowIndexEffective.value = next
+    ElMessage.success(next ? '已允许访问目录（链接不变）' : '已禁止访问目录（链接不变）')
   } catch (err) {
     ElMessage.error((err as Error).message)
+    allowIndex.value = current // 失败回滚勾选态
   } finally { busy.value = false }
 }
 
@@ -219,13 +247,15 @@ async function copyUrl(url?: string): Promise<void> {
   } catch { /* 剪贴板不可用时用户可点首行「复制」 */ }
 }
 
-/** 重新生成：二次确认后撤旧路由（立即失效）并按暂存项创建新路由——确认即生效 */
+/** 重新生成：二次确认后撤旧路由（立即失效）并按当前设置创建、复制新路由——确认即生效 */
 async function regenerate(): Promise<void> {
   if (!ticket.value) return
-  if (!validateTtl()) return
+  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 1) {
+    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  }
   try {
     await ElMessageBox.confirm(
-      '重新生成会让当前链接立即失效，并按当前设置创建、复制新链接。确认继续吗？',
+      `重新生成会让当前链接立即失效，并按当前设置（${ttlHours.value} 小时）创建、复制新链接。确认继续吗？`,
       '重新生成分享链接',
       {
         confirmButtonText: '确认重新生成', cancelButtonText: '取消', type: 'warning',
@@ -243,20 +273,20 @@ async function regenerate(): Promise<void> {
       label: props.label,
       root: props.defaultRoot,
       entry: props.defaultEntry ?? '',
-      ttlHours: permanentSel.value ? 0 : ttlHours.value,
+      ttlHours: ttlHours.value,
       password: props.password,
       allowIndex: allowIndex.value,
     })
     ticket.value = t
     saveTicket(t)
     activeUrlIndex.value = 0
-    snapshotBaseline()
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success('新分享已创建，链接已复制（旧链接已失效）')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
 }
 
+/** 撤销：二次确认后路由立即失效；弹框回统一创建态（可重新创建），不自动创建 */
 async function revoke(): Promise<void> {
   if (!ticket.value) return
   try {
@@ -274,7 +304,9 @@ async function revoke(): Promise<void> {
     await callHostApi(SPEC.revoke, ticket.value.id, props.toolId)
     ticket.value = null
     saveTicket(null)
-    phase.value = 'idle' // 撤销后进空闲态：出「重新分享/关闭」，不自动创建
+    permanentSel.value = false
+    phase.value = 'form'
+    formHint.value = '（当前链接已撤销）'
     ElMessage.success('已撤销分享')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
@@ -313,14 +345,10 @@ watch(() => props.open, (open) => {
         <p class="share-error">分享状态读取失败：{{ loadError }}，可点「重试」或关闭。</p>
       </div>
 
-      <!-- 已撤销空闲态 -->
-      <div v-else-if="phase === 'idle'" class="share-loading">
-        <p class="share-idle">当前未创建分享链接（已撤销）。</p>
-      </div>
-
-      <!-- 创建表单（无票）：只展示暂存设置，点「创建分享」才生效 -->
+      <!-- 创建态（无票 / 撤销后统一回这里）：同一套设置行，点「创建分享」才生效 -->
       <template v-else-if="phase === 'form'">
-        <div class="share-form-tip">确认后才会创建分享链接并自动复制；下方设置在确认前不会生效。</div>
+        <p class="share-form-title">当前未创建分享链接{{ formHint }}。</p>
+        <div class="share-form-tip">点「创建分享」后才会创建链接并自动复制；下方设置随创建生效。</div>
         <div class="share-ttl-row">
           <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" :disabled="permanentSel" />
           <span class="ttl-unit">小时</span>
@@ -329,22 +357,26 @@ watch(() => props.open, (open) => {
         </div>
       </template>
 
-      <!-- 已有链接：暂存编辑区 + 链接/二维码 -->
+      <!-- 已有链接：TTL 三按钮 + 链接行（下拉+目录开关+复制）+ 二维码 + 剩余时间 -->
       <template v-else>
         <div class="share-ttl-row">
-          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" :disabled="permanentSel" />
+          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" />
           <span class="ttl-unit">小时</span>
-          <el-checkbox v-model="permanentSel" class="perm-check">永久有效</el-checkbox>
-          <el-checkbox v-model="allowIndex" class="allow-index-check" title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问">允许访问目录</el-checkbox>
-        </div>
-        <div class="share-form-tip">
-          <span v-if="dirty" class="dirty-tip">设置有未应用的更改，点下方「应用更改」后生效（链接不变）。</span>
-          <span v-else>更改需点「应用更改」确认后才生效。</span>
+          <el-button type="primary" size="small" :loading="busy" :disabled="permanent" @click="applyTtl('extend')">续期 TTL</el-button>
+          <el-button type="warning" size="small" plain :loading="busy" @click="applyTtl('reset')">更新 TTL</el-button>
+          <el-button type="success" size="small" plain :loading="busy" :disabled="permanent" @click="applyTtl('permanent')">永久有效</el-button>
         </div>
         <div class="share-link-head">
           <el-select v-if="(ticket?.urls.length ?? 0) > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
             <el-option v-for="(u, i) in ticket?.urls ?? []" :key="u" :label="u" :value="i" />
           </el-select>
+          <el-checkbox
+            v-model="allowIndex"
+            :disabled="busy"
+            class="allow-index-check"
+            title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问"
+            @change="(v: unknown) => onAllowIndexChange(v === true)"
+          >允许访问目录</el-checkbox>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
         </div>
         <div class="share-qr-block">
@@ -372,18 +404,13 @@ watch(() => props.open, (open) => {
         <el-button type="success" size="small" @click="loadTicket">重试</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
-      <template v-else-if="phase === 'idle'">
-        <el-button type="primary" size="small" @click="phase = 'form'">重新分享</el-button>
-        <el-button size="small" @click="close">关闭</el-button>
-      </template>
       <template v-else-if="phase === 'form'">
         <el-button type="primary" size="small" :loading="busy" @click="createTicket">创建分享</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
         <el-button type="danger" size="small" plain :loading="busy" @click="revoke">撤销分享</el-button>
-        <el-button type="warning" size="small" plain :loading="busy" @click="regenerate">重新生成</el-button>
-        <el-button type="primary" size="small" :loading="busy" :disabled="!dirty" @click="applyChanges">应用更改</el-button>
+        <el-button type="warning" size="small" :loading="busy" @click="regenerate">重新生成</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
     </template>
@@ -393,21 +420,21 @@ watch(() => props.open, (open) => {
 <style scoped>
 .share-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; }
 .share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
-.share-idle { margin: 0 16px; opacity: 0.7; line-height: 1.6; }
-.share-form-tip { margin: 2px 0 8px; font-size: 12px; opacity: 0.65; }
-.dirty-tip { color: var(--el-color-warning); opacity: 1; }
+.share-form-title { margin: 0 0 2px; line-height: 1.6; }
+.share-form-tip { margin: 0 0 10px; font-size: 12px; opacity: 0.65; }
 .allow-index-check { flex: none; height: auto; }
 .allow-index-check :deep(.el-checkbox__label) { font-size: 12px; }
 .perm-check { flex: none; height: auto; }
 .perm-check :deep(.el-checkbox__label) { font-size: 12px; }
-.share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }
 .share-ttl-row { display: flex; align-items: center; gap: 8px; }
 .share-ttl-row .ttl-input { flex: 1; min-width: 0; }
 .share-ttl-row .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; }
+.share-ttl-row .el-button { flex: none; }
 .share-ttl-row .el-checkbox { flex: none; }
-.share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 12px; }
+.share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 14px; }
 .share-qr { flex: none; width: 132px; height: 132px; border: 1px solid var(--el-border-color); border-radius: 6px; overflow: hidden; background: #fff; }
 .share-qr :deep(svg) { width: 100%; height: 100%; display: block; }
 .share-qr-tip { margin-top: 8px; max-width: 380px; }
