@@ -282,15 +282,18 @@ async function copyActive(): Promise<void> {
   else ElMessage.error('复制失败：剪贴板不可用，可手动选中链接复制')
 }
 
-/** 重新生成：二次确认后撤旧路由（立即失效）并按当前设置创建、复制新路由——确认即生效 */
+/** 重新生成：二次确认后撤旧路由（立即失效）并按当前设置创建、复制新路由——确认即生效；
+ *  暂存了「永久有效」则按永久生成（用户 2026-11-18），否则按数字框时长 */
 async function regenerate(): Promise<void> {
   if (!ticket.value) return
-  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 1) {
+  const regenPermanent = pendingTtl.value === 'permanent'
+  if (!regenPermanent && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
     ElMessage.warning('时长需为不小于 1 的整数小时'); return
   }
+  const regenText = regenPermanent ? '永久有效' : `${ttlHours.value} 小时`
   try {
     await ElMessageBox.confirm(
-      `重新生成会让当前链接立即失效，并按当前设置（${ttlHours.value} 小时）创建、复制新链接。确认继续吗？`,
+      `重新生成会让当前链接立即失效，并按当前设置（${regenText}）创建、复制新链接。确认继续吗？`,
       '重新生成分享链接',
       {
         confirmButtonText: '确认重新生成', cancelButtonText: '取消', type: 'warning',
@@ -308,7 +311,7 @@ async function regenerate(): Promise<void> {
       label: props.label,
       root: props.defaultRoot,
       entry: props.defaultEntry ?? '',
-      ttlHours: ttlHours.value,
+      ttlHours: regenPermanent ? 0 : ttlHours.value,
       password: props.password,
       allowIndex: allowIndex.value,
     })
