@@ -6,7 +6,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, CopyDocument } from '@element-plus/icons-vue'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ShareHubMount } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { appConfig, saveAppConfig } from '../../composables/useAppConfig'
@@ -191,14 +191,23 @@ function mountLink(row: MountRow): string {
   if (!s?.running || !s.port || !row.alias) return ''
   return `http://${s.displayIp}:${s.port}/${row.alias}/`
 }
+/** 复制访问地址到系统剪贴板 */
+async function copyMountLink(row: MountRow): Promise<void> {
+  const url = mountLink(row)
+  if (!url) return
+  try {
+    await window.api.os.clipboardWrite(url)
+    ElMessage.success('访问地址已复制')
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
 async function saveMounts(): Promise<void> {
   // 校验 + 规范化；空别名随机生成并写回（用户要求：随机值要持久化记住，不能每次变）
   const seen = new Set<string>()
   const rows: ShareHubMount[] = []
   for (const row of mounts.value) {
-    if (!row.dir.trim()) { ElMessage.warning('存在未选择目录的挂载行，请补全或删除该行'); return }
+    if (!row.dir.trim()) { ElMessage.warning('存在未选择目录的挂载卡片，请补全或删除'); return }
     const alias = normAlias(row.alias) || randomAlias()
-    if (seen.has(alias)) { ElMessage.error(`别名「${alias}」重复，请修改`); return }
+    if (seen.has(alias)) { ElMessage.error(`挂载点「${alias}」重复，请修改`); return }
     seen.add(alias)
     row.alias = alias
     rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true })
@@ -306,17 +315,24 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
     <section class="settings-card">
       <div class="card-title">挂载目录 <el-tag size="small" type="info" class="mini-tag">{{ mounts.length }} 个</el-tag></div>
       <div class="hint" style="margin-bottom: 10px">
-        每个目录一条固定链接（http://IP:端口/别名/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。别名留空保存时随机生成并记住。
+        每个目录一条固定链接（http://IP:端口/挂载点/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。挂载点留空保存时随机生成并记住。
       </div>
-      <div v-for="(row, i) in mounts" :key="row.id" class="mount-row">
-        <el-input :model-value="row.dir" readonly size="small" placeholder="未选择目录" class="mount-dir" />
-        <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择…</el-button>
-        <el-input v-model="row.alias" size="small" placeholder="别名" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
-          <template #prepend>/</template>
-        </el-input>
-        <el-checkbox v-model="row.enabled" size="small">允许访问</el-checkbox>
-        <el-input :model-value="mountLink(row)" readonly size="small" class="mount-link" placeholder="（服务未运行）" />
-        <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)" />
+      <div v-for="(row, i) in mounts" :key="row.id" class="mount-card">
+        <!-- 第一行：选择 + 目录显示（仅查看）+ 挂载点输入 + 允许访问目录复选框 -->
+        <div class="mount-line1">
+          <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择…</el-button>
+          <el-input :model-value="row.dir" readonly size="small" placeholder="未选择目录" class="mount-dir" />
+          <el-input v-model="row.alias" size="small" placeholder="挂载点" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
+            <template #prepend>/</template>
+          </el-input>
+          <el-checkbox v-model="row.enabled" size="small">允许访问目录</el-checkbox>
+        </div>
+        <!-- 第二行：访问地址（仅查看）+ 复制 + 删除 -->
+        <div class="mount-line2">
+          <el-input :model-value="mountLink(row)" readonly size="small" class="mount-link" placeholder="（服务未运行）" />
+          <el-button size="small" text type="primary" :icon="CopyDocument" title="复制访问地址" :disabled="!mountLink(row)" @click="copyMountLink(row)">复制</el-button>
+          <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)" />
+        </div>
       </div>
       <div v-if="!mounts.length" class="hint">还没有挂载目录，点「添加目录」开始。</div>
       <div class="card-actions share-actions">
@@ -390,10 +406,14 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .hint-error { color: var(--el-color-danger); }
 .share-route-filter { margin-bottom: 10px; }
 .expired-text { color: var(--el-color-danger); }
-/* 挂载目录行：一行一个（用户 2026-11-18 定版）——目录+选择+别名+复选+只读链接+删除 */
-.mount-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.mount-dir { width: 200px; }
-.mount-alias { width: 160px; }
-.mount-link { flex: 1; min-width: 180px; }
-.mount-row :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }
+/* 挂载目录卡片（用户 2026-11-18 定版）：圆角边框包装，两行布局——
+   第一行：选择+目录显示+挂载点+允许访问复选框；第二行：访问地址+复制+删除 */
+.mount-card { border: 1px solid var(--el-border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.mount-line1 { display: flex; align-items: center; gap: 8px; }
+.mount-line2 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.mount-dir { flex: 1; min-width: 160px; }
+.mount-alias { width: 180px; }
+.mount-link { flex: 1; min-width: 200px; }
+.mount-line2 :deep(.el-button + .el-button) { margin-left: 0; }
+.mount-line2 :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }
 </style>

@@ -1841,6 +1841,8 @@ function onKeydown(event: KeyboardEvent): void {
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
             <el-button v-if="hasWritable" size="small" text type="primary" @click.stop="openRename(entry)">重命名</el-button>
+            <!-- 目录行删除前补「下载」（文件行下载在行首；目录递归展开下载复用同一入口） -->
+            <el-button v-if="entry.kind === 'dir'" size="small" text type="success" title="目录递归下载到下载目录" @click.stop="downloadEntries([entry])">下载</el-button>
             <el-button v-if="hasWritable" size="small" text type="danger" @click.stop="openDelete([entry])">删除</el-button>
             <el-dropdown trigger="click" @command="(c: unknown) => rowMoreCommand(String(c), entry)">
               <el-button size="small" text @click.stop>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
