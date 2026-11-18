@@ -188,8 +188,9 @@ async function createTicket(): Promise<void> {
   } finally { busy.value = false }
 }
 
-/** TTL 三按钮（用户 2026-11-18 恢复上一版界面）：点击只暂存选择，应用时才 renew（复用 token，URL 不变） */
+/** TTL 三按钮（用户 2026-11-18 恢复上一版界面）：点击只暂存选择，应用时才 renew（复用 token，URL 不变）；再点已选中的按钮 = 取消暂存 */
 function stageTtl(mode: 'extend' | 'reset' | 'permanent'): void {
+  if (pendingTtl.value === mode) { pendingTtl.value = null; return }
   if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
     ElMessage.warning('时长需为不小于 1 的整数小时'); return
   }

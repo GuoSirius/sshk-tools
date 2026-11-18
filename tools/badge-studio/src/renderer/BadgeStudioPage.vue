@@ -55,9 +55,6 @@ onMounted(() => {
   >
     <template #actions>
       <template v-if="!isPosters">
-        <!-- 按钮按工作流排序（用户 2026-11-18 定版）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
-             生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿） -->
-        <el-button size="small" plain @click="backToList">返回列表</el-button>
         <el-button size="small" @click="pickHtml">选择 HTML</el-button>
         <el-button size="small" @click="pickStats">选择数据源</el-button>
         <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
@@ -84,13 +81,16 @@ onMounted(() => {
         <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentPosterId" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
           分享
         </el-button>
+        <!-- 按钮按工作流排序（用户 2026-11-18 定版）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
+             生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿） -->
+        <el-button size="small" plain @click="backToList">返回列表</el-button>
       </template>
       <template v-else>
         <!-- 列表页按钮合并一行（用户 2026-11-18）：新建（primary）+ 批量导出/删除 + 分享列表，均右对齐 -->
-        <el-button type="primary" size="small" @click="startNewPoster">新建海报</el-button>
         <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
+        <el-button type="primary" size="small" @click="startNewPoster">新建海报</el-button>
       </template>
     </template>
 
