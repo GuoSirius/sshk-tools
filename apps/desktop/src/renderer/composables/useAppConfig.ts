@@ -18,6 +18,8 @@ export const appConfig = reactive({
   sharePort: 56789,
   sharePreferredIp: '',
   shareDefaultTtlHours: 72,
+  /** 是否允许浏览目录列表（用户 2026-11-18：默认不允许；直接文件链接不受影响；分享弹框可按次覆盖） */
+  shareAllowIndex: false,
 })
 
 async function str(key: string, fallback: string): Promise<string> {
@@ -43,6 +45,7 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.sharePreferredIp = (await str('app.shareHub.preferredIp', '')) === 'null' ? '' : await str('app.shareHub.preferredIp', '')
   const ttl = await num('app.shareHub.defaultTtlHours', 72)
   appConfig.shareDefaultTtlHours = Number.isInteger(ttl) && ttl >= 0 ? ttl : 72
+  appConfig.shareAllowIndex = await bool('app.shareHub.allowIndex', false)
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
@@ -57,6 +60,7 @@ export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean
         ['app.shareHub.port', Number.isInteger(Number(appConfig.sharePort)) ? Number(appConfig.sharePort) : 0],
         ['app.shareHub.preferredIp', appConfig.sharePreferredIp.trim()],
         ['app.shareHub.defaultTtlHours', Number.isInteger(Number(appConfig.shareDefaultTtlHours)) && Number(appConfig.shareDefaultTtlHours) >= 0 ? Number(appConfig.shareDefaultTtlHours) : 72],
+        ['app.shareHub.allowIndex', appConfig.shareAllowIndex === true],
       ]
     : [
         ['app.outputDir', appConfig.outputDir.trim() || null],

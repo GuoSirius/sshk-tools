@@ -452,6 +452,8 @@ export interface ShareRouteInput {
   entry?: string
   /** 有效期小时数，默认 72；0.01 可用于测试 */
   ttlHours?: number
+  /** 是否允许浏览目录列表（缺省由宿主注入应用级默认 app.shareHub.allowIndex，默认不允许）；直接文件路径不受影响 */
+  allowIndex?: boolean
   /** 可选访问口令（链接带 ?key= 轻量校验） */
   password?: string
 }
@@ -478,6 +480,8 @@ export interface ShareRouteInfo {
   hits: number
   /** 访问口令（空串=无）；工具拼「前缀+路径」直达链接时需追加 ?key= 才能通过校验 */
   password?: string
+  /** 是否允许浏览目录列表（旧路由缺省视为允许） */
+  allowIndex?: boolean
 }
 
 /** 一个候选展示 IP（供设置 tab 下拉展示） */

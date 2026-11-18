@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
 import { ElMessage } from 'element-plus'
@@ -9,6 +9,7 @@ import {
   onSelectionChange,
   loadPosterIntoWorkspace, onPosterCommand, exportPosterHtml,
   sourceStates, staleCount, openListShare, copyPosterLink,
+  shareDialog, refreshShareLinks, posterLinkState,
 } from '../state'
 import { host } from '../host'
 
@@ -82,7 +83,12 @@ function onUploadProgressEvent(p: { name: string; percent: number; status: strin
 }
 // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
 // eslint-disable-next-line no-restricted-syntax
-onMounted(() => { window.api.upload.onProgress(onUploadProgressEvent) })
+onMounted(() => {
+  window.api.upload.onProgress(onUploadProgressEvent)
+  void refreshShareLinks() // 链接列 tag 数据源（路由快照）
+})
+// 分享弹框每次关闭后刷新：新建/撤销/重新生成都会改变行链接状态
+watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
 onBeforeUnmount(() => { batchProgress.active = false })
 </script>
 
@@ -130,10 +136,18 @@ onBeforeUnmount(() => { batchProgress.active = false })
             <TimeText :value="row.lastGeneratedAt ?? row.updatedAt" />
           </template>
         </el-table-column>
-        <el-table-column label="产物" min-width="220">
+        <el-table-column label="链接" width="140" align="center">
           <template #default="{ row }">
-            <span class="muted">{{ row.outputs.badged ?? '—' }}</span>
-            <span v-if="row.outputs.poster" class="ok"> / {{ row.outputs.poster }}</span>
+            <!-- 用户 2026-11-18：产物列取消，改为链接 tag——类型（复制链接的来源：自身票优先→顶部前缀）+ 可访问性 -->
+            <template v-if="posterLinkState(row).type">
+              <el-tag size="small" :type="posterLinkState(row).type === '自身' ? 'primary' : 'warning'" effect="plain">
+                {{ posterLinkState(row).type }}
+              </el-tag>
+              <el-tag size="small" :type="posterLinkState(row).alive ? 'success' : 'danger'" effect="plain" style="margin-left: 4px">
+                {{ posterLinkState(row).alive ? '可访问' : '已失效' }}
+              </el-tag>
+            </template>
+            <el-tag v-else size="small" type="info" effect="plain">未分享</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="280" align="center" fixed="right">

@@ -70,6 +70,8 @@ interface ShareRoute {
   createdAt: number
   expiresAt: number
   password: string
+  /** 是否允许浏览目录列表（用户 2026-11-18：默认不允许；旧路由无此字段视为允许，不破坏既有链接） */
+  allowIndex?: boolean
   /** 命中计数（访问入口 + 资源） */
   hits: number
 }
@@ -182,6 +184,8 @@ export class ShareHub {
       createdAt: now,
       expiresAt: expiresAtFor(ttlHours, now),
       password: String(input.password ?? ''),
+      // 应用级默认（app.shareHub.allowIndex）由宿主在 IPC 层注入；share-core 未收到时保持允许（兼容旧调用方）
+      allowIndex: input.allowIndex === undefined ? undefined : Boolean(input.allowIndex),
       hits: 0,
     }
     this.routes.set(route.token, route)
@@ -202,26 +206,31 @@ export class ShareHub {
    * 续期一条路由（复用 token，URL 不变），返回新 ticket。
    * mode='reset'：从当前时刻重新计时 ttlHours（默认）；
    * mode='extend'：在当前到期时刻上累加 ttlHours（永久路由累加仍为永久）；
-   * ttlHours=0：无论何种 mode 都设为永久有效。
+   * ttlHours=0：无论何种 mode 都设为永久有效；
+   * ttlHours=null：不改有效期（仅应用 patch，供目录浏览开关等属性级修改，token/链接不变）；
+   * patch.allowIndex：同时改写目录浏览开关（undefined = 不动）。
    */
-  async renew(idOrToken: string, ttlHours: number, mode: 'reset' | 'extend' = 'reset'): Promise<ShareRouteTicket> {
+  async renew(idOrToken: string, ttlHours: number | null, mode: 'reset' | 'extend' = 'reset', patch?: { allowIndex?: boolean }): Promise<ShareRouteTicket> {
     const route = this.findBy(idOrToken)
     if (!route) throw new Error('分享路由不存在或已过期')
-    const hours = normalizeTtl(ttlHours)
-    if (hours === 0) {
-      route.ttlHours = 0
-      route.expiresAt = SHARE_PERMANENT_EXPIRES_AT
-    } else if (mode === 'extend') {
-      // 累加：永久路由保持永久（累加有限时长不应撤销永久授权）
-      if (route.expiresAt !== SHARE_PERMANENT_EXPIRES_AT) {
-        const base = Math.max(route.expiresAt, Date.now())
-        route.expiresAt = base + hours * 3600_000
+    if (ttlHours !== null) {
+      const hours = normalizeTtl(ttlHours)
+      if (hours === 0) {
+        route.ttlHours = 0
+        route.expiresAt = SHARE_PERMANENT_EXPIRES_AT
+      } else if (mode === 'extend') {
+        // 累加：永久路由保持永久（累加有限时长不应撤销永久授权）
+        if (route.expiresAt !== SHARE_PERMANENT_EXPIRES_AT) {
+          const base = Math.max(route.expiresAt, Date.now())
+          route.expiresAt = base + hours * 3600_000
+        }
+        route.ttlHours = hours
+      } else {
+        route.ttlHours = hours
+        route.expiresAt = expiresAtFor(hours)
       }
-      route.ttlHours = hours
-    } else {
-      route.ttlHours = hours
-      route.expiresAt = expiresAtFor(hours)
     }
+    if (patch && patch.allowIndex !== undefined) route.allowIndex = Boolean(patch.allowIndex)
     this.schedulePersist()
     return this.ticket(route)
   }
@@ -234,6 +243,7 @@ export class ShareHub {
       .map((r) => ({
         id: r.id, toolId: r.toolId, label: r.label, entry: r.entry,
         ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, hits: r.hits,
+        allowIndex: r.allowIndex !== false, password: r.password ?? '',
       }))
   }
 
@@ -353,7 +363,16 @@ export class ShareHub {
       if (!relRaw) relRaw = route.entry || ''
       rel = relRaw
 
+      // 目录浏览开关（用户 2026-11-18：默认不允许）：目录列表页（根/子目录）在关闭时一律 404；
+      // 直接文件路径不受影响——「前缀+文件路径」的行级直达链接仍然可用
+      const indexAllowed = route.allowIndex !== false
+
       if (!relRaw) {
+        if (!indexAllowed) {
+          this.finish(res, 404, 'Not Found')
+          this.log(clientIp, routeId, rel, 404)
+          return
+        }
         // 目录列表页（root 根）
         const html = this.renderIndex(route, '')
         this.finish(res, 200, html, { 'content-type': MIME['.html']! })
@@ -369,6 +388,11 @@ export class ShareHub {
       this.schedulePersist()
 
       if (st.isDirectory()) {
+        if (!indexAllowed) {
+          this.finish(res, 404, 'Not Found')
+          this.log(clientIp, routeId, rel, 404)
+          return
+        }
         const html = this.renderIndex(route, relRaw.replace(/\/+$/, ''))
         this.finish(res, 200, html, { 'content-type': MIME['.html']! })
         status = 200
@@ -465,7 +489,8 @@ export class ShareHub {
           id: r.id ?? randomUUID(), token: r.token, toolId: r.toolId ?? '',
           label: r.label ?? '分享', root: r.root, entry: r.entry ?? '',
           ttlHours: r.ttlHours ?? DEFAULT_TTL_HOURS, createdAt: r.createdAt ?? now,
-          expiresAt: r.expiresAt, password: r.password ?? '', hits: r.hits ?? 0,
+          expiresAt: r.expiresAt, password: r.password ?? '',
+          allowIndex: r.allowIndex, hits: r.hits ?? 0,
         })
       }
       void this.flushPersist()

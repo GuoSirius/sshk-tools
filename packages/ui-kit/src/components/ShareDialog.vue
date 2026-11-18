@@ -41,6 +41,10 @@ const ticket = ref<ShareRouteTicket | null>(null)
 const activeUrlIndex = ref(0)
 const nowTick = ref(Date.now())
 const loadError = ref('')
+/** 撤销后的空闲态：不显示「正在准备」spinner，改出「重新分享 / 关闭」主动按钮（用户 2026-11-18） */
+const idle = ref(false)
+/** 是否允许访问目录：创建时取应用设置 app.shareHub.allowIndex 默认；已创建路由以实际值为准；切换即时生效（renew patch，链接不变） */
+const allowIndex = ref(false)
 /** 数字框时长：默认读应用设置 app.shareHub.defaultTtlHours，用户可自行调整 */
 const ttlHours = ref(72)
 let tickTimer: ReturnType<typeof setInterval> | null = null
@@ -90,6 +94,13 @@ async function resolveTtlHours(): Promise<number> {
   return 72
 }
 
+/** 读取应用设置的「允许访问目录」默认（app.shareHub.allowIndex）；读不到按不允许 */
+async function resolveAppAllowIndex(): Promise<boolean> {
+  try {
+    return (await callHostApi<unknown>(SPEC.configGet, 'app.shareHub.allowIndex')) === true
+  } catch { return false }
+}
+
 async function createTicket(): Promise<void> {
   const t = await callHostApi<ShareRouteTicket>(SPEC.create, {
     toolId: props.toolId,
@@ -98,6 +109,7 @@ async function createTicket(): Promise<void> {
     entry: props.defaultEntry ?? '',
     ttlHours: ttlHours.value,
     password: props.password,
+    allowIndex: allowIndex.value,
   })
   ticket.value = t
   saveTicket(t)
@@ -110,17 +122,24 @@ async function createTicket(): Promise<void> {
 async function ensureTicket(): Promise<void> {
   if (busy.value) return
   busy.value = true
+  idle.value = false
   loadError.value = ''
   try {
     ttlHours.value = await resolveTtlHours()
+    allowIndex.value = await resolveAppAllowIndex()
     const saved = readTicket()
     if (saved && (saved.expiresAt === SHARE_PERMANENT_EXPIRES_AT || saved.expiresAt > Date.now())) {
-      let alive = true
+      let hit: ShareRouteInfo | null = null
       try {
         const routes = await callHostApi<ShareRouteInfo[]>(SPEC.list, props.toolId)
-        alive = routes.some((r) => r.id === saved.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
+        hit = routes.find((r) => r.id === saved.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now())) ?? null
       } catch { /* 校验接口失败时信任本地未过期记录 */ }
-      if (alive) { ticket.value = saved; return }
+      if (hit) {
+        ticket.value = saved
+        // 以路由实际值为准（旧路由无此字段视为允许，不破坏既有链接）
+        allowIndex.value = hit.allowIndex !== false
+        return
+      }
     }
     ticket.value = null
     saveTicket(null)
@@ -131,6 +150,21 @@ async function ensureTicket(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+/** 切换「允许访问目录」：renew patch 只改属性不改有效期/token（链接与二维码不变，即时生效） */
+async function applyAllowIndex(next: boolean): Promise<void> {
+  if (!ticket.value) return
+  busy.value = true
+  try {
+    const t = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, null, props.toolId, 'reset', { allowIndex: next })
+    ticket.value = t
+    allowIndex.value = next
+    ElMessage.success(next ? '已允许访问目录（链接不变）' : '已禁止访问目录（链接不变）')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+    allowIndex.value = !next // 失败回滚勾选态
+  } finally { busy.value = false }
 }
 
 /** 重新生成：二次确认后先撤旧路由（旧链立即失效）再创建新路由 */
@@ -203,6 +237,7 @@ async function revoke(): Promise<void> {
     await callHostApi(SPEC.revoke, ticket.value.id, props.toolId)
     ticket.value = null
     saveTicket(null)
+    idle.value = true // 撤销后进空闲态：出「重新分享/关闭」而不是永远转圈的「正在准备」
     ElMessage.success('已撤销分享')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }
@@ -234,8 +269,13 @@ watch(() => props.open, (open) => {
   >
     <div class="share-dialog">
       <template v-if="!ticket">
-        <div v-loading="!loadError" element-loading-text="正在准备分享链接…" class="share-loading">
-          <p v-if="loadError" class="share-error">分享创建失败：{{ loadError }}，可点「重试」或关闭。</p>
+        <!-- 三态：准备中（spinner）/ 创建失败（错误+重试）/ 空闲（撤销后或异常兜底，主动重新分享） -->
+        <div v-if="busy" v-loading="true" element-loading-text="正在准备分享链接…" class="share-loading" />
+        <div v-else-if="loadError" class="share-loading">
+          <p class="share-error">分享创建失败：{{ loadError }}，可点「重试」或关闭。</p>
+        </div>
+        <div v-else class="share-loading">
+          <p class="share-idle">当前未创建分享链接{{ idle ? '（已撤销）' : '' }}。</p>
         </div>
       </template>
 
@@ -251,6 +291,15 @@ watch(() => props.open, (open) => {
           <el-select v-if="ticket.urls.length > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
             <el-option v-for="(u, i) in ticket.urls" :key="u" :label="u" :value="i" />
           </el-select>
+          <!-- 目录浏览开关（用户 2026-11-18）：分享下拉右侧，默认读应用设置（默认不允许），优先级高于应用设置；
+               切换即时生效（renew patch，token/链接/二维码不变） -->
+          <el-checkbox
+            v-model="allowIndex"
+            :disabled="busy"
+            class="allow-index-check"
+            title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问"
+            @change="(v: unknown) => applyAllowIndex(v === true)"
+          >允许访问目录</el-checkbox>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
         </div>
         <div class="share-qr-block">
@@ -273,6 +322,7 @@ watch(() => props.open, (open) => {
     <template #footer>
       <template v-if="!ticket">
         <el-button v-if="loadError" type="success" size="small" @click="ensureTicket">重试</el-button>
+        <el-button v-if="!busy" type="primary" size="small" @click="ensureTicket">重新分享</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
       <template v-else>
@@ -287,6 +337,9 @@ watch(() => props.open, (open) => {
 <style scoped>
 .share-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; }
 .share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
+.share-idle { margin: 0 16px; opacity: 0.7; line-height: 1.6; }
+.allow-index-check { flex: none; height: auto; }
+.allow-index-check :deep(.el-checkbox__label) { font-size: 12px; }
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }

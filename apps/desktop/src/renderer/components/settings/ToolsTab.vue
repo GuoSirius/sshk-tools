@@ -4,7 +4,7 @@
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ACCESS_GRANT, IPC_CHANNELS, type ToolCatalogPayload, type ToolRuntimeState } from '@sshk/shared'
+import { IPC_CHANNELS, type ToolCatalogPayload, type ToolRuntimeState } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { useToolCatalog } from '../../composables/useToolCatalog'
 import { appConfig } from '../../composables/useAppConfig'
@@ -119,9 +119,6 @@ const listedTools = computed(() => (devFeatures.value ? payload.value.tools : ma
 function realVisibility(tool: ToolRuntimeState): string {
   return `${tool.visible ? '可见' : '隐藏'} / ${tool.visibility}${tool.reason ? ` / ${tool.reason}` : ''}`
 }
-function otherTools(tool: ToolRuntimeState): ToolRuntimeState[] {
-  return payload.value.tools.filter((item) => item.id !== tool.id)
-}
 function pluginState(tool: ToolRuntimeState): string {
   const state = payload.value.pluginStatus[tool.id]
   if (!state) return '无主进程插件'
@@ -151,13 +148,6 @@ async function toggleEnabled(tool: ToolRuntimeState, value: boolean): Promise<vo
   }
   accept(await window.api.tools.setEnabled(tool.id, value))
   ElMessage.success(value ? '已启用' : '已禁用')
-}
-async function setGrant(tool: ToolRuntimeState, grant: string): Promise<void> {
-  accept(await window.api.tools.setGrant(tool.id, grant))
-}
-async function setDependencies(tool: ToolRuntimeState, ids: string[]): Promise<void> {
-  accept(await window.api.tools.setDependencies(tool.id, ids))
-  ElMessage.success('工具依赖已保存（默认零依赖）')
 }
 async function cleanupOrphans(): Promise<void> {
   accept(await window.api.tools.cleanupOrphans())
@@ -262,11 +252,9 @@ onMounted(() => {
           <el-tag v-if="devFeatures && !tool.manageable" size="small" type="danger" plain>正式模式不可管理</el-tag>
         </div>
         <div class="tool-manage-meta">
-          <span>权限要求：</span>
-          <el-select :model-value="tool.requiredGrant ?? ''" size="small" style="width: 160px" @change="(v: unknown) => setGrant(tool, String(v ?? ''))">
-            <el-option label="公开" value="" />
-            <el-option label="需访问密钥" :value="ACCESS_GRANT" />
-          </el-select>
+          <!-- 权限要求/硬依赖是功能配置非展示定制（用户 2026-11-18）：UI 不提供编辑（dev/build 都不改），
+               统一在 dev 的 tool.manifest.json 中修改；此处仅只读展示，改权限走 requiredGrant、改依赖走 dependsOn -->
+          <el-tag v-if="tool.requiredGrant" size="small" type="danger" plain>需访问密钥</el-tag>
           <span :class="['meta-chip', { 'meta-chip-warn': tool.pluginError }]">{{ pluginState(tool) }}</span>
           <span v-if="tool.dependsOn.length" class="meta-chip">硬依赖：{{ tool.dependsOn.join('、') }}</span>
           <span v-if="tool.configDeps.length" class="meta-chip">软依赖：{{ tool.configDeps.map((d) => d.toolId).join('、') }}</span>
@@ -286,13 +274,6 @@ onMounted(() => {
                   <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
                 <FormHint detail="auto = 工具包自带 assets/icon.svg；也可直接粘贴 http(s) URL / data:image URI；留空、无效或加载失败时回退系统默认图标">auto=工具包自带；可填 URL / data:image</FormHint>
-              </el-form-item>
-              <el-form-item v-if="isDev" class="full" label="硬依赖">
-                <el-select :model-value="tool.dependsOn" multiple clearable placeholder="默认零依赖（禁用其它工具不影响本工具）"
-                  @change="(v: unknown) => setDependencies(tool, Array.isArray(v) ? v.map(String) : [])">
-                  <el-option v-for="other in otherTools(tool)" :key="other.id" :label="other.name" :value="other.id" />
-                </el-select>
-                <FormHint detail="依赖工具不可见时本工具一并隐藏；清空即恢复零依赖隔离">依赖工具隐藏时本工具一并隐藏</FormHint>
               </el-form-item>
             </FormGrid>
           </el-form>

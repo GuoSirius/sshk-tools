@@ -208,7 +208,14 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
           </el-form-item>
         </FormGrid>
       </el-form>
-      <div class="card-actions">
+      <div class="card-actions share-actions">
+        <!-- 开关一行布局约定（用户多次订正）：文字与开关同排，行内注释只留短语，长说明进 FormHint detail（❓） -->
+        <div class="switch-row allow-index-row">
+          <span class="switch-label">允许访问目录
+            <FormHint inline detail="默认关：访客只能访问具体文件链接（前缀+路径），打开裸链接/目录路径一律 404，防止翻看整个产物目录；分享弹框可按次覆盖本设置">默认关</FormHint>
+          </span>
+          <el-switch v-model="appConfig.shareAllowIndex" />
+        </div>
         <el-button type="primary" size="small" :loading="saving" @click="save">保存分享设置</el-button>
       </div>
     </section>
@@ -230,10 +237,12 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
           </template>
         </el-table-column>
         <el-table-column prop="hits" label="访问数" width="80" />
-        <el-table-column label="操作" width="150" align="center" fixed="right">
+        <el-table-column label="操作" width="120" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" plain @click="renewRoute(row)">续期</el-button>
-            <el-button size="small" type="danger" plain @click="revokeRoute(row)">撤销</el-button>
+            <div class="route-op-row">
+              <el-button size="small" text type="primary" @click="renewRoute(row)">续期</el-button>
+              <el-button size="small" text type="danger" @click="revokeRoute(row)">撤销</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -264,6 +273,10 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .share-status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .share-actions { justify-content: flex-start; gap: 12px; align-items: center; flex-wrap: wrap; }
 .autostart-row { margin-right: auto; }
+.allow-index-row { margin-right: auto; }
+/* 行内双按钮：flex 收紧间距防换行（el-button 默认 margin-left 12px 会挤爆窄列） */
+.route-op-row { display: inline-flex; align-items: center; gap: 4px; }
+.route-op-row .el-button+.el-button { margin-left: 0; }
 .share-ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 :deep(.ip-invalid .el-input__wrapper) { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
 .hint-error { color: var(--el-color-danger); }

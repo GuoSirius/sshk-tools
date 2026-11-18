@@ -858,6 +858,44 @@ export async function copyPosterLink(row: PosterRecord): Promise<void> {
   ElMessage.warning('还没有可用分享：点右上角「分享列表」生成链接前缀，或在「更多 → 分享页面」为本海报单独分享')
 }
 
+// ── 列表「链接」列（用户 2026-11-18：产物列取消，改为 可访问性 tag + 链接类型 tag）──
+// 链接类型 = 复制链接将使用的来源（自身票优先 → 顶部列表前缀）；可访问性 = 该票是否存活。
+
+const shareRoot = ref('')
+const shareRouteRows = ref<ShareRouteInfo[]>([])
+
+/** 刷新分享路由快照（进页面 / 分享弹框关闭后调用） */
+export async function refreshShareLinks(): Promise<void> {
+  try {
+    const resolved = await host.badge.shareResolve({ posterId: '' }) as { root: string }
+    shareRoot.value = resolved.root
+    shareRouteRows.value = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolId.value)
+  } catch {
+    shareRoot.value = ''
+    shareRouteRows.value = []
+  }
+}
+
+function routeAlive(id: string): boolean {
+  return shareRouteRows.value.some((r) => r.id === id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
+}
+
+/** 行链接状态：类型（自身/顶部/未分享）+ 可访问性（可访问/已失效）。语义与 copyPosterLink 的取链优先级一致 */
+export function posterLinkState(row: PosterRecord): { type: '自身' | '顶部' | null; alive: boolean } {
+  if (!shareRoot.value) return { type: null, alive: false }
+  const entry = (row.outputs.badged ?? '').replaceAll('\\', '/').replace(/^\/+/, '')
+  if (!entry) return { type: null, alive: false }
+  const own = readShareTicket(toolId.value, `海报：${row.name}`, shareRoot.value, entry)
+  const list = readShareTicket(toolId.value, LIST_SHARE_LABEL, shareRoot.value, '')
+  const ownAlive = Boolean(own && routeAlive(own.id))
+  const listAlive = Boolean(list && routeAlive(list.id))
+  if (ownAlive) return { type: '自身', alive: true }
+  if (listAlive) return { type: '顶部', alive: true }
+  if (own) return { type: '自身', alive: false }
+  if (list) return { type: '顶部', alive: false }
+  return { type: null, alive: false }
+}
+
 /** 预览与编辑共用：完整载入该海报的全部已知信息到工作区（回路完整） */
 export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> {
   if (!row.source.htmlPath) return

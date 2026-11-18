@@ -22,6 +22,8 @@ export interface ShareHubHost {
   hub: ShareHub
   /** 启动应使用的端口：固定端口（port>0）优先；自动分配模式沿用上次持久化的 autoPort */
   resolvePort(): number
+  /** 新建路由未显式指定时的「允许访问目录」默认值（app.shareHub.allowIndex，默认不允许） */
+  getDefaultAllowIndex(): boolean
   /** 由 index.ts 在 whenReady 中调用；重复调用幂等 */
   init(): Promise<void>
   /** 退出前停止并落盘 */
@@ -123,7 +125,14 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     await hub.stop()
   }
 
-  return { hub, resolvePort, init, dispose }
+  return {
+    hub,
+    resolvePort,
+    // 应用级「允许访问目录」默认：未配置/配置非 true 一律不允许（用户 2026-11-18 定版）
+    getDefaultAllowIndex: () => cfg.get('app.shareHub.allowIndex') === true,
+    init,
+    dispose,
+  }
 }
 
 /** 注册 ShareHub 的 6 条 IPC（6 通道 → create/list/revoke/renew/status/control）。
@@ -131,7 +140,9 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
 export function registerShareHubIpc(host: ShareHubHost): void {
   const hub = host.hub
 
-  handleOk(IPC_CHANNELS.shareHubCreate, (_e, input: ShareRouteInput) => hub.create(input))
+  handleOk(IPC_CHANNELS.shareHubCreate, (_e, input: ShareRouteInput) =>
+    // 应用级默认（app.shareHub.allowIndex，默认不允许）：弹框未显式指定时在此注入（弹框值优先）
+    hub.create({ ...input, allowIndex: input.allowIndex ?? host.getDefaultAllowIndex() }))
 
   handleOk(IPC_CHANNELS.shareHubList, (_e, toolId?: string) => hub.listRoutes(resolveToolId(toolId) || undefined))
 
@@ -145,14 +156,14 @@ export function registerShareHubIpc(host: ShareHubHost): void {
     return hub.revoke(id)
   })
 
-  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number, toolId?: string, mode?: 'reset' | 'extend') => {
+  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean }) => {
     const caller = resolveToolId(toolId)
     if (caller && caller !== '*') {
       const route = hub.listRoutes().find((r) => r.id === id)
       if (!route) throw new Error('分享路由不存在')
       if (route.toolId !== caller) throw new Error('无权续期其它工具的分享路由')
     }
-    return hub.renew(id, ttlHours, mode)
+    return hub.renew(id, ttlHours, mode, patch)
   })
 
   handleOk(IPC_CHANNELS.shareHubStatus, (): HubStatus => hub.status())
