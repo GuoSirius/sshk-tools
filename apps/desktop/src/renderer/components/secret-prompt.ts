@@ -1,49 +1,50 @@
 /**
  * 密钥输入弹框（用户 2026-11-17：密码框要带眼镜可查看原始值）。
- * ElMessageBox.prompt 不支持 show-password，改用自定义 ElInput（type=password + showPassword）。
  * 返回 null = 用户取消。
  *
- * 实现要点（2026-11-18 修「无法输入」）：ElInput 每次按键后会把原生输入框重置为
- * props.modelValue——h(ElInput, { modelValue: secret.value }) 的 props 是静态快照
- * （永远是 ''），输入立刻被清空。必须用响应式渲染组件包裹：render 读取 secret.value
- * 建立依赖，按键 → onUpdate 回写 → 组件重渲染 → modelValue 真正流回 ElInput。
+ * 实现（2026-11-18 重写）：不再用 ElMessageBox + 编程式 h(ElInput)——该组合在构建版
+ * 输入框宽度异常（message-box 动态挂载的 vnode 样式链路不受控），改用自管
+ * SecretPromptDialog（真实 el-dialog，与业务弹框同一条渲染路径，dev/构建一致），
+ * 通过 createApp 动态挂载调用，API 保持 promptSecret(title, tip, ...) => Promise<string|null> 不变。
  */
-import { defineComponent, h, ref } from 'vue'
-import { ElInput, ElMessageBox } from 'element-plus'
+import { createApp, h, ref } from 'vue'
+import SecretPromptDialog from './SecretPromptDialog.vue'
 
-export async function promptSecret(
+export function promptSecret(
   title: string,
   tip: string,
   confirmText = '确定',
   placeholder = '访问密钥',
 ): Promise<string | null> {
-  const secret = ref('')
-  const SecretInput = defineComponent({
-    name: 'SecretInputBridge',
-    setup() {
-      return () =>
-        h(ElInput, {
-          modelValue: secret.value,
-          'onUpdate:modelValue': (v: string) => { secret.value = v },
-          type: 'password',
-          showPassword: true,
-          placeholder,
-          autofocus: true,
-          // 显式铺满：message-box 内嵌自定义组件时部分构建环境不继承 100% 宽度（2026-11-18 构建版实测）
-          style: 'width:100%',
-        })
-    },
+  return new Promise((resolve) => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    let settled = false
+    const finish = (value: string | null): void => {
+      if (settled) return
+      settled = true
+      resolve(value)
+      app.unmount()
+      host.remove()
+    }
+    const open = ref(true)
+    const app = createApp({
+      setup() {
+        return () =>
+          h(SecretPromptDialog, {
+            open: open.value,
+            title,
+            tip,
+            confirmText,
+            placeholder,
+            'onUpdate:open': (v: boolean) => {
+              open.value = v
+              if (!v) finish(null) // X / 取消按钮（ESC 已禁）
+            },
+            onConfirm: (value: string) => finish(value), // 输入值由 SecretPromptDialog 内部 v-model 管理并经事件回传
+          })
+      },
+    })
+    app.mount(host)
   })
-  await ElMessageBox({
-    title,
-    message: h('div', { style: 'display:flex;flex-direction:column;gap:10px;width:100%' }, [
-      h('p', { style: 'margin:0;font-size:13px;line-height:1.6;color:var(--el-text-color-regular)' }, tip),
-      h(SecretInput),
-    ]),
-    confirmButtonText: confirmText,
-    cancelButtonText: '取消',
-    closeOnClickModal: false,
-    closeOnPressEscape: false,
-  })
-  return secret.value
 }
