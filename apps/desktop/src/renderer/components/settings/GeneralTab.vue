@@ -66,11 +66,14 @@ onMounted(() => { void loadAppConfig() })
     <el-form size="small" label-position="top">
       <FormGrid>
         <el-form-item label="主题模式">
-          <el-select :model-value="mode" @change="onTheme">
-            <el-option label="暗黑" value="dark" />
-            <el-option label="亮色" value="light" />
-            <el-option label="跟随系统" value="system" />
-          </el-select>
+          <div class="switch-row">
+            <span class="switch-label">主题模式</span>
+            <el-select :model-value="mode" class="theme-select" @change="onTheme">
+              <el-option label="暗黑" value="dark" />
+              <el-option label="亮色" value="light" />
+              <el-option label="跟随系统" value="system" />
+            </el-select>
+          </div>
         </el-form-item>
         <el-form-item label="开机自启">
           <div class="switch-row">
@@ -122,3 +125,8 @@ onMounted(() => { void loadAppConfig() })
     </div>
   </section>
 </template>
+
+<style scoped>
+/* 主题模式下拉：一行布局内固定宽度（el-select 默认 100% 会在 flex 里拉伸挤压 label） */
+.theme-select { width: 150px; flex: none; }
+</style>
