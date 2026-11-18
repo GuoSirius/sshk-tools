@@ -222,7 +222,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 
     <!-- 路由管理 -->
     <section class="settings-card">
-      <div class="card-title">路由管理 <el-tag size="small" type="info">{{ shareRoutes.length }} 条</el-tag></div>
+      <div class="card-title">路由管理 <el-tag size="small" type="info" class="mini-tag">{{ shareRoutes.length }} 条</el-tag></div>
       <div class="share-route-filter">
         <el-input v-model="shareRouteFilter" clearable placeholder="按工具 / 标签过滤" size="small" />
       </div>
@@ -230,14 +230,14 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
         <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
         <el-table-column prop="toolId" label="工具" width="120" show-overflow-tooltip />
         <el-table-column prop="label" label="标签" min-width="120" show-overflow-tooltip />
-        <el-table-column label="剩余" width="90">
+        <el-table-column label="剩余" width="76">
           <template #default="{ row }">
-            <el-tag v-if="row.expiresAt === SHARE_PERMANENT_EXPIRES_AT" type="warning" size="small" effect="plain">永久</el-tag>
+            <el-tag v-if="row.expiresAt === SHARE_PERMANENT_EXPIRES_AT" type="warning" size="small" effect="plain" class="mini-tag">永久</el-tag>
             <span v-else :class="{ 'expired-text': row.expiresAt <= Date.now() }">{{ ttlLeft(row.expiresAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="hits" label="访问数" width="80" />
-        <el-table-column label="操作" width="120" align="center" fixed="right">
+        <el-table-column prop="hits" label="访问数" width="70" />
+        <el-table-column label="操作" width="86" align="center" fixed="right">
           <template #default="{ row }">
             <div class="route-op-row">
               <el-button size="small" text type="primary" @click="renewRoute(row)">续期</el-button>
@@ -274,9 +274,12 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .share-actions { justify-content: flex-start; gap: 12px; align-items: center; flex-wrap: wrap; }
 .autostart-row { margin-right: auto; }
 .allow-index-row { margin-right: auto; }
-/* 行内双按钮：flex 收紧间距防换行（el-button 默认 margin-left 12px 会挤爆窄列） */
-.route-op-row { display: inline-flex; align-items: center; gap: 4px; }
+/* 行内双按钮：flex 收紧间距防换行（el-button 默认 margin-left 12px 会挤爆窄列），padding 同步收紧 */
+.route-op-row { display: inline-flex; align-items: center; gap: 2px; }
 .route-op-row .el-button+.el-button { margin-left: 0; }
+.route-op-row :deep(.el-button) { padding: 3px 5px; font-size: 12px; }
+/* 迷你 tag：高度/内边距收紧（用户 2026-11-18：剩余列 tag 也可以小一点） */
+.mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
 .share-ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 :deep(.ip-invalid .el-input__wrapper) { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
 .hint-error { color: var(--el-color-danger); }
