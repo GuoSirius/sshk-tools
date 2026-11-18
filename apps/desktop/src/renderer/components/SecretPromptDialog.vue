@@ -7,6 +7,11 @@
 -->
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
+// 关键修复（2026-11-18）：本组件由 secret-prompt.ts 用独立 createApp 动态挂载，
+// 该实例没有走 main.ts 的 app.use(ElementPlus) 全局注册——el-dialog/el-input/el-button
+// 在模板里解析不到，弹框整个渲染不出来（打包版/点开关「界面没反应」的根因）。
+// 显式 import 本地注册后，任何 app 实例下都能解析；样式走全局引入的 element-plus css，不受影响。
+import { ElButton, ElDialog, ElInput } from 'element-plus'
 
 const props = defineProps<{
   open: boolean

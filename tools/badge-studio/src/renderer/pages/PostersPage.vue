@@ -86,18 +86,18 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
         </el-table-column>
         <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
-            <!-- 操作列条件化（用户 2026-11-18 定版）：编辑/删除恒可用；复制链接有可用票才显示；
+            <!-- 操作列条件化（用户 2026-11-18 定版，顺序 2026-11-18：复制链接在编辑前）；编辑/删除恒可用；复制链接有可用票才显示；
                  导出/复制代码/分享依赖 badged 产物、下载图片依赖截图产物、重新打标依赖源更新——全部条件显示 -->
             <div class="op-row">
-              <el-button size="small" type="primary" plain @click="editPoster(row)">
-                {{ row.outputs.badged ? '编辑' : '去生成' }}
-              </el-button>
               <el-button
                 v-if="posterLinkState(row).type"
                 size="small" type="warning" plain
                 title="优先复制本海报自己的分享链接；没有则用列表分享前缀拼本行产物路径"
                 @click="copyPosterLink(row)"
               >复制链接</el-button>
+              <el-button size="small" type="primary" plain @click="editPoster(row)">
+                {{ row.outputs.badged ? '编辑' : '去生成' }}
+              </el-button>
               <el-dropdown trigger="click" @command="(cmd: string) => onPosterCommand(cmd, row)">
                 <el-button size="small" plain>更多</el-button>
                 <template #dropdown>

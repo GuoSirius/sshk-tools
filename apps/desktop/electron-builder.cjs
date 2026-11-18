@@ -85,6 +85,9 @@ const config = {
   nsis: {
     // 安装器命名加 Setup 前缀，与 portable 免安装单文件明确区分，避免用户误下 portable（无安装向导）
     artifactName: '${productName}-Setup-${version}-${arch}.${ext}',
+    // 安装/卸载前 taskkill 结束运行中的应用（脚本见 build/installer.nsh）——
+    // 应用关闭路径是交互式的（确认弹框/托盘驻留），NSIS 默认 WM_CLOSE 检测必然超时报「无法关闭」
+    include: 'build/installer.nsh',
     oneClick: false,
     allowToChangeInstallationDirectory: true, // 允许用户在安装时选择安装目录
     perMachine: true, // 全机安装：写入 Program Files，需要管理员（UAC）
