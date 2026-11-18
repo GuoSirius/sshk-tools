@@ -142,6 +142,26 @@ export class LocalFsDriver implements FsDriver {
     chmodSync(this.abs(p), parseInt(modeOctal, 8))
   }
 
+  /** Range 下载能力（plans/10 §6）：本地文件天然支持（createReadStream start/end） */
+  readonly range = {
+    capabilities: async (): Promise<{ unit: 'bytes'; supportsRange: boolean }> => ({ unit: 'bytes', supportsRange: true }),
+    statForResume: async (p: string): Promise<{ size: number; fingerprint: string }> => {
+      const st = statSync(this.abs(p))
+      return { size: st.size, fingerprint: `${st.size}:${st.mtimeMs}` }
+    },
+    readRange: async (p: string, start: number, end: number): Promise<Buffer> => {
+      if (end <= start) return Buffer.alloc(0)
+      const chunks: Buffer[] = []
+      await new Promise<void>((res, rej) => {
+        const rs = createReadStream(this.abs(p), { start, end: end - 1 })
+        rs.on('data', (c: Buffer) => chunks.push(c))
+        rs.on('error', (e: Error) => rej(e))
+        rs.on('end', () => res())
+      })
+      return Buffer.concat(chunks)
+    },
+  }
+
   async mv(src: string, dest: string): Promise<void> {
     const to = this.abs(dest)
     mkdirSync(path.dirname(to), { recursive: true })

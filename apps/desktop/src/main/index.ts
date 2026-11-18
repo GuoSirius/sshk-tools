@@ -76,6 +76,8 @@ let quitting = false
 let pluginStatus: Record<string, ToolPluginStatus> = {}
 /** ShareHub 常驻分享服务单例（plans/09）：whenReady 初始化，退出前停止落盘 */
 let shareHubHost: ShareHubHost | null = null
+/** plans/10：传输队列运行时引用（registerIpc 内创建；before-quit 落盘用） */
+let fsRuntimeRef: FsRuntime | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -136,6 +138,8 @@ function createWindow(): void {
     if (shareHubHost) void shareHubHost.dispose()
     // H6：退出兜底压缩（fire-and-forget；NeDB compact 原子替换，中断安全）
     void compactDatabase('quit')
+    // plans/10：传输队列同步落盘（未完结 upload/download 持久化，重启恢复为 paused）
+    try { fsRuntimeRef?.flushTransferPersist() } catch { /* 忽略 */ }
   })
   mainWindow.on('close', (event) => {
     if (quitting || isDev) return
@@ -732,6 +736,7 @@ async function registerIpc(): Promise<void> {
     services: services!,
     onEvent: (task) => mainWindow?.webContents.send(IPC_CHANNELS.fsTransferEvent, task),
   })
+  fsRuntimeRef = fsRuntime
   handleOk(IPC_CHANNELS.fsProfiles, () => fsRuntime.profilesPayload())
   handleOk(IPC_CHANNELS.fsList, (_event, req: { profileId: string; path: string; cursor?: string | null }) =>
     fsRuntime.list(req))
@@ -761,10 +766,13 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.fsTransferStart, (_event, inputs: Parameters<FsRuntime['transferStart']>[0]) =>
     fsRuntime.transferStart(inputs))
   handleOk(IPC_CHANNELS.fsTransferList, () => fsRuntime.transferList())
-  handleOk(IPC_CHANNELS.fsTransferCancel, (_event, ids: string[]) => fsRuntime.transferCancel(ids))
-  handleOk(IPC_CHANNELS.fsTransferRetry, (_event, ids: string[], overwrite?: boolean) =>
-    fsRuntime.transferRetry(ids, overwrite))
-  handleOk(IPC_CHANNELS.fsTransferClear, () => fsRuntime.transferClear())
+  // plans/10：单一控制通道（取代旧 cancel/retry/clear 三通道，不做兼容）
+  handleOk(IPC_CHANNELS.fsTransferControl, (_event, req: Parameters<FsRuntime['transferControl']>[0]) =>
+    fsRuntime.transferControl(req))
+  handleOk(IPC_CHANNELS.fsTransferMultipart, () => fsRuntime.transferMultipart())
+  handleOk(IPC_CHANNELS.fsTransferMultipartSet, (_event, req: Parameters<FsRuntime['setTransferMultipart']>[0]) =>
+    fsRuntime.setTransferMultipart(req))
+  handleOk(IPC_CHANNELS.fsTransferOrphansClean, () => fsRuntime.cleanOrphanUploads())
   handleOk(IPC_CHANNELS.fsPickUpload, (_event, opts?: { type?: 'file' | 'dir' | 'any' }) =>
     fsRuntime.pickUpload(opts))
   handleOk(IPC_CHANNELS.fsFlattenLocal, (_event, paths: string[]) => fsRuntime.flattenLocal(paths))

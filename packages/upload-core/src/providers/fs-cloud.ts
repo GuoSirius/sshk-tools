@@ -30,6 +30,37 @@ const CLOUD_DELETE_MAX_PAGES = 200
 /** 云递归搜索/容量统计缺省扫描页数（用户 2026-11-18：默认 500，搜索可由配置传入 maxPages 覆盖，0=不限） */
 const CLOUD_SCAN_MAX_PAGES = 500
 
+/** OSS 客户端结构面（只用到的成员；multipart 系 XML 返回字段大写开头，防御性读取） */
+interface OssClient {
+  head(k: string): Promise<{ res: { headers: Record<string, string> } }>
+  put(k: string, b: Buffer): Promise<unknown>
+  delete(k: string): Promise<unknown>
+  deleteMulti(ks: string[]): Promise<unknown>
+  copy(dest: string, src: string): Promise<unknown>
+  get(k: string, o?: Record<string, unknown>): Promise<{ content: Buffer; res: { headers: Record<string, string> } }>
+  getStream(k: string): Promise<{ stream: Readable }>
+  listV2(q: Record<string, unknown>): Promise<unknown>
+  initMultipartUpload(k: string): Promise<{ uploadId?: string }>
+  uploadPart(k: string, uploadId: string, partNumber: number, body: Buffer, start: number, end: number): Promise<{ etag?: string }>
+  listParts(k: string, uploadId: string, o?: Record<string, unknown>): Promise<{
+    parts?: { PartNumber?: number | string; partNumber?: number | string; Size?: number | string; size?: number | string; ETag?: string; etag?: string }[]
+    isTruncated?: boolean | string
+    nextPartNumberMarker?: number | string
+  }>
+  completeMultipartUpload(k: string, uploadId: string, parts: { number: number; etag: string }[]): Promise<unknown>
+  abortMultipartUpload(k: string, uploadId: string): Promise<unknown>
+  listUploads(o?: Record<string, unknown>): Promise<{
+    uploads?: { name?: string; uploadId?: string; initiated?: string | Date }[]
+    isTruncated?: boolean | string
+    nextKeyMarker?: string
+    nextUploadIdMarker?: string
+  }>
+}
+
+interface S3ClientShape {
+  send(cmd: unknown): Promise<unknown>
+}
+
 /** 内部路径（`/a/b`）→ 云 SDK prefix（无前导 /、无尾 /；根返回 ''） */
 function sdkPrefix(path: string): string {
   return cloudKey(path, 'file') // file 形态即无前导 /、无尾 /，根为 ''
@@ -498,6 +529,233 @@ export class CloudFsDriver implements FsDriver {
       default:
         throw notWritable(this.profile.provider, '下载')
     }
+  }
+
+  // ── plans/10：分片上传（multipart）与 Range 下载（OSS / S3）──
+
+  private ossCached: OssClient | null = null
+  /** OSS 客户端（driver 每次 resolve 重建，实例级缓存即可；避免每个分片重复构造） */
+  private async oss(): Promise<OssClient> {
+    if (this.ossCached) return this.ossCached
+    const mod = await loadSdk(specOf(this.profile))
+    const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => OssClient
+    const ep = this.profile.endpoint?.trim() ?? ''
+    this.ossCached = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+    return this.ossCached
+  }
+
+  private s3Cached: { client: S3ClientShape; cmd: (name: string) => new (o: Record<string, unknown>) => unknown } | null = null
+  /** S3 客户端 + 指令构造器（懒加载缓存） */
+  private async s3(): Promise<{ client: S3ClientShape; cmd: (name: string) => new (o: Record<string, unknown>) => unknown }> {
+    if (this.s3Cached) return this.s3Cached
+    const mod = await loadSdk(specOf(this.profile))
+    const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => S3ClientShape
+    const ep = this.profile.endpoint?.trim() ?? ''
+    const client = new S3Client({
+      region: this.profile.region || 'auto', endpoint: ep ? withScheme(ep) : undefined, forcePathStyle: Boolean(ep),
+      credentials: { accessKeyId: this.profile.accessKeyId, secretAccessKey: this.profile.accessKeySecret },
+    })
+    const cmd = (name: string) => mod[name] as new (o: Record<string, unknown>) => unknown
+    this.s3Cached = { client, cmd }
+    return this.s3Cached
+  }
+
+  /** 分片上传：语义对齐 S3 Multipart API；complete 内部按 partNumber 升序提交 */
+  readonly multipart = {
+    create: async (remotePath: string): Promise<{ uploadId: string }> => {
+      this.assertWritable('分片上传')
+      const key = cloudKey(remotePath, 'file')
+      if (!key) throw new Error('分片上传路径不合法')
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        const r = await client.initMultipartUpload(key)
+        return { uploadId: String(r.uploadId) }
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        const r = await client.send(new (cmd('CreateMultipartUploadCommand'))({ Bucket: this.bucketOf(), Key: key })) as { UploadId?: string }
+        if (!r.UploadId) throw new Error('S3 分片上传初始化失败：未返回 UploadId')
+        return { uploadId: r.UploadId }
+      }
+      throw notWritable(this.profile.provider, '分片上传')
+    },
+
+    uploadPart: async (remotePath: string, uploadId: string, partNumber: number, body: Buffer): Promise<{ etag: string }> => {
+      const key = cloudKey(remotePath, 'file')
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        const r = await client.uploadPart(key, uploadId, partNumber, body, 0, body.length)
+        return { etag: String(r.etag ?? '') }
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        const r = await client.send(new (cmd('UploadPartCommand'))({
+          Bucket: this.bucketOf(), Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body,
+        })) as { ETag?: string }
+        return { etag: String(r.ETag ?? '') }
+      }
+      throw notWritable(this.profile.provider, '分片上传')
+    },
+
+    listParts: async (remotePath: string, uploadId: string): Promise<{ partNumber: number; size: number; etag: string }[]> => {
+      const key = cloudKey(remotePath, 'file')
+      const out: { partNumber: number; size: number; etag: string }[] = []
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        let marker = 0
+        for (let page = 0; page < 100; page++) {
+          const r = await client.listParts(key, uploadId, { 'part-number-marker': marker, 'max-parts': 1000 })
+          for (const p of r.parts ?? []) {
+            const pn = Number(p.PartNumber ?? p.partNumber)
+            if (Number.isFinite(pn)) out.push({ partNumber: pn, size: Number(p.Size ?? p.size) || 0, etag: String(p.ETag ?? p.etag ?? '') })
+          }
+          if (!r.isTruncated || r.isTruncated === 'false') break
+          marker = Number(r.nextPartNumberMarker ?? 0)
+          if (!Number.isFinite(marker) || marker <= 0) break
+        }
+        return out
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        let marker: number | undefined
+        for (let page = 0; page < 100; page++) {
+          const r = await client.send(new (cmd('ListPartsCommand'))({
+            Bucket: this.bucketOf(), Key: key, UploadId: uploadId, MaxParts: 1000,
+            ...(marker ? { PartNumberMarker: marker } : {}),
+          })) as { Parts?: { PartNumber?: number; Size?: number; ETag?: string }[]; IsTruncated?: boolean; NextPartNumberMarker?: number }
+          for (const p of r.Parts ?? []) {
+            if (p.PartNumber != null) out.push({ partNumber: p.PartNumber, size: Number(p.Size) || 0, etag: String(p.ETag ?? '') })
+          }
+          if (!r.IsTruncated || r.NextPartNumberMarker == null) break
+          marker = r.NextPartNumberMarker
+        }
+        return out
+      }
+      throw notWritable(this.profile.provider, '分片查询')
+    },
+
+    complete: async (remotePath: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<void> => {
+      const key = cloudKey(remotePath, 'file')
+      const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber)
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        await client.completeMultipartUpload(key, uploadId, sorted.map((p) => ({ number: p.partNumber, etag: p.etag })))
+        return
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        await client.send(new (cmd('CompleteMultipartUploadCommand'))({
+          Bucket: this.bucketOf(), Key: key, UploadId: uploadId,
+          MultipartUpload: { Parts: sorted.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+        }))
+        return
+      }
+      throw notWritable(this.profile.provider, '分片完成')
+    },
+
+    /** 幂等：abort 不存在的 uploadId 由服务端报错，调用方自行吞错 */
+    abort: async (remotePath: string, uploadId: string): Promise<void> => {
+      const key = cloudKey(remotePath, 'file')
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        await client.abortMultipartUpload(key, uploadId)
+        return
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        await client.send(new (cmd('AbortMultipartUploadCommand'))({ Bucket: this.bucketOf(), Key: key, UploadId: uploadId }))
+        return
+      }
+      throw notWritable(this.profile.provider, '分片中止')
+    },
+
+    /** 列全 bucket 的 in-progress 分片上传（翻页拉满 1000/页 × 100 页） */
+    listUploads: async (): Promise<{ uploadId: string; key: string; initiatedAt?: number }[]> => {
+      const out: { uploadId: string; key: string; initiatedAt?: number }[] = []
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        let keyMarker = ''
+        let idMarker = ''
+        for (let page = 0; page < 100; page++) {
+          const r = await client.listUploads({
+            'max-uploads': 1000,
+            ...(keyMarker ? { 'key-marker': keyMarker } : {}),
+            ...(idMarker ? { 'upload-id-marker': idMarker } : {}),
+          })
+          for (const u of r.uploads ?? []) {
+            out.push({
+              uploadId: String(u.uploadId ?? ''),
+              key: String(u.name ?? ''),
+              initiatedAt: u.initiated instanceof Date ? u.initiated.getTime()
+                : u.initiated && Number.isFinite(Date.parse(String(u.initiated))) ? Date.parse(String(u.initiated)) : undefined,
+            })
+          }
+          if (!r.isTruncated || r.isTruncated === 'false') break
+          keyMarker = String(r.nextKeyMarker ?? '')
+          idMarker = String(r.nextUploadIdMarker ?? '')
+          if (!keyMarker && !idMarker) break
+        }
+        return out
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        let keyMarker: string | undefined
+        let idMarker: string | undefined
+        for (let page = 0; page < 100; page++) {
+          const r = await client.send(new (cmd('ListMultipartUploadsCommand'))({
+            Bucket: this.bucketOf(), MaxUploads: 1000,
+            ...(keyMarker ? { KeyMarker: keyMarker } : {}),
+            ...(idMarker ? { UploadIdMarker: idMarker } : {}),
+          })) as { Uploads?: { Key?: string; UploadId?: string; Initiated?: string | Date }[]; IsTruncated?: boolean; NextKeyMarker?: string; NextUploadIdMarker?: string }
+          for (const u of r.Uploads ?? []) {
+            out.push({
+              uploadId: String(u.UploadId ?? ''),
+              key: String(u.Key ?? ''),
+              initiatedAt: u.Initiated instanceof Date ? u.Initiated.getTime()
+                : u.Initiated && Number.isFinite(Date.parse(String(u.Initiated))) ? Date.parse(String(u.Initiated)) : undefined,
+            })
+          }
+          if (!r.IsTruncated || !r.NextKeyMarker) break
+          keyMarker = r.NextKeyMarker
+          idMarker = r.NextUploadIdMarker
+        }
+        return out
+      }
+      throw notWritable(this.profile.provider, '分片清单')
+    },
+  }
+
+  /** Range 下载：OSS/S3 均支持 bytes Range 头（分片下载 + 断点续传，plans/10 §6） */
+  readonly range = {
+    capabilities: async (): Promise<{ unit: 'bytes'; supportsRange: boolean }> =>
+      ({ unit: 'bytes', supportsRange: this.profile.provider === 'aliyun-oss' || this.profile.provider === 'aws-s3' }),
+
+    /** 指纹 = size:etag（同一对象上传覆盖后 etag 必变，续传自动废弃旧区间） */
+    statForResume: async (remotePath: string): Promise<{ size: number; fingerprint: string }> => {
+      const st = await this.stat(remotePath)
+      if (!st.exists || st.isDir) throw new Error('远端文件不存在或为目录')
+      return { size: st.size ?? 0, fingerprint: `${st.size ?? 0}:${st.etag ?? ''}` }
+    },
+
+    readRange: async (remotePath: string, start: number, end: number): Promise<Buffer> => {
+      if (end <= start) return Buffer.alloc(0)
+      const key = cloudKey(remotePath, 'file')
+      if (this.profile.provider === 'aliyun-oss') {
+        const client = await this.oss()
+        const r = await client.get(key, { headers: { Range: `bytes=${start}-${end - 1}` } })
+        return Buffer.from(r.content)
+      }
+      if (this.profile.provider === 'aws-s3') {
+        const { client, cmd } = await this.s3()
+        const r = await client.send(new (cmd('GetObjectCommand'))({
+          Bucket: this.bucketOf(), Key: key, Range: `bytes=${start}-${end - 1}`,
+        })) as { Body: Readable }
+        const chunks: Buffer[] = []
+        for await (const c of r.Body) chunks.push(c as Buffer)
+        return Buffer.concat(chunks)
+      }
+      throw notWritable(this.profile.provider, 'Range 下载')
+    },
   }
 
   private assertWritable(op: string): void {

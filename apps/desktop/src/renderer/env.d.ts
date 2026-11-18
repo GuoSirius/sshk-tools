@@ -155,9 +155,13 @@ interface Window {
       write(req: import('@sshk/shared').FsWriteRequest): Promise<boolean>
       transferStart(inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }>
       transferList(): Promise<import('@sshk/shared').FsTransferTask[]>
-      transferCancel(ids: string[]): Promise<boolean>
-      transferRetry(ids: string[], overwrite?: boolean): Promise<boolean>
-      transferClear(): Promise<{ removed: number }>
+      /** plans/10 单一控制通道（start/pause/resume/stop/retry/remove/startAll/pauseAll/stopAll/retryFailed/clearFinished） */
+      transferControl(req: import('@sshk/shared').FsTransferControlRequest): Promise<boolean>
+      /** 分片设置读取（含遗留 uploadId 数） */
+      transferMultipart(): Promise<import('@sshk/shared').FsMultipartStatus>
+      setTransferMultipart(req: Partial<import('@sshk/shared').FsMultipartSettings>): Promise<import('@sshk/shared').FsMultipartSettings>
+      /** 遗留分片手动清理（调用方先做二次确认） */
+      cleanOrphanUploads(): Promise<number>
       onTransferEvent(callback: (task: import('@sshk/shared').FsTransferTask) => void): void
       /** 递归搜索流式批次推送；返回取消监听函数 */
       onSearchEvent(callback: (e: import('@sshk/shared').FsSearchEvent) => void): () => void

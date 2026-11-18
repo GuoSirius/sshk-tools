@@ -123,7 +123,24 @@ export interface FsMvRequest {
 /** 传输队列任务方向（cross = 跨通道复制：源通道下载到临时文件后写入目标通道） */
 export type FsTransferKind = 'upload' | 'download' | 'copy' | 'delete' | 'cross'
 
-export type FsTransferStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | 'conflict'
+/**
+ * 传输队列任务状态（plans/10 §4）。
+ * paused = 协作式暂停（检查点停下，保留进度/检查点，可续传）
+ */
+export type FsTransferStatus = 'queued' | 'running' | 'paused' | 'success' | 'failed' | 'canceled' | 'conflict'
+
+/** 传输队列控制动作（plans/10：单一 fs:transfer:control 通道） */
+export type FsTransferControlAction =
+  | 'start' | 'pause' | 'resume' | 'stop' | 'retry' | 'remove'
+  | 'startAll' | 'pauseAll' | 'stopAll' | 'retryFailed' | 'clearFinished'
+
+export interface FsTransferControlRequest {
+  action: FsTransferControlAction
+  /** 单条控制的任务 id 集合；批量动作忽略 */
+  ids?: string[]
+  /** retry 冲突任务时放行覆盖 */
+  overwrite?: boolean
+}
 
 /** 传输队列任务（fs:transfer:list / fs:transferEvent 推送的都是全量形态） */
 export interface FsTransferTask {
@@ -151,6 +168,15 @@ export interface FsTransferTask {
   speed?: number
   startedAt?: number
   finishedAt?: number
+  /** 可续传（有上传分片检查点 / 下载区间元数据，重试/继续可从进度续跑） */
+  resumable?: boolean
+  /** 分片进度（上传 multipart / 下载 Range 共用展示） */
+  partsDone?: number
+  partsTotal?: number
+  /** 从持久化队列恢复的任务（恢复后一律 paused，不自动续跑） */
+  persisted?: boolean
+  /** 暂停中（已请求暂停、等待协作检查点落定，UI 文案「暂停中…」） */
+  pausing?: boolean
 }
 
 /** 传输任务入参：upload 需 localPath；download 生成 destPath；copy 需 destRemotePath；delete 需 remoteKind */
@@ -309,6 +335,91 @@ export interface FsFavorite {
   kind: FsEntryKind
   name: string
 }
+
+/** ── plans/10 传输队列可控化与分片 ── */
+
+/** 分片上传设置（「更多 ▾ → 传输设置…」可配；阈值/片大小/并发实时生效、跨重启记忆） */
+export interface FsMultipartSettings {
+  /** 分片开关（关 = 全部单流直传） */
+  enabled: boolean
+  /** 超过该大小走分片（MB，1~1024，默认 50） */
+  thresholdMb: number
+  /** 单片大小（MB，5~100，默认 5） */
+  partSizeMb: number
+  /** 单任务分片并发（1~8，默认 3） */
+  partsConcurrency: number
+}
+
+/** 分片设置读取结果：附带服务端遗留 uploadId 数（崩溃遗留，面板/设置展示 + 手动清理） */
+export interface FsMultipartStatus extends FsMultipartSettings {
+  /** 服务端遗留分片上传数（当前可写通道合计） */
+  orphans: number
+}
+
+/** 分片计划：10000 片上限自动上调单片大小（plans/10 §5） */
+export interface FsMultipartPlan {
+  /** 单片字节数 */
+  partSize: number
+  /** 总片数 */
+  partsTotal: number
+  /** 是否因片数上限自动上调过单片大小 */
+  partSizeAdjusted: boolean
+  /** 实际生效的单片大小（MB） */
+  partSizeMb: number
+}
+
+/** 上传分片计划（纯函数，main 与单测共用） */
+export function fsMultipartPlan(sizeBytes: number, partSizeMbRaw: number): FsMultipartPlan {
+  const MB = 1024 * 1024
+  const MAX_PARTS = 10000
+  let mb = Math.max(1, Math.floor(Number(partSizeMbRaw) || 1))
+  let partSize = mb * MB
+  let partsTotal = Math.max(1, Math.ceil(sizeBytes / partSize))
+  let adjusted = false
+  if (partsTotal > MAX_PARTS) {
+    mb = Math.ceil(sizeBytes / (MAX_PARTS * MB))
+    partSize = mb * MB
+    partsTotal = Math.max(1, Math.ceil(sizeBytes / partSize))
+    adjusted = true
+  }
+  return { partSize, partsTotal, partSizeAdjusted: adjusted, partSizeMb: mb }
+}
+
+/** 下载区间元数据（`<dest>.sshkpart.json`；end 为闭区间尾字节偏移） */
+export interface FsRangeMeta {
+  size: number
+  fingerprint: string
+  partSize: number
+  ranges: { start: number; end: number }[]
+}
+
+/**
+ * 下载缺失区间（纯函数）：已完成区间折叠成片序号比对，返回缺片列表。
+ * 返回的 end 为开区间（ exclusive，供 readRange(remotePath, start, end) 直接用）。
+ */
+export function fsMissingChunks(size: number, partSize: number, done: { start: number; end: number }[]): { start: number; end: number }[] {
+  if (size <= 0 || partSize <= 0) return []
+  const total = Math.ceil(size / partSize)
+  const doneIdx = new Set<number>()
+  for (const r of done ?? []) {
+    const idx = Math.floor(r.start / partSize)
+    if (idx < 0 || idx >= total) continue
+    if (r.end >= Math.min(size, (idx + 1) * partSize) - 1) doneIdx.add(idx)
+  }
+  const out: { start: number; end: number }[] = []
+  for (let i = 0; i < total; i++) {
+    if (!doneIdx.has(i)) out.push({ start: i * partSize, end: Math.min(size, (i + 1) * partSize) })
+  }
+  return out
+}
+
+/** 持久化判定（plans/10 §7）：只持久化未完结的 upload/download；copy/cross/delete 预留不写盘 */
+export function fsTransferCanPersist(kind: FsTransferKind, status: FsTransferStatus): boolean {
+  const kindOk = kind === 'upload' || kind === 'download'
+  const statusOk = status === 'queued' || status === 'running' || status === 'paused' || status === 'conflict' || status === 'failed'
+  return kindOk && statusOk
+}
+
 
 
 export const FS_TEXT_EXTENSIONS = [

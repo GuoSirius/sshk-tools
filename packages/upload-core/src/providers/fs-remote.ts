@@ -327,6 +327,32 @@ export class RemoteFsDriver implements FsDriver {
     }))
   }
 
+  /** Range 下载能力（plans/10 §6）：仅 SFTP（协议原生 offset 读）；FTP 无 Range 语义 → 不实现 */
+  readonly range = {
+    capabilities: async (): Promise<{ unit: 'bytes'; supportsRange: boolean }> =>
+      ({ unit: 'bytes', supportsRange: !this.isFtp }),
+    statForResume: async (path: string): Promise<{ size: number; fingerprint: string }> => {
+      const target = this.abs(path)
+      return await withSftp(this.profile, (sftp) => new Promise((res, rej) => {
+        sftp.stat(target, (e, s) => {
+          if (e || !s) { rej(e ?? new Error('远端文件不存在')); return }
+          res({ size: Number(s.size ?? 0) || 0, fingerprint: `${s.size ?? 0}:${s.mtime ?? 0}` })
+        })
+      }))
+    },
+    readRange: async (path: string, start: number, end: number): Promise<Buffer> => {
+      if (end <= start) return Buffer.alloc(0)
+      const target = this.abs(path)
+      return await withSftp(this.profile, (sftp) => new Promise((res, rej) => {
+        const chunks: Buffer[] = []
+        const rs = sftp.createReadStream(target, { start, end: end - 1, autoClose: true })
+        rs.on('data', (c: Buffer) => chunks.push(c))
+        rs.on('error', (e: Error) => rej(e))
+        rs.on('end', () => res(Buffer.concat(chunks)))
+      }))
+    },
+  }
+
   async readBuffer(path: string): Promise<{ data: Buffer; size: number; modified?: number; etag?: string }> {
     const target = this.abs(path)
     if (this.isFtp) {

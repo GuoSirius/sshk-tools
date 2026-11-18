@@ -83,9 +83,14 @@ export const IPC_CHANNELS = {
   fsWrite: 'fs:write',
   fsTransferStart: 'fs:transfer:start',
   fsTransferList: 'fs:transfer:list',
-  fsTransferCancel: 'fs:transfer:cancel',
-  fsTransferRetry: 'fs:transfer:retry',
-  fsTransferClear: 'fs:transfer:clear',
+  /** plans/10：单通道控制（start/pause/resume/stop/retry/remove/startAll/pauseAll/stopAll/retryFailed/clearFinished）。
+   *  取代旧 fsTransferCancel / fsTransferRetry / fsTransferClear 三通道（不做兼容，直接删除） */
+  fsTransferControl: 'fs:transfer:control',
+  /** 分片设置读取（含遗留 uploadId 数） */
+  fsTransferMultipart: 'fs:transfer:multipart',
+  fsTransferMultipartSet: 'fs:transfer:multipartSet',
+  /** 遗留分片手动清理（二次确认后调用） */
+  fsTransferOrphansClean: 'fs:transfer:orphansClean',
   /** 主进程 → 渲染层：传输任务全量形态推送（进度/状态变化节流后下发） */
   fsTransferEvent: 'fs:transfer:event',
   /** 打开本地文件/目录选择（文件夹上传入口），返回所选绝对路径 */

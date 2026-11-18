@@ -57,11 +57,12 @@ import {
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
 import { ShareDialog } from '@sshk/ui-kit'
+import TransferPanel from '../components/TransferPanel.vue'
 
 /**
  * X6 文件系统页（plans/08 §3）：进入上传管理工具默认展示。
  * 布局三段：通道切换条 / 路径区（面包屑 + 可编辑路径）+ 工具栏 / 文件列表（列表·网格双视图）
- * + 状态条 + 右下角传输队列抽屉。
+ * + 状态条 + 右下角传输队列悬浮面板（plans/10，可拖拽/可收起）。
  * 通道 = 上传管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
  */
 
@@ -276,11 +277,15 @@ const canZip = computed(() => hasWritable.value && activeChannel.value?.type ===
 const canUnzip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
 const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
 
-// ── 传输队列 ──
-const drawerOpen = ref(false)
+// ── 传输队列（plans/10：悬浮面板替代旧抽屉，无遮罩、可拖拽、收起态仍显摘要）──
+const transferPanelRef = ref<InstanceType<typeof TransferPanel> | null>(null)
+const panelExpanded = ref(false)
 const tasks = ref(new Map<string, FsTransferTask>())
 const taskList = computed(() => [...tasks.value.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0)))
 const runningCount = computed(() => taskList.value.filter((t) => t.status === 'running' || t.status === 'queued' || t.status === 'conflict').length)
+function openTransferPanel(): void {
+  transferPanelRef.value?.show()
+}
 
 const themeDark = ref(true)
 void window.api.config.get('app.themeMode').then((v) => { themeDark.value = String(v ?? 'dark') !== 'light' })
@@ -309,10 +314,6 @@ function fmtTime(ts: number | undefined): string {
   const d = new Date(ts)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-function fmtSpeed(v: number | undefined): string {
-  if (!v || v <= 0) return ''
-  return `${fsFormatSize(v)}/s`
 }
 
 // ── 数据加载 ──
@@ -694,7 +695,7 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
   }))
   const { taskIds } = await window.api.fs.transferStart(inputs)
   if (taskIds.length) {
-    drawerOpen.value = true
+    openTransferPanel()
     ElMessage.success(`已加入传输队列：${taskIds.length} 个文件`)
     // 上传完成后列表要能看到新文件：延迟刷新一次（完成后事件里也会刷）
     setTimeout(() => { if (runningCount.value === 0) void list(false) }, 2500)
@@ -718,6 +719,11 @@ function dismissAdminTip(): void {
 }
 const dragOver = ref(false)
 let dragDepth = 0
+/** 拖拽上传隔离（plans/10 §3）：事件目标位于传输面板内时忽略，避免拖面板误触发上传遮罩/入队 */
+function inTransferPanel(e: Event): boolean {
+  const el = e.target as HTMLElement | null
+  return Boolean(el?.closest?.('.fs-tpanel'))
+}
 function isFileDrag(e: DragEvent): boolean {
   const types = e.dataTransfer?.types
   return Boolean(types && Array.from(types).includes('Files'))
@@ -725,6 +731,7 @@ function isFileDrag(e: DragEvent): boolean {
 function onWindowDragEnter(e: DragEvent): void {
   // 任何拖入都 preventDefault（保证 drop 会触发）；只有文件拖拽才显示上传遮罩
   e.preventDefault()
+  if (inTransferPanel(e)) return
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   if (!isFileDrag(e)) return
   dragDepth++
@@ -732,16 +739,19 @@ function onWindowDragEnter(e: DragEvent): void {
 }
 function onWindowDragOver(e: DragEvent): void {
   e.preventDefault()
+  if (inTransferPanel(e)) return
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   if (isFileDrag(e)) dragOver.value = true
 }
 function onWindowDragLeave(e: DragEvent): void {
+  if (inTransferPanel(e)) return
   if (!isFileDrag(e)) return
   dragDepth = Math.max(0, dragDepth - 1)
   if (dragDepth === 0) dragOver.value = false
 }
 async function onWindowDrop(e: DragEvent): Promise<void> {
   e.preventDefault()
+  if (inTransferPanel(e)) return
   dragDepth = 0
   dragOver.value = false
   const dt = e.dataTransfer
@@ -882,7 +892,7 @@ async function downloadEntries(list0: FsEntry[]): Promise<void> {
     size: entry.size ?? 0,
   }))
   const { taskIds } = await window.api.fs.transferStart(inputs)
-  if (taskIds.length) drawerOpen.value = true
+  if (taskIds.length) openTransferPanel()
   ElMessage.success(`已入队下载 ${files.length} 个文件${truncated ? `（已达 ${cap} 个上限，结果可能不全）` : ''}`)
 }
 
@@ -955,7 +965,7 @@ async function doDelete(list0: FsEntry[]): Promise<void> {
     })
     selection.value = new Set()
     if (taskIds.length) {
-      drawerOpen.value = true
+      openTransferPanel()
       ElMessage.info(`递归删除已入队：${taskIds.length} 个目录`)
     } else {
       ElMessage.success('已删除')
@@ -1097,14 +1107,14 @@ async function submitMove(): Promise<void> {
         srcProfileId: profileId.value, destProfileId: moveDestProfile.value,
         sources, destDir: dest, move: moveMode.value === 'move',
       })
-      drawerOpen.value = true
+      openTransferPanel()
       ElMessage.info(`跨通道${moveMode.value === 'move' ? '移动' : '复制'}已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
     } else if (moveMode.value === 'move') {
       await window.api.fs.mv({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
       ElMessage.success('已移动')
     } else {
       const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
-      if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
+      if (taskIds.length) { openTransferPanel(); ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
       else ElMessage.success(renameTo ? `已复制为 ${renameTo}` : '已复制')
     }
     selection.value = new Set()
@@ -1142,7 +1152,7 @@ async function pasteInto(destDir: string): Promise<void> {
     try {
       const r = await window.api.fs.crossCopy({ srcProfileId: clip.profileId, destProfileId: profileId.value, sources: clip.items, destDir })
       if (clip.op === 'cut') ElMessage.info('跨通道剪切按复制执行（源文件保留）')
-      drawerOpen.value = true
+      openTransferPanel()
       ElMessage.info(`跨通道复制已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
       void list(false)
       await askClipboardAfterPaste()
@@ -1158,7 +1168,7 @@ async function pasteInto(destDir: string): Promise<void> {
       ElMessage.success('已粘贴（移动）')
     } else {
       const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir })
-      if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
+      if (taskIds.length) { openTransferPanel(); ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
       else ElMessage.success('已粘贴（复制）')
       await askClipboardAfterPaste()
     }
@@ -1181,6 +1191,7 @@ function moreCommand(cmd: unknown): void {
     case 'cols': colsOpen.value = true; return
     case 'ziplimits': void openZipLimits(); return
     case 'transfercaps': void openTransferCaps(); return
+    case 'transferconfig': void openTransferConfig(); return
     case 'note': openNote(selectedEntries.value); return
     case 'favorite': void addFavorites(selectedEntries.value); return
     case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
@@ -1516,58 +1527,49 @@ async function saveEditor(): Promise<void> {
   }
 }
 
-/** 清理已完结传输任务（抽屉工具栏） */
-async function clearFinishedTasks(): Promise<void> {
-  const { removed } = await window.api.fs.transferClear()
-  ElMessage.success(removed ? `已清理 ${removed} 个完结任务` : '没有可清理的任务')
+// ── plans/10 传输设置（分片开关/阈值/片大小/并发实时生效；遗留分片清理，二次确认）──
+const transferCfgOpen = ref(false)
+const transferCfgForm = ref({ enabled: true, thresholdMb: 50, partSizeMb: 5, partsConcurrency: 3 })
+const transferCfgSaving = ref(false)
+const transferCfgOrphans = ref(0)
+async function openTransferConfig(): Promise<void> {
+  try {
+    const s = await window.api.fs.transferMultipart()
+    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency }
+    transferCfgOrphans.value = s.orphans
+  } catch { transferCfgOrphans.value = 0 }
+  transferCfgOpen.value = true
+}
+async function submitTransferConfig(): Promise<void> {
+  transferCfgSaving.value = true
+  try {
+    const s = await window.api.fs.setTransferMultipart({
+      enabled: transferCfgForm.value.enabled,
+      thresholdMb: transferCfgForm.value.thresholdMb,
+      partSizeMb: transferCfgForm.value.partSizeMb,
+      partsConcurrency: transferCfgForm.value.partsConcurrency,
+    })
+    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency }
+    ElMessage.success('传输设置已保存（实时生效）')
+    transferCfgOpen.value = false
+  } catch (err) { ElMessage.error(friendlyError(err)) }
+  finally { transferCfgSaving.value = false }
+}
+async function cleanOrphansInCfg(): Promise<void> {
+  if (!transferCfgOrphans.value) return
+  const ok = await ElMessageBox.confirm(
+    `清理服务端遗留的 ${transferCfgOrphans.value} 个分片上传？正在别处进行的同名上传会被中止。`,
+    '遗留分片清理',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
+  ).then(() => true, () => false)
+  if (!ok) return
+  try {
+    const n = await window.api.fs.cleanOrphanUploads()
+    ElMessage.success(n ? `已清理 ${n} 个遗留分片` : '没有可清理的遗留分片')
+    transferCfgOrphans.value = (await window.api.fs.transferMultipart()).orphans
+  } catch (err) { ElMessage.error(friendlyError(err)) }
 }
 
-// ── 传输队列抽屉 ──
-function statusText(t: FsTransferTask): string {
-  switch (t.status) {
-    case 'queued': return '排队中'
-    case 'running': return t.kind === 'delete' ? `删除中 ${t.transferred}/${t.size}` : '传输中'
-    case 'success': return '完成'
-    case 'failed': return '失败'
-    case 'canceled': return '已取消'
-    case 'conflict': return '待确认'
-    default: return t.status
-  }
-}
-function kindLabel(t: FsTransferTask): string {
-  switch (t.kind) {
-    case 'upload': return '上传'
-    case 'download': return '下载'
-    case 'copy': return '复制'
-    case 'cross': return '跨通道'
-    default: return '删除'
-  }
-}
-function kindTagType(t: FsTransferTask): 'success' | 'primary' | 'warning' | 'danger' {
-  switch (t.kind) {
-    case 'upload': return 'success'
-    case 'download': return 'primary'
-    case 'copy': return 'warning'
-    case 'cross': return 'warning'
-    default: return 'danger'
-  }
-}
-function percentOf(t: FsTransferTask): number {
-  if (t.status === 'success') return 100
-  if (t.size > 0) return Math.min(100, Math.round((t.transferred / t.size) * 100))
-  return t.status === 'running' ? 5 : 0
-}
-async function cancelTask(id: string): Promise<void> {
-  await window.api.fs.transferCancel([id])
-}
-async function retryTask(t: FsTransferTask, overwrite = false): Promise<void> {
-  if (t.status === 'conflict' && !overwrite) {
-    await window.api.fs.transferRetry([t.id], true)
-    ElMessage.info('已按覆盖执行')
-    return
-  }
-  await window.api.fs.transferRetry([t.id], overwrite)
-}
 async function openDownloadDir(): Promise<void> {
   if (!profileId.value) return
   const dir = await window.api.fs.downloadDir(profileId.value)
@@ -1747,6 +1749,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
             <el-dropdown-item command="ziplimits" :icon="Setting">压缩上限设置…</el-dropdown-item>
             <el-dropdown-item command="transfercaps" :icon="Setting">上限设置…</el-dropdown-item>
+            <el-dropdown-item command="transferconfig" :icon="Setting">传输设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
@@ -1903,10 +1906,9 @@ function onKeydown(event: KeyboardEvent): void {
       <span>共 {{ filteredEntries.length }} 项（{{ filteredEntries.filter((e) => e.kind === 'dir').length }} 目录 / {{ filteredEntries.filter((e) => e.kind === 'file').length }} 文件）</span>
       <span v-if="selection.size"> · 已选 {{ selection.size }} 项</span>
       <span class="fs-spacer" />
-      <el-button size="small" text type="primary" :icon="MenuIcon" @click="drawerOpen = true">
+      <el-button size="small" text type="primary" :icon="MenuIcon" @click="openTransferPanel">
         传输队列{{ runningCount ? `（${runningCount} 进行中）` : '' }}
-      </el-button>
-    </div>
+      </el-button>    </div>
 
     <!-- 拖拽遮罩提示 -->
     <div v-if="dragOver" class="fs-drop-mask">
@@ -2049,43 +2051,45 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- 传输队列抽屉 -->
-    <el-drawer v-model="drawerOpen" title="传输队列" direction="btt" size="45%" close-on-click-modal="false" close-on-press-escape="false">
-      <!-- 全局 theme.css 把 .el-drawer__body 设为 overflow:hidden（防设置抽屉双滚动条），
-           队列滚动由本容器自管：height:100% + 内部列表 flex:1/min-height:0 -->
-      <div class="fs-queue-wrap">
-        <div class="fs-drawer-toolbar">
-          <el-button size="small" text type="warning" @click="clearFinishedTasks">清理已完结</el-button>
-          <!-- 并发/重试是静态配置说明（用户验收项5）：空队列时显示会像误产生的统计数据，仅在有任务时展示 -->
-          <span v-if="taskList.length" class="hint">同通道并发：远程 3 / 云 5；失败自动重试 1 次</span>
+    <!-- plans/10：传输队列悬浮面板（替代旧抽屉；无遮罩、可拖拽、收起态仍显摘要） -->
+    <TransferPanel ref="transferPanelRef" v-model:expanded="panelExpanded" :tasks="taskList" />
+
+    <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
+    <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" close-on-click-modal="false" close-on-press-escape="false">
+      <div class="fs-ziplimits">
+        <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">大文件分片传输<el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip></span>
+          <span class="fs-spacer" />
+          <el-switch v-model="transferCfgForm.enabled" data-autofocus />
         </div>
-        <div class="fs-task-list">
-          <div v-if="!taskList.length" class="fs-empty"><p>暂无传输任务</p></div>
-          <div v-for="t in taskList" :key="t.id" class="fs-task" :class="`is-${t.status}`">
-            <div class="fs-task-head">
-              <el-tag size="small" :type="kindTagType(t)">{{ kindLabel(t) }}</el-tag>
-              <span class="fs-task-name" :title="t.remotePath ?? t.localPath">{{ t.name }}</span>
-              <span class="fs-task-meta" :title="t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName">
-                {{ t.kind === 'cross' ? `${t.profileName} → ${t.destProfileName}` : t.profileName }}
-              </span>
-              <span class="fs-spacer" />
-              <span v-if="t.status === 'running'" class="fs-task-speed">{{ fmtSpeed(t.speed) }}</span>
-              <span class="fs-task-status">{{ statusText(t) }}</span>
-              <el-button v-if="t.status === 'running' || t.status === 'queued'" size="small" text type="danger" @click="cancelTask(t.id)">取消</el-button>
-              <el-button v-if="t.status === 'conflict'" size="small" text type="warning" @click="retryTask(t, true)">覆盖</el-button>
-              <el-button v-if="t.status === 'failed' || t.status === 'canceled'" size="small" text type="primary" @click="retryTask(t)">重试</el-button>
-            </div>
-            <el-progress
-              v-if="t.status !== 'failed' && t.status !== 'canceled'"
-              :percentage="percentOf(t)"
-              :status="t.status === 'success' ? 'success' : t.status === 'conflict' ? 'warning' : undefined"
-              :stroke-width="5"
-            />
-            <div v-if="t.error" class="fs-task-error">{{ friendlyError(t.error) }}</div>
-          </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label"><i class="fs-req">*</i>分片阈值</span>
+          <el-input-number v-model="transferCfgForm.thresholdMb" size="small" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">MB（超过该大小走分片）</span>
         </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label"><i class="fs-req">*</i>单片大小</span>
+          <el-input-number v-model="transferCfgForm.partSizeMb" size="small" :min="5" :max="100" :step="5" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">MB（5~100）</span>
+        </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label"><i class="fs-req">*</i>分片并发</span>
+          <el-input-number v-model="transferCfgForm.partsConcurrency" size="small" :min="1" :max="8" :step="1" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">个/任务（1~8）</span>
+        </div>
+        <div v-if="transferCfgOrphans > 0" class="fs-convert-row">
+          <span class="fs-convert-label">遗留分片</span>
+          <span class="fs-ziplimits-unit">服务端残留 {{ transferCfgOrphans }} 个</span>
+          <el-button size="small" type="danger" plain @click="cleanOrphansInCfg">清理…</el-button>
+        </div>
+        <div class="hint" style="margin-top: 8px">暂停为协作式：当前分片/块写完即停（最多一个分片延迟），服务端不留碎片、可无损续传；源文件变更后续传会自动废弃旧检查点重传。</div>
       </div>
-    </el-drawer>
+      <template #footer>
+        <el-button @click="transferCfgOpen = false">取消</el-button>
+        <el-button type="primary" :loading="transferCfgSaving" @click="submitTransferConfig">保存</el-button>
+      </template>
+    </el-dialog>
 
     <!-- ShareHub 安全分享（plans/09 S15）：本地通道文件的 TTL/可撤销分享 -->
     <ShareDialog
@@ -2396,20 +2400,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-conflict-hint { color: var(--el-color-warning); font-size: 12px; margin-right: 12px; }
 .fs-move-body { display: flex; flex-direction: column; }
 
-/* 传输队列抽屉：全局 theme.css 将 .el-drawer__body overflow:hidden，滚动由本容器自管 */
-.fs-queue-wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-.fs-drawer-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex: none; }
-.fs-task-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-.fs-task { border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 6px 10px; }
-.fs-task-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.fs-task-name { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
-.fs-task-meta { font-size: 12px; opacity: .6; }
-.fs-task-speed { font-size: 12px; color: var(--el-color-primary); }
-.fs-task-status { font-size: 12px; }
-.fs-task.is-failed .fs-task-status { color: var(--el-color-danger); }
-.fs-task.is-conflict .fs-task-status { color: var(--el-color-warning); }
-.fs-task.is-success .fs-task-status { color: var(--el-color-success); }
-.fs-task-error { font-size: 12px; color: var(--el-color-danger); margin-top: 2px; word-break: break-all; }
+/* plans/10：传输队列抽屉已删，悬浮面板样式在 TransferPanel.vue 内自管 */
+/* 传输设置弹框：必填红星 + 行内说明（label auto+nowrap，铁律） */
+.fs-req { color: var(--el-color-danger); font-style: normal; margin-right: 2px; }
+.fs-cfg-help { font-size: 14px; margin-left: 4px; color: var(--el-text-color-secondary); cursor: help; }
 
 /* ── §十一：编辑权限 / 属性 / 转换 / 列设置 / 收藏夹 ── */
 .fs-perm-grid { display: grid; grid-template-columns: 64px repeat(3, 1fr); justify-items: center; gap: 6px 0; align-items: center; }

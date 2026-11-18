@@ -58,6 +58,34 @@ export interface FsDriver {
    * modeOctal 为 4 位八进制（如 0644）。
    */
   chmod?(path: string, modeOctal: string): Promise<void>
+
+  /**
+   * 分片上传能力（plans/10 §5）：仅 OSS / S3 实现，其余通道 undefined（回落单流）。
+   * 语义对齐 S3 Multipart API：partNumber 从 1 开始；complete 必须按 partNumber 升序。
+   * remotePath 为通道根相对路径（各驱动内部自行换算成 SDK key）。
+   */
+  multipart?: {
+    create(remotePath: string): Promise<{ uploadId: string }>
+    uploadPart(remotePath: string, uploadId: string, partNumber: number, body: Buffer): Promise<{ etag: string }>
+    /** 内部翻页列全已传分片（续传时与服务端比对） */
+    listParts(remotePath: string, uploadId: string): Promise<{ partNumber: number; size: number; etag: string }[]>
+    complete(remotePath: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<void>
+    /** 幂等 abort（停止/废弃检查点时清理服务端碎片） */
+    abort(remotePath: string, uploadId: string): Promise<void>
+    /** 列服务端全部遗留 in-progress 分片上传（崩溃遗留清理入口）；key 为通道根相对路径 */
+    listUploads?(): Promise<{ uploadId: string; key: string; initiatedAt?: number }[]>
+  }
+
+  /**
+   * Range 读取能力（plans/10 §6）：local / SFTP / OSS / S3 实现，FTP 等不支持（回落单流）。
+   * readRange 的 end 为开区间（exclusive），返回该区段完整 Buffer。
+   */
+  range?: {
+    capabilities(): Promise<{ unit: 'bytes'; supportsRange: boolean }>
+    /** 续传指纹：本地/远程 = mtime+size，云 = ETag+size；变更即作废旧区间 */
+    statForResume(remotePath: string): Promise<{ size: number; fingerprint: string }>
+    readRange(remotePath: string, start: number, end: number): Promise<Buffer>
+  }
 }
 
 /** 删除权限探测失败的统一拒绝错误（各驱动复用，文案口径一致） */

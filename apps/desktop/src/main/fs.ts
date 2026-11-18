@@ -1,4 +1,5 @@
-import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import fsPromises from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { BrowserWindow, app, dialog } from 'electron'
 import { zipSync, unzipSync } from 'fflate'
@@ -29,6 +30,8 @@ import {
   type FsFavorite,
   type FsLocalFile,
   type FsListPage,
+  type FsMultipartSettings,
+  type FsMultipartStatus,
   type FsMvRequest,
   type FsProfilesPayload,
   type FsReadResult,
@@ -36,6 +39,7 @@ import {
   type FsSearchRequest,
   type FsSearchResult,
   type FsStatResult,
+  type FsTransferControlRequest,
   type FsTransferInput,
   type FsTransferTask,
   type FsUnzipRequest,
@@ -44,6 +48,9 @@ import {
   type FsWriteRequest,
   type FsZipRequest,
   type FsZipResult,
+  fsMissingChunks,
+  fsMultipartPlan,
+  fsTransferCanPersist,
 } from '@sshk/shared'
 import type { AppServices } from './services'
 import { logger } from './logger'
@@ -89,6 +96,66 @@ const FS_ZIP_FILE_CAP_MIN = 10
 const FS_ZIP_FILE_CAP_MAX = 100_000
 const FS_ZIP_BYTES_CAP_MIN = 1024 * 1024
 const FS_ZIP_BYTES_CAP_MAX = 4 * 1024 * 1024 * 1024
+
+/** ── plans/10 分片设置（阈值/片大小/并发全部可设置、实时生效、跨重启记忆）── */
+const CFG_MP_ENABLED = 'app.fs.multipart.enabled'
+const CFG_MP_THRESHOLD_MB = 'app.fs.multipart.thresholdMb'
+const CFG_MP_PART_SIZE_MB = 'app.fs.multipart.partSizeMb'
+const CFG_MP_CONCURRENCY = 'app.fs.multipart.partsConcurrency'
+const MP_THRESHOLD_DEFAULT = 50
+const MP_PART_SIZE_DEFAULT = 5
+const MP_CONCURRENCY_DEFAULT = 3
+const MP_THRESHOLD_MIN = 1
+const MP_THRESHOLD_MAX = 1024
+const MP_PART_SIZE_MIN = 5
+const MP_PART_SIZE_MAX = 100
+const MP_CONCURRENCY_MIN = 1
+const MP_CONCURRENCY_MAX = 8
+const MB = 1024 * 1024
+/** 内存闸门：同时开片跑分片的任务数上限（总并发 = 通道并发 × 分片并发，由该闸门兜底） */
+const MP_TASK_GATE = 2
+
+/** 从配置读分片设置（缺省/非法回落默认值并钳制到合法区间） */
+function readMultipartSettings(get: (key: string) => unknown): FsMultipartSettings {
+  const clamp = (raw: unknown, min: number, max: number, dflt: number): number => {
+    const n = Math.floor(Number(raw))
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt
+  }
+  return {
+    enabled: get(CFG_MP_ENABLED) !== false, // 键不存在/true 均为开；显式 false 才关
+    thresholdMb: clamp(get(CFG_MP_THRESHOLD_MB), MP_THRESHOLD_MIN, MP_THRESHOLD_MAX, MP_THRESHOLD_DEFAULT),
+    partSizeMb: clamp(get(CFG_MP_PART_SIZE_MB), MP_PART_SIZE_MIN, MP_PART_SIZE_MAX, MP_PART_SIZE_DEFAULT),
+    partsConcurrency: clamp(get(CFG_MP_CONCURRENCY), MP_CONCURRENCY_MIN, MP_CONCURRENCY_MAX, MP_CONCURRENCY_DEFAULT),
+  }
+}
+
+/** 分片上传检查点（`userData/fs-transfer/checkpoints/<taskId>.json`，每片完成即原子写） */
+interface MultipartCheckpoint {
+  type: 'multipart'
+  uploadId: string
+  /** 目标远端路径（通道根相对） */
+  key: string
+  /** 源文件绝对路径 / size / mtime：任一不符即废弃检查点重开（防续传污染目标） */
+  localPath: string
+  size: number
+  mtimeMs: number
+  partSize: number
+  parts: { partNumber: number; size: number; etag: string }[]
+}
+
+/** 本地文件分片读（上传 multipart 用；读 [start,end) 区段） */
+async function readSlice(localPath: string, start: number, end: number): Promise<Buffer> {
+  const len = Math.max(0, end - start)
+  if (len === 0) return Buffer.alloc(0)
+  const fh = await fsPromises.open(localPath, 'r')
+  try {
+    const buf = Buffer.alloc(len)
+    const { bytesRead } = await fh.read(buf, 0, len, start)
+    return bytesRead === len ? buf : buf.subarray(0, bytesRead)
+  } finally {
+    await fh.close()
+  }
+}
 
 /** 本地绝对路径取最后一段：系统弹框/拖拽在 Windows 下是反斜杠路径，不适用 root-rel 的 fsBasename */
 function localBasename(abs: string): string {
@@ -144,24 +211,183 @@ export interface FsRuntimeOptions {
   onEvent: (task: FsTransferTask) => void
 }
 
-/** 传输队列引擎：任务表 + 按通道并发调度 + 进度节流推送 */
+/** 持久化队列条目（plans/10 §7：task 快照去运行时字段；schema 带 version，checkpoint 判别式见各文件） */
+interface PersistedTask {
+  id: string
+  kind: string
+  profileId: string
+  profileName: string
+  name: string
+  remotePath?: string
+  localPath?: string
+  destPath?: string
+  destRemotePath?: string
+  destProfileId?: string
+  destProfileName?: string
+  moveSource?: boolean
+  size: number
+  transferred: number
+  startedAt?: number
+}
+
+/** 队列持久化存储（plans/10 §7）：userData/fs-transfer/queue.json，tmp+rename 原子落盘。
+ *  canPersist 判定在 shared（fsTransferCanPersist）；后期接入 copy/cross/delete 只需扩展判定与 checkpoint 分支 */
+class FsTransferStore {
+  private readonly file: string
+  constructor(dir: string) {
+    mkdirSync(dir, { recursive: true })
+    this.file = join(dir, 'queue.json')
+  }
+
+  load(): PersistedTask[] {
+    try {
+      const raw = JSON.parse(readFileSync(this.file, 'utf8')) as { version?: number; tasks?: PersistedTask[] }
+      if (raw.version !== 1 || !Array.isArray(raw.tasks)) return []
+      return raw.tasks.filter((t) => t && typeof t.id === 'string' && typeof t.kind === 'string')
+    } catch {
+      return [] // 首次运行 / 文件损坏：空队列起步（不做兼容迁移）
+    }
+  }
+
+  save(tasks: PersistedTask[]): void {
+    const tmp = `${this.file}.tmp`
+    try {
+      writeFileSync(tmp, JSON.stringify({ version: 1, tasks }, null, 2), 'utf8')
+      renameSync(tmp, this.file)
+    } catch (err) {
+      logger.warn('upload', `fs 传输队列持久化失败（不影响传输）：${(err as Error).message}`)
+      try { rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+    }
+  }
+}
+
+/** 传输队列引擎：任务表 + 按通道并发调度 + 进度节流推送 + 协作式暂停 + 分片/续传 + 持久化（plans/10） */
 class FsTransferEngine {
   private readonly tasks = new Map<string, FsTransferTask>()
   private readonly queued: string[] = []
   private readonly runningByProfile = new Map<string, number>()
   private readonly canceled = new Set<string>()
   private readonly overwrite = new Set<string>()
+  /** 暂停请求集：running 任务置入，在协作检查点抛 `__fs_paused__`（当前片/块写完即停，最多一个分片延迟） */
+  private readonly pauseRequestedIds = new Set<string>()
+  /** 分片内存闸门：同时在跑分片上传的任务 id（上限 MP_TASK_GATE） */
+  private readonly multipartGate = new Set<string>()
+  private readonly multipartWaiters: (() => void)[] = []
   /** 速度采样（id → 上次字节/时间），不进任务对象，避免污染推送载荷 */
   private readonly samples = new Map<string, { bytes: number; at: number }>()
+  private readonly store: FsTransferStore
+  private readonly checkpointDir: string
   private seq = 0
   private flushTimer: ReturnType<typeof setTimeout> | null = null
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly opts: {
     getDriver: (profileId: string) => RuntimeResolved
     /** 同通道并发上限：远程 3 / 云 5 */
     concurrencyOf: (profileId: string) => number
+    /** 分片设置（每次执行实时读取，改配置即时生效） */
+    multipartSettings: () => FsMultipartSettings
     onEvent: (task: FsTransferTask) => void
-  }) {}
+    /** 队列存储目录（userData/fs-transfer） */
+    storeDir: string
+  }) {
+    this.store = new FsTransferStore(opts.storeDir)
+    this.checkpointDir = join(opts.storeDir, 'checkpoints')
+    mkdirSync(this.checkpointDir, { recursive: true })
+  }
+
+  // ── 持久化 ──
+
+  private persistable(): PersistedTask[] {
+    const out: PersistedTask[] = []
+    for (const t of this.tasks.values()) {
+      if (!fsTransferCanPersist(t.kind, t.status)) continue
+      out.push({
+        id: t.id, kind: t.kind, profileId: t.profileId, profileName: t.profileName, name: t.name,
+        remotePath: t.remotePath, localPath: t.localPath, destPath: t.destPath, destRemotePath: t.destRemotePath,
+        destProfileId: t.destProfileId, destProfileName: t.destProfileName, moveSource: t.moveSource,
+        size: t.size, transferred: t.transferred, startedAt: t.startedAt,
+      })
+    }
+    return out
+  }
+
+  /** 状态变化防抖 300ms 写一次盘 */
+  private schedulePersist(): void {
+    if (this.persistTimer) return
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      this.store.save(this.persistable())
+    }, 300)
+  }
+
+  /** 应用退出前同步落盘（main/index.ts before-quit 调用） */
+  flushPersist(): void {
+    if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null }
+    this.store.save(this.persistable())
+  }
+
+  /** 启动恢复：读回持久化任务，一律置 paused（不自动续跑），resumable 按检查点文件判定 */
+  restore(): number {
+    const rows = this.store.load()
+    for (const r of rows) {
+      if (this.tasks.has(r.id)) continue
+      const task: FsTransferTask = {
+        id: r.id,
+        kind: r.kind as FsTransferTask['kind'],
+        profileId: r.profileId,
+        profileName: r.profileName,
+        name: r.name,
+        remotePath: r.remotePath,
+        localPath: r.localPath,
+        destPath: r.destPath,
+        destRemotePath: r.destRemotePath,
+        destProfileId: r.destProfileId,
+        destProfileName: r.destProfileName,
+        moveSource: r.moveSource,
+        size: r.size,
+        transferred: r.transferred,
+        status: 'paused',
+        startedAt: r.startedAt,
+        persisted: true,
+        resumable: this.hasResumeArtifact(r),
+      }
+      this.tasks.set(task.id, task)
+    }
+    if (rows.length) logger.info('upload', `fs 传输队列恢复：${rows.length} 个任务置为暂停（不自动续跑）`)
+    return rows.length
+  }
+
+  /** 是否存在续传产物（上传检查点 json / 下载区间元数据 json） */
+  private hasResumeArtifact(r: { id: string; kind: string; destPath?: string }): boolean {
+    if (r.kind === 'upload' && existsSync(this.checkpointPath(r.id))) return true
+    if (r.kind === 'download' && r.destPath && existsSync(`${r.destPath}.sshkpart.json`)) return true
+    return false
+  }
+
+  // ── 控制入口（plans/10：单一 control 分发） ──
+
+  control(req: FsTransferControlRequest): boolean {
+    const ids = Array.isArray(req?.ids) ? req.ids.filter((x) => typeof x === 'string' && x) : []
+    switch (req?.action) {
+      case 'start':
+      case 'resume': return this.resume(ids)
+      case 'pause': return this.pause(ids)
+      case 'stop': return this.stop(ids)
+      case 'retry': return this.retry(ids, Boolean(req.overwrite))
+      case 'remove': return this.remove(ids)
+      case 'startAll': return this.startAll()
+      case 'pauseAll': return this.pauseAll()
+      case 'stopAll': return this.stopAll()
+      case 'retryFailed': return this.retryFailed()
+      case 'clearFinished': {
+        this.clearFinished()
+        this.schedulePersist()
+        return true
+      }
+      default: throw new Error(`未知传输控制动作：${String(req?.action)}`)
+    }
+  }
 
   all(): FsTransferTask[] {
     return [...this.tasks.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
@@ -197,43 +423,119 @@ class FsTransferEngine {
       ids.push(id)
       this.queued.push(id)
     }
+    this.schedulePersist()
     this.pump()
     return ids
   }
 
-  cancel(ids: string[]): boolean {
+  /** 暂停（协作式）：queued 直接挂起；running 置暂停请求，在下一个检查点（片/块/目录项边界）停下 */
+  pause(ids: string[]): boolean {
     for (const id of ids) {
       const t = this.tasks.get(id)
       if (!t) continue
-      if (t.status === 'queued' || t.status === 'conflict') this.setStatus(t, 'canceled')
-      else if (t.status === 'running') this.canceled.add(id)
+      if (t.status === 'queued') this.setStatus(t, 'paused')
+      else if (t.status === 'running') {
+        this.pauseRequestedIds.add(id)
+        t.pausing = true
+        this.push(t)
+      }
+    }
+    return true
+  }
+
+  /** 继续/开始：清暂停标记 → 重新入队（可续传任务走检查点续传，单流任务从头写） */
+  resume(ids: string[]): boolean {
+    for (const id of ids) {
+      const t = this.tasks.get(id)
+      if (!t || t.status !== 'paused') continue
+      this.pauseRequestedIds.delete(id)
+      t.pausing = undefined
+      this.samples.delete(id)
+      this.setStatus(t, 'queued', { error: undefined, finishedAt: undefined })
+      this.queued.push(id)
     }
     this.pump()
     return true
   }
 
-  /** 手动重试：失败/取消任务重新入队；overwrite=true 时放行冲突任务（覆盖执行） */
-  retry(ids: string[], overwrite = false): boolean {
+  /** 停止：等同取消 + 续传产物清理（服务端 uploadId / 本地检查点 / 下载临时文件） */
+  stop(ids: string[]): boolean {
     for (const id of ids) {
       const t = this.tasks.get(id)
       if (!t) continue
-      if (t.status === 'conflict' && overwrite) this.overwrite.add(id)
-      if (t.status !== 'running') {
-        if (t.status === 'canceled') this.canceled.delete(id)
-        this.samples.delete(id)
-        this.setStatus(t, 'queued', { transferred: 0, error: undefined, finishedAt: undefined })
-        this.queued.push(id)
-      }
+      this.pauseRequestedIds.delete(id)
+      t.pausing = undefined
+      if (t.status === 'queued' || t.status === 'paused' || t.status === 'conflict') this.setStatus(t, 'canceled')
+      else if (t.status === 'running') this.canceled.add(id)
+      void this.cleanupResumeArtifacts(id)
     }
+    this.schedulePersist()
     this.pump()
     return true
+  }
+
+  /** 手动重试：失败/取消/暂停/冲突任务重新入队；可续传任务保留进度走检查点续传 */
+  retry(ids: string[], overwrite = false): boolean {
+    for (const id of ids) {
+      const t = this.tasks.get(id)
+      if (!t || t.status === 'running') continue
+      if (t.status === 'conflict' && overwrite) this.overwrite.add(id)
+      if (t.status === 'canceled') this.canceled.delete(id)
+      this.pauseRequestedIds.delete(id)
+      this.samples.delete(id)
+      const keep = t.resumable === true
+      this.setStatus(t, 'queued', keep
+        ? { error: undefined, finishedAt: undefined, pausing: undefined }
+        : { transferred: 0, error: undefined, finishedAt: undefined, partsDone: undefined, partsTotal: undefined, pausing: undefined })
+      this.queued.push(id)
+    }
+    this.schedulePersist()
+    this.pump()
+    return true
+  }
+
+  /** 移除任务（仅非 running 状态；running 由 UI 限流不给移除入口） */
+  remove(ids: string[]): boolean {
+    for (const id of ids) {
+      const t = this.tasks.get(id)
+      if (!t || t.status === 'running') continue
+      this.tasks.delete(id)
+      this.samples.delete(id)
+      this.canceled.delete(id)
+      this.overwrite.delete(id)
+      this.pauseRequestedIds.delete(id)
+      const qi = this.queued.indexOf(id)
+      if (qi >= 0) this.queued.splice(qi, 1)
+    }
+    this.schedulePersist()
+    return true
+  }
+
+  startAll(): boolean {
+    return this.resume([...this.tasks.values()].filter((t) => t.status === 'paused').map((t) => t.id))
+  }
+
+  pauseAll(): boolean {
+    return this.pause([...this.tasks.values()].filter((t) => t.status === 'queued' || t.status === 'running').map((t) => t.id))
+  }
+
+  stopAll(): boolean {
+    return this.stop([...this.tasks.values()]
+      .filter((t) => t.status !== 'success' && t.status !== 'failed' && t.status !== 'canceled')
+      .map((t) => t.id))
+  }
+
+  retryFailed(): boolean {
+    return this.retry([...this.tasks.values()]
+      .filter((t) => t.status === 'failed' || t.status === 'canceled')
+      .map((t) => t.id))
   }
 
   /** 清掉已完结任务（成功/失败/取消/冲突），进行中的保留 */
   clearFinished(): number {
     let removed = 0
     for (const [id, t] of [...this.tasks.entries()]) {
-      if (t.status === 'queued' || t.status === 'running') continue
+      if (t.status === 'queued' || t.status === 'running' || t.status === 'paused') continue
       this.tasks.delete(id)
       this.samples.delete(id)
       removed++
@@ -272,12 +574,15 @@ class FsTransferEngine {
   }
 
   private setStatus(t: FsTransferTask, status: FsTransferTask['status'], patch: Partial<FsTransferTask> = {}): void {
-    const finished = status !== 'queued' && status !== 'running'
+    const finished = status === 'success' || status === 'failed' || status === 'canceled' || status === 'conflict'
+    const wasRunning = t.status === 'running'
     Object.assign(t, patch, { status, ...(finished ? { finishedAt: Date.now() } : {}) })
-    if (status !== 'running') {
+    if (wasRunning && status !== 'running') {
+      // 暂停同样释放并发额度（plans/10 §4）
       this.runningByProfile.set(t.profileId, Math.max(0, (this.runningByProfile.get(t.profileId) ?? 1) - 1))
     }
     this.push(t)
+    this.schedulePersist()
     this.pump()
   }
 
@@ -294,7 +599,12 @@ class FsTransferEngine {
     if (this.canceled.delete(t.id)) throw new Error(`__fs_canceled__:${t.id}`)
   }
 
-  /** 进度采样：更新 transferred/speed 并节流推送 */
+  /** 协作检查点（暂停优先于取消：先暂停后取消，plans/10 §4） */
+  private assertNotPaused(t: FsTransferTask): void {
+    if (this.pauseRequestedIds.delete(t.id)) throw new Error(`__fs_paused__:${t.id}`)
+  }
+
+  /** 进度采样：更新 transferred/speed 并节流推送；随后过暂停/取消检查点 */
   private sample(t: FsTransferTask, transferred: number, total?: number): void {
     const now = Date.now()
     const prev = this.samples.get(t.id)
@@ -305,12 +615,13 @@ class FsTransferEngine {
     t.transferred = transferred
     if (total != null && t.kind === 'delete') t.size = total
     this.push(t)
+    this.assertNotPaused(t)
     this.assertNotCanceled(t)
   }
 
   private async execute(t: FsTransferTask): Promise<void> {
     this.setStatus(t, 'running')
-    // 失败自动重试 1 次（取消/冲突除外）
+    // 失败自动重试 1 次（取消/冲突/暂停除外）
     for (let attempt = 0; attempt <= 1; attempt++) {
       try {
         const { driver } = this.opts.getDriver(t.profileId)
@@ -323,15 +634,22 @@ class FsTransferEngine {
         return
       } catch (err) {
         const msg = String((err as Error).message ?? err)
+        if (msg.startsWith('__fs_paused__')) {
+          // 协作式暂停落定：保留 transferred 与检查点，等「继续」
+          this.setStatus(t, 'paused', { pausing: undefined, speed: undefined })
+          return
+        }
         if (msg.startsWith('__fs_canceled__')) {
+          // 停止：清理服务端 uploadId / 本地检查点 / 下载临时文件（失败仅告警，遗留走手动清理）
+          await this.cleanupResumeArtifacts(t.id)
           this.setStatus(t, 'canceled')
           return
         }
-        if (attempt === 0 && !this.canceled.has(t.id)) {
+        if (attempt === 0 && !this.canceled.has(t.id) && !this.pauseRequestedIds.has(t.id)) {
           logger.warn('upload', `fs 传输首次失败，自动重试：${t.name}：${msg}`)
           continue
         }
-        this.setStatus(t, 'failed', { error: msg, speed: undefined })
+        this.setStatus(t, 'failed', { error: msg, speed: undefined, pausing: undefined })
         logger.error('upload', `fs 传输失败：${t.kind} ${t.remotePath ?? ''}：${msg}`)
         return
       }
@@ -351,9 +669,177 @@ class FsTransferEngine {
       return
     }
     this.overwrite.delete(t.id)
+    // 分片：阈值（默认 50MB）以上 + 目标驱动支持 multipart（OSS/S3），其余单流直传
+    const caps = this.opts.multipartSettings()
+    if (caps.enabled && driver.multipart && st.size >= caps.thresholdMb * MB) {
+      await this.runUploadMultipart(t, driver.multipart, st, caps)
+      logger.info('upload', `fs 分片上传完成：${t.remotePath}（${fsFormatSize(st.size)}，${t.partsTotal ?? '?'} 片）`)
+      return
+    }
     const stream = createReadStream(localPath)
     await driver.write(String(t.remotePath ?? ''), stream, (n) => this.sample(t, n))
     logger.info('upload', `fs 上传完成：${t.remotePath}（${fsFormatSize(st.size)}）`)
+  }
+
+  // ── 分片上传（plans/10 §5）──
+
+  private checkpointPath(id: string): string {
+    return join(this.checkpointDir, `${id}.json`)
+  }
+
+  private readUploadCheckpoint(id: string): MultipartCheckpoint | null {
+    try {
+      const raw = JSON.parse(readFileSync(this.checkpointPath(id), 'utf8')) as MultipartCheckpoint
+      if (raw?.type === 'multipart' && raw.uploadId) return raw
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /** 每片完成即原子写（tmp+rename），崩溃/断电不落半截检查点 */
+  private writeCheckpoint(id: string, cp: MultipartCheckpoint): void {
+    const tmp = `${this.checkpointPath(id)}.tmp`
+    try {
+      writeFileSync(tmp, JSON.stringify(cp), 'utf8')
+      renameSync(tmp, this.checkpointPath(id))
+    } catch (err) {
+      logger.warn('upload', `fs 分片检查点写入失败（续传能力受损）：${id}：${(err as Error).message}`)
+      try { rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+    }
+  }
+
+  private deleteCheckpoint(id: string): void {
+    try { rmSync(this.checkpointPath(id), { force: true }) } catch { /* 忽略 */ }
+  }
+
+  /** 分片内存闸门：同时开片任务 ≤ MP_TASK_GATE；被暂停/取消的任务立即让位（上层 sample 会抛） */
+  private async acquireMultipartSlot(t: FsTransferTask): Promise<void> {
+    for (;;) {
+      if (this.canceled.has(t.id) || this.pauseRequestedIds.has(t.id)) return
+      if (this.multipartGate.size < MP_TASK_GATE) {
+        this.multipartGate.add(t.id)
+        return
+      }
+      await new Promise<void>((res) => this.multipartWaiters.push(res))
+    }
+  }
+
+  private releaseMultipartSlot(t: FsTransferTask): void {
+    if (this.multipartGate.delete(t.id)) {
+      const next = this.multipartWaiters.shift()
+      if (next) next()
+    }
+  }
+
+  private async runUploadMultipart(
+    t: FsTransferTask,
+    mp: NonNullable<FsDriver['multipart']>,
+    st: { size: number; mtimeMs: number },
+    caps: FsMultipartSettings,
+  ): Promise<void> {
+    const remotePath = String(t.remotePath ?? '')
+    const localPath = String(t.localPath ?? '')
+    const plan = fsMultipartPlan(st.size, caps.partSizeMb)
+    // 检查点续传：源文件 path/size/mtime 任一不符 → 废弃检查点并 abort 旧 uploadId 重开
+    let cp = this.readUploadCheckpoint(t.id)
+    if (cp && (cp.key !== remotePath || cp.localPath !== localPath || cp.size !== st.size || cp.mtimeMs !== st.mtimeMs)) {
+      try { await mp.abort(remotePath, cp.uploadId) } catch { /* 服务端碎片走「遗留分片」手动清理 */ }
+      cp = null
+      this.deleteCheckpoint(t.id)
+    }
+    if (!cp) {
+      const { uploadId } = await mp.create(remotePath)
+      cp = { type: 'multipart', uploadId, key: remotePath, localPath, size: st.size, mtimeMs: st.mtimeMs, partSize: plan.partSize, parts: [] }
+      this.writeCheckpoint(t.id, cp)
+    }
+    const total = Math.max(1, Math.ceil(st.size / cp.partSize))
+    t.partsTotal = total
+    t.resumable = true
+    // 与服务端比对：只保留服务端确实存在且大小一致的片（重试/重启续传正确性）
+    const serverParts = await mp.listParts(remotePath, cp.uploadId)
+    const serverMap = new Map(serverParts.map((p) => [p.partNumber, p]))
+    cp.parts = cp.parts.filter((p) => {
+      const s = serverMap.get(p.partNumber)
+      return s != null && s.size === p.size
+    })
+    this.writeCheckpoint(t.id, cp)
+    const done = new Set(cp.parts.map((p) => p.partNumber))
+    const doneBytes = Math.min(st.size, cp.parts.reduce((s, p) => s + p.size, 0))
+    t.partsDone = done.size
+    t.transferred = doneBytes
+    this.push(t)
+
+    await this.acquireMultipartSlot(t)
+    let transferred = doneBytes
+    let nextPart = 1
+    const failures: Error[] = []
+    try {
+      const workers = Math.min(Math.max(1, caps.partsConcurrency), total)
+      await Promise.all(Array.from({ length: workers }, () => (async () => {
+        for (;;) {
+          if (failures.length || this.canceled.has(t.id) || this.pauseRequestedIds.has(t.id)) return
+          const pn = nextPart++
+          if (pn > total) return
+          if (done.has(pn)) continue
+          const start = (pn - 1) * cp!.partSize
+          const end = Math.min(st.size, pn * cp!.partSize)
+          const buf = await readSlice(localPath, start, end)
+          // 单片失败重试 1 次；仍失败 → 整个任务 failed（保留检查点，点「重试」续传）
+          let etag = ''
+          try {
+            etag = (await mp.uploadPart(remotePath, cp!.uploadId, pn, buf)).etag
+          } catch (err) {
+            try {
+              etag = (await mp.uploadPart(remotePath, cp!.uploadId, pn, buf)).etag
+            } catch {
+              if (!failures.length) failures.push(err instanceof Error ? err : new Error(String(err)))
+              return
+            }
+          }
+          done.add(pn)
+          cp!.parts.push({ partNumber: pn, size: buf.length, etag })
+          this.writeCheckpoint(t.id, cp!)
+          t.partsDone = done.size
+          transferred += buf.length
+          // 片边界协作检查点：暂停/取消在当前片写完后生效（服务端不留碎片，可无损续传）
+          this.sample(t, transferred)
+        }
+      })()))
+      if (failures.length) throw failures[0]!
+      if (done.size !== total) throw new Error(`分片不完整（${done.size}/${total}），任务中止（检查点已保留，可重试续传）`)
+      await mp.complete(remotePath, cp.uploadId, cp.parts.map((p) => ({ partNumber: p.partNumber, etag: p.etag })))
+      this.deleteCheckpoint(t.id)
+      t.resumable = false
+      t.partsDone = total
+      t.partsTotal = total
+      t.transferred = st.size
+      this.push(t)
+    } finally {
+      this.releaseMultipartSlot(t)
+    }
+  }
+
+  // ── 续传产物清理（停止/取消时；失败保留供续传，遗留走手动清理）──
+
+  private async cleanupResumeArtifacts(id: string): Promise<void> {
+    const t = this.tasks.get(id)
+    const cp = this.readUploadCheckpoint(id)
+    if (cp) {
+      this.deleteCheckpoint(id)
+      if (t?.kind === 'upload' && t.remotePath) {
+        try {
+          const { driver } = this.opts.getDriver(t.profileId)
+          await driver.multipart?.abort(String(t.remotePath), cp.uploadId)
+        } catch (err) {
+          logger.warn('upload', `fs 停止清理 uploadId 失败（留待「遗留分片」手动清理）：${cp.uploadId}：${(err as Error).message}`)
+        }
+      }
+    }
+    if (t?.kind === 'download' && t.destPath) {
+      try { rmSync(`${t.destPath}.sshkpart`, { force: true }) } catch { /* 忽略 */ }
+      try { rmSync(`${t.destPath}.sshkpart.json`, { force: true }) } catch { /* 忽略 */ }
+    }
   }
 
   private async runDownload(t: FsTransferTask, driver: FsDriver): Promise<void> {
@@ -368,10 +854,105 @@ class FsTransferEngine {
       return
     }
     this.overwrite.delete(t.id)
+    // 分片下载：阈值以上 + 驱动具备 Range 能力（local/SFTP/OSS/S3）；不支持 Range 的通道回落单流
+    const caps = this.opts.multipartSettings()
+    const rangeOk = caps.enabled && driver.range != null && (stat.size ?? 0) >= caps.thresholdMb * MB &&
+      (await driver.range.capabilities()).supportsRange
+    if (driver.range && rangeOk) {
+      await this.runDownloadRange(t, driver.range, caps)
+      logger.info('upload', `fs 分片下载完成：${remotePath} → ${destPath}（${fsFormatSize(t.size)}，${t.partsTotal ?? '?'} 段）`)
+      return
+    }
     // 目录下载会带相对子路径（demo/used/webp/x.webp），落点父目录可能不存在——先递归建，避免 ENOENT
     mkdirSync(dirname(destPath), { recursive: true })
     await driver.download(remotePath, destPath, (n) => this.sample(t, n))
     logger.info('upload', `fs 下载完成：${remotePath} → ${destPath}（${fsFormatSize(stat.size ?? 0)}）`)
+  }
+
+  /** 分片下载 + 断点续传（plans/10 §6）：临时 `<dest>.sshkpart` + 区间元数据，完成校验后原子改名 */
+  private async runDownloadRange(
+    t: FsTransferTask,
+    rg: NonNullable<FsDriver['range']>,
+    caps: FsMultipartSettings,
+  ): Promise<void> {
+    const remotePath = String(t.remotePath ?? '')
+    const destPath = String(t.destPath ?? '')
+    // 源指纹校验：变更即废弃旧区间从头下载（防续传污染目标）
+    const fp = await rg.statForResume(remotePath)
+    t.size = fp.size
+    const plan = fsMultipartPlan(fp.size, caps.partSizeMb)
+    const tmp = `${destPath}.sshkpart`
+    const metaPath = `${tmp}.json`
+    let meta = this.readRangeMeta(metaPath)
+    if (meta && (meta.fingerprint !== fp.fingerprint || meta.size !== fp.size || meta.partSize !== plan.partSize)) {
+      this.deleteRangeArtifacts(tmp, metaPath)
+      meta = null
+    }
+    if (!meta) meta = { size: fp.size, fingerprint: fp.fingerprint, partSize: plan.partSize, ranges: [] }
+    t.resumable = true
+    t.partsTotal = plan.partsTotal
+    // 打开临时文件：不存在则建；长度钳到目标大小（完成前绝不碰正式目标）
+    mkdirSync(dirname(destPath), { recursive: true })
+    const fh = await fsPromises.open(tmp, 'a+')
+    try {
+      const st0 = await fh.stat()
+      if (st0.size !== fp.size) await fh.truncate(fp.size)
+      const writtenBytes = (ranges: { start: number; end: number }[]): number =>
+        ranges.reduce((s, r) => s + (r.end - r.start + 1), 0)
+      t.partsDone = meta.ranges.length
+      t.transferred = Math.min(fp.size, writtenBytes(meta.ranges))
+      this.push(t)
+      const missing = fsMissingChunks(fp.size, plan.partSize, meta.ranges)
+      for (const chunk of missing) {
+        // 段边界协作检查点（暂停/取消在当前段写完后生效）
+        this.assertNotPaused(t)
+        this.assertNotCanceled(t)
+        const buf = await rg.readRange(remotePath, chunk.start, chunk.end)
+        await fh.write(buf, 0, buf.length, chunk.start)
+        meta.ranges.push({ start: chunk.start, end: chunk.end - 1 })
+        this.writeRangeMeta(metaPath, meta)
+        t.partsDone = meta.ranges.length
+        this.sample(t, Math.min(fp.size, writtenBytes(meta.ranges)))
+      }
+      const st1 = await fh.stat()
+      if (st1.size !== fp.size) throw new Error(`下载校验失败：本地 ${st1.size} 字节 ≠ 远端 ${fp.size} 字节`)
+    } finally {
+      await fh.close()
+    }
+    // 完成校验通过 → 原子改名到目标路径，清理区间元数据
+    await fsPromises.rename(tmp, destPath)
+    try { rmSync(metaPath, { force: true }) } catch { /* 忽略 */ }
+    t.resumable = false
+    t.partsDone = plan.partsTotal
+    t.partsTotal = plan.partsTotal
+    t.transferred = fp.size
+    this.push(t)
+  }
+
+  private readRangeMeta(metaPath: string): { size: number; fingerprint: string; partSize: number; ranges: { start: number; end: number }[] } | null {
+    try {
+      const raw = JSON.parse(readFileSync(metaPath, 'utf8')) as { size?: number; fingerprint?: string; partSize?: number; ranges?: { start: number; end: number }[] }
+      if (!raw || typeof raw.fingerprint !== 'string' || !Array.isArray(raw.ranges)) return null
+      return { size: Number(raw.size) || 0, fingerprint: raw.fingerprint, partSize: Number(raw.partSize) || 0, ranges: raw.ranges.filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end)) }
+    } catch {
+      return null
+    }
+  }
+
+  private writeRangeMeta(metaPath: string, meta: { size: number; fingerprint: string; partSize: number; ranges: { start: number; end: number }[] }): void {
+    const tmp = `${metaPath}.tmp`
+    try {
+      writeFileSync(tmp, JSON.stringify(meta), 'utf8')
+      renameSync(tmp, metaPath)
+    } catch (err) {
+      logger.warn('upload', `fs 下载区间元数据写入失败（续传能力受损）：${metaPath}：${(err as Error).message}`)
+      try { rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+    }
+  }
+
+  private deleteRangeArtifacts(tmp: string, metaPath: string): void {
+    try { rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+    try { rmSync(metaPath, { force: true }) } catch { /* 忽略 */ }
   }
 
   private async runCopy(t: FsTransferTask, driver: FsDriver): Promise<void> {
@@ -440,8 +1021,12 @@ export class FsRuntime {
         const ch = this.channels().find((c) => c.id === profileId)
         return ch?.type === 'cloud' ? 5 : 3
       },
+      multipartSettings: () => readMultipartSettings((k) => this.opts.services.config.get(k)),
       onEvent: this.opts.onEvent,
+      storeDir: join(app.getPath('userData'), 'fs-transfer'),
     })
+    // plans/10 §7：启动恢复持久化任务（一律 paused，不自动续跑）
+    this.engine.restore()
   }
 
   private globalConfig() {
@@ -1086,21 +1671,67 @@ export class FsRuntime {
     return this.engine.all()
   }
 
-  transferCancel(ids: string[]): boolean {
-    return this.engine.cancel(Array.isArray(ids) ? ids : [])
+  /** 单一控制入口（plans/10：取代旧 cancel/retry/clear 三通道） */
+  transferControl(req: FsTransferControlRequest): boolean {
+    return this.engine.control(req)
   }
 
-  transferRetry(ids: string[], overwrite = false): boolean {
-    return this.engine.retry(Array.isArray(ids) ? ids : [], Boolean(overwrite))
+  /** 应用退出前同步落盘队列（main/index.ts before-quit 调用） */
+  flushTransferPersist(): void {
+    this.engine.flushPersist()
   }
 
-  transferClear(): { removed: number } {
-    return { removed: this.engine.clearFinished() }
+  /** 分片设置读取（含各可写云通道遗留 uploadId 数汇总；面板/设置展示用） */
+  async transferMultipart(): Promise<FsMultipartStatus> {
+    const s = readMultipartSettings((k) => this.opts.services.config.get(k))
+    let orphans = 0
+    for (const ch of this.channels()) {
+      if (ch.type !== 'cloud' || !ch.writable) continue
+      try {
+        const { driver } = this.resolve(ch.id)
+        orphans += (await driver.multipart?.listUploads?.() ?? []).length
+      } catch { /* 通道不可用（密钥缺失/网络失败）不计入 */ }
+    }
+    return { ...s, orphans }
   }
 
-  /** 下载任务重试时允许覆盖本地同名文件 */
-  async transferRetryOverwrite(ids: string[]): Promise<boolean> {
-    return this.engine.retry(Array.isArray(ids) ? ids : [], true)
+  /** 分片设置修改（main 侧钳制合法区间；实时生效、跨重启记忆） */
+  setTransferMultipart(req: Partial<FsMultipartSettings>): FsMultipartSettings {
+    const cur = readMultipartSettings((k) => this.opts.services.config.get(k))
+    const next: FsMultipartSettings = {
+      enabled: req?.enabled === undefined ? cur.enabled : Boolean(req.enabled),
+      thresholdMb: req?.thresholdMb == null ? cur.thresholdMb : Math.min(MP_THRESHOLD_MAX, Math.max(MP_THRESHOLD_MIN, Math.floor(Number(req.thresholdMb)) || MP_THRESHOLD_DEFAULT)),
+      partSizeMb: req?.partSizeMb == null ? cur.partSizeMb : Math.min(MP_PART_SIZE_MAX, Math.max(MP_PART_SIZE_MIN, Math.floor(Number(req.partSizeMb)) || MP_PART_SIZE_DEFAULT)),
+      partsConcurrency: req?.partsConcurrency == null ? cur.partsConcurrency : Math.min(MP_CONCURRENCY_MAX, Math.max(MP_CONCURRENCY_MIN, Math.floor(Number(req.partsConcurrency)) || MP_CONCURRENCY_DEFAULT)),
+    }
+    this.opts.services.config.set(CFG_MP_ENABLED, next.enabled)
+    this.opts.services.config.set(CFG_MP_THRESHOLD_MB, next.thresholdMb)
+    this.opts.services.config.set(CFG_MP_PART_SIZE_MB, next.partSizeMb)
+    this.opts.services.config.set(CFG_MP_CONCURRENCY, next.partsConcurrency)
+    logger.info('upload', `fs 分片设置更新：${next.enabled ? '开' : '关'} / 阈值 ${next.thresholdMb}MB / 片 ${next.partSizeMb}MB / 并发 ${next.partsConcurrency}`)
+    return next
+  }
+
+  /** 遗留分片手动清理：遍历可写云通道 abort 全部 in-progress uploadId（崩溃遗留；二次确认后调用） */
+  async cleanOrphanUploads(): Promise<number> {
+    let cleaned = 0
+    for (const ch of this.channels()) {
+      if (ch.type !== 'cloud' || !ch.writable) continue
+      try {
+        const { driver } = this.resolve(ch.id)
+        const mp = driver.multipart
+        if (!mp?.listUploads) continue
+        const ups = await mp.listUploads()
+        for (const u of ups) {
+          try {
+            await mp.abort(u.key, u.uploadId)
+            cleaned++
+          } catch { /* 单个失败不阻断（可能并发中被别的进程清掉） */ }
+        }
+      } catch { /* 通道不可用跳过 */ }
+    }
+    logger.info('upload', `fs 遗留分片清理：完成 ${cleaned} 个 uploadId`)
+    return cleaned
   }
 
   // ── 通道元信息 ──

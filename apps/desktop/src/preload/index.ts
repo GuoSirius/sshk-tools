@@ -335,10 +335,15 @@ const api = {
     transferStart: (inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }> =>
       invoke(IPC_CHANNELS.fsTransferStart, inputs),
     transferList: (): Promise<import('@sshk/shared').FsTransferTask[]> => invoke(IPC_CHANNELS.fsTransferList),
-    transferCancel: (ids: string[]): Promise<boolean> => invoke(IPC_CHANNELS.fsTransferCancel, ids),
-    transferRetry: (ids: string[], overwrite?: boolean): Promise<boolean> =>
-      invoke(IPC_CHANNELS.fsTransferRetry, ids, overwrite),
-    transferClear: (): Promise<{ removed: number }> => invoke(IPC_CHANNELS.fsTransferClear),
+    /** plans/10 单一控制通道（start/pause/resume/stop/retry/remove/startAll/pauseAll/stopAll/retryFailed/clearFinished） */
+    transferControl: (req: import('@sshk/shared').FsTransferControlRequest): Promise<boolean> =>
+      invoke(IPC_CHANNELS.fsTransferControl, req),
+    /** 分片设置读取（含遗留 uploadId 数） */
+    transferMultipart: (): Promise<import('@sshk/shared').FsMultipartStatus> => invoke(IPC_CHANNELS.fsTransferMultipart),
+    setTransferMultipart: (req: Partial<import('@sshk/shared').FsMultipartSettings>): Promise<import('@sshk/shared').FsMultipartSettings> =>
+      invoke(IPC_CHANNELS.fsTransferMultipartSet, req),
+    /** 遗留分片手动清理（调用方先做二次确认） */
+    cleanOrphanUploads: (): Promise<number> => invoke(IPC_CHANNELS.fsTransferOrphansClean),
     /** 主进程推送传输任务全量形态（进度/状态节流） */
     onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, (_event, task) => callback(task))

@@ -160,6 +160,14 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H33', group: 'H', title: '路径契约根治与复制下载增强', guide: '所有路径统一显示 /a/b/c（根 /），手输 a/b 自动补前导 /；复制到根目录：目标目录留空或填 / 均合法；同源同目录复制弹重命名框，重名继续弹直到改名或取消；工具栏「复制（剪贴板）」配「粘贴」按钮，行内「复制」为弹框直落；下载支持选中目录递归展开（上限在「更多▾→上限设置」可配：上传默认 10000、下载默认 0 不限制，0=不限）；搜索框输入即在当前目录过滤，回车递归搜索时当前目录命中始终保留', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
   { id: 'H41', group: 'H', title: '上限拆分与搜索体验（2026-11-18）', guide: '「更多 ▾ → 上限设置…」：上传/下载文件数上限分开设置（默认上传 10000、下载 0 不限），设 0 生效为不限制；搜索扫描页数默认 500、0=不限，超出才提示「已达扫描上限」；搜索横幅左侧有旋转加载图标（搜索中转圈，结束即消失）；复制到/移动到目录下拉首位是「/（根目录）」可直接圈选', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
   { id: 'H42', group: 'H', title: '收藏确认与粘贴询问（2026-11-18）', guide: '取消收藏（星标/菜单/收藏夹移除）均先弹确认（禁遮罩禁 ESC），确认后才移除；剪贴板复制后点「粘贴」→ 粘贴指令完成弹「是否清空剪贴板」：清空=按钮恢复无内容态，保留=可继续粘到别处', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
+  // ── H34-H40：传输队列可控化与分片/断点续传（plans/10）──
+  { id: 'H34', group: 'H', title: '传输队列悬浮面板（plans/10）', guide: '传输队列变为悬浮面板：无遮罩，列表可滚动/右键/翻目录；拖拽手柄可移动（收起后摘要条仍可见可拖），「回到默认位置」可复位；位置/展开态跨重启记忆；resize 不出界', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H35', group: 'H', title: '全局与单条传输控制（plans/10）', guide: '面板工具栏 ▶全部开始/⏸全部暂停/⏹全部停止/↻失败重试/🗑清理已完结；全部暂停→在途任务在检查点停下（UI 显示「暂停中…」）→全部开始续跑；单条按状态显隐（开始/暂停/继续/停止/重试/覆盖/移除）；危险操作均有二次确认（禁遮罩禁 ESC）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H36', group: 'H', title: '分栏与搜索过滤（plans/10）', guide: '面板「全部/上传/下载/其它」分栏计数为「完成数/总数」；名称搜索即时过滤；收起态摘要计数同步；传输设置在「更多 ▾ → 传输设置…」可调分片参数并跨重启记忆', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H37', group: 'H', title: '大文件上传分片（plans/10）', guide: '上传 >50MB（阈值可改）到 OSS/S3 走分片（进度显示片数），其余通道回落单流；暂停/停止后服务端无残留 uploadId（停止即清理）；失败重试从已传片续传（「断点续传」标记 + 片数）；分片大小自动满足 10000 片上限', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H38', group: 'H', title: '大文件下载分片续传（plans/10）', guide: '下载大文件走 Range 分片（本地/SFTP/OSS/S3），临时 .sshkpart 不覆盖正式目标；暂停保留临时文件，点继续从中断区间续传完成；重启应用后恢复为「已暂停」，点继续可续传；FTP 等无 Range 通道回落单流', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H39', group: 'H', title: '队列持久化（plans/10）', guide: '只持久化未完结的上传/下载：重启后恢复为「已暂停」不自动续跑（面板可见）；copy/cross/delete 不写盘；源文件变更后续传自动废弃检查点重传；通道失效任务有明确错误提示，可移除或恢复配置后重试', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
+  { id: 'H40', group: 'H', title: '遗留分片清理（plans/10）', guide: '面板/传输设置显示服务端遗留 uploadId 数并可手动清理（二次确认）；分片设置（阈值默认 50MB / 片 5MB / 并发 3）实时生效、跨重启记忆', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/plans10' },
 
   // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──
   { id: 'S1', group: 'S', title: '冷启动 autoStart 开 → 运行中', guide: '设置 →「分享服务」tab：服务状态显示「运行中 · 端口 xxxxx」，展示 IP 为自动优选地址', entry: { type: 'settings', target: 'share' }, auto: { kind: 'hostCapability', spec: 'shareHub' }, relates: 'ShareHub/§3.1' },
