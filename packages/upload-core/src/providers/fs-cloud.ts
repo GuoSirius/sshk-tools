@@ -4,7 +4,7 @@ import { AppError } from '@sshk/shared'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
-import type { FsDriver } from '../fs-driver'
+import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { sortFsEntries } from '../fs-driver'
 import { collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withScheme, type CloudProfile } from './cloud-sdk'
 
@@ -31,6 +31,24 @@ const CLOUD_SCAN_MAX_PAGES = 50
 
 function notWritable(provider: string, op: string): Error {
   return new Error(`文件系统暂不支持「${provider}」的${op}：当前支持阿里云 OSS 与 AWS S3（其余厂商仅可浏览）`)
+}
+
+/** SDK 错误是否为「无删除权限」类（AccessDenied / 403 / 常见文案），探测与 mv 共用 */
+function isDeniedError(err: unknown): boolean {
+  const e = err as { code?: unknown; status?: unknown; message?: unknown }
+  return e?.code === 'AccessDenied' || Number(e?.status) === 403 ||
+    /no right to access|bucket acl|AccessDenied|permission denied|Forbidden/i.test(String(e?.message ?? err))
+}
+
+// ── 删除权限探测（用户 2026-11-18：写删组合操作先探测再执行，避免半程操作）──
+// 探测方式：delete 一个必然不存在的 key。OSS/S3 系 DeleteObject 幂等——
+// 权限允许时对不存在 key 也返回成功；Bucket ACL 拒绝时抛 AccessDenied。
+// 探测 key 无内容、无副作用。driver 每次 resolve 重建，缓存必须 module 级。
+const DELETE_PROBE_TTL = 5 * 60_000
+const deleteProbeCache = new Map<string, { ok: boolean; at: number }>()
+
+function deleteProbeCacheKey(p: CloudProfile): string {
+  return [p.provider, p.sdk ?? '', p.region ?? '', String(p.bucket ?? ''), p.endpoint ?? '', p.accessKeyId].join('|')
 }
 
 function countingStream(onProgress?: (bytes: number) => void): Transform {
@@ -201,6 +219,26 @@ export class CloudFsDriver implements FsDriver {
     }
   }
 
+  /** 删除权限前置探测：delete 必然不存在的 key（幂等，零副作用）。ACL 拒绝 → 直接拒绝执行；
+   *  探测结果按 profile 缓存 5 分钟（driver 每次调用重建，实例级缓存无效）；
+   *  非权限类探测失败（网络抖动等）不阻断——真实删除失败时 mv/rmDir 自身还有错误与回退兜底 */
+  async ensureCanDelete(op: string, _dir?: string): Promise<void> {
+    const cacheKey = deleteProbeCacheKey(this.profile)
+    const cached = deleteProbeCache.get(cacheKey)
+    if (cached && cached.ok && Date.now() - cached.at < DELETE_PROBE_TTL) return
+    const probeKey = `.sshk-probe/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.tmp`
+    try {
+      await this.rmFile(probeKey)
+    } catch (err) {
+      if (isDeniedError(err)) {
+        deleteProbeCache.set(cacheKey, { ok: false, at: Date.now() })
+        throw deleteDeniedError(op, `云 Bucket（${this.bucketOf()}）`)
+      }
+      // 非权限类错误：放行（后续真实删除失败仍有「移动未完成」提示与回退兜底）
+    }
+    deleteProbeCache.set(cacheKey, { ok: true, at: Date.now() })
+  }
+
   async rmFile(path: string): Promise<void> {
     this.assertWritable('删除文件')
     const mod = await loadSdk(specOf(this.profile))
@@ -236,6 +274,7 @@ export class CloudFsDriver implements FsDriver {
     const base = normalizeRootRel(path)
     const marker = cloudKey(path, 'dir')
     if (!marker) throw new Error('根目录不可删除')
+    await this.ensureCanDelete('删除目录')
     const ep = this.profile.endpoint?.trim() ?? ''
     // 1) 平铺收集前缀下全部 key（含 marker 本身）
     const keys: string[] = [marker]
@@ -317,21 +356,30 @@ export class CloudFsDriver implements FsDriver {
     }
   }
 
+  /** 移动 = copyObject + 删源。执行顺序（用户 2026-11-18 定版）：
+   *  ① 先探测删除权限（无权限直接拒绝，未做任何修改）；② copy；③ 删源失败 →
+   *  回退还原（从目标复制回源 + 删目标），做到文件级原子化，再抛「移动未完成」 */
   async mv(src: string, dest: string): Promise<void> {
     this.assertWritable('移动')
     if (normalizeRootRel(src) === normalizeRootRel(dest)) throw new Error('源与目标相同，无需移动')
+    await this.ensureCanDelete('移动')
     await this.cp(src, dest)
     try {
       await this.rmFile(src)
     } catch (err) {
-      const e = err as { code?: unknown; status?: unknown; message?: unknown }
-      const denied = e?.code === 'AccessDenied' || Number(e?.status) === 403 ||
-        /no right to access|bucket acl|AccessDenied|permission denied|Forbidden/i.test(String(e?.message ?? err))
-      if (!denied) throw err
-      // 复制已成功但源不可删：必须说清「部分完成」，否则用户以为整个移动失败会重试产生重复对象
+      // 复制已成功但源不可删（权限已预检，多为瞬时故障）：先回退还原再报错
+      let restored = false
+      try {
+        await this.cp(dest, src)
+        await this.rmFile(dest)
+        restored = true
+      } catch { /* 回退失败如实报告，两处都保留待用户核对 */ }
       throw new AppError(
-        `移动未完成：目标「${dest}」已生成，但源「${src}」删除失败（Bucket ACL 不允许 DeleteObject，等同复制成功）。` +
-        '操作已中止，请开通删除权限后重试，或手动删除原对象；已复制的文件请核对。',
+        `移动未完成：目标「${dest}」已生成，但源「${src}」删除失败` +
+        (restored
+          ? '。已自动回退（源文件已还原、目标副本已清理），未产生重复。'
+          : '。自动回退也失败了——源与目标当前各有内容，请核对后手动处理。') +
+        '原始错误：' + String((err as Error)?.message ?? err),
         'permission',
       )
     }
@@ -445,7 +493,9 @@ export class CloudFsDriver implements FsDriver {
     if (!this.writable) throw notWritable(this.profile.provider, op)
   }
 
-  /** 递归搜索：listV2 无 delimiter 扫前缀（§3.3 既定路线），按名称子串匹配文件 */
+  /** 递归搜索：listV2 无 delimiter 扫前缀（§3.3 既定路线），按文件名子串匹配。
+   *  前缀必须带尾斜杠（marker）：裸前缀会把 demo-2、demo备份 等同名字头兄弟目录的文件混进来；
+   *  且不再排除子目录文件——平铺扫前缀天然递归，与本地/远端驱动的 BFS 递归语义一致 */
   async search(path: string, keyword: string, opts?: { maxResults?: number }): Promise<FsSearchResult> {
     const mod = await loadSdk(specOf(this.profile))
     const base = normalizeRootRel(path)
@@ -456,17 +506,18 @@ export class CloudFsDriver implements FsDriver {
     let cursor: string | null = null
     let truncated = false
     for (let page = 0; page < CLOUD_SCAN_MAX_PAGES; page++) {
-      const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: base, pageSize: 1000, cursor, delimiter: false })
+      const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: marker, pageSize: 1000, cursor, delimiter: false })
       for (const o of collectObjects(p.raw)) {
         const key = strOf(o, ['Key', 'key', 'name'])
-        if (!key || key.endsWith('/') || (marker && key === marker)) continue
-        const name = key.slice(marker.length)
-        if (!name || name.includes('/')) continue
+        if (!key || key.endsWith('/')) continue
+        const rel = key.slice(marker.length)
+        if (!rel) continue
+        const name = rel.slice(rel.lastIndexOf('/') + 1) // basename：与本地/远端搜索一致按文件名匹配
         if (!kw || !name.toLowerCase().includes(kw)) continue
         out.push({
           kind: 'file',
           name,
-          path: marker + name,
+          path: marker + rel,
           size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
           modified: parseModified(o),
         })
@@ -479,7 +530,9 @@ export class CloudFsDriver implements FsDriver {
     return { entries: out, truncated }
   }
 
-  /** 目录容量统计：扫前缀求和（达页数上限 truncated=true，数值为已扫部分） */
+  /** 目录容量统计：扫前缀求和（达页数上限 truncated=true，数值为已扫部分）。
+   *  前缀必须带尾斜杠（marker）：裸前缀是字符串级匹配——统计 demo 会把 demo-2、demo备份 等
+   *  同名字头兄弟目录的文件一起算进来（用户 2026-11-18 实测「1 个文件统计成 4 个」即此因） */
   async usage(path: string): Promise<FsUsageResult> {
     const mod = await loadSdk(specOf(this.profile))
     const base = normalizeRootRel(path)
@@ -489,13 +542,12 @@ export class CloudFsDriver implements FsDriver {
     let cursor: string | null = null
     let truncated = false
     for (let page = 0; page < CLOUD_SCAN_MAX_PAGES; page++) {
-      const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: base, pageSize: 1000, cursor, delimiter: false })
+      const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: marker, pageSize: 1000, cursor, delimiter: false })
       for (const o of collectObjects(p.raw)) {
         const key = strOf(o, ['Key', 'key', 'name'])
         if (!key) continue
         // 目录 marker（0 字节 'dir/'）不计入文件数
         if (key.endsWith('/')) continue
-        if (marker && key === marker) continue
         size += Number(strOf(o, ['Size', 'size', 'fsize'])) || 0
         files += 1
       }

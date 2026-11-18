@@ -317,6 +317,13 @@ function sizeCell(entry: FsEntry): string {
   return `目录 · ${fsFormatSize(u.size)} / ${u.files} 文件${u.truncated ? ' ∗' : ''}`
 }
 
+/** 搜索结果态的子目录提示（云通道递归搜索可命中子目录文件，灰字标注所在目录便于分辨同名文件） */
+function searchDirHint(entry: FsEntry): string {
+  if (!searchActive.value || entry.kind !== 'file') return ''
+  const dir = entry.path.slice(0, entry.path.lastIndexOf('/'))
+  return dir ? `（${dir}）` : ''
+}
+
 // ── 选择 ──
 function rowClick(entry: FsEntry, event: MouseEvent): void {
   const index = filteredEntries.value.findIndex((e) => e.path === entry.path)
@@ -1165,6 +1172,7 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
+            <span v-if="searchDirHint(entry)" class="fs-name-sub" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
           </span>
           <span class="fs-col-size" :title="sizeCell(entry)">{{ sizeCell(entry) }}</span>
@@ -1200,7 +1208,7 @@ function onKeydown(event: KeyboardEvent): void {
             @dblclick="rowOpen(entry)"
           >
             <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
-            <span class="fs-cell-name">{{ entry.name }}</span>
+            <span class="fs-cell-name">{{ entry.name }}<span v-if="searchDirHint(entry)" class="fs-name-sub">{{ searchDirHint(entry) }}</span></span>
             <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
           </div>
         </div>
@@ -1417,6 +1425,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
+/* 搜索结果嵌套文件的子目录灰字提示（searchDirHint） */
+.fs-name-sub { flex: none; font-size: 12px; opacity: .55; margin-left: 4px; }
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 /* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */

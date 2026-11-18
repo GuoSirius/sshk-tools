@@ -1,4 +1,5 @@
 import type { Readable } from 'node:stream'
+import { AppError } from '@sshk/shared'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 
 /**
@@ -43,6 +44,21 @@ export interface FsDriver {
 
   /** 目录容量统计：前缀/目录下文件总字节与个数（达到扫描上限时 truncated=true） */
   usage(path: string): Promise<FsUsageResult>
+
+  /**
+   * 删除权限前置探测（用户 2026-11-18）：copy+delete 组合与递归删除类操作执行前调用，
+   * 无删除权限时抛 permission 错误直接拒绝——避免「复制成功后删源失败」的半程操作。
+   * dir = 将被删改内容所在目录（根可省略）；探测必须零副作用（不得改动现有文件）。
+   */
+  ensureCanDelete(op: string, dir?: string): Promise<void>
+}
+
+/** 删除权限探测失败的统一拒绝错误（各驱动复用，文案口径一致） */
+export function deleteDeniedError(op: string, channelKind: string): Error {
+  return new AppError(
+    `「${op}」已取消：当前${channelKind}凭据没有删除权限（未执行任何修改，源文件原样保留）。请先为凭据开通删除/写入权限后重试。`,
+    'permission',
+  )
 }
 
 // ── 递归遍历通用骨架（远程/本地驱动共用） ──

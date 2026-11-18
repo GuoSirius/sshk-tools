@@ -14,7 +14,7 @@ import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { normalizeRootRel } from '../fs-paths'
-import type { FsDriver } from '../fs-driver'
+import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { nameMatches, sortFsEntries, walkRemote } from '../fs-driver'
 
 /**
@@ -104,8 +104,23 @@ export class LocalFsDriver implements FsDriver {
     rmSync(this.abs(p), { force: true })
   }
 
+  /** 删除权限前置探测（用户 2026-11-18）：本地删除权限 = 目录可写——在目标目录内
+   *  试建+试删一个空探测文件（Windows/POSIX 通用，同时证明写与删），零残留零副作用 */
+  async ensureCanDelete(op: string, dir = ''): Promise<void> {
+    const base = this.abs(dir || '')
+    const probe = path.join(base, `.sshk-probe-${process.pid}-${Date.now().toString(36)}.tmp`)
+    try {
+      writeFileSync(probe, '')
+      rmSync(probe, { force: true })
+    } catch (err) {
+      throw deleteDeniedError(op, `本地目录「${base}」不可写（${String((err as Error)?.message ?? err)}）`)
+    }
+  }
+
   async rmDir(p: string, onProgress?: (done: number, total: number) => void): Promise<number> {
-    // rmSync recursive 一次完成；无法逐项计进度，整体一个进度脉冲
+    // rmSync recursive 一次完成；无法逐项计进度，整体一个进度脉冲。
+    // 删除前先探测目录可写（递归删除不可逆，无权限时一个文件都不该动）
+    await this.ensureCanDelete('删除目录', p)
     rmSync(this.abs(p), { recursive: true, force: true })
     onProgress?.(1, 1)
     return 1

@@ -596,7 +596,11 @@ export class FsRuntime {
       if (!renameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录')
       if (renameTo && dest === src) return true // 名称未变，无需操作
       if (item.kind === 'dir' && channel.type === 'cloud') {
-        // 云目录「移动」= 逐文件 copy+delete（copyObject 不接受目录路径），最后删源 marker（项19）
+        // 云目录「移动」= 逐文件 copy+delete（copyObject 不接受目录路径），最后删源 marker（项19）。
+        // 用户 2026-11-18：执行前探测删除权限（无权限直接拒绝）；移动记录 (源,目标) 对，
+        // 中途失败自动还原已移文件（复制回源 + 删目标副本），做到目录移动的文件级原子化
+        await driver.ensureCanDelete('移动目录', src)
+        const movedPairs: Array<{ src: string; dest: string }> = []
         let moved = 0
         const moveTree = async (dirPath: string, destBase: string): Promise<void> => {
           let cursor: string | null = null
@@ -604,14 +608,33 @@ export class FsRuntime {
             const page = await driver.list(dirPath, { pageSize: 2000, cursor })
             for (const e of page.entries) {
               if (moved >= MV_DIR_CAP) throw new Error(`目录移动超过 ${MV_DIR_CAP} 个文件上限，已中止`)
-              if (e.kind === 'file') { await driver.mv(e.path, `${destBase}/${e.name}`); moved++ }
+              if (e.kind === 'file') {
+                const destPath = `${destBase}/${e.name}`
+                await driver.mv(e.path, destPath)
+                movedPairs.push({ src: e.path, dest: destPath })
+                moved++
+              }
               else await moveTree(e.path, `${destBase}/${e.name}`)
             }
             cursor = page.nextCursor ?? null
           } while (cursor)
         }
-        await moveTree(src, dest)
-        await driver.rmFile(src.endsWith('/') ? src : `${src}/`).catch(() => { /* marker 可能不存在 */ })
+        try {
+          await moveTree(src, dest)
+          await driver.rmFile(src.endsWith('/') ? src : `${src}/`).catch(() => { /* marker 可能不存在 */ })
+        } catch (err) {
+          // 精确还原：只动本次移动涉及的目标副本（不碰 dest 既有内容），复制回源位后删除
+          let restored = 0
+          for (const pair of movedPairs) {
+            try { await driver.cp(pair.dest, pair.src); await driver.rmFile(pair.dest); restored++ } catch { /* 还原失败如实报告 */ }
+          }
+          throw new Error(
+            `目录移动未完成：${(err as Error).message}` +
+            (restored
+              ? `。已自动还原 ${restored}/${movedPairs.length} 个已移文件，源目录保持原样。`
+              : '。自动还原未完成，请按提示核对源与目标目录。'),
+          )
+        }
         logger.info('upload', `fs 云目录移动：${channel.id}/${src} → ${dest}（${moved} 个文件）`)
       } else {
         await driver.mv(src, dest)
@@ -631,6 +654,8 @@ export class FsRuntime {
     if (srcChannel.id === destChannel.id) throw new Error('源与目标为同一通道：请用同通道复制')
     if (!destDriver.writable) throw new Error(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     if (req?.move && !srcDriver.writable) throw new Error(`源通道「${srcChannel.name}」不支持删除，无法跨通道移动（仅复制）`)
+    // 跨通道移动 = 复制成功后删源：先探测源通道删除权限，无权限直接拒绝（避免复制完成却删不了源的半程操作）
+    if (req?.move) await srcDriver.ensureCanDelete('跨通道移动')
     const destDir = this.assertPath(req?.destDir ?? '')
     const CROSS_TASK_CAP = 1500
     const inputs: FsTransferInput[] = []

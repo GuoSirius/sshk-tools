@@ -4,7 +4,7 @@ import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { fsBasename, fsJoin, normalizeRootRel } from '../fs-paths'
-import type { FsDriver } from '../fs-driver'
+import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { nameMatches, sortFsEntries, walkRemote } from '../fs-driver'
 import type { RemoteProfile } from './remote'
 
@@ -263,7 +263,27 @@ export class RemoteFsDriver implements FsDriver {
     }))
   }
 
+  /** 删除权限前置探测（用户 2026-11-18）：在目标目录真实「建 0 字节探测文件 + 删除」往返——
+   *  同时证明目录可写与可删（单纯 unlink 不存在文件不可靠：Linux 先查存在性返回 ENOENT，
+   *  探不出父目录权限）。探测文件零残留；任何一步失败都拒绝执行（失败原因如实附上） */
+  async ensureCanDelete(op: string, dir = ''): Promise<void> {
+    const probeRel = `${dir ? `${dir}/` : ''}.sshk-probe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.tmp`
+    try {
+      await this.write(probeRel, Buffer.alloc(0))
+    } catch (err) {
+      throw deleteDeniedError(op, `远程目录「${dir || '(根)'}」不可写（${String((err as Error)?.message ?? err)}）`)
+    }
+    try {
+      await this.rmFile(probeRel)
+    } catch (err) {
+      // 探测文件删不掉 = 无删除权限；探测文件会残留（.sshk-probe-* 前缀，便于识别清理）
+      throw deleteDeniedError(op, `远程目录「${dir || '(根)'}」无删除权限（${String((err as Error)?.message ?? err)}）`)
+    }
+  }
+
   async rmDir(path: string, onProgress?: (done: number, total: number) => void): Promise<number> {
+    // 递归删除不可逆：删除前先探测目录可写，无权限时一个文件都不动
+    await this.ensureCanDelete('删除目录', path)
     const target = this.abs(path)
     if (this.isFtp) {
       // basic-ftp removeDir 即递归删；无法逐项计进度，整体一个进度脉冲
