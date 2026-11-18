@@ -148,6 +148,12 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H16', group: 'H', title: 'Badge Studio HTML 高亮与模板下载', guide: '选择压缩版 minified.html → 单行不再显示「Rendering paused」，点「格式化」换行后高亮正常；「模板下载」主按钮直接下 Excel（含填写说明 sheet），箭头可选 CSV/JSON；最近使用改下拉（每项尾部删、右侧清空）', entry: { type: 'route', target: 'badge-studio' }, relates: 'E-T5' },
   { id: 'H17', group: 'H', title: '更新流程（dev 测试模式）', guide: 'dev 设 SSHK_DEV_UPDATE_TEST=1 且本地 package.json 版本改旧 → 顶栏显示下载进度条横幅（可关闭），完成出「立即更新」；点已下载按钮不再回退到「检查中」；点安装仅提示不真装；验完改回版本号', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
   { id: 'H18', group: 'H', title: '分享链接跨重启有效', guide: '分享海报/邮件生成链接 → 关闭应用重新打开（TTL 未过）→ 原链接仍可访问；点重新生成 → 旧链接失效（新 token）；72h 到期链接自动 404', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-T1' },
+  { id: 'H19', group: 'H', title: '扩展列与列设置（§十一）', guide: '本地/SFTP 通道在「更多 ▾ → 列设置…」可开创建时间/权限/用户组列（备注默认显示）；FTP/云通道无数据列自动隐藏不出「—」；显隐配置跨重启记忆', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
+  { id: 'H20', group: 'H', title: '行操作列定版与行级粘贴', guide: '行操作按 下载(文件)→链接(文件)→粘贴(目录,剪贴板有内容才出)→复制→移动→重命名→删除→更多▾；目录行「粘贴」直接落进该目录；行「更多」按条目类型/通道实时显隐（压缩解压仅本地、转换仅文本、权限仅本地/SFTP）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
+  { id: 'H21', group: 'H', title: '备注与收藏夹（§十一）', guide: '行/选中「设置备注…」确认后生效、备注列显示，留空清除；重命名/移动后备注跟随；「添加收藏」进收藏夹抽屉，跨通道「前往」直达目标目录', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
+  { id: 'H22', group: 'H', title: '编辑权限与属性（§十一）', guide: '本地/SFTP 单选文件或目录「编辑权限…」：rwx 勾选与八进制双向联动，点修改后二次确认才写入并刷新列表；「属性」弹框按通道如实展示名称/路径/大小/时间/权限/用户组/备注（含编辑入口）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
+  { id: 'H23', group: 'H', title: '文本编码/换行符转换与压缩解压（§十一）', guide: '本地/SFTP/云对文本文件「转换编码/换行符…」：自动检测源编码 → 确认后写回并提示实际判定结果；本地通道「压缩为 zip…」（多选也支持）与「解压到新目录」（zip 文件才出），解压结果在同级新目录', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
+  { id: 'H24', group: 'H', title: '必填红星与弹框自动聚焦', guide: '各处新建/编辑表单必填项（通道名称/Bucket/AccessKey ID、主机、品牌 code/名称、模板/片段名称、邮件名称、海报名等）显示红星并在保存时拦截空值；所有弹框打开后输入框自动聚焦，不用先点一下', entry: { type: 'route', target: 'upload-manager' }, relates: 'U1' },
 
   // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──
   { id: 'S1', group: 'S', title: '冷启动 autoStart 开 → 运行中', guide: '设置 →「分享服务」tab：服务状态显示「运行中 · 端口 xxxxx」，展示 IP 为自动优选地址', entry: { type: 'settings', target: 'share' }, auto: { kind: 'hostCapability', spec: 'shareHub' }, relates: 'ShareHub/§3.1' },
