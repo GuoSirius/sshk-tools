@@ -453,7 +453,7 @@ onMounted(async () => {
       v-else-if="updater.phase === 'error' && !updateBannerDismissed"
       class="update-banner update-banner--err"
     >
-      <span>更新检查失败：{{ updater.error }}</span>
+      <span>更新出错：{{ updater.error }}</span>
       <span class="update-banner-actions">
         <el-button size="small" text @click="checkUpdate">重试</el-button>
         <el-button size="small" text type="info" title="关闭提示" @click="dismissUpdateBanner">关闭</el-button>

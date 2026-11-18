@@ -1,7 +1,7 @@
 import './env-load'
 // ⚠️ 必须在 import 'electron-updater' 之前求值：electron-updater 构造期缓存 app 版本快照，
 // dev 伪装版本号的覆盖必须先发生（详见 update-dev-fake.ts 头注释）
-import { updateDevCheck, resetDevUpdatePendingCache } from './update-dev-fake'
+import { updateDevCheck, resetDevUpdatePendingCache, devUpdateMirrorFeedUrl } from './update-dev-fake'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tray, Menu } from 'electron'
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
@@ -924,6 +924,8 @@ let updateState: UpdateState = { phase: 'idle' }
 let latestVersion: string | undefined
 /** 下载进度日志节流游标：每跨 10% 落一条（download-progress 高频，不逐条刷日志） */
 let progressLogMark = 0
+/** 下载阶段标记：error 事件无阶段上下文，用它区分「下载失败」与「检查失败」文案（渲染层横幅直接展示） */
+let downloadStarted = false
 function pushUpdate(patch: Partial<UpdateState>): void {
   const prevPhase = updateState.phase
   updateState = { ...updateState, ...patch }
@@ -938,12 +940,19 @@ function pushUpdate(patch: Partial<UpdateState>): void {
 function wireAutoUpdater(): void {
   // dev 测试模式：electron-updater 默认在非打包环境拒绝工作，必须打开 forceDevUpdateConfig 才会读 GitHub 源
   if (updateDevCheck) (autoUpdater as unknown as { forceDevUpdateConfig: boolean }).forceDevUpdateConfig = true
+  // dev 测试镜像源：国内直连 GitHub 下载常「等首字节」挂起（进度永远 0%），设了镜像前缀就切 generic feed 走镜像
+  const mirrorFeed = devUpdateMirrorFeedUrl()
+  if (mirrorFeed) {
+    ;(autoUpdater as unknown as { setFeedURL: (cfg: unknown) => void }).setFeedURL({ provider: 'generic', url: mirrorFeed })
+    logger.info('updater', `dev 更新测试：更新源走镜像 → ${mirrorFeed}`)
+  }
   autoUpdater.autoDownload = true
   // 复核项 10：「下载更新后重启自动安装」默认关闭，由 app.autoInstallOnAppQuit 控制；
   // dev 测试模式强制关自动安装（用户验收项7：只验下载流程，不执行安装）。
   autoUpdater.autoInstallOnAppQuit = updateDevCheck ? false : Boolean(services?.config.get('app.autoInstallOnAppQuit'))
   autoUpdater.on('checking-for-update', () => {
     progressLogMark = 0
+    downloadStarted = false
     pushUpdate({ phase: 'checking', error: undefined })
   })
   autoUpdater.on('update-available', (info: { version: string }) => {
@@ -952,6 +961,7 @@ function wireAutoUpdater(): void {
     // autoDownload=true：update-available 后 electron-updater 立即开下，但首个 download-progress
     // 要等首字节到达——GitHub 直连经常长时间挂起（2026-11-18 实测 available 卡几分钟无进度）。
     // 乐观推 downloading 0%：UI 立刻进入「下载中」，首字节后真实进度覆盖；出错由 error 事件纠正。
+    downloadStarted = true
     pushUpdate({ phase: 'downloading', version: info.version, percent: 0, error: undefined })
   })
   autoUpdater.on('update-not-available', (info: { version: string }) => {
@@ -961,6 +971,7 @@ function wireAutoUpdater(): void {
   autoUpdater.on('download-progress', (p: { percent: number }) => {
     const percent = Math.round(p.percent)
     if (!Number.isFinite(percent)) return // 防 NaN 污染进度条（?? 不兜 NaN）
+    downloadStarted = true
     pushUpdate({ phase: 'downloading', version: latestVersion, percent, error: undefined })
     // 节流落盘：每 10% 记一条，便于诊断「下载中无进度」类网络问题（GitHub 直连卡顿）
     if (percent - progressLogMark >= 10 || percent === 100) {
@@ -973,7 +984,8 @@ function wireAutoUpdater(): void {
   })
   autoUpdater.on('error', (err: Error) => {
     console.warn('[sshk] 更新出错：', err)
-    pushUpdate({ phase: 'error', error: err.message })
+    // error 事件不区分阶段；downloadStarted 区分「下载失败」（如 GitHub 挂起后超时）与「检查失败」
+    pushUpdate({ phase: 'error', error: (downloadStarted ? '下载失败：' : '检查失败：') + err.message })
   })
 }
 
