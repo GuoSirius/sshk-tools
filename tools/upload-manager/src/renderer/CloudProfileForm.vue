@@ -70,7 +70,7 @@ watch(() => props.profile.endpoint, (v) => {
 <template>
   <el-form label-width="auto" size="small">
     <FormGrid>
-      <el-form-item label="名称"><el-input clearable v-model="profile.name" /></el-form-item>
+      <el-form-item label="名称" required><el-input clearable v-model="profile.name" /></el-form-item>
       <el-form-item label="ID">
         <el-input clearable :model-value="profile.id" disabled />
         <span class="hint-inline">密钥按此 ID 关联</span>
@@ -81,7 +81,7 @@ watch(() => props.profile.endpoint, (v) => {
         </el-select>
         <span class="hint-inline">SDK：{{ meta.sdk }}</span>
       </el-form-item>
-      <el-form-item label="Bucket"><el-input clearable v-model="profile.bucket" /></el-form-item>
+      <el-form-item label="Bucket" required><el-input clearable v-model="profile.bucket" /></el-form-item>
       <el-form-item label="地域">
         <el-select
           v-model="profile.region"
@@ -128,7 +128,7 @@ watch(() => props.profile.endpoint, (v) => {
           <template v-if="profile.endpoint"> · 当前值：<code>{{ profile.endpoint }}</code></template>
         </div>
       </el-form-item>
-      <el-form-item label="AccessKey ID"><el-input clearable v-model="profile.accessKeyId" /></el-form-item>
+      <el-form-item label="AccessKey ID" required><el-input clearable v-model="profile.accessKeyId" /></el-form-item>
       <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="CDN 域名（可选）" /></el-form-item>
       <el-form-item label="AccessKey Secret">
         <div class="combo">

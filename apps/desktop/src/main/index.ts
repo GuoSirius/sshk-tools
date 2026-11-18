@@ -532,7 +532,10 @@ async function registerIpc(): Promise<void> {
     try {
       const result = await autoUpdater.checkForUpdates()
       const version = result?.updateInfo?.version ?? null
-      const updateAvailable = Boolean(version && version !== app.getVersion())
+      // electron-updater 已按 semver 判定（含降级拦截）：装机 1.3.0 vs 线上 1.2.0 → false。
+      // 此前这里用字符串不等号自判（「1.2.0」!==「1.3.0」→ true），装了最新版仍误报「发现新版本
+      // 并已开始下载」，而内核实为 not-available → 按钮状态与进度都不动（2026-11-18 用户实测事故）
+      const updateAvailable = result?.isUpdateAvailable === true
       return { dev: false, updateAvailable, version }
     } catch (err) {
       return { error: (err as Error).message }
@@ -739,6 +742,16 @@ async function registerIpc(): Promise<void> {
   // 下载目录读取 / 修改（当前通道下载落点由渲染层用 getDir(profileId) 计算）
   handleOk(IPC_CHANNELS.fsDownloadDir, (_event, profileId: string) => fsRuntime.downloadDir(profileId))
   handleOk(IPC_CHANNELS.fsSetDownloadDir, (_event, dir: string) => fsRuntime.setDownloadDir(dir))
+  // ── §十一 扩展（用户 2026-11-18 定版）：chmod / 文本转换 / 压缩解压 / 备注 / 收藏 ──
+  handleOk(IPC_CHANNELS.fsChmod, (_event, req: Parameters<FsRuntime['chmod']>[0]) => fsRuntime.chmod(req))
+  handleOk(IPC_CHANNELS.fsConvertText, (_event, req: Parameters<FsRuntime['convertText']>[0]) => fsRuntime.convertText(req))
+  handleOk(IPC_CHANNELS.fsZip, (_event, req: Parameters<FsRuntime['zip']>[0]) => fsRuntime.zip(req))
+  handleOk(IPC_CHANNELS.fsUnzip, (_event, req: Parameters<FsRuntime['unzip']>[0]) => fsRuntime.unzip(req))
+  handleOk(IPC_CHANNELS.fsAnnotationList, (_event, profileId: string) => fsRuntime.annotationList(profileId))
+  handleOk(IPC_CHANNELS.fsAnnotationSet, (_event, req: Parameters<FsRuntime['annotationSet']>[0]) => fsRuntime.annotationSet(req))
+  handleOk(IPC_CHANNELS.fsFavoriteList, () => fsRuntime.favoriteList())
+  handleOk(IPC_CHANNELS.fsFavoriteAdd, (_event, req: Parameters<FsRuntime['favoriteAdd']>[0]) => fsRuntime.favoriteAdd(req))
+  handleOk(IPC_CHANNELS.fsFavoriteRemove, (_event, id: string) => fsRuntime.favoriteRemove(id))
 
   // ── OS 能力（宿主提供） ──
   handleOk(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }) => {

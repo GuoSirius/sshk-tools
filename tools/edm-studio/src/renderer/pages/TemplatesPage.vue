@@ -25,6 +25,7 @@ function openTpl(row?: Named): void {
   tplOpen.value = true
 }
 async function saveTpl(): Promise<void> {
+  if (!String(tplForm.value.brandId ?? '').trim() || !tplForm.value.name.trim()) { ElMessage.warning('品牌与名称为必填项'); return }
   try {
     await api('tpl:save', tplForm.value)
     tplOpen.value = false
@@ -194,12 +195,12 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplOpen" :title="tplForm._id ? '编辑模板' : '新增模板'" width="460px">
       <el-form label-width="auto" size="small">
-        <el-form-item label="品牌">
+        <el-form-item label="品牌" required>
           <el-select v-model="tplForm.brandId" style="width: 100%">
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="名称"><el-input clearable v-model="tplForm.name" /></el-form-item>
+        <el-form-item label="名称" required><el-input clearable v-model="tplForm.name" /></el-form-item>
         <el-form-item label="描述"><el-input clearable v-model="tplForm.description" /></el-form-item>
       </el-form>
       <template #footer>

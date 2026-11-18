@@ -31,6 +31,7 @@
     "electron-updater": "^6",
     "element-plus": "latest",
     "fflate": "latest",
+    "iconv-lite": "latest",
     "koffi": "latest",
     "unocss": "latest",
     "vue": "latest",

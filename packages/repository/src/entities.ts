@@ -180,11 +180,26 @@ export const BACKUP_COLLECTIONS = [
 
 export type CollectionName = (typeof BACKUP_COLLECTIONS)[number]
 
+/** 文件系统目录备注（plans/08 §十一）：应用侧存储，键 = profileId + path */
+export interface FsAnnotationDoc extends BaseEntity {
+  profileId: string
+  path: string
+  note: string
+}
+
+/** 文件系统收藏夹条目 */
+export interface FsFavoriteDoc extends BaseEntity {
+  profileId: string
+  path: string
+  kind: 'dir' | 'file'
+  name: string
+}
+
 /**
  * 非备份集合（D-Q1 用量日志）：运行时元数据，不随备份 zip 导出（备份契约不变）。
  * 与 BACKUP_COLLECTIONS 共用同一 NeDB 存储层与 compact 调度。
  */
-export const NON_BACKUP_COLLECTIONS = ['usage'] as const
+export const NON_BACKUP_COLLECTIONS = ['usage', 'fsAnnotations', 'fsFavorites'] as const
 
 export type StorageCollection = CollectionName | (typeof NON_BACKUP_COLLECTIONS)[number]
 

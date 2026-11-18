@@ -357,7 +357,7 @@ function askClearRows(): void {
             </template>
             <el-form label-width="auto" size="small" class="badge-cfg-form">
               <div class="form-inline-row">
-                <el-form-item label="海报名" class="grow-item">
+                <el-form-item label="海报名" required class="grow-item">
                   <el-input ref="nameInputRef" clearable v-model="posterName" placeholder="海报名称（必填；列表与导出文件名）" />
                 </el-form-item>
                 <el-form-item label="属性名" class="grow-item">

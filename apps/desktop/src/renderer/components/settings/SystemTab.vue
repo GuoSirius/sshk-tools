@@ -322,14 +322,15 @@ onMounted(() => {
     <section class="settings-card">
       <div class="card-title">配置预设</div>
       <div class="switch-row">
+        <!-- 开关固定居右（用户 2026-11-18：开/关前后位置不变），提示消息插在 label 与开关之间 -->
         <span class="switch-label">
           包含密钥
           <el-tooltip content="开启后，导出预设会携带模型 API Key 与上传密钥明文，用于可信设备间完整迁移。默认关闭（只导出配置、不含密钥）。含密钥文件请妥善保管，导入会自动写回本机密钥库。" placement="top">
             <span class="tip-icon">?</span>
           </el-tooltip>
         </span>
+        <span v-if="presetIncludeSecrets" class="hint danger-text switch-inline-tip">当前将导出明文密钥，请仅用于可信设备</span>
         <el-switch v-model="presetIncludeSecrets" size="small" />
-        <span v-if="presetIncludeSecrets" class="hint danger-text">当前将导出明文密钥，请仅用于可信设备</span>
       </div>
       <div class="kv-line">
         <span>导出 / 导入</span>

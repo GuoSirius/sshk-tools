@@ -25,6 +25,7 @@ function openFrg(row?: Named): void {
   frgOpen.value = true
 }
 async function saveFrg(): Promise<void> {
+  if (!String(frgForm.value.brandId ?? '').trim() || !frgForm.value.name.trim() || !frgForm.value.type.trim()) { ElMessage.warning('品牌、名称、类型为必填项'); return }
   try {
     await api('frg:save', frgForm.value)
     frgOpen.value = false
@@ -135,13 +136,13 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgOpen" :title="frgForm._id ? '编辑片段' : '新增片段'" width="460px">
       <el-form label-width="auto" size="small">
-        <el-form-item label="品牌">
+        <el-form-item label="品牌" required>
           <el-select v-model="frgForm.brandId" style="width: 100%">
             <el-option v-for="b in brands" :key="b._id" :label="b.name" :value="b._id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="名称"><el-input clearable v-model="frgForm.name" /></el-form-item>
-        <el-form-item label="类型">
+        <el-form-item label="名称" required><el-input clearable v-model="frgForm.name" /></el-form-item>
+        <el-form-item label="类型" required>
           <el-select v-model="frgForm.type" style="width: 100%">
             <el-option label="banner（头图）" value="banner" />
             <el-option label="product（产品）" value="product" />

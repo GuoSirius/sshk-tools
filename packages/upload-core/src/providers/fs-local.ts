@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   copyFileSync,
   createReadStream,
   createWriteStream,
@@ -68,12 +69,17 @@ export class LocalFsDriver implements FsDriver {
       let st
       try { st = statSync(path.join(dir, name)) } catch { continue }
       const isDir = st.isDirectory()
+      // §十一 扩展列：创建时间 birthtime / 权限 mode / 属主属组 uid/gid（读不到名称显示数字）
       out.push({
         kind: isDir ? 'dir' : 'file',
         name,
         path: p ? `${p}/${name}` : name,
         size: isDir ? undefined : st.size,
         modified: st.mtimeMs,
+        createdAt: st.birthtimeMs > 0 ? st.birthtimeMs : undefined,
+        mode: (st.mode & 0o7777).toString(8).padStart(4, '0'),
+        owner: Number.isFinite(st.uid) ? String(st.uid) : undefined,
+        group: Number.isFinite(st.gid) ? String(st.gid) : undefined,
       })
     }
     const sorted = sortFsEntries(out)
@@ -128,6 +134,12 @@ export class LocalFsDriver implements FsDriver {
 
   async cp(src: string, dest: string): Promise<void> {
     copyFileSync(this.abs(src), this.abs(dest))
+  }
+
+  /** chmod（§十一 编辑权限）：Windows 实际只影响只读位，POSIX 全量生效 */
+  async chmod(p: string, modeOctal: string): Promise<void> {
+    if (!/^0?[0-7]{3,4}$/.test(modeOctal)) throw new Error(`非法权限串：${modeOctal}（须为 3-4 位八进制）`)
+    chmodSync(this.abs(p), parseInt(modeOctal, 8))
   }
 
   async mv(src: string, dest: string): Promise<void> {

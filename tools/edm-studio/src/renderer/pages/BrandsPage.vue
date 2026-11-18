@@ -21,6 +21,7 @@ function openBrand(row?: BrandRow): void {
   brandOpen.value = true
 }
 async function saveBrand(): Promise<void> {
+  if (!brandForm.value.code.trim() || !brandForm.value.name.trim()) { ElMessage.warning('code 与名称为必填项'); return }
   try {
     await api('brand:save', brandForm.value)
     brandOpen.value = false
@@ -102,8 +103,8 @@ async function onRowCommand(cmd: string, row: BrandRow): Promise<void> {
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="brandOpen" :title="brandForm._id ? '编辑品牌' : '新增品牌'" width="400px">
       <el-form label-width="auto" size="small">
-        <el-form-item label="code"><el-input clearable v-model="brandForm.code" placeholder="procell" /></el-form-item>
-        <el-form-item label="名称"><el-input clearable v-model="brandForm.name" placeholder="Procell" /></el-form-item>
+        <el-form-item label="code" required><el-input clearable v-model="brandForm.code" placeholder="procell" /></el-form-item>
+        <el-form-item label="名称" required><el-input clearable v-model="brandForm.name" placeholder="Procell" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button size="small" @click="brandOpen = false">取消</el-button>

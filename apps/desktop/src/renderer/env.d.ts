@@ -161,6 +161,19 @@ interface Window {
       flattenLocal(paths: string[]): Promise<import('@sshk/shared').FsLocalFile[]>
       downloadDir(profileId: string): Promise<string>
       setDownloadDir(dir: string): Promise<string>
+      /** chmod（§十一 编辑权限，本地 / SFTP） */
+      chmod(req: import('@sshk/shared').FsChmodRequest): Promise<boolean>
+      /** 文本编码 / 换行符转换（§十一 转换格式 A，全通道） */
+      convertText(req: import('@sshk/shared').FsConvertTextRequest): Promise<import('@sshk/shared').FsConvertTextResult>
+      /** 压缩 / 解压（§十一，仅本地通道） */
+      zip(req: import('@sshk/shared').FsZipRequest): Promise<import('@sshk/shared').FsZipResult>
+      unzip(req: import('@sshk/shared').FsUnzipRequest): Promise<import('@sshk/shared').FsUnzipResult>
+      /** 目录备注 / 收藏夹（§十一，应用侧集合） */
+      annotationList(profileId: string): Promise<Record<string, string>>
+      annotationSet(req: { profileId: string; path: string; note: string }): Promise<boolean>
+      favoriteList(): Promise<import('@sshk/shared').FsFavorite[]>
+      favoriteAdd(req: { profileId: string; path: string; kind: 'dir' | 'file'; name: string }): Promise<import('@sshk/shared').FsFavorite>
+      favoriteRemove(id: string): Promise<boolean>
       /** 拖拽 File → 本地绝对路径（非文件拖拽返回 ''） */
       pathForFile(file: File): string
     }

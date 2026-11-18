@@ -93,6 +93,19 @@ export const IPC_CHANNELS = {
   /** 下载落点目录（app.fs.downloadDir，缺省 userData/downloads/<通道id>） */
   fsDownloadDir: 'fs:downloadDir',
   fsSetDownloadDir: 'fs:setDownloadDir',
+  /** chmod（§十一 编辑权限，本地 / SFTP） */
+  fsChmod: 'fs:chmod',
+  /** 文本编码 / 换行符转换（§十一 转换格式 A，全通道） */
+  fsConvertText: 'fs:convertText',
+  /** 压缩 / 解压（§十一，仅本地通道，fflate） */
+  fsZip: 'fs:zip',
+  fsUnzip: 'fs:unzip',
+  /** 目录备注 / 收藏夹（§十一，应用侧 fsAnnotations / fsFavorites 集合） */
+  fsAnnotationList: 'fs:annotation:list',
+  fsAnnotationSet: 'fs:annotation:set',
+  fsFavoriteList: 'fs:favorite:list',
+  fsFavoriteAdd: 'fs:favorite:add',
+  fsFavoriteRemove: 'fs:favorite:remove',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

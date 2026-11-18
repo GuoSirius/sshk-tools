@@ -1265,12 +1265,12 @@ async function confirmSaveAs(): Promise<void> {
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveMeta">保存</el-button>
             </div>
             <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
-              <el-form-item label="名称"><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
+              <el-form-item label="名称" required><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.brandBase" label="code"><el-input clearable v-model="form.code" :disabled="!canEdit" /></el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input clearable v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
               <template v-if="showForm.policy">
-                <el-form-item label="类型"><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
+                <el-form-item label="类型" required><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
                 <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
                 <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>

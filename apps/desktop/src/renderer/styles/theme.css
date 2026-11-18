@@ -539,6 +539,17 @@ body {
 .switch-label .sshk-form-hint .txt { white-space: nowrap; }
 /* el-form-item 内含开关时同样强制一行（兼容 label-position=top 的表单） */
 .el-form-item:has(> .el-form-item__content .switch-row) .el-form-item__label { display: none; }
+/* 开关行内提示（用户 2026-11-18）：插在 label 与开关之间，左弹性撑开、右端截断——开关始终贴最右，开/关位置不变 */
+.switch-row .switch-inline-tip {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  margin-right: 10px;
+}
+.switch-row > .el-switch { flex: none; margin-left: auto; }
 
 /* ── 应用设置中心：左侧分组导航 + 右侧内容，分组可无限扩展 ── */
 .el-drawer__body { padding: 0 !important; overflow: hidden; }

@@ -24,8 +24,14 @@ export interface FsEntry {
   size?: number
   /** 毫秒时间戳（OSS marker 为创建时间；FTP/SFTP 为 mtime） */
   modified?: number
-  /** 权限（仅 SFTP 有值，0777 样式） */
+  /** 毫秒时间戳：创建时间（本地 birthtime；远程/云多数无 → 缺省不冒充） */
+  createdAt?: number
+  /** 权限八进制（本地 / SFTP 有值，0777 样式） */
   mode?: string
+  /** 属主（本地为 uid 数字；SFTP 同）；读不到缺省 */
+  owner?: string
+  /** 属组（同上） */
+  group?: string
 }
 
 /** 列表分页：nextCursor 非空表示还有下一页（透传给下次 list 即可续拉） */
@@ -217,6 +223,76 @@ export interface FsUsageResult {
   truncated: boolean
 }
 
+/** chmod 请求（用户 2026-11-18 §十一）：本地 / SFTP 支持；modeOctal 为 4 位八进制（如 0644） */
+export interface FsChmodRequest {
+  profileId: string
+  path: string
+  modeOctal: string
+}
+
+/** 文本编码 / 换行符转换请求（§十一 转换格式 A）：全通道（经驱动读→转→写） */
+export interface FsConvertTextRequest {
+  profileId: string
+  path: string
+  /** 源编码：auto = 自动检测（BOM/UTF-8 校验 → GBK 兜底） */
+  fromEncoding: 'auto' | 'utf-8' | 'gbk' | 'big5'
+  /** 目标编码 */
+  toEncoding: 'utf-8' | 'gbk'
+  /** 换行符处理：keep = 原样保留 */
+  newline: 'keep' | 'lf' | 'crlf'
+}
+
+/** 文本转换结果：detected 供 UI 提示实际使用的源编码 */
+export interface FsConvertTextResult {
+  detected: Exclude<FsConvertTextRequest['fromEncoding'], 'auto'>
+  /** 转换的字节数（转换前） */
+  bytes: number
+  encodingChanged: boolean
+  newlineChanged: boolean
+}
+
+/** 压缩请求（§十一 压缩/解压，仅本地通道）：sources 递归收集文件打入 zip */
+export interface FsZipRequest {
+  profileId: string
+  /** 产物 zip 的完整路径（含文件名，须 .zip 结尾） */
+  zipPath: string
+  sources: { path: string; kind: FsEntryKind }[]
+}
+
+export interface FsZipResult {
+  zipPath: string
+  files: number
+  size: number
+}
+
+/** 解压请求（仅本地通道）：解到 zip 同级目录 `<zip 名去扩展名>/` */
+export interface FsUnzipRequest {
+  profileId: string
+  path: string
+}
+
+export interface FsUnzipResult {
+  destDir: string
+  files: number
+}
+
+/** 目录备注（§十一 备注列）：应用侧存储，键 = profileId + path */
+export interface FsAnnotation {
+  profileId: string
+  path: string
+  note: string
+}
+
+/** 收藏夹条目 */
+export interface FsFavorite {
+  _id: string
+  profileId: string
+  profileName?: string
+  path: string
+  kind: FsEntryKind
+  name: string
+}
+
 
 export const FS_TEXT_EXTENSIONS = [
   'css', 'js', 'mjs', 'cjs', 'html', 'htm', 'json', 'yaml', 'yml', 'njk', 'nunjucks',
@@ -290,4 +366,22 @@ export function fsFormatSize(bytes: number | undefined): string {
     i++
   }
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`
+}
+
+/** 八进制权限串 → rwx 文本（如 0644 → rw-r--r--）；非法输入返回 '' */
+export function fsModeToRwx(mode: string | undefined): string {
+  const m = /^0?[0-7]{3,4}$/.exec(String(mode ?? '').trim())
+  if (!m) return ''
+  const bits = parseInt(m[0]!, 8) & 0o777
+  const chars = ['r', 'w', 'x']
+  let out = ''
+  for (let g = 2; g >= 0; g--) {
+    for (let b = 0; b < 3; b++) out += (bits >> (g * 3 + b)) & 1 ? chars[b]! : '-'
+  }
+  return out
+}
+
+/** 是否 zip 文件（解压入口启用条件） */
+export function isFsZipName(name: string): boolean {
+  return /\.zip$/i.test(String(name ?? '').trim())
 }

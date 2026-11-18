@@ -234,14 +234,14 @@ function savePlacementData(): void {
       <div class="left">
         <!-- ① 基本信息 -->
         <el-form v-show="step === 1" label-width="90px">
-          <el-form-item label="名称"><el-input clearable v-model="draft.name" placeholder="邮件名称" /></el-form-item>
+          <el-form-item label="名称" required><el-input clearable v-model="draft.name" placeholder="邮件名称" /></el-form-item>
           <el-form-item label="来源">
             <el-radio-group v-model="draft.origin">
               <el-radio value="custom">自定义</el-radio>
               <el-radio value="system">系统（官方产出）</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="品牌">
+          <el-form-item label="品牌" required>
             <el-select v-model="draft.brandId" filterable style="width: 100%" placeholder="选择品牌">
               <el-option v-for="b in brandOptions" :key="b.value" :value="b.value" :label="b.label" />
             </el-select>
@@ -250,7 +250,7 @@ function savePlacementData(): void {
 
         <!-- ② 模板 -->
         <el-form v-show="step === 2" label-width="90px">
-          <el-form-item label="模板版本">
+          <el-form-item label="模板版本" required>
             <el-select v-model="draft.templateVersionId" filterable style="width: 100%" placeholder="选择模板版本" @change="onTemplateChange">
               <el-option v-for="t in templateOptions" :key="t.value" :value="t.value" :label="t.label" />
             </el-select>

@@ -263,7 +263,7 @@ onMounted(() => {
         <div v-if="editing === tool.id" class="tool-manage-body">
           <el-form size="small" label-position="top">
             <FormGrid>
-              <el-form-item label="显示名称"><el-input clearable v-model="form.name" /></el-form-item>
+              <el-form-item label="显示名称" required><el-input clearable v-model="form.name" /></el-form-item>
               <el-form-item label="分类 / 标签">
                 <el-input clearable v-model="form.category" />
                 <FormHint>逗号 / 顿号分隔；标签内可含空格</FormHint>

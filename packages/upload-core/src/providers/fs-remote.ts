@@ -184,7 +184,7 @@ export class RemoteFsDriver implements FsDriver {
           return out
         })
       : await withSftp(this.profile, async (sftp) => {
-          const raw = await new Promise<{ filename: string; attrs: { isDirectory(): boolean; size?: number; mtime?: number; mode?: number } }[]>((res) => {
+          const raw = await new Promise<{ filename: string; attrs: { isDirectory(): boolean; size?: number; mtime?: number; mode?: number; uid?: number; gid?: number } }[]>((res) => {
             sftp.readdir(dir, (e, l) => res(e ? [] : (l ?? []) as never))
           })
           const out: FsEntry[] = []
@@ -198,7 +198,10 @@ export class RemoteFsDriver implements FsDriver {
               path: fsJoin(path, i.filename),
               size: isDir ? undefined : Number(i.attrs?.size ?? 0) || 0,
               modified: Number(i.attrs?.mtime ?? 0) ? Number(i.attrs?.mtime) * 1000 : undefined,
-              mode: isDir ? undefined : (i.attrs?.mode != null ? ((i.attrs.mode & 0o7777).toString(8).padStart(4, '0')) : undefined),
+              // §十一 扩展列：mode 补齐目录；属主/属组 uid/gid 读不到名称显示数字
+              mode: i.attrs?.mode != null ? ((i.attrs.mode & 0o7777).toString(8).padStart(4, '0')) : undefined,
+              owner: Number.isFinite(i.attrs?.uid) ? String(i.attrs?.uid) : undefined,
+              group: Number.isFinite(i.attrs?.gid) ? String(i.attrs?.gid) : undefined,
             })
           }
           return out
@@ -311,6 +314,16 @@ export class RemoteFsDriver implements FsDriver {
     }
     await withSftp(this.profile, (sftp) => new Promise<void>((res, rej) => {
       sftp.rename(from, to, (e) => e ? rej(e) : res())
+    }))
+  }
+
+  /** chmod（§十一 编辑权限）：仅 SFTP 支持（FTP 协议无 chmod）；modeOctal 3-4 位八进制 */
+  async chmod(path: string, modeOctal: string): Promise<void> {
+    if (this.isFtp) throw new Error('FTP 协议不支持 chmod（请改用 SFTP 通道）')
+    if (!/^0?[0-7]{3,4}$/.test(modeOctal)) throw new Error(`非法权限串：${modeOctal}（须为 3-4 位八进制）`)
+    const target = this.abs(path)
+    await withSftp(this.profile, (sftp) => new Promise<void>((res, rej) => {
+      sftp.chmod(target, parseInt(modeOctal, 8), (e) => e ? rej(e) : res())
     }))
   }
 

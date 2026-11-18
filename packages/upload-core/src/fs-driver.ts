@@ -51,6 +51,12 @@ export interface FsDriver {
    * dir = 将被删改内容所在目录（根可省略）；探测必须零副作用（不得改动现有文件）。
    */
   ensureCanDelete(op: string, dir?: string): Promise<void>
+
+  /**
+   * chmod（§十一 编辑权限）：仅本地 / SFTP 实现；其余通道为 undefined（UI 据此置灰）。
+   * modeOctal 为 4 位八进制（如 0644）。
+   */
+  chmod?(path: string, modeOctal: string): Promise<void>
 }
 
 /** 删除权限探测失败的统一拒绝错误（各驱动复用，文案口径一致） */

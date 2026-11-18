@@ -30,19 +30,42 @@ let dialogCount = 0
 
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
-  // opening tag 可能跨行；属性值中不含 '>'，到第一个 '>' 即为标签结束
-  for (const match of text.matchAll(/<(el-dialog|el-drawer)\b[\s\S]*?>/g)) {
+  // opening tag 可能跨行，且属性值里可能含 '>'（如模板三元表达式）——引号感知扫描到真正的标签结束
+  for (const match of matchOpeningTags(text)) {
     dialogCount += 1
-    const tag = match[0]
-    const line = text.slice(0, match.index).split('\n').length
+    const { tag, index, kind } = match
+    const line = text.slice(0, index).split('\n').length
     const where = `${relative(ROOT, file)}:${line}`
     if (!/close-on-click-modal="false"/.test(tag)) {
-      errors.push(`${where} <${match[1]}> 未禁用点击遮罩关闭`)
+      errors.push(`${where} <${kind}> 未禁用点击遮罩关闭`)
     }
     if (!/close-on-press-escape="false"/.test(tag)) {
-      errors.push(`${where} <${match[1]}> 未禁用 ESC 关闭`)
+      errors.push(`${where} <${kind}> 未禁用 ESC 关闭`)
     }
   }
+}
+
+/** 引号感知的开标签匹配：跳过 ' 与 " 字面量内部的 '>'，避免属性值三元表达式截断 */
+function matchOpeningTags(text) {
+  const out = []
+  const re = /<(el-dialog|el-drawer)\b/g
+  for (const m of text.matchAll(re)) {
+    let i = m.index + m[0].length
+    let quote = ''
+    while (i < text.length) {
+      const c = text[i]
+      if (quote) {
+        if (c === quote) quote = ''
+      } else if (c === '"' || c === "'") {
+        quote = c
+      } else if (c === '>') {
+        break
+      }
+      i++
+    }
+    out.push({ tag: text.slice(m.index, i + 1), index: m.index, kind: m[1] })
+  }
+  return out
 }
 
 console.log('弹框行为检查（禁遮罩 / 禁 ESC，主动按钮或成功动作才关闭）')

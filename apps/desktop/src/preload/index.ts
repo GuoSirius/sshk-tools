@@ -354,6 +354,21 @@ const api = {
     /** 当前通道的下载落点目录（不存在会自动创建） */
     downloadDir: (profileId: string): Promise<string> => invoke(IPC_CHANNELS.fsDownloadDir, profileId),
     setDownloadDir: (dir: string): Promise<string> => invoke(IPC_CHANNELS.fsSetDownloadDir, dir),
+    /** chmod（§十一 编辑权限，本地 / SFTP） */
+    chmod: (req: import('@sshk/shared').FsChmodRequest): Promise<boolean> => invoke(IPC_CHANNELS.fsChmod, req),
+    /** 文本编码 / 换行符转换（§十一 转换格式 A，全通道） */
+    convertText: (req: import('@sshk/shared').FsConvertTextRequest): Promise<import('@sshk/shared').FsConvertTextResult> =>
+      invoke(IPC_CHANNELS.fsConvertText, req),
+    /** 压缩 / 解压（§十一，仅本地通道） */
+    zip: (req: import('@sshk/shared').FsZipRequest): Promise<import('@sshk/shared').FsZipResult> => invoke(IPC_CHANNELS.fsZip, req),
+    unzip: (req: import('@sshk/shared').FsUnzipRequest): Promise<import('@sshk/shared').FsUnzipResult> => invoke(IPC_CHANNELS.fsUnzip, req),
+    /** 目录备注 / 收藏夹（§十一，应用侧集合） */
+    annotationList: (profileId: string): Promise<Record<string, string>> => invoke(IPC_CHANNELS.fsAnnotationList, profileId),
+    annotationSet: (req: { profileId: string; path: string; note: string }): Promise<boolean> => invoke(IPC_CHANNELS.fsAnnotationSet, req),
+    favoriteList: (): Promise<import('@sshk/shared').FsFavorite[]> => invoke(IPC_CHANNELS.fsFavoriteList),
+    favoriteAdd: (req: { profileId: string; path: string; kind: 'dir' | 'file'; name: string }): Promise<import('@sshk/shared').FsFavorite> =>
+      invoke(IPC_CHANNELS.fsFavoriteAdd, req),
+    favoriteRemove: (id: string): Promise<boolean> => invoke(IPC_CHANNELS.fsFavoriteRemove, id),
   },
   /** ShareHub 常驻分享服务（plans/09）：工具侧路由管理。toolId 由调用方传入做归属鉴权 */
   shareHub: {

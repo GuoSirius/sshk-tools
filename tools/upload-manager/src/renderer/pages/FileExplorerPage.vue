@@ -4,6 +4,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
   Back,
+  Box,
+  ChatDotRound,
+  CollectionTag,
   CopyDocument,
   Delete,
   Document,
@@ -11,14 +14,19 @@ import {
   EditPen,
   Folder,
   FolderAdd,
+  FolderOpened,
   Grid,
+  InfoFilled,
   Loading,
+  Lock,
+  MagicStick,
   Menu as MenuIcon,
   Picture,
   Plus,
   Rank,
   Refresh,
   Search,
+  Star,
   TrendCharts,
   Upload,
   VideoCamera,
@@ -30,13 +38,16 @@ import {
   FS_TEXT_EDIT_LIMIT,
   fsFormatSize,
   fsMediaMime,
+  fsModeToRwx,
   isFsImageName,
   isFsMediaName,
   isFsTextName,
   isFsVideoName,
+  isFsZipName,
   normalizeUploadConfig,
   type FsChannelInfo,
   type FsEntry,
+  type FsFavorite,
   type FsListPage,
   type FsTransferTask,
 } from '@sshk/shared'
@@ -115,6 +126,100 @@ function isUsageLoading(p: string): boolean { return usageLoadingPaths.value.has
 /** 已统计的目录容量（path → 结果），直接显示在列表「类型/大小」列 */
 const usageResults = ref(new Map<string, { size: number; files: number; truncated: boolean }>())
 
+// ── §十一：扩展列（创建时间/权限/用户组/备注）与列设置 ──
+type ColKey = 'createdAt' | 'mode' | 'owner' | 'note'
+/** 列显隐配置（localStorage 记忆）；默认显示备注，其余按 plans/08 §11.1 默认隐藏 */
+const colsVisible = ref<Record<ColKey, boolean>>(initColsVisible())
+function initColsVisible(): Record<ColKey, boolean> {
+  try {
+    const raw = JSON.parse(localStorage.getItem('sshk.fs.cols') ?? '') as Partial<Record<ColKey, boolean>>
+    return {
+      createdAt: raw.createdAt === true,
+      mode: raw.mode === true,
+      owner: raw.owner === true,
+      note: raw.note !== false, // 缺省 true（向后兼容：无配置也显示备注列）
+    }
+  } catch {
+    return { createdAt: false, mode: false, owner: false, note: true }
+  }
+}
+watch(colsVisible, (v) => localStorage.setItem('sshk.fs.cols', JSON.stringify(v)), { deep: true })
+/** 通道是否具备该列数据：本地 birthtime / mode / uid；SFTP mode / uid；FTP 与云一律「—」（列隐藏） */
+const hasCreated = computed(() => activeChannel.value?.type === 'local')
+const hasMode = computed(() => activeChannel.value?.type === 'local' || activeChannel.value?.protocol === 'sftp')
+const hasOwner = computed(() => activeChannel.value?.type === 'local' || activeChannel.value?.protocol === 'sftp')
+const colsOpen = ref(false)
+/** 实际显示的列（用户开关 ∩ 通道具备数据）：无数据的列整列隐藏，不出「—」竖排 */
+const colShown = computed(() => ({
+  createdAt: colsVisible.value.createdAt && hasCreated.value,
+  mode: colsVisible.value.mode && hasMode.value,
+  owner: colsVisible.value.owner && hasOwner.value,
+  note: colsVisible.value.note,
+}))
+/** 列表 grid 模板列（表头与数据行共用，§十一 动态列） */
+const listGridCols = computed(() => {
+  const cols = ['34px', 'minmax(0, 1fr)', '130px', '150px']
+  if (colShown.value.createdAt) cols.push('150px')
+  if (colShown.value.mode) cols.push('64px')
+  if (colShown.value.owner) cols.push('110px')
+  if (colShown.value.note) cols.push('150px')
+  cols.push('max-content')
+  return cols.join(' ')
+})
+
+// ── §十一：目录备注（应用侧 fsAnnotations）──
+const annotations = ref(new Map<string, string>())
+async function loadAnnotations(): Promise<void> {
+  if (!profileId.value) return
+  try { annotations.value = new Map(Object.entries(await window.api.fs.annotationList(profileId.value))) }
+  catch { annotations.value = new Map() }
+}
+const noteOpen = ref(false)
+const noteTargets = ref<FsEntry[]>([])
+const noteInput = ref('')
+const noteSaving = ref(false)
+
+// ── §十一：收藏夹（应用侧 fsFavorites）──
+const favorites = ref<FsFavorite[]>([])
+const favDrawerOpen = ref(false)
+async function loadFavorites(): Promise<void> {
+  try { favorites.value = await window.api.fs.favoriteList() } catch { favorites.value = [] }
+}
+function isFavorited(path: string): boolean { return favorites.value.some((f) => f.profileId === profileId.value && f.path === path) }
+/** 收藏跳转：跨通道先切通道（watch 会清路径重列），再消费 pendingNavPath 进入目标目录 */
+let pendingNavPath: string | null = null
+function gotoFavorite(f: FsFavorite): void {
+  pendingNavPath = f.path
+  if (f.profileId !== profileId.value) profileId.value = f.profileId
+  else { path.value = f.path; void list() }
+  favDrawerOpen.value = false
+}
+
+// ── §十一：编辑权限 / 属性 / 转换格式 / 压缩解压 ──
+const permOpen = ref(false)
+const permTarget = ref<FsEntry | null>(null)
+const permOctal = ref('0644')
+const permSaving = ref(false)
+const propsOpen = ref(false)
+const propsLoading = ref(false)
+const propsEntry = ref<FsEntry | null>(null)
+const propsStat = ref<{ size?: number; modified?: number; isDir?: boolean } | null>(null)
+const convertOpen = ref(false)
+const convertTarget = ref<FsEntry | null>(null)
+const convertForm = ref<{ from: 'auto' | 'utf-8' | 'gbk' | 'big5'; to: 'utf-8' | 'gbk'; newline: 'keep' | 'lf' | 'crlf' }>({ from: 'auto', to: 'utf-8', newline: 'keep' })
+const convertSaving = ref(false)
+const zipSaving = ref(false)
+
+/** 选中态派生（§十一 动态启用：按所选数量/类型/通道实时判定，避免误操作） */
+const selSingle = computed(() => (selectedEntries.value.length === 1 ? selectedEntries.value[0]! : null))
+const selSingleFile = computed(() => (selSingle.value?.kind === 'file' ? selSingle.value : null))
+const selSingleDir = computed(() => (selSingle.value?.kind === 'dir' ? selSingle.value : null))
+/** 编辑权限可用：单选 + 本地/SFTP 通道 + 有当前权限值（无值 = 列表没给，无从改起） */
+const canPerm = computed(() => selSingle.value != null && hasMode.value && Boolean(selSingle.value.mode))
+const canZip = computed(() => hasWritable.value && selectedEntries.value.length > 0)
+const canUnzip = computed(() => hasWritable.value && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
+const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
+
 // ── 传输队列 ──
 const drawerOpen = ref(false)
 const tasks = ref(new Map<string, FsTransferTask>())
@@ -188,6 +293,7 @@ async function list(resetCursor = true): Promise<void> {
     // 清掉已不在列表里的统计缓存（目录被删后同路径新目录不显示旧统计）
     const valid = new Set(page.entries.map((e) => e.path))
     usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
+    if (resetCursor) void loadAnnotations() // 备注列数据（应用侧集合）跟随目录重载
   } catch (err) {
     entries.value = []
     cursor.value = null
@@ -230,7 +336,14 @@ watch(profileId, () => {
   path.value = ''
   usageResults.value = new Map()
   usageLoadingPaths.value = new Set()
-  if (profileId.value) void list()
+  if (!profileId.value) return
+  // 收藏夹跨通道跳转：watch 已把路径清空重列，这里消费 pendingNavPath 再进目标目录
+  if (pendingNavPath !== null) {
+    const target = pendingNavPath
+    pendingNavPath = null
+    path.value = target
+  }
+  void list()
 })
 watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
 
@@ -777,8 +890,6 @@ function rowMove(entry: FsEntry): void {
   selection.value = new Set([entry.path])
   openMove('move')
 }
-/** SFTP 通道显示权限列（§3.2：仅 SFTP 有值） */
-const hasMode = computed(() => activeChannel.value?.protocol === 'sftp')
 async function submitMove(): Promise<void> {
   const dest = moveDirInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/')
   if (dest.split('/').some((p) => !p)) { ElMessage.warning('目标目录不合法'); return }
@@ -809,13 +920,21 @@ async function submitMove(): Promise<void> {
   }
 }
 async function paste(): Promise<void> {
+  await pasteInto(path.value)
+}
+
+/** §十一 行级粘贴：目录行的「粘贴」落点为该目录（复制/剪切语义与顶部粘贴一致） */
+async function rowPaste(entry: FsEntry): Promise<void> {
+  await pasteInto(entry.path)
+}
+async function pasteInto(destDir: string): Promise<void> {
   const clip = clipboard.value
-  if (!clip || !profileId.value) return
+  if (!clip || !profileId.value || !hasWritable.value) return
   // 跨通道粘贴（二期）：复制语义走 crossCopy；剪切跨通道降级为复制（源保留，避免半删风险）
   if (clip.profileId !== profileId.value) {
     if (!hasWritable.value) { ElMessage.warning('当前通道不支持写操作，无法作为粘贴目标'); return }
     try {
-      const r = await window.api.fs.crossCopy({ srcProfileId: clip.profileId, destProfileId: profileId.value, sources: clip.items, destDir: path.value })
+      const r = await window.api.fs.crossCopy({ srcProfileId: clip.profileId, destProfileId: profileId.value, sources: clip.items, destDir })
       if (clip.op === 'cut') ElMessage.info('跨通道剪切按复制执行（源文件保留）')
       drawerOpen.value = true
       ElMessage.info(`跨通道复制已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
@@ -827,11 +946,11 @@ async function paste(): Promise<void> {
   }
   try {
     if (clip.op === 'cut') {
-      await window.api.fs.mv({ profileId: profileId.value, sources: clip.items, destDir: path.value })
+      await window.api.fs.mv({ profileId: profileId.value, sources: clip.items, destDir })
       clipboard.value = null
       ElMessage.success('已粘贴（移动）')
     } else {
-      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir: path.value })
+      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir })
       if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
       else ElMessage.success('已粘贴（复制）')
     }
@@ -842,15 +961,242 @@ async function paste(): Promise<void> {
 }
 
 // ── 新建文件 ──
-/** 工具栏「更多▾」分发（§3.1） */
+/** 工具栏「更多▾」分发（§3.1 + §十一 分组化：全部按选中态实时判定，避免误操作） */
 function moreCommand(cmd: unknown): void {
   switch (String(cmd)) {
     case 'refresh': refresh(); return
-    case 'usage': if (selectedEntries.value.length === 1) void showUsage(selectedEntries.value[0]!); return
+    case 'usage': if (selSingleDir.value) void showUsage(selSingleDir.value); return
     case 'copyto': openMove('copy'); return
     case 'newfile': void newFile(); return
     case 'downloaddir': void changeDownloadDir(); return
     case 'opendir': void openDownloadDir(); return
+    case 'cols': colsOpen.value = true; return
+    case 'note': openNote(selectedEntries.value); return
+    case 'favorite': void addFavorites(selectedEntries.value); return
+    case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
+    case 'copypath': void copySelectedPaths(); return
+    case 'zip': void doZip(); return
+    case 'unzip': if (canUnzip.value) void doUnzip(selSingleFile.value!); return
+    case 'convert': openConvert(); return
+    case 'perm': openPerm(); return
+    case 'props': openProps(); return
+  }
+}
+
+/** 行「更多 ▾」分发（§11.4 定版：信息组/工具组/权限组，按条目类型与通道实时显隐） */
+function rowMoreCommand(cmd: string, entry: FsEntry): void {
+  switch (cmd) {
+    case 'usage': if (entry.kind === 'dir') void showUsage(entry); return
+    case 'note': openNote([entry]); return
+    case 'favorite': if (isFavorited(entry.path)) void removeFavorite(entry); else void addFavorites([entry]); return
+    case 'copypath': void window.api.os.clipboardWrite(entry.path).then(() => ElMessage.success('路径已复制')); return
+    case 'zip': void doZip([entry]); return
+    case 'unzip': void doUnzip(entry); return
+    case 'convert': selection.value = new Set([entry.path]); openConvert(); return
+    case 'perm': selection.value = new Set([entry.path]); openPerm(); return
+    case 'props': void openPropsFor(entry); return
+    case 'share': selection.value = new Set([entry.path]); rowShare(entry); return
+  }
+}
+
+// ── §十一：设置备注（遵守确认后生效；多选批量同备注）──
+function openNote(targets: FsEntry[]): void {
+  if (!targets.length) return
+  noteTargets.value = targets
+  noteInput.value = targets.length === 1 ? (annotations.value.get(targets[0]!.path) ?? '') : ''
+  noteOpen.value = true
+}
+async function submitNote(): Promise<void> {
+  if (!profileId.value || noteSaving.value) return
+  noteSaving.value = true
+  try {
+    for (const t of noteTargets.value) {
+      await window.api.fs.annotationSet({ profileId: profileId.value, path: t.path, note: noteInput.value })
+    }
+    noteOpen.value = false
+    ElMessage.success(noteInput.value.trim() ? `已设置备注（${noteTargets.value.length} 项）` : '已清除备注')
+    await loadAnnotations()
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  } finally { noteSaving.value = false }
+}
+
+// ── §十一：收藏夹 ──
+async function addFavorites(targets: FsEntry[]): Promise<void> {
+  if (!profileId.value || !targets.length) return
+  try {
+    let added = 0
+    for (const t of targets.slice(0, 20)) {
+      if (isFavorited(t.path)) continue
+      await window.api.fs.favoriteAdd({ profileId: profileId.value, path: t.path, kind: t.kind, name: t.name })
+      added++
+    }
+    await loadFavorites()
+    ElMessage.success(added ? `已收藏 ${added} 项` : '所选项目均已在收藏夹')
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  }
+}
+async function removeFavorite(entry: FsEntry): Promise<void> {
+  const hit = favorites.value.find((f) => f.profileId === profileId.value && f.path === entry.path)
+  if (!hit) return
+  try {
+    await window.api.fs.favoriteRemove(hit._id)
+    await loadFavorites()
+    ElMessage.success('已取消收藏')
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  }
+}
+async function removeFavoriteById(f: FsFavorite): Promise<void> {
+  try {
+    await window.api.fs.favoriteRemove(f._id)
+    await loadFavorites()
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  }
+}
+async function copySelectedPaths(): Promise<void> {
+  const list0 = selectedEntries.value
+  if (!list0.length) return
+  await window.api.os.clipboardWrite(list0.map((e) => e.path).join('\n'))
+  ElMessage.success(`已复制 ${list0.length} 条路径`)
+}
+
+// ── §十一：编辑权限（本地 / SFTP；先读后改、确认后生效）──
+function openPerm(): void {
+  const t = selSingle.value
+  if (!t || !canPerm.value) return
+  permTarget.value = t
+  permOctal.value = t.mode ?? '0644'
+  permOpen.value = true
+}
+function permBits(): { owner: [boolean, boolean, boolean]; group: [boolean, boolean, boolean]; other: [boolean, boolean, boolean] } {
+  const bits = parseInt(permOctal.value.replace(/^0?(?=[0-7]{3})/, '0'), 8) & 0o777
+  const g = (shift: number): [boolean, boolean, boolean] => [Boolean((bits >> shift) & 4), Boolean((bits >> shift) & 2), Boolean((bits >> shift) & 1)]
+  return { owner: g(6), group: g(3), other: g(0) }
+}
+/** rwx 勾选 ↔ 八进制输入双向联动（输入框仍是权威，勾选实时重算） */
+function togglePermBit(group: 'owner' | 'group' | 'other', idx: 0 | 1 | 2): void {
+  const b = permBits()
+  b[group][idx] = !b[group][idx]
+  const g = (t: [boolean, boolean, boolean]): number => (t[0] ? 4 : 0) | (t[1] ? 2 : 0) | (t[2] ? 1 : 0)
+  permOctal.value = '0' + g(b.owner) + g(b.group) + g(b.other)
+}
+async function submitPerm(): Promise<void> {
+  const t = permTarget.value
+  if (!t || !profileId.value || permSaving.value) return
+  const octal = permOctal.value.trim()
+  if (!/^0?[0-7]{3}$/.test(octal)) { ElMessage.warning('权限须为 3-4 位八进制（如 0644）'); return }
+  try {
+    await ElMessageBox.confirm(
+      `将把「${t.name}」的权限改为 ${octal}（${fsModeToRwx(octal)}）。确认修改吗？`,
+      '编辑权限',
+      { confirmButtonText: '确认修改', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch { return }
+  permSaving.value = true
+  try {
+    await window.api.fs.chmod({ profileId: profileId.value, path: t.path, modeOctal: octal })
+    permOpen.value = false
+    ElMessage.success('权限已修改')
+    void list(false)
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  } finally { permSaving.value = false }
+}
+
+// ── §十一：属性弹框（只读展示 + 编辑入口）──
+async function openProps(): Promise<void> {
+  const t = selSingle.value
+  if (!t) return
+  await openPropsFor(t)
+}
+async function openPropsFor(entry: FsEntry): Promise<void> {
+  propsEntry.value = entry
+  propsStat.value = null
+  propsLoading.value = true
+  propsOpen.value = true
+  try {
+    const st = await window.api.fs.stat({ profileId: profileId.value, path: entry.path })
+    propsStat.value = st.exists ? { size: st.size, modified: st.modified, isDir: st.isDir } : null
+  } catch { propsStat.value = null }
+  finally { propsLoading.value = false }
+}
+
+// ── §十一：转换格式 A（文本编码/换行符，全通道；仅文本扩展启用）──
+function openConvert(): void {
+  const t = selSingleFile.value
+  if (!t || !canConvert.value) return
+  convertTarget.value = t
+  convertForm.value = { from: 'auto', to: 'utf-8', newline: 'keep' }
+  convertOpen.value = true
+}
+async function submitConvert(): Promise<void> {
+  const t = convertTarget.value
+  if (!t || !profileId.value || convertSaving.value) return
+  const f = convertForm.value
+  const nlText = f.newline === 'keep' ? '保持换行符不变' : `换行符统一为 ${f.newline === 'lf' ? 'LF (\\n)' : 'CRLF (\\r\\n)'}`
+  try {
+    await ElMessageBox.confirm(
+      `将读取「${t.name}」并按（${f.from === 'auto' ? '自动检测编码' : f.from} → ${f.to}，${nlText}）转换后写回原文件。转换前建议下载备份，确认执行吗？`,
+      '转换文本编码 / 换行符',
+      { confirmButtonText: '确认转换', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch { return }
+  convertSaving.value = true
+  try {
+    const r = await window.api.fs.convertText({ profileId: profileId.value, path: t.path, fromEncoding: f.from, toEncoding: f.to, newline: f.newline })
+    convertOpen.value = false
+    if (!r.encodingChanged && !r.newlineChanged) ElMessage.info(`内容已是 ${r.detected} 编码且换行符符合要求，未做修改`)
+    else ElMessage.success(`已转换：${r.detected} → ${f.to}${r.newlineChanged ? ' + 换行符' : ''}（${fsFormatSize(r.bytes)}）`)
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  } finally { convertSaving.value = false }
+}
+
+// ── §十一：压缩 / 解压（仅本地通道，fflate）──
+async function doZip(targets?: FsEntry[]): Promise<void> {
+  if (!hasWritable.value || activeChannel.value?.type !== 'local') return
+  const list0 = targets ?? selectedEntries.value
+  if (!list0.length) return
+  const first = list0[0]!
+  const defaultName = list0.length === 1 ? `${first.name}.zip` : `选中${list0.length}项.zip`
+  try {
+    const { value } = await ElMessageBox.prompt('在当前目录创建 zip 压缩包，输入文件名', '压缩', {
+      confirmButtonText: '压缩', cancelButtonText: '取消',
+      inputValue: defaultName,
+      inputPattern: /^[^\\/:]+\.zip$/i, inputErrorMessage: '文件名不能含斜杠且须以 .zip 结尾',
+      closeOnClickModal: false, closeOnPressEscape: false,
+    })
+    const name = String(value ?? '').trim()
+    if (!name) return
+    zipSaving.value = true
+    const zipPath = path.value ? `${path.value}/${name}` : name
+    const r = await window.api.fs.zip({
+      profileId: profileId.value,
+      zipPath,
+      sources: list0.map((e) => ({ path: e.path, kind: e.kind })),
+    })
+    ElMessage.success(`已压缩 ${r.files} 个文件 → ${name}（${fsFormatSize(r.size)}）`)
+    void list(false)
+  } catch (err) {
+    if ((err as Error).message !== 'cancel' && err !== 'cancel') ElMessage.error(friendlyError(err))
+  } finally { zipSaving.value = false }
+}
+async function doUnzip(entry: FsEntry): Promise<void> {
+  if (!hasWritable.value || activeChannel.value?.type !== 'local' || !isFsZipName(entry.name)) return
+  try {
+    await ElMessageBox.confirm(
+      `将把「${entry.name}」解压到同级目录「${entry.name.replace(/\.zip$/i, '')}/」。确认解压吗？`,
+      '解压',
+      { confirmButtonText: '解压', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+    const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path })
+    ElMessage.success(`已解压 ${r.files} 个文件 → ${r.destDir}`)
+    void list(false)
+  } catch (err) {
+    if ((err as Error).message !== 'cancel' && err !== 'cancel') ElMessage.error(friendlyError(err))
   }
 }
 async function newFile(): Promise<void> {
@@ -990,6 +1336,7 @@ onMounted(() => {
     if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy' || task.kind === 'cross')) scheduleRefresh()
   })
   void loadChannels().then(() => { if (profileId.value) void list() })
+  void loadFavorites() // §十一 收藏夹
   // 队列已有历史任务（页面刷新恢复）
   void window.api.fs.transferList().then((list0) => {
     for (const t of list0) tasks.value.set(t.id, t)
@@ -1115,9 +1462,22 @@ function onKeydown(event: KeyboardEvent): void {
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
+            <!-- 整理组（§11.3：顶部既有按钮保持不动，新增操作全部分组收纳） -->
+            <el-dropdown-item command="note" :icon="ChatDotRound" :disabled="!selectedEntries.length || !hasWritable">设置备注…</el-dropdown-item>
+            <el-dropdown-item command="favorite" :icon="CollectionTag" :disabled="!selectedEntries.length || !profileId">添加收藏</el-dropdown-item>
+            <el-dropdown-item command="favorites" :icon="Star">收藏夹…</el-dropdown-item>
+            <el-dropdown-item command="copypath" :icon="CopyDocument" :disabled="!selectedEntries.length">复制路径</el-dropdown-item>
+            <el-dropdown-item command="zip" :icon="Box" :disabled="!canZip">压缩为 zip…</el-dropdown-item>
+            <el-dropdown-item command="unzip" :icon="FolderOpened" :disabled="!canUnzip">解压到新目录</el-dropdown-item>
+            <el-dropdown-item command="convert" :icon="MagicStick" :disabled="!canConvert">转换文本编码 / 换行符…</el-dropdown-item>
+            <!-- 权限与信息组 -->
+            <el-dropdown-item command="perm" :icon="Lock" divided :disabled="!canPerm">编辑权限…</el-dropdown-item>
+            <el-dropdown-item command="props" :icon="InfoFilled" :disabled="selectedEntries.length !== 1">属性</el-dropdown-item>
+            <el-dropdown-item command="usage" :icon="TrendCharts" :disabled="!selSingleDir">统计选中目录容量</el-dropdown-item>
+            <!-- 视图与设置组 -->
+            <el-dropdown-item command="copyto" :icon="CopyDocument" divided :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
+            <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
-            <el-dropdown-item command="usage" :icon="TrendCharts" :disabled="selectedEntries.length !== 1 || selectedEntries[0]!.kind !== 'dir'">统计选中目录容量</el-dropdown-item>
-            <el-dropdown-item command="copyto" :icon="CopyDocument" :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
           </el-dropdown-menu>
@@ -1126,7 +1486,7 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <!-- 文件列表 -->
-    <div class="fs-list" :class="{ 'is-drag': dragOver, 'has-mode': hasMode }">
+    <div class="fs-list" :class="{ 'is-drag': dragOver }">
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
         <span>
@@ -1150,14 +1510,17 @@ function onKeydown(event: KeyboardEvent): void {
 
       <!-- 列表视图 -->
       <template v-else-if="viewMode === 'list'">
-        <div class="fs-thead">
+        <div class="fs-thead" :style="{ gridTemplateColumns: listGridCols }">
           <span class="fs-col-check">
             <el-checkbox :model-value="selection.size > 0 && selection.size === filteredEntries.length" :indeterminate="selection.size > 0 && selection.size < filteredEntries.length" @change="selectAll" />
           </span>
           <span class="fs-col-name fs-sortable" @click="sortKey = 'name'; sortDir = sortKey === 'name' && sortDir === 'asc' ? 'desc' : 'asc'">名称{{ sortKey === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">类型/大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
           <span class="fs-col-time fs-sortable" @click="sortKey = 'time'; sortDir = sortKey === 'time' && sortDir === 'asc' ? 'desc' : 'asc'">修改时间{{ sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
-          <span v-if="hasMode" class="fs-col-mode">权限</span>
+          <span v-if="colShown.createdAt" class="fs-col-time">创建时间</span>
+          <span v-if="colShown.mode" class="fs-col-mode">权限</span>
+          <span v-if="colShown.owner" class="fs-col-owner">用户/组</span>
+          <span v-if="colShown.note" class="fs-col-note">备注</span>
           <span class="fs-col-op">操作</span>
         </div>
         <div
@@ -1165,6 +1528,7 @@ function onKeydown(event: KeyboardEvent): void {
           :key="entry.path"
           class="fs-row"
           :class="{ selected: selection.has(entry.path) }"
+          :style="{ gridTemplateColumns: listGridCols }"
           @click="rowClick(entry, $event)"
           @dblclick="rowOpen(entry)"
         >
@@ -1177,17 +1541,41 @@ function onKeydown(event: KeyboardEvent): void {
           </span>
           <span class="fs-col-size" :title="sizeCell(entry)">{{ sizeCell(entry) }}</span>
           <span class="fs-col-time" :title="fmtTime(entry.modified)">{{ fmtTime(entry.modified) }}</span>
-          <span v-if="hasMode" class="fs-col-mode">{{ entry.mode ?? '—' }}</span>
+          <span v-if="colShown.createdAt" class="fs-col-time" :title="fmtTime(entry.createdAt)">{{ fmtTime(entry.createdAt) }}</span>
+          <span v-if="colShown.mode" class="fs-col-mode" :title="entry.mode ? `${entry.mode} ${fsModeToRwx(entry.mode)}` : ''">{{ entry.mode ?? '—' }}</span>
+          <span v-if="colShown.owner" class="fs-col-owner" :title="entry.owner ? `${entry.owner}:${entry.group ?? ''}` : ''">{{ entry.owner ? `${entry.owner}:${entry.group ?? '—'}` : '—' }}</span>
+          <span v-if="colShown.note" class="fs-col-note" :title="annotations.get(entry.path) ?? ''">{{ annotations.get(entry.path) ?? '' }}</span>
           <span class="fs-col-op">
-            <el-button size="small" text :type="entry.kind === 'dir' ? 'primary' : 'primary'" @click.stop="rowOpen(entry)">打开</el-button>
+            <!-- §11.4 定版顺序：下载(文件)→链接(文件)→粘贴(目录)→复制→移动→重命名→删除→更多▾ -->
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
-            <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="rowLink(entry)">链接</el-button>
-            <el-button v-if="activeChannel?.type === 'local'" size="small" text type="primary" @click.stop="rowShare(entry)">安全分享</el-button>
-            <el-button size="small" text type="warning" v-if="hasWritable" @click.stop="rowCopy(entry)">复制</el-button>
+            <el-button v-if="entry.kind === 'file'" size="small" text type="primary" title="复制外链（baseUrl + 文件路径）" @click.stop="rowLink(entry)">链接</el-button>
+            <el-button v-if="entry.kind === 'dir' && clipboard && hasWritable" size="small" text type="success" title="把剪贴板内容粘贴进该目录" @click.stop="rowPaste(entry)">粘贴</el-button>
+            <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
-            <el-button v-if="entry.kind === 'dir'" size="small" text type="success" @click.stop="showUsage(entry)">统计</el-button>
             <el-button v-if="hasWritable" size="small" text type="primary" @click.stop="openRename(entry)">重命名</el-button>
             <el-button v-if="hasWritable" size="small" text type="danger" @click.stop="openDelete([entry])">删除</el-button>
+            <el-dropdown trigger="click" @command="(c: unknown) => rowMoreCommand(String(c), entry)">
+              <el-button size="small" text @click.stop>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <!-- 信息组 -->
+                  <el-dropdown-item command="props" :icon="InfoFilled">属性</el-dropdown-item>
+                  <el-dropdown-item v-if="entry.kind === 'dir'" command="usage" :icon="TrendCharts">统计</el-dropdown-item>
+                  <el-dropdown-item command="note" :icon="ChatDotRound">设置备注…</el-dropdown-item>
+                  <el-dropdown-item command="favorite" :icon="CollectionTag">{{ isFavorited(entry.path) ? '取消收藏' : '添加收藏' }}</el-dropdown-item>
+                  <el-dropdown-item command="copypath" :icon="CopyDocument">复制路径</el-dropdown-item>
+                  <!-- 工具组（按通道与文件类型实时显隐：压缩/解压仅本地，文本转换仅文本扩展） -->
+                  <template v-if="activeChannel?.type === 'local'">
+                    <el-dropdown-item command="zip" :icon="Box" divided>压缩为 zip…</el-dropdown-item>
+                    <el-dropdown-item v-if="isFsZipName(entry.name)" command="unzip" :icon="FolderOpened">解压到新目录</el-dropdown-item>
+                  </template>
+                  <el-dropdown-item v-if="entry.kind === 'file' && isFsTextName(entry.name)" command="convert" :icon="MagicStick" divided>转换编码 / 换行符…</el-dropdown-item>
+                  <!-- 权限组 -->
+                  <el-dropdown-item v-if="hasMode" command="perm" :icon="Lock" divided :disabled="!entry.mode">编辑权限…</el-dropdown-item>
+                  <el-dropdown-item v-if="activeChannel?.type === 'local'" command="share" :icon="Star" divided>安全分享</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </span>
         </div>
         <div v-if="cursor" class="fs-more">
@@ -1380,6 +1768,134 @@ function onKeydown(event: KeyboardEvent): void {
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
     />
+
+    <!-- §十一：设置备注（确认后生效；多选批量同备注） -->
+    <el-dialog v-model="noteOpen" :title="`设置备注${noteTargets.length > 1 ? `（${noteTargets.length} 项）` : ''}`" width="440px" close-on-click-modal="false" close-on-press-escape="false">
+      <el-input clearable v-model="noteInput" data-autofocus maxlength="200" placeholder="备注（留空清除；最多 200 字）" @keyup.enter="submitNote" />
+      <div class="hint" style="margin-top: 8px">备注保存在本机应用数据，跨通道可用；重命名/移动后自动跟随。</div>
+      <template #footer>
+        <el-button @click="noteOpen = false">取消</el-button>
+        <el-button type="primary" :loading="noteSaving" @click="submitNote">保存备注</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- §十一：编辑权限（本地 / SFTP；rwx 勾选 ↔ 八进制双向联动，确认后生效） -->
+    <el-dialog v-model="permOpen" title="编辑权限" width="480px" close-on-click-modal="false" close-on-press-escape="false">
+      <template v-if="permTarget">
+        <div class="hint" style="margin-bottom: 10px">{{ permTarget.name }} · 当前 {{ permTarget.mode }}（{{ fsModeToRwx(permTarget.mode) }}）</div>
+        <div class="fs-perm-grid">
+          <span />
+          <span class="fs-perm-head">读</span><span class="fs-perm-head">写</span><span class="fs-perm-head">执行</span>
+          <span class="fs-perm-label">属主</span>
+          <template v-for="(bit, i) in permBits().owner" :key="`o${i}`">
+            <el-checkbox class="fs-perm-check" :model-value="bit" @change="togglePermBit('owner', i as 0 | 1 | 2)" />
+          </template>
+          <span class="fs-perm-label">属组</span>
+          <template v-for="(bit, i) in permBits().group" :key="`g${i}`">
+            <el-checkbox class="fs-perm-check" :model-value="bit" @change="togglePermBit('group', i as 0 | 1 | 2)" />
+          </template>
+          <span class="fs-perm-label">其他</span>
+          <template v-for="(bit, i) in permBits().other" :key="`t${i}`">
+            <el-checkbox class="fs-perm-check" :model-value="bit" @change="togglePermBit('other', i as 0 | 1 | 2)" />
+          </template>
+        </div>
+        <div class="fs-perm-octal">
+          八进制：<el-input v-model="permOctal" data-autofocus class="fs-perm-octal-input" size="small" placeholder="0644" @keyup.enter="submitPerm" />
+          <span class="hint">= {{ fsModeToRwx(permOctal) }}</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">Windows 本地目录实际只有只读位生效；POSIX（SFTP/Linux）全量生效。点「修改」后二次确认才写入。</div>
+      </template>
+      <template #footer>
+        <el-button @click="permOpen = false">取消</el-button>
+        <el-button type="primary" :loading="permSaving" @click="submitPerm">修改</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- §十一：属性（只读展示 + 编辑入口） -->
+    <el-dialog v-model="propsOpen" title="属性" width="520px" close-on-click-modal="false" close-on-press-escape="false">
+      <template v-if="propsEntry">
+        <div class="fs-props">
+          <div class="fs-props-row"><span class="fs-props-k">名称</span><span class="fs-props-v">{{ propsEntry.name }}</span></div>
+          <div class="fs-props-row"><span class="fs-props-k">路径</span><span class="fs-props-v">{{ propsEntry.path || '(根)' }}</span></div>
+          <div class="fs-props-row"><span class="fs-props-k">类型</span><span class="fs-props-v">{{ propsEntry.kind === 'dir' ? '目录' : '文件' }}</span></div>
+          <div class="fs-props-row"><span class="fs-props-k">大小</span><span class="fs-props-v">{{ propsEntry.kind === 'dir' ? sizeCell(propsEntry) : fsFormatSize(propsEntry.size) }}</span></div>
+          <div class="fs-props-row"><span class="fs-props-k">修改时间</span><span class="fs-props-v">{{ fmtTime(propsStat?.modified ?? propsEntry.modified) }}</span></div>
+          <div v-if="hasCreated" class="fs-props-row"><span class="fs-props-k">创建时间</span><span class="fs-props-v">{{ fmtTime(propsEntry.createdAt) }}</span></div>
+          <div v-if="hasMode" class="fs-props-row"><span class="fs-props-k">权限</span><span class="fs-props-v">{{ propsEntry.mode ? `${propsEntry.mode}（${fsModeToRwx(propsEntry.mode)}）` : '—' }}</span></div>
+          <div v-if="hasOwner" class="fs-props-row"><span class="fs-props-k">用户/组</span><span class="fs-props-v">{{ propsEntry.owner ? `${propsEntry.owner}:${propsEntry.group ?? '—'}` : '—' }}</span></div>
+          <div class="fs-props-row"><span class="fs-props-k">备注</span><span class="fs-props-v">{{ annotations.get(propsEntry.path) || '—' }}</span></div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button v-if="propsEntry && colShown.note" size="small" type="warning" plain @click="openNote([propsEntry!])">编辑备注</el-button>
+        <el-button v-if="propsEntry && hasMode && propsEntry.mode" size="small" type="primary" plain @click="selection = new Set([propsEntry!.path]); permTarget = propsEntry; permOctal = propsEntry.mode ?? '0644'; propsOpen = false; permOpen = true">编辑权限</el-button>
+        <el-button size="small" @click="propsOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- §十一：转换文本编码 / 换行符（转换格式 A，全通道，确认后生效） -->
+    <el-dialog v-model="convertOpen" title="转换文本编码 / 换行符" width="480px" close-on-click-modal="false" close-on-press-escape="false">
+      <template v-if="convertTarget">
+        <div class="hint" style="margin-bottom: 10px">{{ convertTarget.name }} · {{ fsFormatSize(convertTarget.size) }}</div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">当前编码</span>
+          <el-select v-model="convertForm.from" size="small" style="flex: 1">
+            <el-option label="自动检测" value="auto" />
+            <el-option label="UTF-8" value="utf-8" />
+            <el-option label="GBK / GB2312" value="gbk" />
+            <el-option label="Big5" value="big5" />
+          </el-select>
+        </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">转换为</span>
+          <el-select v-model="convertForm.to" size="small" style="flex: 1">
+            <el-option label="UTF-8（推荐）" value="utf-8" />
+            <el-option label="GBK / GB2312" value="gbk" />
+          </el-select>
+        </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">换行符</span>
+          <el-select v-model="convertForm.newline" size="small" style="flex: 1">
+            <el-option label="保持不变" value="keep" />
+            <el-option label="LF（Unix \\n）" value="lf" />
+            <el-option label="CRLF（Windows \\r\\n）" value="crlf" />
+          </el-select>
+        </div>
+        <div class="hint" style="margin-top: 8px">直接写回原文件（转换前建议下载备份）；「自动检测」按 BOM → UTF-8 严格校验 → GBK 的顺序判定。</div>
+      </template>
+      <template #footer>
+        <el-button @click="convertOpen = false">取消</el-button>
+        <el-button type="primary" :loading="convertSaving" @click="submitConvert">转换</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- §十一：列设置（显隐记忆 localStorage；通道不具备数据的列禁用） -->
+    <el-dialog v-model="colsOpen" title="列设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
+      <div class="fs-cols">
+        <el-checkbox v-model="colsVisible.note">备注（全通道可用）</el-checkbox>
+        <el-checkbox v-model="colsVisible.createdAt" :disabled="!hasCreated" title="仅本地目录通道提供创建时间">创建时间{{ hasCreated ? '' : '（当前通道无数据）' }}</el-checkbox>
+        <el-checkbox v-model="colsVisible.mode" :disabled="!hasMode" title="仅本地与 SFTP 通道提供权限">权限{{ hasMode ? '' : '（当前通道无数据）' }}</el-checkbox>
+        <el-checkbox v-model="colsVisible.owner" :disabled="!hasOwner" title="仅本地与 SFTP 通道提供用户/组">用户 / 用户组{{ hasOwner ? '' : '（当前通道无数据）' }}</el-checkbox>
+      </div>
+      <template #footer>
+        <el-button @click="colsOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- §十一：收藏夹（跨通道直达） -->
+    <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" close-on-click-modal="false" close-on-press-escape="false">
+      <div v-if="!favorites.length" class="fs-empty"><p>还没有收藏</p><p class="fs-empty-hint">选中文件/目录后在「更多 ▾」里添加收藏</p></div>
+      <div v-else class="fs-fav-list">
+        <div v-for="f in favorites" :key="f._id" class="fs-fav-item">
+          <el-icon class="fs-icon" :class="{ 'is-dir': f.kind === 'dir' }"><component :is="f.kind === 'dir' ? Folder : Document" /></el-icon>
+          <span class="fs-fav-name" :title="`${f.profileName ?? f.profileId}/${f.path}`">{{ f.name }}</span>
+          <span class="fs-fav-meta">{{ f.profileName ?? f.profileId }} · {{ f.path }}</span>
+          <span class="fs-spacer" />
+          <el-button size="small" text type="primary" @click="gotoFavorite(f)">前往</el-button>
+          <el-button size="small" text type="danger" @click="removeFavoriteById(f)">删除</el-button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -1413,8 +1929,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; position: relative; }
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
-/* 操作列 252px：7 个紧凑按钮（打开/下载/链接/复制/移动/重命名/删除）= 6×32+44+12 = 248px */
-.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 130px 150px 252px; align-items: center; padding: 0 10px; }
+/* 列表 grid：模板列由 §十一 列设置动态生成（listGridCols 内联 style），这里只留兜底缺省 */
+.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 130px 150px max-content; align-items: center; padding: 0 10px; }
 /* 表头不透明底色（用户反馈 2026-11-17：此前 opacity:.75 连背景一起半透明，滚动后与内容重叠）；muted 观感用文字色实现 */
 .fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 2; font-size: 12px; color: var(--el-text-color-secondary); height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
@@ -1439,11 +1955,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-thead .fs-col-op { justify-content: center; }
 .fs-col-op { display: flex; justify-content: flex-end; gap: 0; }
 .fs-col-op .el-button + .el-button { margin-left: 2px; }
-/* 操作列按钮紧凑化：EP small text 默认 padding 5px 11px，6 个按钮（打开/下载/复制/移动/重命名/删除）约 298px
-   撑爆 220px 固定列宽，flex-end 下溢出向左绘制盖住修改时间列——压缩到 0 4px 后约 214px 放得下 */
+/* 操作列按钮紧凑化：EP small text 默认 padding 5px 11px，8 个按钮撑爆固定列宽——压缩到 0 4px */
 .fs-col-op .el-button.is-text { padding: 0 4px; height: 22px; min-height: 0; white-space: nowrap; }
-/* SFTP 权限列（§3.2：仅 SFTP 显示） */
-.fs-list.has-mode .fs-thead, .fs-list.has-mode .fs-row { grid-template-columns: 34px minmax(0, 1fr) 130px 145px 62px 252px; }
+/* §十一 扩展列：备注左对齐可截断（hover 看 title）；owner 组为数字对（uid:gid） */
+.fs-col-note, .fs-col-owner { font-size: 12px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .fs-more { text-align: center; padding: 8px 0; }
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
@@ -1488,4 +2003,23 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-task.is-conflict .fs-task-status { color: var(--el-color-warning); }
 .fs-task.is-success .fs-task-status { color: var(--el-color-success); }
 .fs-task-error { font-size: 12px; color: var(--el-color-danger); margin-top: 2px; word-break: break-all; }
+
+/* ── §十一：编辑权限 / 属性 / 转换 / 列设置 / 收藏夹 ── */
+.fs-perm-grid { display: grid; grid-template-columns: 64px repeat(3, 1fr); justify-items: center; gap: 6px 0; align-items: center; }
+.fs-perm-head { font-size: 12px; opacity: .6; }
+.fs-perm-label { font-size: 13px; justify-self: start; }
+.fs-perm-check { height: 22px; }
+.fs-perm-octal { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+.fs-perm-octal-input { width: 110px; }
+.fs-props { display: flex; flex-direction: column; gap: 8px; }
+.fs-props-row { display: flex; gap: 12px; font-size: 13px; line-height: 1.5; }
+.fs-props-k { flex: none; width: 72px; opacity: .6; }
+.fs-props-v { flex: 1; min-width: 0; word-break: break-all; }
+.fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.fs-convert-label { flex: none; width: 64px; font-size: 13px; opacity: .7; }
+.fs-cols { display: flex; flex-direction: column; gap: 4px; }
+.fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }
+.fs-fav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
+.fs-fav-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+.fs-fav-meta { font-size: 12px; opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

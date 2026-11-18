@@ -1,6 +1,8 @@
 import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BrowserWindow, app, dialog } from 'electron'
+import { zipSync, unzipSync } from 'fflate'
+import iconv from 'iconv-lite'
 import {
   CloudFsDriver,
   LocalFsDriver,
@@ -10,15 +12,21 @@ import {
   normalizeRootRel,
 } from '@sshk/upload-core'
 import type { FsDriver } from '@sshk/upload-core'
+import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
 import {
   TOOL_IDS,
   fsFormatSize,
+  isFsZipName,
   normalizeUploadConfig,
   uploadVendorMeta,
   type FsChannelInfo,
+  type FsChmodRequest,
+  type FsConvertTextRequest,
+  type FsConvertTextResult,
   type FsCrossCopyRequest,
   type FsCrossCopyResult,
   type FsCpRequest,
+  type FsFavorite,
   type FsLocalFile,
   type FsListPage,
   type FsMvRequest,
@@ -30,8 +38,12 @@ import {
   type FsStatResult,
   type FsTransferInput,
   type FsTransferTask,
+  type FsUnzipRequest,
+  type FsUnzipResult,
   type FsUsageResult,
   type FsWriteRequest,
+  type FsZipRequest,
+  type FsZipResult,
 } from '@sshk/shared'
 import type { AppServices } from './services'
 import { logger } from './logger'
@@ -54,6 +66,11 @@ const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 const MAX_TASKS = 2000
 /** 本地目录展平的文件数上限 */
 const MAX_LOCAL_FILES = 5000
+/** 文本编码/换行符转换的文件大小上限（§十一 转换格式 A） */
+const FS_TEXT_CONVERT_LIMIT = 20 * 1024 * 1024
+/** zip 压缩/解压的文件数与字节上限（内存型操作，防 OOM） */
+const FS_ZIP_FILE_CAP = 3000
+const FS_ZIP_BYTES_CAP = 500 * 1024 * 1024
 /** 删除任务计入队列的目录（递归删除走队列，带进度） */
 
 interface RuntimeResolved {
@@ -640,8 +657,28 @@ export class FsRuntime {
         await driver.mv(src, dest)
         logger.info('upload', `fs 移动：${channel.id}/${src} → ${dest}`)
       }
+      // §十一：备注随条目迁移（重命名/移动后原路径备注跟到新路径）
+      await this.migrateAnnotations(channel.id, src, dest, item.kind === 'dir' ? 'dir' : 'file')
     }
     return true
+  }
+
+  /** §十一：备注迁移——src（或其子路径）上的备注文档 path 更新为 dest 对应新路径 */
+  private async migrateAnnotations(profileId: string, src: string, dest: string, kind: 'dir' | 'file'): Promise<void> {
+    try {
+      const rows = await this.opts.services.repository.list<FsAnnotationDoc>(
+        'fsAnnotations', { profileId, archived: false },
+      )
+      const hit = kind === 'dir'
+        ? rows.filter((r) => r.path === src || r.path.startsWith(`${src}/`))
+        : rows.filter((r) => r.path === src)
+      for (const r of hit) {
+        const next = r.path === src ? dest : `${dest}${r.path.slice(src.length)}`
+        await this.opts.services.repository.update<FsAnnotationDoc>('fsAnnotations', r._id, { path: next })
+      }
+    } catch (err) {
+      logger.warn('upload', `fs 备注迁移失败（不影响移动结果）：${src} → ${dest}：${(err as Error).message}`)
+    }
   }
 
   /**
@@ -714,6 +751,222 @@ export class FsRuntime {
     const r = await driver.usage(path)
     logger.info('upload', `fs 容量统计：${channel.id}/${path || '(根)'} → ${fsFormatSize(r.size)} / ${r.files} 个文件${r.truncated ? '（截断）' : ''}`)
     return r
+  }
+
+  // ── §十一 扩展（用户 2026-11-18 定版）：chmod / 文本转换 / 压缩解压 / 备注 / 收藏 ──
+
+  /** chmod：本地 / SFTP 驱动实现（FTP/云 UI 置灰，main 再兜底拒绝） */
+  async chmod(req: FsChmodRequest): Promise<boolean> {
+    const { driver, channel } = this.resolve(req?.profileId)
+    const path = this.assertPath(req?.path)
+    if (!path) throw new Error('根目录不支持 chmod')
+    if (!driver.chmod) throw new Error(`通道「${channel.name}」不支持 chmod（本地与 SFTP 通道可用）`)
+    const modeOctal = String(req?.modeOctal ?? '').trim()
+    await driver.chmod(path, modeOctal)
+    logger.info('upload', `fs chmod：${channel.id}/${path} → ${modeOctal}`)
+    return true
+  }
+
+  /** 文本编码 / 换行符转换（转换格式 A，全通道）：读 → 解码 → 转换 → 编码 → 写回 */
+  async convertText(req: FsConvertTextRequest): Promise<FsConvertTextResult> {
+    const { driver, channel } = this.resolve(req?.profileId)
+    const path = this.assertPath(req?.path)
+    if (!path) throw new Error('根目录不是文件')
+    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作`)
+    const stat = await driver.stat(path)
+    if (!stat.exists || stat.isDir) throw new Error('文件不存在或为目录')
+    if ((stat.size ?? 0) > FS_TEXT_CONVERT_LIMIT) {
+      throw new Error(`文件过大（${fsFormatSize(stat.size)} 超过 ${fsFormatSize(FS_TEXT_CONVERT_LIMIT)}），请下载后本地转换`)
+    }
+    const { data } = await driver.readBuffer(path)
+    // 源编码解析：显式指定直接用；auto = BOM → UTF-8 严格校验 → GBK 兜底
+    let from = req?.fromEncoding ?? 'auto'
+    let body = data
+    let hadBom = false
+    if (data.length >= 3 && data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf) {
+      hadBom = true
+      if (from === 'auto' || from === 'utf-8') { from = 'utf-8'; body = data.subarray(3) }
+    }
+    if (from === 'auto') {
+      const strict = new TextDecoder('utf-8', { fatal: true })
+      try { strict.decode(data); from = 'utf-8' }
+      catch { from = 'gbk' } // UTF-8 解不开 → 按 GBK（大陆文件最常见的非 UTF-8 编码）
+    }
+    if (!iconv.encodingExists(from)) throw new Error(`不支持的源编码：${from}`)
+    if (!iconv.encodingExists(req?.toEncoding ?? 'utf-8')) throw new Error(`不支持的目标编码：${req?.toEncoding}`)
+    let text = iconv.decode(body, from)
+    if (from === 'utf-8' && hadBom) text = text.replace(/^\uFEFF/, '')
+
+    // 换行符规范化：先统一到 LF，再按目标形态输出
+    let newlineChanged = false
+    if (req?.newline !== 'keep') {
+      const unified = text.replace(/\r\n/g, '\n')
+      const targetText = req?.newline === 'crlf' ? unified.replace(/\n/g, '\r\n') : unified
+      newlineChanged = targetText !== text
+      text = targetText
+    }
+
+    // 目标编码编码：utf-8 且原带 BOM → 保留 BOM
+    const encoded = iconv.encode(text, req?.toEncoding ?? 'utf-8')
+    const out = req?.toEncoding === 'utf-8' && hadBom
+      ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), encoded])
+      : encoded
+    const encodingChanged = from !== (req?.toEncoding ?? 'utf-8')
+    if (!encodingChanged && !newlineChanged) {
+      return { detected: from as FsConvertTextResult['detected'], bytes: data.length, encodingChanged: false, newlineChanged: false }
+    }
+    await driver.write(path, out)
+    logger.info('upload', `fs 文本转换：${channel.id}/${path} ${from} → ${req?.toEncoding}（换行 ${req?.newline}，${fsFormatSize(data.length)}）`)
+    return {
+      detected: from as FsConvertTextResult['detected'],
+      bytes: data.length,
+      encodingChanged,
+      newlineChanged,
+    }
+  }
+
+  /** 压缩为 zip（仅本地通道）：sources 递归收集文件 → fflate zipSync → 写回当前目录 */
+  async zip(req: FsZipRequest): Promise<FsZipResult> {
+    const { driver, channel } = this.resolve(req?.profileId)
+    if (channel.type !== 'local') throw new Error('压缩仅支持本地目录通道')
+    const zipPath = this.assertPath(req?.zipPath)
+    if (!/\.zip$/i.test(zipPath)) throw new Error('压缩包名须以 .zip 结尾')
+    const exists = await driver.stat(zipPath)
+    if (exists.exists) throw new Error('同名压缩包已存在，请换一个名字')
+    const zipData: Record<string, Uint8Array> = {}
+    let files = 0
+    let bytes = 0
+
+    const addFile = async (rel: string, zipRel: string): Promise<void> => {
+      if (files >= FS_ZIP_FILE_CAP) throw new Error(`超过单次压缩 ${FS_ZIP_FILE_CAP} 个文件上限，已中止`)
+      const { data } = await driver.readBuffer(rel)
+      if (bytes + data.length > FS_ZIP_BYTES_CAP) {
+        throw new Error(`超过单次压缩 ${fsFormatSize(FS_ZIP_BYTES_CAP)} 上限，已中止`)
+      }
+      zipData[zipRel] = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      files++
+      bytes += data.length
+    }
+    const addTree = async (srcRel: string, zipBase: string): Promise<void> => {
+      let cursor: string | null = null
+      do {
+        const page = await driver.list(srcRel, { pageSize: 2000, cursor })
+        for (const e of page.entries) {
+          if (e.kind === 'file') await addFile(e.path, zipBase ? `${zipBase}/${e.name}` : e.name)
+          else await addTree(e.path, zipBase ? `${zipBase}/${e.name}` : e.name)
+        }
+        cursor = page.nextCursor ?? null
+      } while (cursor)
+    }
+    for (const item of (req?.sources ?? []).slice(0, 200)) {
+      const src = this.assertPath(item.path)
+      if (!src) throw new Error('根目录不可压缩')
+      if (item.kind === 'file') await addFile(src, fsBasename(src))
+      else await addTree(src, fsBasename(src))
+    }
+    if (!files) throw new Error('没有可压缩的内容')
+    const zipped = zipSync(zipData, { level: 6 })
+    await driver.write(zipPath, Buffer.from(zipped.buffer, zipped.byteOffset, zipped.byteLength))
+    logger.info('upload', `fs 压缩：${channel.id}/${zipPath}（${files} 个文件 / ${fsFormatSize(zipped.length)}）`)
+    return { zipPath, files, size: zipped.length }
+  }
+
+  /** 解压 zip（仅本地通道）：解到 zip 同级 `<zip 名去扩展名>/`，防路径穿越 */
+  async unzip(req: FsUnzipRequest): Promise<FsUnzipResult> {
+    const { driver, channel } = this.resolve(req?.profileId)
+    if (channel.type !== 'local') throw new Error('解压仅支持本地目录通道')
+    const zipPath = this.assertPath(req?.path)
+    if (!isFsZipName(zipPath)) throw new Error('仅支持 .zip 压缩包')
+    const stat = await driver.stat(zipPath)
+    if (!stat.exists || stat.isDir) throw new Error('压缩包不存在')
+    if ((stat.size ?? 0) > FS_ZIP_BYTES_CAP) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
+    const { data } = await driver.readBuffer(zipPath)
+    const entries = unzipSync(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
+    const destDir = zipPath.replace(/\.zip$/i, '')
+    let files = 0
+    let bytes = 0
+    for (const [name, content] of Object.entries(entries)) {
+      // 防路径穿越：拒绝绝对路径 / .. 段 / 反斜杠
+      if (/^[\\/]/.test(name) || name.includes('..') || name.includes('\\')) {
+        throw new Error(`压缩包含非法路径条目：${name}（已中止，未解出任何文件）`)
+      }
+      if (bytes + content.length > FS_ZIP_BYTES_CAP) throw new Error(`解压内容超过 ${fsFormatSize(FS_ZIP_BYTES_CAP)} 上限，已中止`)
+      if (files >= FS_ZIP_FILE_CAP) throw new Error(`解压内容超过 ${FS_ZIP_FILE_CAP} 个文件上限，已中止`)
+      if (name.endsWith('/')) {
+        await driver.mkdir(`${destDir}/${name.replace(/\/+$/, '')}`)
+        continue
+      }
+      await driver.write(`${destDir}/${name}`, Buffer.from(content.buffer, content.byteOffset, content.byteLength))
+      files++
+      bytes += content.length
+    }
+    logger.info('upload', `fs 解压：${channel.id}/${zipPath} → ${destDir}（${files} 个文件 / ${fsFormatSize(bytes)}）`)
+    return { destDir, files }
+  }
+
+  /** 目录备注：整通道 path → note 映射（列表加载一次，备注列/属性弹框共用） */
+  async annotationList(profileId: string): Promise<Record<string, string>> {
+    const pid = this.assertProfileId(profileId)
+    const rows = await this.opts.services.repository.list<FsAnnotationDoc>(
+      'fsAnnotations', { profileId: pid, archived: false },
+    )
+    return Object.fromEntries(rows.map((r) => [r.path, r.note]))
+  }
+
+  /** 设置备注：空串 = 清除（删文档）；有值 = upsert */
+  async annotationSet(req: { profileId: string; path: string; note: string }): Promise<boolean> {
+    const pid = this.assertProfileId(req?.profileId)
+    const path = this.assertPath(req?.path)
+    const note = String(req?.note ?? '').trim().slice(0, 200)
+    const repo = this.opts.services.repository
+    const rows = await repo.list<FsAnnotationDoc>('fsAnnotations', { profileId: pid, path, archived: false })
+    const doc = rows[0]
+    if (!note) {
+      if (doc) await repo.remove('fsAnnotations', doc._id)
+      return true
+    }
+    if (doc) await repo.update<FsAnnotationDoc>('fsAnnotations', doc._id, { note })
+    else await repo.insert<FsAnnotationDoc>('fsAnnotations', { profileId: pid, path, note })
+    return true
+  }
+
+  /** 收藏夹全量（带通道展示名） */
+  async favoriteList(): Promise<FsFavorite[]> {
+    const rows = await this.opts.services.repository.list<FsFavoriteDoc>('fsFavorites', { archived: false })
+    const nameOf = new Map(this.channels().map((c) => [c.id, c.name]))
+    return rows.map((r) => ({
+      _id: r._id,
+      profileId: r.profileId,
+      profileName: nameOf.get(r.profileId) ?? r.profileId,
+      path: r.path,
+      kind: r.kind,
+      name: r.name,
+    }))
+  }
+
+  /** 添加收藏：同通道同路径幂等 */
+  async favoriteAdd(req: { profileId: string; path: string; kind: 'dir' | 'file'; name: string }): Promise<FsFavorite> {
+    const pid = this.assertProfileId(req?.profileId)
+    const path = this.assertPath(req?.path)
+    if (!path) throw new Error('根目录无需收藏')
+    const repo = this.opts.services.repository
+    const rows = await repo.list<FsFavoriteDoc>('fsFavorites', { profileId: pid, path, archived: false })
+    if (rows[0]) {
+      return { _id: rows[0]._id, profileId: pid, path, kind: rows[0].kind, name: rows[0].name }
+    }
+    const doc = await repo.insert<FsFavoriteDoc>('fsFavorites', {
+      profileId: pid,
+      path,
+      kind: req?.kind === 'dir' ? 'dir' : 'file',
+      name: String(req?.name ?? fsBasename(path)).slice(0, 200),
+    })
+    return { _id: doc._id, profileId: pid, path, kind: doc.kind, name: doc.name }
+  }
+
+  /** 移除收藏（硬删，收藏无引用语义） */
+  async favoriteRemove(id: string): Promise<boolean> {
+    await this.opts.services.repository.remove('fsFavorites', String(id ?? ''))
+    return true
   }
 
   async write(req: FsWriteRequest): Promise<boolean> {
