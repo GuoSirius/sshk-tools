@@ -70,8 +70,8 @@ function onCategorySelect(value: string): void {
           <el-option v-for="v in VISIBILITIES" :key="v.value" :label="v.label" :value="v.value" />
         </el-select>
       </el-form-item>
-      <el-form-item class="full" label="描述">
-        <el-input clearable v-model="form.description" type="textarea" :rows="2" />
+      <el-form-item class="full" label="描述" required>
+        <el-input v-model="form.description" type="textarea" :rows="2" />
       </el-form-item>
     </FormGrid>
   </el-form>

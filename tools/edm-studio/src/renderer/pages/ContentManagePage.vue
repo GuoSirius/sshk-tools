@@ -1267,7 +1267,7 @@ async function confirmSaveAs(): Promise<void> {
             <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
               <el-form-item label="名称"><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.brandBase" label="code"><el-input clearable v-model="form.code" :disabled="!canEdit" /></el-form-item>
-              <el-form-item label="描述"><el-input clearable v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input clearable v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
               <template v-if="showForm.policy">
                 <el-form-item label="类型"><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
@@ -1275,7 +1275,7 @@ async function confirmSaveAs(): Promise<void> {
                 <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>
               <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="showForm.version" label="变更说明"><el-input clearable v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
             <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
           </el-tab-pane>

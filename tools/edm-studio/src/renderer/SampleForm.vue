@@ -201,7 +201,7 @@ function acceptPolish(): void {
             :disabled="readonly"
             @update:model-value="(v: string) => set(f.key, v)"
           />
-          <el-input clearable
+          <el-input
             v-else-if="f.type === 'textarea'"
             :model-value="strVal(f.key)"
             type="textarea"

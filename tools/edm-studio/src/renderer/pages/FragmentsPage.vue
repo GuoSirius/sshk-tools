@@ -156,7 +156,7 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
     </el-dialog>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="frgvOpen" title="新建片段版本（含黑白名单）" width="640px">
-      <el-input clearable v-model="frgvForm.html" type="textarea" :rows="8" placeholder="njk 源码" />
+      <el-input v-model="frgvForm.html" type="textarea" :rows="8" placeholder="njk 源码" />
       <div style="margin-top: 8px; display: flex; gap: 8px">
         <el-input clearable v-model="frgvForm.blacklistText" size="small" placeholder="黑名单（模板/版本 ID，逗号分隔）" />
         <el-input clearable v-model="frgvForm.whitelistText" size="small" placeholder="白名单（空 = 不限制）" />

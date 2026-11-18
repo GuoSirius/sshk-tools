@@ -285,7 +285,7 @@ watch(() => props.section, (section) => {
                     height="120px"
                     :path="`config-${toolId}-${field.key}`"
                   />
-                  <el-input clearable v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
+                  <el-input v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
                   <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">
                     <el-input clearable v-model="values[field.key]" :placeholder="field.type === 'dir' ? '选择或手动填写目录' : '选择或手动填写文件'" />
                     <el-button size="small" @click="pickPath(field)">

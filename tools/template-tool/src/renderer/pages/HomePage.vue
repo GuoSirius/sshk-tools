@@ -127,7 +127,7 @@ const activeCap = ref<string>('providers')
       <!-- ③ ChatByProvider -->
       <template v-else-if="activeCap === 'chat-provider'">
         <div class="panel-head">按 Provider 对话（chatByProvider）</div>
-        <el-input clearable v-model="chatInput" type="textarea" :rows="3" placeholder="输入消息" />
+        <el-input v-model="chatInput" type="textarea" :rows="3" placeholder="输入消息" />
         <el-button type="primary" style="margin-top:8px" @click="runChatByProvider">发送（密钥由主进程注入）</el-button>
         <pre class="result">{{ chatOutput || '（返回将显示在此）' }}</pre>
       </template>

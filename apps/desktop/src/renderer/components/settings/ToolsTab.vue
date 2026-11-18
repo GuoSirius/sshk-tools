@@ -268,7 +268,7 @@ onMounted(() => {
                 <el-input clearable v-model="form.category" />
                 <FormHint>逗号 / 顿号分隔；标签内可含空格</FormHint>
               </el-form-item>
-              <el-form-item class="full" label="描述"><el-input clearable v-model="form.description" type="textarea" :rows="2" /></el-form-item>
+              <el-form-item class="full" label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
               <el-form-item v-if="isDev" class="full" label="图标">
                 <el-select v-model="form.icon" filterable allow-create default-first-option>
                   <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
