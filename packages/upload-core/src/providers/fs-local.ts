@@ -16,7 +16,7 @@ import { Readable, Transform } from 'node:stream'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { normalizeRootRel } from '../fs-paths'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
-import { nameMatches, sortFsEntries, walkRemote } from '../fs-driver'
+import { nameMatches, sortFsEntries, walkRemote, type FsSearchBatchFn } from '../fs-driver'
 
 /**
  * 本地目录文件系统驱动（二期，2026-11-17 用户定版：通道顺序 云→远端→本地）。
@@ -169,16 +169,26 @@ export class LocalFsDriver implements FsDriver {
   }
 
   /** 递归搜索：复用 walkRemote BFS（限深 6 / 总量 2 万） */
-  async search(p: string, keyword: string, opts?: { maxResults?: number }): Promise<FsSearchResult> {
+  async search(p: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const base = normalizeRootRel(p)
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
     const out: FsEntry[] = []
+    let batch: FsEntry[] = []
+    let scannedDirs = 0
+    const flush = (done: boolean): void => {
+      if (!done && batch.length === 0) return
+      opts?.onBatch?.({ entries: batch, scannedDirs, done })
+      batch = []
+    }
     const truncated = await walkRemote(base, (dirRel) => this.list(dirRel, { pageSize: 2000 }).then((r) => r.entries), ({ entry }) => {
       if (entry.kind !== 'file' || !nameMatches(entry.name, kw)) return
       out.push(entry)
+      batch.push(entry)
+      if (batch.length >= 20) flush(false) // 攒够一批立即推，界面边扫边显
       if (out.length >= maxResults) return 'stop'
-    })
+    }, () => { scannedDirs += 1 })
+    flush(true)
     return { entries: sortFsEntries(out), truncated }
   }
 

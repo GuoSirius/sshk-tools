@@ -11,7 +11,7 @@ import {
   fsDestPath,
   normalizeRootRel,
 } from '@sshk/upload-core'
-import type { FsDriver } from '@sshk/upload-core'
+import type { FsDriver, FsSearchBatchFn } from '@sshk/upload-core'
 import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
 import {
   TOOL_IDS,
@@ -764,12 +764,12 @@ export class FsRuntime {
 
   // ── 二期只读扩展：递归搜索 / 目录容量统计 ──
 
-  async search(req: FsSearchRequest): Promise<FsSearchResult> {
+  async search(req: FsSearchRequest, onBatch?: FsSearchBatchFn): Promise<FsSearchResult> {
     const { driver } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
     const keyword = String(req?.keyword ?? '').trim()
     if (!keyword) return { entries: [], truncated: false }
-    return await driver.search(path, keyword, { maxResults: 300 })
+    return await driver.search(path, keyword, { maxResults: 300, onBatch })
   }
 
   async usage(req: { profileId: string; path: string }): Promise<FsUsageResult> {

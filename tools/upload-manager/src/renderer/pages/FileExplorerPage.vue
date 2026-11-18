@@ -122,6 +122,9 @@ const searchActive = ref(false)
 const searchLoading = ref(false)
 const searchEntries = ref<FsEntry[]>([])
 const searchTruncated = ref(false)
+const searchScannedDirs = ref(0)
+/** 当前搜索会话 id：切换目录/退出搜索/新搜索时置空，在途批次与结果一律丢弃 */
+let activeSearchId = ''
 
 // ── 容量统计（二期）──
 /** 统计中的目录路径集合（支持多个目录并行统计，行内显示 loading） */
@@ -167,7 +170,6 @@ const listGridCols = computed(() => {
   if (colShown.value.mode) cols.push('64px')
   if (colShown.value.owner) cols.push('110px')
   if (colShown.value.note) cols.push('150px')
-  cols.push('32px') // 收藏快捷列（hover 显示 / 已收藏常显）
   cols.push('max-content')
   return cols.join(' ')
 })
@@ -308,6 +310,7 @@ async function loadChannels(): Promise<void> {
 async function list(resetCursor = true): Promise<void> {
   if (!profileId.value) return
   if (resetCursor) { cursor.value = null; entries.value = [] }
+  activeSearchId = '' // 在途搜索会话作废（切换目录/刷新时丢弃晚到的流式批次）
   searchActive.value = false
   searchEntries.value = []
   searchTruncated.value = false
@@ -409,28 +412,48 @@ function refresh(): void {
 }
 
 // ── 递归搜索（二期）：回车触发，扫当前路径前缀（根 = 整个通道）──
+// 流式：主进程每攒 20 条/完成一层就推一批，第一批到达即进入列表视图；不再等全量扫完白屏。
 async function runSearch(): Promise<void> {
   const kw = filter.value.trim()
   if (!kw) { searchActive.value = false; searchEntries.value = []; return }
   if (!profileId.value) return
+  const reqId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  activeSearchId = reqId
   searchLoading.value = true
+  searchActive.value = true // 立刻进入搜索态，横幅显示「扫描中…」
+  searchEntries.value = []
+  searchScannedDirs.value = 0
+  searchTruncated.value = false
+  selection.value = new Set()
+  const off = window.api.fs.onSearchEvent((e) => {
+    if (activeSearchId !== reqId || e.reqId !== reqId) return // 旧会话批次一律丢弃
+    if (e.entries.length) {
+      // 边收边排序，与最终全量结果（sortFsEntries）顺序保持一致，避免完成时列表跳动
+      searchEntries.value = [...searchEntries.value, ...e.entries].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+    }
+    searchScannedDirs.value = e.scannedDirs
+    if (e.done) searchLoading.value = false
+  })
   try {
-    const r = await window.api.fs.search({ profileId: profileId.value, path: path.value, keyword: kw })
-    searchEntries.value = r.entries
+    const r = await window.api.fs.search({ profileId: profileId.value, path: path.value, keyword: kw, reqId })
+    if (activeSearchId !== reqId) return // 期间已退出或被新搜索取代
+    searchEntries.value = r.entries // 最终全量（权威，含截断标记）
     searchTruncated.value = r.truncated
-    searchActive.value = true
-    selection.value = new Set()
     if (!r.entries.length) ElMessage.info('递归搜索没有结果')
   } catch (err) {
-    ElMessage.error('递归搜索失败：' + friendlyError(err))
+    if (activeSearchId === reqId) ElMessage.error('递归搜索失败：' + friendlyError(err))
   } finally {
-    searchLoading.value = false
+    off()
+    if (activeSearchId === reqId) searchLoading.value = false
   }
 }
 function exitSearch(): void {
+  activeSearchId = '' // 在途批次/结果全部作废
   searchActive.value = false
+  searchLoading.value = false
   searchEntries.value = []
   searchTruncated.value = false
+  searchScannedDirs.value = 0
   filter.value = ''
 }
 
@@ -1066,11 +1089,11 @@ function ctxRun(cmd: string): void {
   ctxMenu.value = null
   if (entry) rowMoreCommand(cmd, entry)
 }
-/** 事件委托：独立 el-dropdown-menu 的 command 属性不会自动分发，从点击目标读 command */
+/** 事件委托：原生菜单从 li 的 data-command 读取命令（不走 el-dropdown 的 command 分发） */
 function ctxClick(e: MouseEvent): void {
-  const item = (e.target as HTMLElement | null)?.closest?.('.el-dropdown-menu__item')
+  const item = (e.target as HTMLElement | null)?.closest?.('.fs-ctx-menu li')
   if (!item || item.classList.contains('is-disabled')) return
-  const cmd = item.getAttribute('command')
+  const cmd = item.getAttribute('data-command')
   if (cmd) ctxRun(cmd)
 }
 function onWindowCtxMaybeClose(e: Event): void {
@@ -1592,7 +1615,7 @@ function onKeydown(event: KeyboardEvent): void {
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
         <span>
-          递归搜索「{{ filter.trim() }}」：{{ searchEntries.length }} 个结果{{ searchTruncated ? '（已达扫描上限，结果可能不全）' : '' }}
+          递归搜索「{{ filter.trim() }}」：{{ searchLoading ? `已找到 ${searchEntries.length} 个 · 已扫描 ${searchScannedDirs} 个目录…` : `${searchEntries.length} 个结果` }}{{ searchTruncated ? '（已达扫描上限，结果可能不全）' : '' }}
         </span>
         <el-button size="small" text type="primary" @click="exitSearch">返回目录</el-button>
       </div>
@@ -1604,7 +1627,8 @@ function onKeydown(event: KeyboardEvent): void {
         <p>加载失败：{{ pageError }}</p>
         <el-button size="small" type="primary" plain @click="refresh">重试</el-button>
       </div>
-      <div v-else-if="loading || searchLoading" class="fs-empty"><p>{{ searchLoading ? '递归搜索中…' : '加载中…' }}</p></div>
+      <!-- 流式搜索：首批结果到达即渲染列表，不再因 searchLoading 一直白屏 -->
+      <div v-else-if="loading || (searchLoading && searchEntries.length === 0)" class="fs-empty"><p>{{ searchLoading ? '递归搜索中…' : '加载中…' }}</p></div>
       <div v-else-if="filteredEntries.length === 0" class="fs-empty">
         <p>{{ searchActive ? '递归搜索没有结果' : (filter ? '没有匹配的文件' : '此目录为空') }}</p>
         <p class="fs-empty-hint">{{ searchActive ? '换个关键词，或到上级目录再搜' : '把文件或文件夹拖进来即可上传到当前目录' }}</p>
@@ -1625,7 +1649,6 @@ function onKeydown(event: KeyboardEvent): void {
             <span v-if="colShown.mode" class="fs-col-mode">权限</span>
             <span v-if="colShown.owner" class="fs-col-owner">用户/组</span>
             <span v-if="colShown.note" class="fs-col-note">备注</span>
-            <span class="fs-col-fav" title="收藏" />
             <span class="fs-col-op">操作</span>
           </div>
           <div
@@ -1642,6 +1665,14 @@ function onKeydown(event: KeyboardEvent): void {
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
             <span v-if="searchDirHint(entry)" class="fs-name-sub" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
+            <el-button
+              size="small" text
+              class="fs-fav-toggle"
+              :class="{ 'is-fav': isFavorited(entry.path) }"
+              :title="isFavorited(entry.path) ? '取消收藏' : '收藏'"
+              :aria-label="isFavorited(entry.path) ? '取消收藏' : '收藏'"
+              @click.stop="toggleFav(entry)"
+            ><el-icon><component :is="isFavorited(entry.path) ? StarFilled : Star" /></el-icon></el-button>
           </span>
           <span class="fs-col-size" :title="sizeCell(entry)">{{ sizeCell(entry) }}</span>
           <span class="fs-col-time" :title="fmtTime(entry.modified)">{{ fmtTime(entry.modified) }}</span>
@@ -1649,15 +1680,6 @@ function onKeydown(event: KeyboardEvent): void {
           <span v-if="colShown.mode" class="fs-col-mode" :title="entry.mode ? `${entry.mode} ${fsModeToRwx(entry.mode)}` : ''">{{ entry.mode ?? '—' }}</span>
           <span v-if="colShown.owner" class="fs-col-owner" :title="entry.owner ? `${entry.owner}:${entry.group ?? ''}` : ''">{{ entry.owner ? `${entry.owner}:${entry.group ?? '—'}` : '—' }}</span>
           <span v-if="colShown.note" class="fs-col-note" :title="annotations.get(entry.path) ?? ''">{{ annotations.get(entry.path) ?? '' }}</span>
-          <span class="fs-col-fav">
-            <el-button
-              size="small" text
-              :class="['fs-fav-toggle', { 'is-fav': isFavorited(entry.path) }]"
-              :title="isFavorited(entry.path) ? '取消收藏' : '收藏'"
-              :aria-label="isFavorited(entry.path) ? '取消收藏' : '收藏'"
-              @click.stop="toggleFav(entry)"
-            ><el-icon><component :is="isFavorited(entry.path) ? StarFilled : Star" /></el-icon></el-button>
-          </span>
           <span class="fs-col-op">
             <!-- §11.4 定版顺序：下载(文件)→链接(文件)→粘贴(目录)→复制→移动→重命名→删除→更多▾ -->
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
@@ -1826,34 +1848,36 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- 网格视图右键菜单（与行操作全集一致，Teleport 到 body 防被列表容器裁切） -->
+    <!-- 网格视图右键菜单（与行操作全集一致，Teleport 到 body 防被列表容器裁切）。
+         注意：不能用裸 el-dropdown-menu——它 inject(DROPDOWN_INJECTION_KEY, undefined) 后解构即抛错，
+         菜单项完全不渲染（用户 2026-11-18 截图「只出现小黑框」根因）。这里用原生 ul/li + 事件委托。 -->
     <Teleport to="body">
       <div v-if="ctxMenu" class="fs-ctx" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @click="ctxClick">
-        <el-dropdown-menu>
-          <el-dropdown-item command="open" :icon="FolderOpened">打开</el-dropdown-item>
-          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file'" command="download" :icon="Download">下载</el-dropdown-item>
-          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file'" command="link" :icon="Link">链接</el-dropdown-item>
-          <el-dropdown-item v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" command="paste" :icon="DocumentCopy">粘贴</el-dropdown-item>
-          <el-dropdown-item v-if="hasWritable" command="copy" :icon="CopyDocument" divided>复制</el-dropdown-item>
-          <el-dropdown-item v-if="hasWritable" command="move" :icon="Rank">移动</el-dropdown-item>
-          <el-dropdown-item v-if="hasWritable" command="rename" :icon="EditPen">重命名</el-dropdown-item>
-          <el-dropdown-item v-if="hasWritable" command="delete" :icon="Delete">删除</el-dropdown-item>
+        <ul class="fs-ctx-menu">
+          <li data-command="open"><el-icon><FolderOpened /></el-icon>打开</li>
+          <li v-if="ctxMenu.entry.kind === 'file'" data-command="download"><el-icon><Download /></el-icon>下载</li>
+          <li v-if="ctxMenu.entry.kind === 'file'" data-command="link"><el-icon><Link /></el-icon>链接</li>
+          <li v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" data-command="paste"><el-icon><DocumentCopy /></el-icon>粘贴</li>
+          <li v-if="hasWritable" data-command="copy" class="is-divided"><el-icon><CopyDocument /></el-icon>复制</li>
+          <li v-if="hasWritable" data-command="move"><el-icon><Rank /></el-icon>移动</li>
+          <li v-if="hasWritable" data-command="rename"><el-icon><EditPen /></el-icon>重命名</li>
+          <li v-if="hasWritable" data-command="delete"><el-icon><Delete /></el-icon>删除</li>
           <!-- 信息组 -->
-          <el-dropdown-item command="props" :icon="InfoFilled" divided>属性</el-dropdown-item>
-          <el-dropdown-item v-if="ctxMenu.entry.kind === 'dir'" command="usage" :icon="TrendCharts">统计</el-dropdown-item>
-          <el-dropdown-item command="note" :icon="ChatDotRound">设置备注…</el-dropdown-item>
-          <el-dropdown-item command="favorite" :icon="CollectionTag">{{ isFavorited(ctxMenu.entry.path) ? '取消收藏' : '添加收藏' }}</el-dropdown-item>
-          <el-dropdown-item command="copypath" :icon="CopyDocument">复制路径</el-dropdown-item>
+          <li data-command="props" class="is-divided"><el-icon><InfoFilled /></el-icon>属性</li>
+          <li v-if="ctxMenu.entry.kind === 'dir'" data-command="usage"><el-icon><TrendCharts /></el-icon>统计</li>
+          <li data-command="note"><el-icon><ChatDotRound /></el-icon>设置备注…</li>
+          <li data-command="favorite"><el-icon><CollectionTag /></el-icon>{{ isFavorited(ctxMenu.entry.path) ? '取消收藏' : '添加收藏' }}</li>
+          <li data-command="copypath"><el-icon><CopyDocument /></el-icon>复制路径</li>
           <!-- 工具组（按通道与文件类型实时显隐） -->
           <template v-if="activeChannel?.type === 'local'">
-            <el-dropdown-item command="zip" :icon="Box" divided>压缩为 zip…</el-dropdown-item>
-            <el-dropdown-item v-if="isFsZipName(ctxMenu.entry.name)" command="unzip" :icon="FolderOpened">解压到新目录</el-dropdown-item>
+            <li data-command="zip" class="is-divided"><el-icon><Box /></el-icon>压缩为 zip…</li>
+            <li v-if="isFsZipName(ctxMenu.entry.name)" data-command="unzip"><el-icon><FolderOpened /></el-icon>解压到新目录</li>
           </template>
-          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" command="convert" :icon="MagicStick" divided>转换编码 / 换行符…</el-dropdown-item>
+          <li v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" data-command="convert" class="is-divided"><el-icon><MagicStick /></el-icon>转换编码 / 换行符…</li>
           <!-- 权限组 -->
-          <el-dropdown-item v-if="hasMode" command="perm" :icon="Lock" divided :disabled="!ctxMenu.entry.mode">编辑权限…</el-dropdown-item>
-          <el-dropdown-item v-if="activeChannel?.type === 'local'" command="share" :icon="Star" divided>安全分享</el-dropdown-item>
-        </el-dropdown-menu>
+          <li v-if="hasMode" data-command="perm" class="is-divided" :class="{ 'is-disabled': !ctxMenu.entry.mode }"><el-icon><Lock /></el-icon>编辑权限…</li>
+          <li v-if="activeChannel?.type === 'local'" data-command="share" class="is-divided"><el-icon><Star /></el-icon>安全分享</li>
+        </ul>
       </div>
     </Teleport>
 
@@ -2108,17 +2132,16 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
 .fs-row:hover { background: var(--el-fill-color-light); background-clip: padding-box; }
 .fs-row.selected { background: var(--el-color-primary-light-9); background-clip: padding-box; }
-/* 首尾两列横向固定（用户 2026-11-18）：复选框贴左、操作贴右，水平滚动时保持可见可操作 */
-.fs-col-check, .fs-col-op { position: sticky; background: var(--el-bg-color); }
+/* 首尾两列横向固定（用户 2026-11-18）：复选框贴左、操作贴右，水平滚动时保持可见可操作。
+   用户明确要求固定列不要额外背景色——仅 sticky 定位，不加 background（2026-11-18 二次纠正） */
+.fs-col-check, .fs-col-op { position: sticky; }
 .fs-col-check { left: 0; z-index: 1; }
 .fs-col-op { right: 0; z-index: 1; }
-.fs-row:hover .fs-col-check, .fs-row:hover .fs-col-op { background: var(--el-fill-color-light); }
-.fs-row.selected .fs-col-check, .fs-row.selected .fs-col-op { background: var(--el-color-primary-light-9); }
 /* 表头本身 sticky（z2），其固定列更高一层（z3）盖过数据行固定列 */
-.fs-thead .fs-col-check, .fs-thead .fs-col-op { background: var(--el-bg-color); z-index: 3; }
+.fs-thead .fs-col-check, .fs-thead .fs-col-op { z-index: 3; }
 .fs-sortable { cursor: pointer; user-select: none; }
 .fs-col-check { display: flex; align-items: center; }
-.fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; padding-right: 24px; }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
 /* 搜索结果嵌套文件的子目录灰字提示（searchDirHint） */
@@ -2166,17 +2189,23 @@ function onKeydown(event: KeyboardEvent): void {
 /* PDF：Chromium 内置 viewer，iframe 撑满弹框可视区 */
 .fs-preview-body .fs-preview-pdf { width: 100%; height: 60vh; border: none; border-radius: 8px; background: var(--el-bg-color); }
 .fs-editor-body { height: 60vh; }
-/* 行末收藏快捷列（用户 2026-11-18）：未收藏 hover 才显，已收藏常显黄色实心星 */
-.fs-col-fav { display: flex; align-items: center; justify-content: center; }
-.fs-fav-toggle { opacity: 0; transition: opacity .12s; padding: 0 4px; height: 22px; color: var(--el-text-color-secondary); }
+/* 收藏星标（用户 2026-11-18 定版）：固定在名称列末尾同一位置；未收藏 hover 才显，已收藏常显黄色实心星 */
+.fs-fav-toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); opacity: 0; transition: opacity .12s; padding: 0 2px; margin: 0; height: 22px; color: var(--el-text-color-secondary); }
 .fs-row:hover .fs-fav-toggle, .fs-fav-toggle.is-fav { opacity: 1; }
 .fs-fav-toggle.is-fav { color: var(--el-color-warning); }
 /* 编辑器标题行：文件名 · 大小（统计信息自 footer 移到顶部，用户 2026-11-18） */
 .fs-editor-title { display: inline-flex; align-items: baseline; gap: 10px; font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
 .fs-editor-meta { font-size: 12px; font-weight: 400; opacity: .6; }
 .fs-admin-tip { margin-bottom: 8px; }
-/* 网格视图右键菜单（Teleport 到 body，fixed 定位） */
-.fs-ctx { position: fixed; z-index: 3000; background: var(--el-bg-color-overlay); border-radius: 6px; box-shadow: var(--el-box-shadow-light); }
+/* 网格视图右键菜单（Teleport 到 body，fixed 定位；原生 ul/li 避免 el-dropdown 裸用注入崩溃） */
+.fs-ctx { position: fixed; z-index: 3000; min-width: 156px; padding: 5px 0; background: var(--el-bg-color-overlay); border: 1px solid var(--el-border-color-light); border-radius: 6px; box-shadow: var(--el-box-shadow-light); }
+.fs-ctx-menu { list-style: none; margin: 0; padding: 0; }
+.fs-ctx-menu li { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 14px; font-size: 13px; color: var(--el-text-color-regular); white-space: nowrap; cursor: pointer; }
+.fs-ctx-menu li .el-icon { font-size: 14px; color: var(--el-text-color-secondary); }
+.fs-ctx-menu li:hover { background: var(--el-fill-color-light); color: var(--el-color-primary); }
+.fs-ctx-menu li:hover .el-icon { color: inherit; }
+.fs-ctx-menu li.is-divided { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--el-border-color-lighter); }
+.fs-ctx-menu li.is-disabled { color: var(--el-text-color-disabled); cursor: not-allowed; }
 .fs-conflict-hint { color: var(--el-color-warning); font-size: 12px; margin-right: 12px; }
 .fs-move-body { display: flex; flex-direction: column; }
 

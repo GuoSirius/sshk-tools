@@ -735,7 +735,19 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.fsCp, (_event, req: Parameters<FsRuntime['cp']>[0]) => fsRuntime.cp(req))
   handleOk(IPC_CHANNELS.fsMv, (_event, req: Parameters<FsRuntime['mv']>[0]) => fsRuntime.mv(req))
   handleOk(IPC_CHANNELS.fsCrossCopy, (_event, req: Parameters<FsRuntime['crossCopy']>[0]) => fsRuntime.crossCopy(req))
-  handleOk(IPC_CHANNELS.fsSearch, (_event, req: Parameters<FsRuntime['search']>[0]) => fsRuntime.search(req))
+  // 递归搜索：边扫边把命中批次推给渲染层（流式显示，避免长时间空白）；最终全量结果仍由 invoke 返回
+  handleOk(IPC_CHANNELS.fsSearch, (event, req: Parameters<FsRuntime['search']>[0]) =>
+    fsRuntime.search(req, (batch) => {
+      const reqId = String((req as { reqId?: string } | undefined)?.reqId ?? '')
+      if (!reqId) return
+      const payload: import('@sshk/shared').FsSearchEvent = {
+        reqId,
+        entries: batch.entries,
+        done: batch.done,
+        scannedDirs: batch.scannedDirs,
+      }
+      event.sender.send(IPC_CHANNELS.fsSearchEvent, payload)
+    }))
   handleOk(IPC_CHANNELS.fsUsage, (_event, req: Parameters<FsRuntime['usage']>[0]) => fsRuntime.usage(req))
   handleOk(IPC_CHANNELS.fsRead, (_event, req: { profileId: string; path: string; maxBytes?: number }) =>
     fsRuntime.read(req))

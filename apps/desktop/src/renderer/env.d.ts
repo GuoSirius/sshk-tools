@@ -159,6 +159,8 @@ interface Window {
       transferRetry(ids: string[], overwrite?: boolean): Promise<boolean>
       transferClear(): Promise<{ removed: number }>
       onTransferEvent(callback: (task: import('@sshk/shared').FsTransferTask) => void): void
+      /** 递归搜索流式批次推送；返回取消监听函数 */
+      onSearchEvent(callback: (e: import('@sshk/shared').FsSearchEvent) => void): () => void
       pickUpload(opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]>
       flattenLocal(paths: string[]): Promise<import('@sshk/shared').FsLocalFile[]>
       downloadDir(profileId: string): Promise<string>

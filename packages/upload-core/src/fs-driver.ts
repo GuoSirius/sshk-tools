@@ -39,8 +39,9 @@ export interface FsDriver {
   /** 流式下载到本地文件（传输队列下载任务用） */
   download(path: string, destFile: string, onProgress?: (bytes: number) => void): Promise<void>
 
-  /** 递归搜索：在 path 前缀内（'' = 整个通道根）按名称子串匹配（大小写不敏感）；truncated 达上限 */
-  search(path: string, keyword: string, opts?: { maxResults?: number }): Promise<FsSearchResult>
+  /** 递归搜索：在 path 前缀内（'' = 整个通道根）按名称子串匹配（大小写不敏感）；truncated 达上限。
+   *  onBatch 每攒够一批/每完成一层就回推，调用方（main）转发给渲染层做流式显示。 */
+  search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult>
 
   /** 目录容量统计：前缀/目录下文件总字节与个数（达到扫描上限时 truncated=true） */
   usage(path: string): Promise<FsUsageResult>
@@ -75,6 +76,14 @@ export const REMOTE_WALK_MAX_ENTRIES = 20_000
 
 interface WalkItem { entry: FsEntry }
 
+/** 递归搜索流式批次：entries 为本批新增命中，scannedDirs 为已完成列的目录数 */
+export interface FsSearchBatch {
+  entries: FsEntry[]
+  scannedDirs: number
+  done: boolean
+}
+export type FsSearchBatchFn = (batch: FsSearchBatch) => void
+
 /**
  * 通用递归遍历：listPageFn 返回单级目录条目（path 为通道根相对路径），
  * visit 收到每个条目；返回是否因上限截断。BFS、限深、限总量。
@@ -83,6 +92,7 @@ export async function walkRemote(
   root: string,
   listPageFn: (dirRel: string) => Promise<FsEntry[]>,
   visit: (item: WalkItem) => 'stop' | void,
+  onDir?: (dirRel: string) => void,
 ): Promise<boolean> {
   let truncated = false
   let seen = 0
@@ -91,6 +101,7 @@ export async function walkRemote(
     const { rel, depth } = queue.shift()!
     let children: FsEntry[]
     try { children = await listPageFn(rel) } catch { continue } // 单层失败不阻断整体
+    onDir?.(rel) // 完成一层即报进度（流式搜索进度提示）
     for (const e of children) {
       seen++
       if (seen > REMOTE_WALK_MAX_ENTRIES) { truncated = true; queue.length = 0; break }

@@ -5,7 +5,7 @@ import { Client as SshClient } from 'ssh2'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { fsBasename, fsJoin, normalizeRootRel } from '../fs-paths'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
-import { nameMatches, sortFsEntries, walkRemote } from '../fs-driver'
+import { nameMatches, sortFsEntries, walkRemote, type FsSearchBatchFn } from '../fs-driver'
 import type { RemoteProfile } from './remote'
 
 /**
@@ -393,18 +393,27 @@ export class RemoteFsDriver implements FsDriver {
   }
 
   /** 递归搜索：单连接 BFS（限深 6 / 总量 2 万），名称子串匹配文件 */
-  async search(path: string, keyword: string, opts?: { maxResults?: number }): Promise<FsSearchResult> {
+  async search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const base = normalizeRootRel(path)
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
     const out: FsEntry[] = []
-    let truncated = false
+    let batch: FsEntry[] = []
+    let scannedDirs = 0
+    const flush = (done: boolean): void => {
+      if (!done && batch.length === 0) return
+      opts?.onBatch?.({ entries: batch, scannedDirs, done })
+      batch = []
+    }
     const listPageFn = (dirRel: string): Promise<FsEntry[]> => this.list(dirRel, { pageSize: 2000 }).then((p) => p.entries)
-    truncated = await walkRemote(base, listPageFn, ({ entry }) => {
+    const truncated = await walkRemote(base, listPageFn, ({ entry }) => {
       if (entry.kind !== 'file' || !nameMatches(entry.name, kw)) return
       out.push(entry)
+      batch.push(entry)
+      if (batch.length >= 20) flush(false) // 攒够一批立即推，界面边扫边显
       if (out.length >= maxResults) return 'stop'
-    })
+    }, () => { scannedDirs += 1 })
+    flush(true)
     return { entries: sortFsEntries(out), truncated }
   }
 

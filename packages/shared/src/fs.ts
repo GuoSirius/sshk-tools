@@ -206,12 +206,25 @@ export interface FsSearchRequest {
   profileId: string
   path: string
   keyword: string
+  /** 流式会话 id：渲染层生成，主进程逐批推送 fsSearchEvent 时原样带回用于过滤旧会话 */
+  reqId?: string
 }
 
 /** 递归搜索结果：truncated=true 表示已达上限，结果可能不全 */
 export interface FsSearchResult {
   entries: FsEntry[]
   truncated: boolean
+}
+
+/** 递归搜索流式批次（主进程 → 渲染层，边扫边推，避免长时间空白） */
+export interface FsSearchEvent {
+  reqId: string
+  /** 本批新增的命中条目（累加即为当前结果） */
+  entries: FsEntry[]
+  /** 本次搜索是否已全部完成（完成批可为空）；是否截断以 invoke 返回的 FsSearchResult 为准 */
+  done: boolean
+  /** 已扫描目录数，供进度提示 */
+  scannedDirs: number
 }
 
 /** 目录容量统计结果（truncated=true 表示扫描达到上限，数值为已扫到的部分） */

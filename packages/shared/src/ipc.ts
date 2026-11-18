@@ -76,6 +76,8 @@ export const IPC_CHANNELS = {
   fsMv: 'fs:mv',
   fsCrossCopy: 'fs:crossCopy',
   fsSearch: 'fs:search',
+  /** 主进程 → 渲染层：递归搜索流式批次（边扫边推） */
+  fsSearchEvent: 'fs:search:event',
   fsUsage: 'fs:usage',
   fsRead: 'fs:read',
   fsWrite: 'fs:write',

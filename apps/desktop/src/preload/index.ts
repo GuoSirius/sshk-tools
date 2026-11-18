@@ -343,6 +343,12 @@ const api = {
     onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, (_event, task) => callback(task))
     },
+    /** 主进程推送递归搜索流式批次；返回取消监听函数（旧会话及时退订） */
+    onSearchEvent: (callback: (e: import('@sshk/shared').FsSearchEvent) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, e: import('@sshk/shared').FsSearchEvent) => callback(e)
+      ipcRenderer.on(IPC_CHANNELS.fsSearchEvent, listener)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.fsSearchEvent, listener)
+    },
     /** 本地文件/目录选择（文件夹上传入口）；type=file|dir|any */
     pickUpload: (opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]> =>
       invoke(IPC_CHANNELS.fsPickUpload, opts),

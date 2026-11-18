@@ -37,7 +37,7 @@ export { LocalUploadProvider, RemoteUploadProvider, CloudUploadProvider } from '
 export type { LocalProviderOptions, RemoteProfile, CloudProfile } from './providers'
 // ── 文件系统（X6 plans/08）──
 export { RemoteFsDriver, CloudFsDriver, LocalFsDriver } from './providers'
-export type { FsDriver } from './fs-driver'
+export type { FsDriver, FsSearchBatch, FsSearchBatchFn } from './fs-driver'
 export { sortFsEntries } from './fs-driver'
 export {
   normalizeRootRel,

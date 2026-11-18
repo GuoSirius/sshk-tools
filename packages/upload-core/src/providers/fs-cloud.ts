@@ -5,7 +5,7 @@ import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult }
 import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
-import { sortFsEntries } from '../fs-driver'
+import { sortFsEntries, type FsSearchBatchFn } from '../fs-driver'
 import { collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withScheme, type CloudProfile } from './cloud-sdk'
 
 /**
@@ -496,17 +496,25 @@ export class CloudFsDriver implements FsDriver {
   /** 递归搜索：listV2 无 delimiter 扫前缀（§3.3 既定路线），按文件名子串匹配。
    *  前缀必须带尾斜杠（marker）：裸前缀会把 demo-2、demo备份 等同名字头兄弟目录的文件混进来；
    *  且不再排除子目录文件——平铺扫前缀天然递归，与本地/远端驱动的 BFS 递归语义一致 */
-  async search(path: string, keyword: string, opts?: { maxResults?: number }): Promise<FsSearchResult> {
+  async search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const mod = await loadSdk(specOf(this.profile))
     const base = normalizeRootRel(path)
     const marker = base ? `${base}/` : ''
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
     const out: FsEntry[] = []
+    let batch: FsEntry[] = []
+    let scannedDirs = 0
+    const flush = (done: boolean): void => {
+      if (!done && batch.length === 0) return
+      opts?.onBatch?.({ entries: batch, scannedDirs, done })
+      batch = []
+    }
     let cursor: string | null = null
     let truncated = false
     for (let page = 0; page < CLOUD_SCAN_MAX_PAGES; page++) {
       const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: marker, pageSize: 1000, cursor, delimiter: false })
+      scannedDirs += 1 // 云按前缀分页扫，一页算一层进度
       for (const o of collectObjects(p.raw)) {
         const key = strOf(o, ['Key', 'key', 'name'])
         if (!key || key.endsWith('/')) continue
@@ -521,12 +529,16 @@ export class CloudFsDriver implements FsDriver {
           size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
           modified: parseModified(o),
         })
+        batch.push(out[out.length - 1]!)
+        if (batch.length >= 20) flush(false) // 攒够一批立即推
         if (out.length >= maxResults) { truncated = true; break }
       }
+      flush(false) // 每页收尾推剩余，避免整页攒着不显示
       cursor = p.nextCursor
       if (truncated || !cursor) break
     }
     if (cursor && !truncated) truncated = true // 扫到页数上限还有剩余
+    flush(true)
     return { entries: out, truncated }
   }
 
