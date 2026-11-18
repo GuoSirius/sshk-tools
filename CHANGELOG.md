@@ -1,5 +1,72 @@
 # Changelog
 
+## [1.3.0](https://github.com/GuoSirius/sshk-tools/compare/v1.2.0...v1.3.0) (2026-11-18)
+
+### ♻️ 代码重构 (Refactors)
+
+* **env:** 统一封装 getEnvStr/getEnvBool/getEnvHas 类型化取值 ([17d00ad](https://github.com/GuoSirius/sshk-tools/commit/17d00adf788143f1af934240540fc43241627ee2))
+* **env:** env 按前缀分组命名 + .env.example 三段式规范 ([0dc5266](https://github.com/GuoSirius/sshk-tools/commit/0dc52660b44bc3f23739ca0920645c76d4eb65bd))
+
+### 🚀 新功能 (Features)
+
+* **fs:** 三通道ensureCanDelete删除权限预检(云探测缓存/远端本地建删往返)+云mv回退还原+云目录移动中途还原; fix(fs-cloud): usage/search前缀带尾斜杠修复同名兄弟目录串算+搜索含子目录 ([6b81867](https://github.com/GuoSirius/sshk-tools/commit/6b81867430eab8b4954a31546a10987d2b0ff4ea))
+* **share:** 分享弹框恢复上一版界面(TTL三按钮)并统一新建/再分享; feat(badge-studio): 列表按钮合并一行+新建海报+操作列留白 ([b62adb0](https://github.com/GuoSirius/sshk-tools/commit/b62adb00854cd38d7250bc21a897a9fd40795528))
+* **share:** 目录浏览开关+撤销后空闲态+海报链接tag列；refactor(tools): 权限/硬依赖退出展示定制 ([215bd30](https://github.com/GuoSirius/sshk-tools/commit/215bd3040936849f703c0cb217c7bed10eee9e73))
+* **update:** dev测试镜像下载源；下载/检查失败文案区分 ([74092b7](https://github.com/GuoSirius/sshk-tools/commit/74092b751a8ef33b8f34d78166277e6bd7fbe17b))
+* **share,update:** 海报复制链接直达定版（前缀+行路径）；dev更新测试每次清缓存可复测进度 ([b1b3cf7](https://github.com/GuoSirius/sshk-tools/commit/b1b3cf78a4f039f05fc882ecf2d1c9557d952c2d))
+* **tools:** Provider启停/样式编辑器+预览/海报分享前缀；refactor: 重复模块收敛；fix: 宿主错误误套桥接话术 ([0bea77e](https://github.com/GuoSirius/sshk-tools/commit/0bea77e366c7e516a6afca0c629b28a68613849a))
+* **app-protocol:** 渲染层加载统一 app:// 协议；修密钥弹框无法输入根因 ([53dc0af](https://github.com/GuoSirius/sshk-tools/commit/53dc0af922554fa1f65f3a1c984582b03b112edc))
+* **env,share-hub:** .env 构建期烤入+覆盖白名单；分享端口默认 56789 并持久化自动分配端口 ([c246829](https://github.com/GuoSirius/sshk-tools/commit/c24682969526c57c518873139fff98f6659ad072))
+* **share:** 永久有效与 TTL 三按钮、设置校验完善 ([75643a9](https://github.com/GuoSirius/sshk-tools/commit/75643a90976d2aa0cff7d79333fd52c6c0c62863))
+* **settings:** 分享设置补默认时长与表格易读性 ([6d1c304](https://github.com/GuoSirius/sshk-tools/commit/6d1c3044c76345e11bcfefc8de67e6dd00c08ed1))
+* **share:** 常驻 ShareHub 分享服务全量落地并接入工具 ([29b0917](https://github.com/GuoSirius/sshk-tools/commit/29b091794402c538447079c2a5495091e74673fb))
+* **desktop:** 设置导航 tab 圆点改为语义图标（EP icons） ([a9ef57a](https://github.com/GuoSirius/sshk-tools/commit/a9ef57ad83599e4a7acd7aea38bf33d15592d2cf))
+* **update:** 新增 SSHK_AUTO_UPDATE 环境变量控制分发包自动更新——0/false 时推 phase=disabled，顶栏更新按钮与设置页检查入口隐藏、不挂监听不发起检查 ([fcc2f05](https://github.com/GuoSirius/sshk-tools/commit/fcc2f053c312469a166590d662dce73ac2672a95))
+* **settings:** 配置预设导出加「包含密钥」开关(默认脱敏,开启需二次确认,含密钥预设导入写回safeStorage)+设置系统tab顺序调整(更新→系统与数据→配置预设→运行时工具包→回滚快照→诊断) ([869a695](https://github.com/GuoSirius/sshk-tools/commit/869a69547e67000fd3b33355dafef82301cd96f3))
+* **app:** 验收第4批10项——密钥弹框眼睛可查看、拖拽capture+管理员UIPI诊断警示、输入框clearable全量、海报标记数据随海报保存（marks.csv+markCounts）、工具配置菜单图标重绘、验证标记落docs/verify-sessions随git同步、状态栏实时时钟、release中断幂等回退（远端已推则不回滚）、设置菜单改名、开关一行布局全局标准 ([bc15256](https://github.com/GuoSirius/sshk-tools/commit/bc1525627e5e030e680ff4b5400f77afe1892028))
+
+### 🐛 缺陷修复 (Bug Fixes)
+
+* **ui:** 密钥弹框改自管el-dialog组件——message-box内嵌ElInput构建版宽度异常根治 ([1a5a551](https://github.com/GuoSirius/sshk-tools/commit/1a5a5510ffab3068e9f434d9c3e742ed7230133a))
+* **ui:** 密钥弹框输入框显式铺满; fix(badge-studio): 分享后行链接状态响应式刷新+EDM列表静默降级; fix(model-console): 默认Provider去掉devOnly ([10d1202](https://github.com/GuoSirius/sshk-tools/commit/10d1202b9b3fcc0f63fa859b68f9935f514ee2b1))
+* **share:** 弹框贯通0=永久语义(数字框min0/校验/创建/续期/重新生成/应用设置0不再强转72) ([2617579](https://github.com/GuoSirius/sshk-tools/commit/26175794d85c453bf0412698f6cee242ace30396))
+* **share:** 重新生成尊重暂存永久(按永久生成)否则按数字框时长 ([a55d726](https://github.com/GuoSirius/sshk-tools/commit/a55d72671e559b52bc3f447ab89cedb5fc211d9d))
+* **share:** 分享弹框复制按钮补成功/失败反馈 ([9a05bdd](https://github.com/GuoSirius/sshk-tools/commit/9a05bddb9ed1eda00392cc181b5c80cfed81e6f5))
+* **updater:** 启动拉取更新状态修复禁用时仍展示检查按钮; fix(share): 创建态重设计(hero+卡片)修tip重叠与TTL按钮永久禁用 ([673dc34](https://github.com/GuoSirius/sshk-tools/commit/673dc34b5e1d4ad353c5535e3cda93890d682971))
+* **badge-studio:** markCounts数组形态落库修复NeDB点键拒插; 列名净化; 保存后基线重置; 菜单海报列表优先; style(share): 创建态固定高居中美化 ([806eaf7](https://github.com/GuoSirius/sshk-tools/commit/806eaf79207d2c088dcb56b8b4559f8ce52b2a8f))
+* **share:** 再点已选中TTL按钮取消暂存 ([c21078d](https://github.com/GuoSirius/sshk-tools/commit/c21078dec96cc953f938d942cb264c20534f89fb))
+* **share:** TTL三按钮改暂存选择+应用更改生效; fix(badge-studio): 批量导出按钮去掉HTML文案 ([bc35438](https://github.com/GuoSirius/sshk-tools/commit/bc3543821a7ff781537a0de6ceca9da9644d4707))
+* **badge:** 保存流程定版——名字必填即可存草稿；修生成后保存报海报不存在根因 ([e0747ab](https://github.com/GuoSirius/sshk-tools/commit/e0747ab26370be62d853f45918885a1371749e70))
+* **share:** 分享弹框一切变动确认后生效；修目录开关不生效根因 ([de3fc30](https://github.com/GuoSirius/sshk-tools/commit/de3fc307a03b0363b1cd38467efcc8cfa402c42e))
+* **code-editor,update:** 高亮消失与dev更新进度双根因修复；dev接Vue DevTools；默认Provider改下拉 ([e470ae5](https://github.com/GuoSirius/sshk-tools/commit/e470ae544547ca68355c749b27b8b093eaeb37ee))
+* **build:** dist 后工具裁剪/禁更/版本号/设置间距四项修复 ([75b0eca](https://github.com/GuoSirius/sshk-tools/commit/75b0ecac806bd7f523322f4519857710822eab9a))
+* **share:** 菜单文案与分享弹框时长行布局调整 ([4b75530](https://github.com/GuoSirius/sshk-tools/commit/4b75530401766896525c0e66d37b68eee74f8610))
+* **share:** 续期按钮文案与可配置时长对齐 ([d78d0f9](https://github.com/GuoSirius/sshk-tools/commit/d78d0f92aed56d9f0753240eafaa319411942f31))
+* **share:** 打开直出二维码并复用有效链接 ([109c159](https://github.com/GuoSirius/sshk-tools/commit/109c159493c74045ff8080dbf2f37e8bf11a2c18))
+* **share:** 移除分享列表并为危险操作加二次确认 ([45cafaf](https://github.com/GuoSirius/sshk-tools/commit/45cafafd43c03bd7ed32f2a84f68b8cc2eea5e6e))
+* **share:** 分享对话框首行与剩余时间位置调整 ([696c2f9](https://github.com/GuoSirius/sshk-tools/commit/696c2f91af49db5c85b09178de0f4d5f43861179))
+* **share:** 分享对话框布局按截图调整 ([b0128c7](https://github.com/GuoSirius/sshk-tools/commit/b0128c75cb7b228ed9f6b185969be36d11d38406))
+* **fs:** 云移动 ACL 拒绝删源时友好提示且不刷堆栈 ([ca96ffe](https://github.com/GuoSirius/sshk-tools/commit/ca96ffe1b219cf966c46906766bc7a72f2f46213))
+
+### 📚 文档 (Documentation)
+
+* **fs:** §十一按用户五项拍板定版(转换格式A+B/列默认/顶部不动/无云分享/行操作7外显顺序) ([d620ccf](https://github.com/GuoSirius/sshk-tools/commit/d620ccff90668612a7e2d55d3eb2206c8e6e380c))
+* **fs:** 列表列扩展与操作栏规划落档(plans/08 §十一,待确认) ([7b3fe6c](https://github.com/GuoSirius/sshk-tools/commit/7b3fe6ce551c69d3fda1d25db1f6a2256233fbe2))
+* **plans/05:** 补记 getEnvStr/getEnvBool/getEnvHas 统一取值入口 ([a5a7493](https://github.com/GuoSirius/sshk-tools/commit/a5a7493e4c4e395430cc1bbeea819bba17954cc5))
+* **plans:** ShareHub 设计定稿——拍板分享密码 ?key= / 复制链接并存 / 旧状态文件静默删除 ([0c18bdc](https://github.com/GuoSirius/sshk-tools/commit/0c18bdc171870227d6e95b2885ed22ffeac81ed2))
+* **plans:** 09-常驻分享服务设计 v2——落定用户8项决策(旧版不兼容从零实现/端口与autoStart按方案/路由不限/停止语义/一二三期全做/IP策略0.0.0.0+自动优选+可选可手输/服务配置独立设置tab)+IP方案细化+全量实现清单+S组验收16项 ([e9aa490](https://github.com/GuoSirius/sshk-tools/commit/e9aa49004f558da5d15808ca3f87840ae4cb1247))
+
+### 🏠 其他 (Miscellaneous)
+
+* **tool-form:** 描述补必填星号; 全应用textarea去clear icon ([e1edd15](https://github.com/GuoSirius/sshk-tools/commit/e1edd15a27f1942c5d69732e3b8aa2a8df851ca1))
+* **settings:** 主题模式label与下拉一行布局 ([636c29e](https://github.com/GuoSirius/sshk-tools/commit/636c29e11fedb1e160f4f9ee81ee3cbef8a93a8a))
+* 还原手工写入的 CHANGELOG 并禁止 AI 再写 ([0e76abe](https://github.com/GuoSirius/sshk-tools/commit/0e76abe3bcab8ede5a7f9e85435fcd3efe27e494))
+* fix+feat+docs: 验收第9批——删SSHK_TOOLS_ALLOW_SECRET_MIGRATION(备份口令填了即生效)/envOn-envOff统一布尔判定(win32-drop扩OLE拖放消息集+全链路日志)/拖拽drop链路全量try-catch+诊断日志(消灭静默失败)/传输队列并发统计仅在有任务时显示/docs/plans/09常驻分享服务ShareHub设计草案(待评审) ([8a9be4a](https://github.com/GuoSirius/sshk-tools/commit/8a9be4a955914e2b5df1e5d3cba73b5bc8f77503))
+* **badge:** 预览空状态——标题与提示文案合并居中显示 ([e0aa8a2](https://github.com/GuoSirius/sshk-tools/commit/e0aa8a2b6ab338b23db3f38a2c98cba691aedc2a))
+* fix+feat: 验收第7批——分享重新生成双场景/编辑器按钮居右/验证误选清除/通道拖拽排序/重命名renameTo/云ACL友好提示/dev更新补yml/压缩HTML高亮/管理员拖拽UIPI放行(koffi)+dev版本号env覆盖(SSHK_UPDATE_DEV_VERSION) ([9cb4bc8](https://github.com/GuoSirius/sshk-tools/commit/9cb4bc823703b65a57505888f6f19c5a9aa2f281))
+* **verify:** 同步真机验收标记（A组/F组进度，F/A-V2更新进度标注失败待dev重启复验） ([8d9a573](https://github.com/GuoSirius/sshk-tools/commit/8d9a57363ef93041e10695103cbf02b0fd5b6d41))
+* fix+feat: 验收第5/6批20项——拖拽真正修复(dragenter preventDefault+dropEffect,去UIPI判断)/数字框回归还原/目录复制移动递归展开/跨通道移动/复制弹框回显/编辑器高亮+格式化+下拉标签/badge模板下载+按钮精简+表格序号/更新进度横幅+dev测试模式不安装/密钥按操作缓存/分享跨重启/label auto宽/dev版本号 ([c71df2b](https://github.com/GuoSirius/sshk-tools/commit/c71df2b2478ac0a5154d4b8b0948d6673bb93fc4))
+
 ## [1.2.0](https://github.com/GuoSirius/sshk-tools/compare/v1.1.0...v1.2.0) (2026-11-17)
 
 ### ♻️ 代码重构 (Refactors)
