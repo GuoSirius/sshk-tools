@@ -6,7 +6,8 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { Delete } from '@element-plus/icons-vue'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ShareHubMount } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { appConfig, saveAppConfig } from '../../composables/useAppConfig'
 
@@ -144,7 +145,88 @@ async function save(): Promise<void> {
   finally { saving.value = false }
 }
 
+// ── 挂载目录（多目录分享，用户 2026-11-18 定版）──
+// 一行一个：目录（选择）+ 别名（新增自动生成可改，留空保存时随机生成并持久化）
+// + 复选（是否允许访问）+ 只读链接 + 删除；保存即生效，无需重启
+interface MountRow { id: string; dir: string; alias: string; enabled: boolean }
+const mounts = ref<MountRow[]>([])
+const mountsSaving = ref(false)
+/** 别名规范化：与内核 normalizeMountAlias 同规则（渲染层不能 import node 依赖包，规则真相源在内核） */
+function normAlias(raw: string): string {
+  const s = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  return /^[a-z0-9][a-z0-9-_]{0,31}$/.test(s) ? s : ''
+}
+/** 随机别名 dir-xxxxxx（新增行自动生成；留空保存时随机生成后写回并持久化，避免每次不一样） */
+function randomAlias(): string {
+  return `dir-${Math.random().toString(36).slice(2, 8)}`
+}
+function addMount(): void {
+  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true })
+}
+async function pickMountDir(row: MountRow): Promise<void> {
+  try {
+    const dir = await window.api.os.pickDir(row.dir ? { defaultPath: row.dir } : undefined)
+    if (dir) row.dir = dir
+  } catch { /* 用户取消或选目录失败，保持原值 */ }
+}
+async function removeMount(index: number): Promise<void> {
+  const row = mounts.value[index]
+  if (!row) return
+  // 已保存过的行删除保存后链接即失效——按危险操作约定二次确认（禁遮罩禁 ESC）
+  const saved = appConfig.shareMounts.some((m) => m.id === row.id)
+  if (saved) {
+    try {
+      await ElMessageBox.confirm(
+        `移除挂载「${row.alias || row.dir || '未命名'}」？保存后该目录的分享链接将立即失效。`,
+        '移除挂载目录',
+        { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留' },
+      )
+    } catch { return }
+  }
+  mounts.value.splice(index, 1)
+}
+/** 只读链接展示：服务运行中拼 displayIp+端口；未运行给空占位 */
+function mountLink(row: MountRow): string {
+  const s = shareStatus.value
+  if (!s?.running || !s.port || !row.alias) return ''
+  return `http://${s.displayIp}:${s.port}/${row.alias}/`
+}
+async function saveMounts(): Promise<void> {
+  // 校验 + 规范化；空别名随机生成并写回（用户要求：随机值要持久化记住，不能每次变）
+  const seen = new Set<string>()
+  const rows: ShareHubMount[] = []
+  for (const row of mounts.value) {
+    if (!row.dir.trim()) { ElMessage.warning('存在未选择目录的挂载行，请补全或删除该行'); return }
+    const alias = normAlias(row.alias) || randomAlias()
+    if (seen.has(alias)) { ElMessage.error(`别名「${alias}」重复，请修改`); return }
+    seen.add(alias)
+    row.alias = alias
+    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true })
+  }
+  mountsSaving.value = true
+  try {
+    await window.api.config.set('app.shareHub.mounts', rows)
+    appConfig.shareMounts = rows.map((r) => ({ ...r }))
+    await refreshShare()
+    if (!shareStatus.value?.running) {
+      // 服务未运行：挂载已保存但不可访问——询问是否立即启动（用户 2026-11-18：需生效确认）
+      try {
+        await ElMessageBox.confirm('挂载目录已保存。分享服务当前未运行，是否立即启动使链接可访问？', '保存成功', {
+          type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+          confirmButtonText: '启动服务', cancelButtonText: '暂不启动',
+        })
+        await shareControl('start')
+      } catch { /* 暂不启动 */ }
+    } else {
+      ElMessage.success('挂载目录已保存并即时生效')
+    }
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { mountsSaving.value = false }
+}
+
 onMounted(() => {
+  // 挂载目录编辑态：从已保存配置拷贝（保存成功前不影响权威配置）
+  mounts.value = appConfig.shareMounts.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled }))
   void refreshShare()
   // 组件仅在激活时挂载：定时器跟随生命周期，持续刷新路由状态/访问日志/倒计时
   shareTimer = setInterval(() => { void refreshShare() }, 3000)
@@ -220,6 +302,29 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
       </div>
     </section>
 
+    <!-- 挂载目录（多目录分享，用户 2026-11-18 定版）：一行一个 -->
+    <section class="settings-card">
+      <div class="card-title">挂载目录 <el-tag size="small" type="info" class="mini-tag">{{ mounts.length }} 个</el-tag></div>
+      <div class="hint" style="margin-bottom: 10px">
+        每个目录一条固定链接（http://IP:端口/别名/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。别名留空保存时随机生成并记住。
+      </div>
+      <div v-for="(row, i) in mounts" :key="row.id" class="mount-row">
+        <el-input :model-value="row.dir" readonly size="small" placeholder="未选择目录" class="mount-dir" />
+        <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择…</el-button>
+        <el-input v-model="row.alias" size="small" placeholder="别名" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
+          <template #prepend>/</template>
+        </el-input>
+        <el-checkbox v-model="row.enabled" size="small">允许访问</el-checkbox>
+        <el-input :model-value="mountLink(row)" readonly size="small" class="mount-link" placeholder="（服务未运行）" />
+        <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)" />
+      </div>
+      <div v-if="!mounts.length" class="hint">还没有挂载目录，点「添加目录」开始。</div>
+      <div class="card-actions share-actions">
+        <el-button size="small" type="success" plain @click="addMount">添加目录</el-button>
+        <el-button size="small" type="primary" :loading="mountsSaving" @click="saveMounts">保存挂载目录</el-button>
+      </div>
+    </section>
+
     <!-- 路由管理 -->
     <section class="settings-card">
       <div class="card-title">路由管理 <el-tag size="small" type="info" class="mini-tag">{{ shareRoutes.length }} 条</el-tag></div>
@@ -285,4 +390,10 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .hint-error { color: var(--el-color-danger); }
 .share-route-filter { margin-bottom: 10px; }
 .expired-text { color: var(--el-color-danger); }
+/* 挂载目录行：一行一个（用户 2026-11-18 定版）——目录+选择+别名+复选+只读链接+删除 */
+.mount-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mount-dir { width: 200px; }
+.mount-alias { width: 160px; }
+.mount-link { flex: 1; min-width: 180px; }
+.mount-row :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }
 </style>

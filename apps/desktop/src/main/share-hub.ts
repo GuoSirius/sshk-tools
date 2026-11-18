@@ -12,6 +12,7 @@ import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
 import {
   IPC_CHANNELS,
   type ShareRouteInput,
+  type ShareHubMount,
   type HubStatus,
 } from '@sshk/shared'
 import type { ConfigService } from '@sshk/repository'
@@ -88,6 +89,18 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     }
   }
 
+  /** 挂载目录（多目录分享，用户 2026-11-18）：配置 app.shareHub.mounts 为权威，
+   *  变更即时生效（setMounts 重建别名路由，无需重启）；无效项记日志不阻断。 */
+  function applyMounts(): void {
+    const raw = cfg.get('app.shareHub.mounts')
+    // 粗过滤：仅收结构合法的行（细校验在内核 setMounts）
+    const mounts: ShareHubMount[] = (Array.isArray(raw) ? raw : []).filter(
+      (m): m is ShareHubMount => !!m && typeof m === 'object' && typeof (m as ShareHubMount).dir === 'string',
+    )
+    const skipped = hub.setMounts(mounts)
+    if (skipped.length) logger.warn('shareHub', `挂载目录部分无效已跳过：${skipped.join('；')}`)
+  }
+
   let initialized = false
 
   async function init(): Promise<void> {
@@ -95,6 +108,7 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     initialized = true
     removeLegacyStates()
     applyPreferredIp()
+    applyMounts()
     if (cfg.get('app.shareHub.autoStart') !== false) {
       try { await startHub() } catch (err) {
         logger.error('shareHub', `自动启动失败：${(err as Error).message}`)
@@ -104,6 +118,8 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     cfg.onChanged((ns, key) => {
       if (ns !== 'app' || !key.startsWith('shareHub.')) return
       if (key === 'shareHub.preferredIp') { applyPreferredIp(); return }
+      // 挂载目录变更即时生效（保存即生效，无需重启——用户 2026-11-18 定版）
+      if (key === 'shareHub.mounts') { applyMounts(); return }
       if (key === 'shareHub.autoStart') {
         const on = cfg.get('app.shareHub.autoStart') !== false
         if (on && !hub.running) void startHub()

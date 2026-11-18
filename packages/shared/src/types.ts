@@ -440,6 +440,19 @@ export interface UsageStatsPayload {
 // ShareHub 常驻分享服务（plans/09）：多租户只读路由。类型真相源，preload / 渲染层 / 内核共用
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** ShareHub 挂载目录（应用设置逐项配置，别名直达；用户 2026-11-18 定版）。
+ *  配置键 app.shareHub.mounts 为权威持久化，内核 setMounts 即时生效，无需重启。 */
+export interface ShareHubMount {
+  /** 稳定 id（新增时生成，编辑/保存不重生成） */
+  id: string
+  /** 本地目录绝对路径 */
+  dir: string
+  /** 访问别名：URL 形如 http://ip:port/{alias}/；新增时自动生成，用户可改，留空保存时随机生成并持久化 */
+  alias: string
+  /** 是否允许访问该目录（关 = 整目录 404，链接也不可用） */
+  enabled: boolean
+}
+
 /** 创建一条分享路由的入参 */
 export interface ShareRouteInput {
   /** 归属工具 id（'badge-studio' | 'edm-studio' | 'upload-manager' | …）；按此记账鉴权 */

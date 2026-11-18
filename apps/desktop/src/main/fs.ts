@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { BrowserWindow, app, dialog } from 'electron'
 import { zipSync, unzipSync } from 'fflate'
 import iconv from 'iconv-lite'
@@ -64,11 +64,19 @@ const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
 const MAX_TASKS = 2000
-/** 上传展平/下载目录递归展开共用上限的可配置键与区间（用户 2026-11-18：可配置，默认 10000） */
-const CFG_TRANSFER_FILE_CAP = 'app.fs.transferFileCap'
-const FS_TRANSFER_FILE_CAP_DEFAULT = 10000
-const FS_TRANSFER_FILE_CAP_MIN = 100
+/** 上传展平 / 下载目录递归展开上限：分开可配（用户 2026-11-18），0 = 不限。
+ *  默认：上传 10000、下载 0 不限制（用户 2026-11-18 定版）。
+ *  旧单值键 app.fs.transferFileCap 作为兼容回落：新键不存在时继承旧值，不丢用户既有设置。 */
+const CFG_UPLOAD_CAP = 'app.fs.uploadFileCap'
+const CFG_DOWNLOAD_CAP = 'app.fs.downloadFileCap'
+const CFG_TRANSFER_FILE_CAP_LEGACY = 'app.fs.transferFileCap'
+const FS_UPLOAD_CAP_DEFAULT = 10000
+const FS_DOWNLOAD_CAP_DEFAULT = 0
 const FS_TRANSFER_FILE_CAP_MAX = 100_000
+/** 云递归搜索扫描页数上限配置（默认 500；0 = 不限） */
+const CFG_SEARCH_MAX_PAGES = 'app.fs.searchMaxPages'
+const FS_SEARCH_MAX_PAGES_DEFAULT = 500
+const FS_SEARCH_MAX_PAGES_MAX = 100_000
 /** 文本编码/换行符转换的文件大小上限（§十一 转换格式 A） */
 const FS_TEXT_CONVERT_LIMIT = 20 * 1024 * 1024
 /** zip 压缩/解压上限的可配置键与缺省值（内存型操作，防 OOM；渲染层可在「压缩上限设置」调整） */
@@ -89,12 +97,26 @@ function localBasename(abs: string): string {
   return i < 0 ? s : s.slice(i + 1)
 }
 
-/** 从配置读传输文件数上限（缺省/非法回落默认并钳制） */
-function readTransferFileCap(get: (key: string) => unknown): number {
-  return Math.min(FS_TRANSFER_FILE_CAP_MAX, Math.max(
-    FS_TRANSFER_FILE_CAP_MIN,
-    Math.floor(Number(get(CFG_TRANSFER_FILE_CAP)) || FS_TRANSFER_FILE_CAP_DEFAULT),
-  ))
+/** 从配置读文件数上限：0 = 不限；负数/非法回落默认；上限钳制。
+ *  key 传新键；新键未设置时回落旧单值键，兼容既有用户配置（用户 2026-11-18 上传/下载分开，默认不同）。 */
+function readFileCap(get: (key: string) => unknown, key: string, fallbackKey: string, fallbackDefault: number): number {
+  const has = (k: string): boolean => get(k) !== undefined && get(k) !== null
+  const raw = has(key) ? get(key) : has(fallbackKey) ? get(fallbackKey) : fallbackDefault
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return fallbackDefault
+  return Math.min(FS_TRANSFER_FILE_CAP_MAX, Math.floor(n))
+}
+function readUploadCap(get: (key: string) => unknown): number {
+  return readFileCap(get, CFG_UPLOAD_CAP, CFG_TRANSFER_FILE_CAP_LEGACY, FS_UPLOAD_CAP_DEFAULT)
+}
+function readDownloadCap(get: (key: string) => unknown): number {
+  return readFileCap(get, CFG_DOWNLOAD_CAP, CFG_TRANSFER_FILE_CAP_LEGACY, FS_DOWNLOAD_CAP_DEFAULT)
+}
+/** 云搜索扫描页数上限：0 = 不限；非法回落默认 500 */
+function readSearchMaxPages(get: (key: string) => unknown): number {
+  const raw = Number(get(CFG_SEARCH_MAX_PAGES))
+  if (!Number.isFinite(raw) || raw < 0) return FS_SEARCH_MAX_PAGES_DEFAULT
+  return Math.min(FS_SEARCH_MAX_PAGES_MAX, Math.floor(raw))
 }
 
 /** 从配置读 zip 上限（缺省/非法回落默认值并钳制到合法区间） */
@@ -346,6 +368,8 @@ class FsTransferEngine {
       return
     }
     this.overwrite.delete(t.id)
+    // 目录下载会带相对子路径（demo/used/webp/x.webp），落点父目录可能不存在——先递归建，避免 ENOENT
+    mkdirSync(dirname(destPath), { recursive: true })
     await driver.download(remotePath, destPath, (n) => this.sample(t, n))
     logger.info('upload', `fs 下载完成：${remotePath} → ${destPath}（${fsFormatSize(stat.size ?? 0)}）`)
   }
@@ -793,7 +817,11 @@ export class FsRuntime {
     const path = this.assertPath(req?.path)
     const keyword = String(req?.keyword ?? '').trim()
     if (!keyword) return { entries: [], truncated: false }
-    return await driver.search(path, keyword, { maxResults: 300, onBatch })
+    return await driver.search(path, keyword, {
+      maxResults: 300,
+      maxPages: readSearchMaxPages((k) => this.opts.services.config.get(k)),
+      onBatch,
+    })
   }
 
   async usage(req: { profileId: string; path: string }): Promise<FsUsageResult> {
@@ -1161,17 +1189,26 @@ export class FsRuntime {
     return { fileCap, bytesCapMb: Math.round(bytesCap / (1024 * 1024)) }
   }
 
-  /** 传输文件数上限（上传展平 / 下载目录递归展开共用，默认 10000） */
-  transferCaps(): { fileCap: number } {
-    return { fileCap: readTransferFileCap((k) => this.opts.services.config.get(k)) }
+  /** 传输文件数上限（上传 / 下载分开；0 = 不限；默认上传 10000、下载 0 不限） */
+  transferCaps(): { uploadCap: number; downloadCap: number; searchMaxPages: number } {
+    const get = (k: string): unknown => this.opts.services.config.get(k)
+    return {
+      uploadCap: readUploadCap(get),
+      downloadCap: readDownloadCap(get),
+      searchMaxPages: readSearchMaxPages(get),
+    }
   }
 
-  setTransferCaps(req: { fileCap?: number }): { fileCap: number } {
-    if (req?.fileCap != null) {
-      const v = Math.floor(Number(req.fileCap))
-      if (!Number.isFinite(v)) throw new Error('文件数上限必须是数字')
-      this.opts.services.config.set(CFG_TRANSFER_FILE_CAP, Math.min(FS_TRANSFER_FILE_CAP_MAX, Math.max(FS_TRANSFER_FILE_CAP_MIN, v)))
+  setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number }): { uploadCap: number; downloadCap: number; searchMaxPages: number } {
+    const setCap = (key: string, raw: number | undefined, max: number, label: string): void => {
+      if (raw == null) return
+      const v = Math.floor(Number(raw))
+      if (!Number.isFinite(v) || v < 0) throw new Error(`${label}必须是不小于 0 的整数（0 = 不限）`)
+      this.opts.services.config.set(key, Math.min(max, v))
     }
+    setCap(CFG_UPLOAD_CAP, req?.uploadCap, FS_TRANSFER_FILE_CAP_MAX, '上传文件数上限')
+    setCap(CFG_DOWNLOAD_CAP, req?.downloadCap, FS_TRANSFER_FILE_CAP_MAX, '下载文件数上限')
+    setCap(CFG_SEARCH_MAX_PAGES, req?.searchMaxPages, FS_SEARCH_MAX_PAGES_MAX, '搜索扫描页数上限')
     return this.transferCaps()
   }
 
@@ -1209,9 +1246,10 @@ export class FsRuntime {
    *  注意：入参是本地绝对路径（系统弹框/拖拽，Windows 下带反斜杠），不能走 root-rel 的 fsBasename */
   flattenLocal(paths: string[]): FsLocalFile[] {
     const out: FsLocalFile[] = []
-    const cap = readTransferFileCap((k) => this.opts.services.config.get(k))
+    const cap = readUploadCap((k) => this.opts.services.config.get(k))
+    const full = (): boolean => cap > 0 && out.length >= cap // cap=0 不限
     const walk = (abs: string, rel: string): void => {
-      if (out.length >= cap) return
+      if (full()) return
       let st
       try { st = statSync(abs) } catch { return }
       if (st.isFile()) {
@@ -1222,7 +1260,7 @@ export class FsRuntime {
       let names: string[] = []
       try { names = readdirSync(abs).sort() } catch { return }
       for (const name of names) {
-        if (out.length >= cap) return
+        if (full()) return
         walk(join(abs, name), rel ? `${rel}/${name}` : name)
       }
     }

@@ -9,6 +9,7 @@ import type {
   ShareRouteInput,
   ShareRouteTicket,
   ShareRouteInfo,
+  ShareHubMount,
   ShareIpInfo,
   ShareAccessLog,
   HubStatus,
@@ -74,6 +75,8 @@ interface ShareRoute {
   allowIndex?: boolean
   /** 命中计数（访问入口 + 资源） */
   hits: number
+  /** 挂载目录路由标记（ShareHub mounts）：非持久化、配置权威；token 字段存别名 */
+  mountId?: string
 }
 
 interface PersistedHub {
@@ -85,10 +88,20 @@ const DEFAULT_TTL_HOURS = 72
 const LOG_LIMIT = 500
 const CLEAN_INTERVAL_MS = 60_000
 
+/** 挂载别名规范化（URL 路径段）：小写、去首尾空白、空白转连字符；白名单 [a-z0-9-_] 长度 1-32。
+ *  非法返回 ''（调用方跳过/报错）。渲染层生成与校验需保持同规则。 */
+export function normalizeMountAlias(raw: unknown): string {
+  const s = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  if (!s) return ''
+  return /^[a-z0-9][a-z0-9-_]{0,31}$/.test(s) ? s : ''
+}
+
 export class ShareHub {
   private server: Server | null = null
   private port = 0
   private routes = new Map<string, ShareRoute>()
+  /** 挂载目录路由（key=别名）：配置权威、即时生效、不持久化到 hub-state（重启由宿主 setMounts 重建） */
+  private mountRoutes = new Map<string, ShareRoute>()
   private logs: ShareAccessLog[] = []
   private cleanTimer: ReturnType<typeof setInterval> | null = null
   private persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -159,6 +172,34 @@ export class ShareHub {
     const port = this.port || requestedPort
     await this.stop()
     return this.start(port)
+  }
+
+  /** 设置挂载目录（ShareHub mounts，用户 2026-11-18 定版）：配置权威、即时生效、无需重启。
+   *  enabled=false 或无效项不注册（访客访问一律 404）。返回被跳过项的描述（供宿主日志）。 */
+  setMounts(mounts: ShareHubMount[]): string[] {
+    const skipped: string[] = []
+    const next = new Map<string, ShareRoute>()
+    for (const m of Array.isArray(mounts) ? mounts : []) {
+      const dir = String(m?.dir ?? '').trim()
+      const alias = normalizeMountAlias(m?.alias)
+      const shown = alias || String(m?.alias ?? '').trim() || dir || '(空行)'
+      if (!dir) { skipped.push(`「${shown}」：目录为空`); continue }
+      if (!alias) { skipped.push(`「${shown}」：别名非法（限小写字母/数字/连字符/下划线）`); continue }
+      if (next.has(alias)) { skipped.push(`「${alias}」：别名重复`); continue }
+      try {
+        if (!existsSync(dir) || !statSync(dir).isDirectory()) { skipped.push(`「${alias}」→ ${dir}：目录不存在`); continue }
+      } catch { skipped.push(`「${alias}」→ ${dir}：目录不可读`); continue }
+      // 别名不得与工具路由 token 冲突：请求解析 token 优先，冲突会让挂载永远不可达
+      if (this.routes.has(alias)) { skipped.push(`「${alias}」：与既有分享链接 token 冲突`); continue }
+      next.set(alias, {
+        id: `mount:${m.id || alias}`, token: alias, toolId: 'share-hub-mount',
+        label: alias, root: dir, entry: '', ttlHours: 0,
+        createdAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: '',
+        allowIndex: true, hits: 0, mountId: m.id || alias,
+      })
+    }
+    this.mountRoutes = next
+    return skipped
   }
 
   /** 创建一条分享路由。root 必须是存在的绝对路径（主进程校验），token 12B base64url。 */
@@ -343,7 +384,8 @@ export class ShareHub {
     try {
       const url = new URL(req.url ?? '/', 'http://local')
       const token = url.pathname.split('/')[1] ?? ''
-      const route = this.routes.get(token)
+      // 先查工具分享路由（token），未命中再查挂载目录路由（别名）；token 冲突时分享路由优先
+      const route = this.routes.get(token) ?? this.mountRoutes.get(token)
       if (!route || Date.now() > route.expiresAt) {
         if (route && Date.now() > route.expiresAt) this.routes.delete(token)
         this.finish(res, 404, 'Not Found')
@@ -377,7 +419,7 @@ export class ShareHub {
         const html = this.renderIndex(route, '')
         this.finish(res, 200, html, { 'content-type': MIME['.html']! })
         route.hits++
-        this.schedulePersist()
+        if (!route.mountId) this.schedulePersist() // 挂载路由计数仅内存态（配置权威，不落盘）
         this.log(clientIp, routeId, rel, 200)
         return
       }
@@ -385,7 +427,7 @@ export class ShareHub {
       const abs = resolveSafe(route.root, relRaw)
       const st = await stat(abs)
       route.hits++
-      this.schedulePersist()
+      if (!route.mountId) this.schedulePersist() // 挂载路由计数仅内存态
 
       if (st.isDirectory()) {
         if (!indexAllowed) {

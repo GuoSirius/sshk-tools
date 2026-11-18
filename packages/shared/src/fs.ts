@@ -210,6 +210,8 @@ export interface FsSearchRequest {
   keyword: string
   /** 流式会话 id：渲染层生成，主进程逐批推送 fsSearchEvent 时原样带回用于过滤旧会话 */
   reqId?: string
+  /** 云通道扫描页数上限（0 = 不限）；由渲染层读应用配置传入，主进程缺省回落 500 */
+  maxPages?: number
 }
 
 /** 递归搜索结果：truncated=true 表示已达上限，结果可能不全 */

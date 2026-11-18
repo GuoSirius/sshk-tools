@@ -27,7 +27,8 @@ const CLOUD_DELETE_BATCH = 500
 /** 递归列前缀删的安全页数上限 */
 const CLOUD_DELETE_MAX_PAGES = 200
 /** 递归搜索 / 容量统计的安全页数上限（1000/页 → 最多扫 20 万 key；用户 2026-11-18：50 页太早截断，当前目录命中都漏掉） */
-const CLOUD_SCAN_MAX_PAGES = 200
+/** 云递归搜索/容量统计缺省扫描页数（用户 2026-11-18：默认 500，搜索可由配置传入 maxPages 覆盖，0=不限） */
+const CLOUD_SCAN_MAX_PAGES = 500
 
 /** 内部路径（`/a/b`）→ 云 SDK prefix（无前导 /、无尾 /；根返回 ''） */
 function sdkPrefix(path: string): string {
@@ -506,12 +507,17 @@ export class CloudFsDriver implements FsDriver {
   /** 递归搜索：listV2 无 delimiter 扫前缀（§3.3 既定路线），按文件名子串匹配。
    *  前缀必须带尾斜杠（marker）：裸前缀会把 demo-2、demo备份 等同名字头兄弟目录的文件混进来；
    *  且不再排除子目录文件——平铺扫前缀天然递归，与本地/远端驱动的 BFS 递归语义一致 */
-  async search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
+  async search(path: string, keyword: string, opts?: { maxResults?: number; maxPages?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const mod = await loadSdk(specOf(this.profile))
     const base = sdkPrefix(path)
     const marker = base ? `${base}/` : ''
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
+    // 扫描页数上限：0 = 不限；负数/非数字回落默认；上限钳制 100000 防失控循环
+    const rawPages = Number(opts?.maxPages)
+    const pageCap = opts?.maxPages === undefined || !Number.isFinite(rawPages) || rawPages < 0
+      ? CLOUD_SCAN_MAX_PAGES
+      : rawPages === 0 ? Infinity : Math.min(100000, Math.floor(rawPages))
     const out: FsEntry[] = []
     let batch: FsEntry[] = []
     let scannedDirs = 0
@@ -522,7 +528,7 @@ export class CloudFsDriver implements FsDriver {
     }
     let cursor: string | null = null
     let truncated = false
-    for (let page = 0; page < CLOUD_SCAN_MAX_PAGES; page++) {
+    for (let page = 0; page < pageCap; page++) {
       const p = await listCloudPage(this.profile, mod, { bucket: this.bucketOf(), prefix: marker, pageSize: 1000, cursor, delimiter: false })
       scannedDirs += 1 // 云按前缀分页扫，一页算一层进度
       for (const o of collectObjects(p.raw)) {
@@ -547,7 +553,7 @@ export class CloudFsDriver implements FsDriver {
       cursor = p.nextCursor
       if (truncated || !cursor) break
     }
-    if (cursor && !truncated) truncated = true // 扫到页数上限还有剩余
+    if (cursor && !truncated && Number.isFinite(pageCap)) truncated = true // 扫到页数上限还有剩余（pageCap=Infinity 不限）
     flush(true)
     return { entries: out, truncated }
   }

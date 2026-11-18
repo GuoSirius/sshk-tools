@@ -199,9 +199,10 @@ async function submitZipLimits(): Promise<void> {
   }
 }
 
-// ── 传输文件数上限设置（上传展平 / 下载目录递归展开共用，默认 10000）──
+// ── 上限设置（上传 / 下载分开可配；0=不限；搜索扫描页数默认 500、0=不限）──
 const transferCapsOpen = ref(false)
-const transferCapsForm = ref({ fileCap: 10000 })
+// 默认（用户 2026-11-18 定版）：上传 10000、下载 0 不限制
+const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500 })
 const transferCapsSaving = ref(false)
 async function openTransferCaps(): Promise<void> {
   try { transferCapsForm.value = await window.api.fs.transferCaps() } catch { /* 读取失败按缺省值 */ }
@@ -210,9 +211,13 @@ async function openTransferCaps(): Promise<void> {
 async function submitTransferCaps(): Promise<void> {
   transferCapsSaving.value = true
   try {
-    const r = await window.api.fs.setTransferCaps({ fileCap: transferCapsForm.value.fileCap })
+    const r = await window.api.fs.setTransferCaps({
+      uploadCap: transferCapsForm.value.uploadCap,
+      downloadCap: transferCapsForm.value.downloadCap,
+      searchMaxPages: transferCapsForm.value.searchMaxPages,
+    })
     transferCapsForm.value = r
-    ElMessage.success('传输文件数上限已更新（上传与下载目录展开共用）')
+    ElMessage.success('上限设置已更新')
     transferCapsOpen.value = false
   } catch (err) { ElMessage.error(friendlyError(err)) }
   finally { transferCapsSaving.value = false }
@@ -824,20 +829,21 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
 async function downloadEntries(list0: FsEntry[]): Promise<void> {
   const targets = list0.filter((e) => e.kind === 'file' || e.kind === 'dir')
   if (!targets.length || !profileId.value) return
-  // 目录递归展开为文件（保留相对结构），上限从配置读取（默认 10000）
-  let cap = 10000
-  try { cap = (await window.api.fs.transferCaps()).fileCap } catch { /* 失败用默认 */ }
+  // 目录递归展开为文件（保留相对结构），下载上限从配置读取（默认 0 = 不限制）
+  let cap = 0
+  try { cap = (await window.api.fs.transferCaps()).downloadCap } catch { /* 失败用默认 */ }
   const files: { entry: FsEntry; relDir: string }[] = []
   let truncated = false
+  const full = (): boolean => cap > 0 && files.length >= cap // cap=0 不限
   const expand = async (entry: FsEntry, rel: string): Promise<void> => {
-    if (files.length >= cap) { truncated = true; return }
+    if (full()) { truncated = true; return }
     if (entry.kind === 'file') { files.push({ entry, relDir: rel }); return }
     const collect = async (dirPath: string, dirRel: string): Promise<void> => {
       let cursor: string | null = null
       do {
         const page = await window.api.fs.list({ profileId: profileId.value, path: dirPath, cursor })
         for (const child of page.entries) {
-          if (files.length >= cap) { truncated = true; return }
+          if (full()) { truncated = true; return }
           if (child.kind === 'file') files.push({ entry: child, relDir: dirRel })
           else await collect(child.path, dirRel ? `${dirRel}/${child.name}` : child.name)
           if (truncated) return
@@ -987,7 +993,19 @@ const moveDirProps = {
   lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
     const pid = moveDestProfile.value || profileId.value
     if (!pid) { resolve([]); return }
-    const parent = node.level === 0 ? '/' : String(node.value ?? '')
+    // 首层首位放「根目录」可选中项（用户 2026-11-18：下拉必须能选根 /）；子目录平铺在其下，无需多下钻一层。
+    // 根节点钉 leaf=true：它的子目录已在首层平铺，不需要再展开重复列一遍
+    if (node.level === 0) {
+      try {
+        const page = await window.api.fs.list({ profileId: pid, path: '/' })
+        resolve([
+          { value: '/', label: '/（根目录）', leaf: true },
+          ...page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })),
+        ])
+      } catch { resolve([{ value: '/', label: '/（根目录）', leaf: true }]) }
+      return
+    }
+    const parent = String(node.value ?? '')
     try {
       const page = await window.api.fs.list({ profileId: pid, path: parent })
       resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
@@ -1103,6 +1121,18 @@ async function paste(): Promise<void> {
 async function rowPaste(entry: FsEntry): Promise<void> {
   await pasteInto(entry.path)
 }
+/** 粘贴完成后询问是否清空剪贴板（用户 2026-11-18：避免用户不知是否完成而重复粘贴；保留=可能还要粘到别处） */
+async function askClipboardAfterPaste(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('粘贴指令已完成。是否清空剪贴板？', '粘贴完成', {
+      type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+      confirmButtonText: '清空剪贴板', cancelButtonText: '保留（还要粘到别处）',
+    })
+    clipboard.value = null
+    ElMessage.success('剪贴板已清空')
+  } catch { /* 保留剪贴板 */ }
+}
+
 async function pasteInto(destDir: string): Promise<void> {
   const clip = clipboard.value
   if (!clip || !profileId.value || !hasWritable.value) return
@@ -1115,6 +1145,7 @@ async function pasteInto(destDir: string): Promise<void> {
       drawerOpen.value = true
       ElMessage.info(`跨通道复制已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
       void list(false)
+      await askClipboardAfterPaste()
     } catch (err) {
       ElMessage.error(friendlyError(err))
     }
@@ -1129,6 +1160,7 @@ async function pasteInto(destDir: string): Promise<void> {
       const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir })
       if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
       else ElMessage.success('已粘贴（复制）')
+      await askClipboardAfterPaste()
     }
     void list(false)
   } catch (err) {
@@ -1254,6 +1286,10 @@ async function addFavorites(targets: FsEntry[]): Promise<void> {
 async function removeFavorite(entry: FsEntry): Promise<void> {
   const hit = favorites.value.find((f) => f.profileId === profileId.value && f.path === entry.path)
   if (!hit) return
+  // 取消收藏需二次确认（用户 2026-11-18：危险操作一律确认，禁遮罩禁 ESC）
+  try {
+    await ElMessageBox.confirm(`确定取消收藏「${hit.name}」吗？`, '取消收藏', { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '取消收藏', cancelButtonText: '保留' })
+  } catch { return }
   try {
     await window.api.fs.favoriteRemove(hit._id)
     await loadFavorites()
@@ -1268,6 +1304,10 @@ function toggleFav(entry: FsEntry): void {
   else void addFavorites([entry])
 }
 async function removeFavoriteById(f: FsFavorite): Promise<void> {
+  // 收藏夹内单项移除同样二次确认（禁遮罩禁 ESC）
+  try {
+    await ElMessageBox.confirm(`确定移除收藏「${f.name}」吗？`, '移除收藏', { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留' })
+  } catch { return }
   try {
     await window.api.fs.favoriteRemove(f._id)
     await loadFavorites()
@@ -1706,7 +1746,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-dropdown-item command="copyto" :icon="CopyDocument" divided :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
             <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
             <el-dropdown-item command="ziplimits" :icon="Setting">压缩上限设置…</el-dropdown-item>
-            <el-dropdown-item command="transfercaps" :icon="Setting">传输上限设置…</el-dropdown-item>
+            <el-dropdown-item command="transfercaps" :icon="Setting">上限设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
@@ -1726,8 +1766,9 @@ function onKeydown(event: KeyboardEvent): void {
     <div class="fs-list" :class="{ 'is-drag': dragOver }">
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
-        <span>
-          递归搜索「{{ filter.trim() }}」：{{ searchLoading ? `已找到 ${searchEntries.length} 个 · 已扫描 ${searchScannedDirs} 个目录…` : `${searchEntries.length} 个结果` }}{{ searchTruncated ? '（已达扫描上限，结果可能不全）' : '' }}
+        <span class="fs-search-info">
+          <el-icon v-if="searchLoading" class="fs-search-spin"><Loading /></el-icon>
+          <span>递归搜索「{{ filter.trim() }}」：{{ searchLoading ? `已找到 ${searchEntries.length} 个 · 已扫描 ${searchScannedDirs} 个目录…` : `${searchEntries.length} 个结果` }}{{ searchTruncated ? '（已达扫描上限，结果可能不全）' : '' }}</span>
         </span>
         <el-button size="small" text type="primary" @click="exitSearch">返回目录</el-button>
       </div>
@@ -2188,15 +2229,25 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- 传输文件数上限（上传展平 / 下载目录递归展开共用） -->
-    <el-dialog v-model="transferCapsOpen" title="传输上限设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
+    <!-- 上限设置（上传 / 下载分开、搜索扫描页数；0=不限） -->
+    <el-dialog v-model="transferCapsOpen" title="上限设置" width="440px" close-on-click-modal="false" close-on-press-escape="false">
       <div class="fs-ziplimits">
         <div class="fs-convert-row">
-          <span class="fs-convert-label">文件数上限</span>
-          <el-input-number v-model="transferCapsForm.fileCap" size="small" :min="100" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
+          <span class="fs-convert-label">上传文件数上限</span>
+          <el-input-number v-model="transferCapsForm.uploadCap" size="small" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
           <span class="fs-ziplimits-unit">个</span>
         </div>
-        <div class="hint" style="margin-top: 8px">上传目录展平与下载目录递归展开共用此上限（默认 10000）；超出即截断并提示。</div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">下载文件数上限</span>
+          <el-input-number v-model="transferCapsForm.downloadCap" size="small" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">个</span>
+        </div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">搜索扫描页数上限</span>
+          <el-input-number v-model="transferCapsForm.searchMaxPages" size="small" :min="0" :max="100000" :step="100" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">页</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。</div>
       </div>
       <template #footer>
         <el-button @click="transferCapsOpen = false">取消</el-button>
@@ -2295,6 +2346,9 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-more { text-align: center; padding: 8px 0; }
 /* 搜索横幅不再 sticky（用户 2026-11-18：与 sticky 表头 top:0 叠住导致表格被遮）；随内容正常滚动即可 */
 .fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; }
+.fs-search-info { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.fs-search-spin { color: var(--el-color-primary); animation: fs-search-rotate 1s linear infinite; }
+@keyframes fs-search-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .fs-player-body { display: flex; align-items: center; justify-content: center; min-height: 260px; background: var(--el-fill-color-dark); border-radius: 8px; padding: 12px; }
 .fs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; }
 .fs-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 8px; cursor: default; border: 1px solid transparent; }

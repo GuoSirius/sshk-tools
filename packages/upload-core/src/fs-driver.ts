@@ -41,7 +41,7 @@ export interface FsDriver {
 
   /** 递归搜索：在 path 前缀内（'' = 整个通道根）按名称子串匹配（大小写不敏感）；truncated 达上限。
    *  onBatch 每攒够一批/每完成一层就回推，调用方（main）转发给渲染层做流式显示。 */
-  search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult>
+  search(path: string, keyword: string, opts?: { maxResults?: number; maxPages?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult>
 
   /** 目录容量统计：前缀/目录下文件总字节与个数（达到扫描上限时 truncated=true） */
   usage(path: string): Promise<FsUsageResult>

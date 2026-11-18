@@ -156,7 +156,9 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H24', group: 'H', title: '必填红星与弹框自动聚焦', guide: '各处新建/编辑表单必填项（通道名称/Bucket/AccessKey ID、主机、品牌 code/名称、模板/片段名称、邮件名称、海报名等）显示红星并在保存时拦截空值；所有弹框打开后输入框自动聚焦，不用先点一下', entry: { type: 'route', target: 'upload-manager' }, relates: 'U1' },
   { id: 'H25', group: 'H', title: '压缩上限设置与 Windows 路径修复（§十一）', guide: '「更多 ▾ → 压缩上限设置…」可调单次压缩/解压的文件数与容量上限（默认 3000 个 / 500MB），保存后立即生效并跨重启记忆；Windows 下拖拽或系统弹框选择文件/文件夹上传不再报「路径不允许包含反斜杠」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
   { id: 'H32', group: 'H', title: '流式递归搜索与列表细节修正', guide: '搜索框回车触发递归搜索：结果边扫边显示（横幅显示已找到数量/已扫描目录数），不再长时间空白；收藏星标固定在名称列末尾（未收藏 hover 才显、已收藏常显实心），复选与操作列没有额外背景色；网格视图卡片右键弹出完整操作菜单（不是小黑框），点菜单项执行对应操作', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
-  { id: 'H33', group: 'H', title: '路径契约根治与复制下载增强', guide: '所有路径统一显示 /a/b/c（根 /），手输 a/b 自动补前导 /；复制到根目录：目标目录留空或填 / 均合法；同源同目录复制弹重命名框，重名继续弹直到改名或取消；工具栏「复制（剪贴板）」配「粘贴」按钮，行内「复制」为弹框直落；下载支持选中目录递归展开（上限在「更多▾→传输上限设置」可配，默认 10000）；搜索框输入即在当前目录过滤，回车递归搜索时当前目录命中始终保留', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
+  { id: 'H33', group: 'H', title: '路径契约根治与复制下载增强', guide: '所有路径统一显示 /a/b/c（根 /），手输 a/b 自动补前导 /；复制到根目录：目标目录留空或填 / 均合法；同源同目录复制弹重命名框，重名继续弹直到改名或取消；工具栏「复制（剪贴板）」配「粘贴」按钮，行内「复制」为弹框直落；下载支持选中目录递归展开（上限在「更多▾→上限设置」可配：上传默认 10000、下载默认 0 不限制，0=不限）；搜索框输入即在当前目录过滤，回车递归搜索时当前目录命中始终保留', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
+  { id: 'H41', group: 'H', title: '上限拆分与搜索体验（2026-11-18）', guide: '「更多 ▾ → 上限设置…」：上传/下载文件数上限分开设置（默认上传 10000、下载 0 不限），设 0 生效为不限制；搜索扫描页数默认 500、0=不限，超出才提示「已达扫描上限」；搜索横幅左侧有旋转加载图标（搜索中转圈，结束即消失）；复制到/移动到目录下拉首位是「/（根目录）」可直接圈选', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
+  { id: 'H42', group: 'H', title: '收藏确认与粘贴询问（2026-11-18）', guide: '取消收藏（星标/菜单/收藏夹移除）均先弹确认（禁遮罩禁 ESC），确认后才移除；剪贴板复制后点「粘贴」→ 粘贴指令完成弹「是否清空剪贴板」：清空=按钮恢复无内容态，保留=可继续粘到别处', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
 
   // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──
   { id: 'S1', group: 'S', title: '冷启动 autoStart 开 → 运行中', guide: '设置 →「分享服务」tab：服务状态显示「运行中 · 端口 xxxxx」，展示 IP 为自动优选地址', entry: { type: 'settings', target: 'share' }, auto: { kind: 'hostCapability', spec: 'shareHub' }, relates: 'ShareHub/§3.1' },
@@ -179,6 +181,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S18', group: 'S', title: '续期 TTL 累加 / 更新 TTL 重置', guide: '剩余约 48h 时点「续期 TTL」填 72 → 剩余约 120h（URL 不变）；点「更新 TTL」填 5 → 从当前重新计时为约 5h', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
   { id: 'S19', group: 'S', title: 'TTL 数字框默认取应用设置、整数约束', guide: '设置默认时长改 12 → 打开分享弹框数字框显示 12；输入小数被取整；设置页端口/时长输入小数保存被拦截', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
   { id: 'S20', group: 'S', title: '自动分配端口跨重启沿用', guide: '设置端口 0（自动）→ 启动后记录实际端口 → 重启应用端口不变（链接稳定）；被占回落新端口后 autoPort 自动更新；固定端口（默认 56789）直接生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
+  { id: 'S21', group: 'S', title: '挂载目录多目录分享（2026-11-18）', guide: '设置 →「分享服务」→ 挂载目录：添加多个本地目录（各配别名，新增自动生成可改，留空保存随机生成并记住）→ 保存即生效无需重启；手机访问 http://IP:端口/别名/ 可列出/下载该目录文件；复选关闭的目录访问 404；删除行保存后链接失效（有二次确认）', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/挂载目录' },
 ]
 
 /** 步骤总数（页脚展示用） */

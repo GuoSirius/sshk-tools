@@ -4,6 +4,7 @@
  * 供 GeneralTab / ShareTab 等共用，避免每个 tab 重复实现配置读写与保存。
  */
 import { reactive } from 'vue'
+import type { ShareHubMount } from '@sshk/shared'
 
 export const appConfig = reactive({
   outputDir: '',
@@ -20,6 +21,8 @@ export const appConfig = reactive({
   shareDefaultTtlHours: 72,
   /** 是否允许浏览目录列表（用户 2026-11-18：默认不允许；直接文件链接不受影响；分享弹框可按次覆盖） */
   shareAllowIndex: false,
+  /** 挂载目录（多目录分享，用户 2026-11-18）：app.shareHub.mounts 数组 */
+  shareMounts: [] as ShareHubMount[],
 })
 
 async function str(key: string, fallback: string): Promise<string> {
@@ -34,6 +37,11 @@ async function num(key: string, fallback: number): Promise<number> {
   const value = Number(await window.api.config.get(key))
   return Number.isFinite(value) ? value : fallback
 }
+/** 读数组配置（如挂载目录）；非数组返回 null 由调用方给默认 */
+async function arr<T>(key: string): Promise<T[] | null> {
+  const value = await window.api.config.get(key)
+  return Array.isArray(value) ? (value as T[]) : null
+}
 
 /** 载入全部应用配置到共享 reactive（供各 tab 展示） */
 export async function loadAppConfig(): Promise<void> {
@@ -46,13 +54,15 @@ export async function loadAppConfig(): Promise<void> {
   const ttl = await num('app.shareHub.defaultTtlHours', 72)
   appConfig.shareDefaultTtlHours = Number.isInteger(ttl) && ttl >= 0 ? ttl : 72
   appConfig.shareAllowIndex = await bool('app.shareHub.allowIndex', false)
+  appConfig.shareMounts = (await arr<ShareHubMount>('app.shareHub.mounts')) ?? []
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
   appConfig.outputSnapshot = await bool('app.outputSnapshot', false)
 }
 
-/** 保存指定分组的配置；groups='general' | 'share'，各 tab 只写自己负责的 key */
+/** 保存指定分组的配置；groups='general' | 'share'，各 tab 只写自己负责的 key。
+ *  shareMounts（挂载目录）不走此函数：ShareTab 在校验/规范化后单独写 app.shareHub.mounts。 */
 export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean> {
   const pairs: [string, unknown][] = group === 'share'
     ? [

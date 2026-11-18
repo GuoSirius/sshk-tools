@@ -393,7 +393,7 @@ export class RemoteFsDriver implements FsDriver {
   }
 
   /** 递归搜索：单连接 BFS（限深 6 / 总量 2 万），名称子串匹配文件 */
-  async search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
+  async search(path: string, keyword: string, opts?: { maxResults?: number; maxPages?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const base = normalizeRootRel(path)
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))

@@ -169,7 +169,7 @@ export class LocalFsDriver implements FsDriver {
   }
 
   /** 递归搜索：复用 walkRemote BFS（限深 6 / 总量 2 万） */
-  async search(p: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
+  async search(p: string, keyword: string, opts?: { maxResults?: number; maxPages?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const base = normalizeRootRel(p)
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
