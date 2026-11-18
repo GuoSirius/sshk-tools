@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { getEnv } from '@sshk/shared'
+import { getEnvStr } from '@sshk/shared'
 
 /**
  * 敏感操作的访问密钥校验（单一实现）。
@@ -20,7 +20,7 @@ const AUTH_TTL_MS = 8 * 60 * 60 * 1000
 const authCache = new Map<DevKeyOperation, number>()
 
 export function devtoolsKeyMatches(configuredHash: string, inputKey: string): boolean {
-  const envKey = String(getEnv('SSHK_APP_DEVTOOLS_KEY') ?? '').trim() || 'sshk-tools@888'
+  const envKey = getEnvStr('SSHK_APP_DEVTOOLS_KEY', 'sshk-tools@888')
   const expectedHash = configuredHash || createHash('sha256').update(envKey, 'utf8').digest('hex')
   const actualHash = createHash('sha256').update(String(inputKey ?? ''), 'utf8').digest('hex')
   return actualHash === expectedHash

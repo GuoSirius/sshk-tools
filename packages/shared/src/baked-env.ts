@@ -48,3 +48,23 @@ export function getEnv(key: string): string | undefined {
   }
   return baked
 }
+
+/** 字符串型：trim 后非空返回（已 trim）；空白 / 未设置 → fallback */
+export function getEnvStr(key: string, fallback = ''): string {
+  const v = getEnv(key)
+  const s = v === undefined || v === null ? '' : String(v).trim()
+  return s || fallback
+}
+
+/** 开关型：'1'/'true' → true，'0'/'false' → false，未设置 / 其它值 → default */
+export function getEnvBool(key: string, fallback: boolean): boolean {
+  const v = getEnv(key)?.trim().toLowerCase()
+  if (v === '1' || v === 'true') return true
+  if (v === '0' || v === 'false') return false
+  return fallback
+}
+
+/** 是否设置了非空白值（「配置了就生效」类判断） */
+export function getEnvHas(key: string): boolean {
+  return Boolean(getEnv(key)?.trim())
+}

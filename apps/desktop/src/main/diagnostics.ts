@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { app, screen } from 'electron'
 import { zipSync, type Zippable } from 'fflate'
 import { listOutputFiles } from '@sshk/repository'
-import { getEnv } from '@sshk/shared'
+import { getEnvHas } from '@sshk/shared'
 import {
   TOOL_IDS,
   format,
@@ -93,7 +93,7 @@ export function collectDiagnostics(
   } catch { /* 保持空 */ }
   const secrets = {
     accessKey: cfg.get('app.accessKeyHash') != null,
-    devtoolsKey: cfg.get('app.devtoolsKeyHash') != null || Boolean(getEnv('SSHK_APP_DEVTOOLS_KEY')?.trim()),
+    devtoolsKey: cfg.get('app.devtoolsKeyHash') != null || getEnvHas('SSHK_APP_DEVTOOLS_KEY'),
     providers,
     uploads,
   }

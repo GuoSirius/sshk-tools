@@ -50,4 +50,34 @@ describe('getEnv：烤入 + 覆盖白名单', () => {
     vi.stubEnv('SSHK_DEV_UPDATE_TEST', '1')
     expect(getEnv('SSHK_DEV_UPDATE_TEST')).toBe('1')
   })
+
+  it('getEnvStr：trim、空白/未设置回落 fallback', async () => {
+    const { getEnvStr } = await load({ SSHK_APP_DEVTOOLS_KEY: '  k1  ' })
+    expect(getEnvStr('SSHK_APP_DEVTOOLS_KEY', 'sshk-tools@888')).toBe('k1')
+    // 未烤入键走本机 env：空白 → fallback；未设置 → fallback('')
+    vi.stubEnv('SSHK_DEV_UPDATE_FAKE_VERSION', '   ')
+    expect(getEnvStr('SSHK_DEV_UPDATE_FAKE_VERSION', '1.0.0')).toBe('1.0.0')
+    expect(getEnvStr('SSHK_DEV_UPDATE_FAKE_VERSION')).toBe('')
+  })
+
+  it('getEnvBool：1/true、0/false、其它值与未设置取 default', async () => {
+    const { getEnvBool } = await load({})
+    vi.stubEnv('SSHK_APP_AUTO_UPDATE', '0')
+    expect(getEnvBool('SSHK_APP_AUTO_UPDATE', true)).toBe(false)
+    vi.stubEnv('SSHK_APP_AUTO_UPDATE', 'abc')
+    expect(getEnvBool('SSHK_APP_AUTO_UPDATE', true)).toBe(true)
+    vi.unstubAllEnvs()
+    expect(getEnvBool('SSHK_APP_AUTO_UPDATE', true)).toBe(true) // 未设置 → default
+    vi.stubEnv('SSHK_DEV_UPDATE_TEST', 'TRUE')
+    expect(getEnvBool('SSHK_DEV_UPDATE_TEST', false)).toBe(true)
+  })
+
+  it('getEnvHas：非空白值视为已设置', async () => {
+    const { getEnvHas } = await load({})
+    expect(getEnvHas('SSHK_APP_DEVTOOLS_KEY')).toBe(false)
+    vi.stubEnv('SSHK_APP_DEVTOOLS_KEY', '  ')
+    expect(getEnvHas('SSHK_APP_DEVTOOLS_KEY')).toBe(false)
+    vi.stubEnv('SSHK_APP_DEVTOOLS_KEY', 'k')
+    expect(getEnvHas('SSHK_APP_DEVTOOLS_KEY')).toBe(true)
+  })
 })

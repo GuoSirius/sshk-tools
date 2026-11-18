@@ -18,9 +18,8 @@ import {
   type ToolOverrides,
   type ToolPluginStatus,
   now,
-  envOn,
-  envOff,
-  getEnv,
+  getEnvStr,
+  getEnvBool,
 } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
@@ -60,14 +59,14 @@ const isDev = !app.isPackaged
  *  版本号来源二选一（都不用改 package.json）：
  *   - SSHK_DEV_UPDATE_FAKE_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
-const updateDevCheck = isDev && envOn(getEnv('SSHK_DEV_UPDATE_TEST'))
+const updateDevCheck = isDev && getEnvBool('SSHK_DEV_UPDATE_TEST', false)
 /** 分发包自动更新总开关：SSHK_APP_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
  *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。
  *  打包版没有 .env（env-load 静默跳过），构建期走 __SSHK_AUTO_UPDATE_DISABLED__ define +
  *  __SSHK_BAKED_ENV__ 烤入双保险，任一生效即禁用；.env 声明的键默认不允许本机 env 覆盖（baked-env）。 */
-const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(getEnv('SSHK_APP_AUTO_UPDATE'))
+const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || !getEnvBool('SSHK_APP_AUTO_UPDATE', true)
 if (updateDevCheck) {
-  const fakeVersion = String(getEnv('SSHK_DEV_UPDATE_FAKE_VERSION') ?? '').trim()
+  const fakeVersion = getEnvStr('SSHK_DEV_UPDATE_FAKE_VERSION')
   if (fakeVersion) {
     const realGetVersion = app.getVersion.bind(app)
     // electron-updater 用 app.getVersion() 与线上 latest.yml 对比；dev 测试期改返回值即可伪装旧版本，
@@ -158,7 +157,7 @@ function createWindow(): void {
   // fetch/CORS/Worker/动态 chunk 行为与 dev http 不一致，是 dev/打包差异的温床）；
   // dev 默认走 dev server http，SSHK_DEV_APP_PROTOCOL=1 时也走 app:// 便于同协议排查。
   const devUrl = process.env['ELECTRON_RENDERER_URL']
-  const devUseApp = isDev && envOn(getEnv('SSHK_DEV_APP_PROTOCOL'))
+  const devUseApp = isDev && getEnvBool('SSHK_DEV_APP_PROTOCOL', false)
   if (isDev && devUrl && !devUseApp) void mainWindow.loadURL(devUrl)
   else void mainWindow.loadURL(APP_RENDERER_URL)
 }
