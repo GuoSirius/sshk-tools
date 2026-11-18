@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { CodeEditor, formatHtml, compactHtml } from '@sshk/code-editor'
 import { Document, Delete } from '@element-plus/icons-vue'
 import {
-  recentHtmls, clearRecent, htmlPath, useRecent, removeRecent,
+  recentHtmls, clearRecent, htmlPath, useRecent, removeRecent, clearHtmlSelection, type RecentHtml,
   edmMails, edmMailsLoading, sourceMailId, loadEdmMails, pickEdmMail, clearSourceMail,
   pastedHtml, pastedStats, parsePastedStats, pickImages,
   addRow, hasStats, clearRows, statRows, statsFile,
@@ -109,11 +109,38 @@ function askClearRows(): void {
   ElMessageBox.confirm(
     `确定清空当前 ${statRows.value.length} 行数据？此操作只影响工作区表格与上方 CSV 文本，不会修改源文件；清空后不可撤销。`,
     '清空表格确认',
-    { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', closeOnClickModal: false },
+    { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
   ).then(() => {
     clearRows()
     ElMessage.success('表格已清空')
   }).catch(() => { /* 用户取消 */ })
+}
+
+/** 用户 2026-11-18：最近使用的三种危险操作一律二次确认（清空选择框/清空下拉/单项删除） */
+function confirmAction(title: string, message: string, action: () => void | Promise<void>): void {
+  ElMessageBox.confirm(message, title, {
+    type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false,
+  }).then(() => void action()).catch(() => { /* 用户取消 */ })
+}
+/** 清空选择框：清除已选 + HTML 内容（回调 v='' 时触发；二次确认后生效） */
+function askClearHtmlSelection(): void {
+  confirmAction('清空 HTML 选择', '确定清除当前 HTML 选择吗？已选文件与编辑区中的 HTML 内容都会被清空，且不可撤销（不会删除源文件）。', () => {
+    clearHtmlSelection()
+    ElMessage.success('已清除 HTML 选择及内容')
+  })
+}
+/** 清空下拉：删除所有最近使用记录（二次确认后生效） */
+function askClearRecent(): void {
+  if (!recentHtmls.value.length) return
+  confirmAction('清空最近使用', `确定删除全部 ${recentHtmls.value.length} 条「最近使用」记录吗？只清历史记录，不影响当前编辑区内容，且不可撤销。`, async () => {
+    await clearRecent()
+  })
+}
+/** 单项删除最近使用记录（二次确认后生效） */
+function askRemoveRecent(item: RecentHtml): void {
+  confirmAction('删除该记录', `确定从「最近使用」中删除「${item.name}」吗？只清历史记录，不影响当前编辑区内容，且不可撤销。`, async () => {
+    await removeRecent(item)
+  })
 }
 </script>
 
@@ -147,16 +174,16 @@ function askClearRows(): void {
             placeholder="最近使用 · 点选重新载入历史文件"
             class="recent-select"
             :model-value="htmlPath"
-            @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) void useRecent(item) }"
+            @change="(v: string) => { const item = recentHtmls.find(r => r.path === v); if (item) void useRecent(item); else if (!v) askClearHtmlSelection() }"
           >
             <el-option v-for="r in recentHtmls" :key="r.path" :label="r.name" :value="r.path">
               <span class="recent-opt">
                 <span class="recent-opt-name" :title="r.path">{{ r.name }}</span>
-                <el-icon class="recent-opt-del" title="删除该记录" @click.stop="void removeRecent(r)"><Delete /></el-icon>
+                <el-icon class="recent-opt-del" title="删除该记录" @click.stop="askRemoveRecent(r)"><Delete /></el-icon>
               </span>
             </el-option>
           </el-select>
-          <el-button size="small" type="danger" plain title="清空全部历史记录" @click="void clearRecent">清空</el-button>
+          <el-button size="small" type="danger" plain title="清空全部历史记录" @click="askClearRecent">清空</el-button>
         </div>
         <div class="cfg-row">
           <el-input
@@ -399,7 +426,7 @@ function askClearRows(): void {
         <!-- 空状态：标题与提示合并居中展示（用户 2026-11-17 反馈：两处文案分开不够友好）；
              有预览时标题回到顶部，iframe 撑满 -->
         <template v-if="previewHtml">
-          <div class="panel-title">badge 副本预览（{{ posterWidth }}px）</div>
+          <!-- 用户 2026-11-18：生成后不再显示「badge 副本预览」标题行，iframe 直接撑满预览区 -->
           <iframe
             :ref="(el) => { previewFrame = el as HTMLIFrameElement | null }"
             class="preview-frame"

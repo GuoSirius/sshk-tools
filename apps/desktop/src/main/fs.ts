@@ -64,8 +64,11 @@ const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
 const MAX_TASKS = 2000
-/** 本地目录展平的文件数上限 */
-const MAX_LOCAL_FILES = 5000
+/** 上传展平/下载目录递归展开共用上限的可配置键与区间（用户 2026-11-18：可配置，默认 10000） */
+const CFG_TRANSFER_FILE_CAP = 'app.fs.transferFileCap'
+const FS_TRANSFER_FILE_CAP_DEFAULT = 10000
+const FS_TRANSFER_FILE_CAP_MIN = 100
+const FS_TRANSFER_FILE_CAP_MAX = 100_000
 /** 文本编码/换行符转换的文件大小上限（§十一 转换格式 A） */
 const FS_TEXT_CONVERT_LIMIT = 20 * 1024 * 1024
 /** zip 压缩/解压上限的可配置键与缺省值（内存型操作，防 OOM；渲染层可在「压缩上限设置」调整） */
@@ -84,6 +87,14 @@ function localBasename(abs: string): string {
   const s = String(abs ?? '').replace(/[\\/]+$/, '')
   const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
   return i < 0 ? s : s.slice(i + 1)
+}
+
+/** 从配置读传输文件数上限（缺省/非法回落默认并钳制） */
+function readTransferFileCap(get: (key: string) => unknown): number {
+  return Math.min(FS_TRANSFER_FILE_CAP_MAX, Math.max(
+    FS_TRANSFER_FILE_CAP_MIN,
+    Math.floor(Number(get(CFG_TRANSFER_FILE_CAP)) || FS_TRANSFER_FILE_CAP_DEFAULT),
+  ))
 }
 
 /** 从配置读 zip 上限（缺省/非法回落默认值并钳制到合法区间） */
@@ -499,6 +510,12 @@ export class FsRuntime {
     return normalizeRootRel(raw)
   }
 
+  /** 条目的父目录（内部规范形式） */
+  private parentOf(path: string): string {
+    const i = path.lastIndexOf('/')
+    return i <= 0 ? '/' : path.slice(0, i)
+  }
+
   // ── 只读操作 ──
 
   async list(req: { profileId: string; path: string; cursor?: string | null }): Promise<FsListPage> {
@@ -510,14 +527,14 @@ export class FsRuntime {
   async stat(req: { profileId: string; path: string }): Promise<FsStatResult> {
     const { driver } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) return { exists: true, isDir: true }
+    if (path === '/') return { exists: true, isDir: true }
     return await driver.stat(path)
   }
 
   async read(req: { profileId: string; path: string; maxBytes?: number }): Promise<FsReadResult> {
     const { driver } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('目录没有可读内容')
+    if (path === '/') throw new Error('目录没有可读内容')
     const maxBytes = Math.max(1, Math.floor(Number(req?.maxBytes) || 10 * 1024 * 1024))
     const stat = await driver.stat(path)
     if (!stat.exists) throw new Error('远端文件不存在（可能已被删除）')
@@ -534,7 +551,7 @@ export class FsRuntime {
   async mkdir(req: { profileId: string; path: string }): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('根目录无需创建')
+    if (path === '/') throw new Error('根目录无需创建')
     if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     await driver.mkdir(path)
     logger.info('upload', `fs 新建目录：${channel.id}/${path}`)
@@ -548,7 +565,7 @@ export class FsRuntime {
     const files: string[] = []
     for (const item of (req?.paths ?? []).slice(0, 500)) {
       const path = this.assertPath(item.path)
-      if (!path) throw new Error('根目录不可删除')
+      if (path === '/') throw new Error('根目录不可删除')
       if (item.kind === 'dir') {
         // 递归删除（高危）入队列：分批 + 进度 + 可取消
         taskIds.push(...this.engine.add([{
@@ -584,7 +601,7 @@ export class FsRuntime {
         const page = await driver.list(dirPath, { pageSize: 2000, cursor })
         for (const e of page.entries) {
           if (dirCopies >= CP_DIR_CAP) throw new Error(`目录复制超过 ${CP_DIR_CAP} 个文件上限，已中止`)
-          const childDest = `${destBase}/${e.name}`
+          const childDest = destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`
           if (e.kind === 'file') inline.push({ src: e.path, dest: childDest })
           else await expandDir(e.path, childDest)
         }
@@ -592,11 +609,18 @@ export class FsRuntime {
       } while (cursor)
     }
 
+    const cpRenameTo = String(req?.renameTo ?? '').trim()
+    if (cpRenameTo && (/[\\/]/.test(cpRenameTo) || cpRenameTo === '.' || cpRenameTo === '..')) {
+      throw new Error('新名称不能包含斜杠或为 . / ..')
+    }
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
-      if (!src) throw new Error('根目录不可复制')
-      const dest = fsDestPath(destDir, src)
-      if (dest === src || dest.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
+      if (src === '/') throw new Error('根目录不可复制')
+      // 同源同目录复制（含重命名）必须给新名，否则覆盖自身；不同目录沿用原文件名
+      const dest = cpRenameTo && (destDir === this.parentOf(src))
+        ? (destDir === '/' ? `/${cpRenameTo}` : `${destDir}/${cpRenameTo}`)
+        : fsDestPath(destDir, src)
+      if (!cpRenameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录，请在弹框中换一个文件名')
       // FTP/SFTP 复制 = 下载+重传（无服务端复制），大文件慢 → 队列化（§二能力矩阵）
       if (channel.type === 'remote') {
         taskIds.push(...this.engine.add([{
@@ -634,9 +658,9 @@ export class FsRuntime {
     const MV_DIR_CAP = 1500
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
-      if (!src) throw new Error('根目录不可移动')
+      if (src === '/') throw new Error('根目录不可移动')
       // 重命名时 dest 用新名（与 src 同父目录）；普通移动沿用原文件名
-      const dest = renameTo ? (destDir ? `${destDir}/${renameTo}` : renameTo) : fsDestPath(destDir, src)
+      const dest = renameTo ? (destDir === '/' ? `/${renameTo}` : `${destDir}/${renameTo}`) : fsDestPath(destDir, src)
       if (!renameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录')
       if (renameTo && dest === src) return true // 名称未变，无需操作
       if (item.kind === 'dir' && channel.type === 'cloud') {
@@ -653,12 +677,12 @@ export class FsRuntime {
             for (const e of page.entries) {
               if (moved >= MV_DIR_CAP) throw new Error(`目录移动超过 ${MV_DIR_CAP} 个文件上限，已中止`)
               if (e.kind === 'file') {
-                const destPath = `${destBase}/${e.name}`
+                const destPath = destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`
                 await driver.mv(e.path, destPath)
                 movedPairs.push({ src: e.path, dest: destPath })
                 moved++
               }
-              else await moveTree(e.path, `${destBase}/${e.name}`)
+              else await moveTree(e.path, destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`)
             }
             cursor = page.nextCursor ?? null
           } while (cursor)
@@ -735,8 +759,8 @@ export class FsRuntime {
           destProfileId: destChannel.id,
           name: fsBasename(path),
           remotePath: path,
-          // path 由驱动逐级 fsJoin 生成（已规范化），直接拼目标目录即可
-          destRemotePath: destDir ? `${destDir}/${path}` : path,
+          // path 为内部规范路径（如 /a/b/c.png）；目标 = 目标目录 + 去掉前导 / 的源路径
+          destRemotePath: destDir === '/' ? path : `${destDir}${path}`,
           moveSource: Boolean(req?.move),
           size: stat.size ?? 0,
         })
@@ -752,7 +776,7 @@ export class FsRuntime {
 
     for (const item of (req?.sources ?? []).slice(0, 200)) {
       const src = this.assertPath(item.path)
-      if (!src) throw new Error('根目录不可复制')
+      if (src === '/') throw new Error('根目录不可复制')
       if (src === destDir || destDir.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
       await expand(src, item.kind === 'dir' ? 'dir' : 'file')
     }
@@ -776,7 +800,7 @@ export class FsRuntime {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
     const r = await driver.usage(path)
-    logger.info('upload', `fs 容量统计：${channel.id}/${path || '(根)'} → ${fsFormatSize(r.size)} / ${r.files} 个文件${r.truncated ? '（截断）' : ''}`)
+    logger.info('upload', `fs 容量统计：${channel.id}${path === '/' ? '/(根)' : path} → ${fsFormatSize(r.size)} / ${r.files} 个文件${r.truncated ? '（截断）' : ''}`)
     return r
   }
 
@@ -786,7 +810,7 @@ export class FsRuntime {
   async chmod(req: FsChmodRequest): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('根目录不支持 chmod')
+    if (path === '/') throw new Error('根目录不支持 chmod')
     if (!driver.chmod) throw new Error(`通道「${channel.name}」不支持 chmod（本地与 SFTP 通道可用）`)
     const modeOctal = String(req?.modeOctal ?? '').trim()
     await driver.chmod(path, modeOctal)
@@ -798,7 +822,7 @@ export class FsRuntime {
   async convertText(req: FsConvertTextRequest): Promise<FsConvertTextResult> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('根目录不是文件')
+    if (path === '/') throw new Error('根目录不是文件')
     if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作`)
     const stat = await driver.stat(path)
     if (!stat.exists || stat.isDir) throw new Error('文件不存在或为目录')
@@ -888,7 +912,7 @@ export class FsRuntime {
     }
     for (const item of (req?.sources ?? []).slice(0, 200)) {
       const src = this.assertPath(item.path)
-      if (!src) throw new Error('根目录不可压缩')
+      if (src === '/') throw new Error('根目录不可压缩')
       if (item.kind === 'file') await addFile(src, fsBasename(src))
       else await addTree(src, fsBasename(src))
     }
@@ -977,7 +1001,7 @@ export class FsRuntime {
   async favoriteAdd(req: { profileId: string; path: string; kind: 'dir' | 'file'; name: string }): Promise<FsFavorite> {
     const pid = this.assertProfileId(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('根目录无需收藏')
+    if (path === '/') throw new Error('根目录无需收藏')
     const repo = this.opts.services.repository
     const rows = await repo.list<FsFavoriteDoc>('fsFavorites', { profileId: pid, path, archived: false })
     if (rows[0]) {
@@ -1001,7 +1025,7 @@ export class FsRuntime {
   async write(req: FsWriteRequest): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (!path) throw new Error('写入路径不能为空')
+    if (path === '/') throw new Error('写入路径不能为空')
     if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     // 冲突检测：保存前重新 stat，比对 etag / 大小+时间，不一致提示覆盖（§四）
     if (req?.expect && !req?.force) {
@@ -1137,6 +1161,20 @@ export class FsRuntime {
     return { fileCap, bytesCapMb: Math.round(bytesCap / (1024 * 1024)) }
   }
 
+  /** 传输文件数上限（上传展平 / 下载目录递归展开共用，默认 10000） */
+  transferCaps(): { fileCap: number } {
+    return { fileCap: readTransferFileCap((k) => this.opts.services.config.get(k)) }
+  }
+
+  setTransferCaps(req: { fileCap?: number }): { fileCap: number } {
+    if (req?.fileCap != null) {
+      const v = Math.floor(Number(req.fileCap))
+      if (!Number.isFinite(v)) throw new Error('文件数上限必须是数字')
+      this.opts.services.config.set(CFG_TRANSFER_FILE_CAP, Math.min(FS_TRANSFER_FILE_CAP_MAX, Math.max(FS_TRANSFER_FILE_CAP_MIN, v)))
+    }
+    return this.transferCaps()
+  }
+
   setZipLimits(req: { fileCap?: number; bytesCapMb?: number }): { fileCap: number; bytesCapMb: number } {
     const cfg = this.opts.services.config
     if (req?.fileCap != null) {
@@ -1167,12 +1205,13 @@ export class FsRuntime {
     return result.canceled ? [] : result.filePaths
   }
 
-  /** 递归展平本地待上传路径（保留相对目录结构；上限 5000 个文件）
+  /** 递归展平本地待上传路径（保留相对目录结构；上限可配置，默认 10000）
    *  注意：入参是本地绝对路径（系统弹框/拖拽，Windows 下带反斜杠），不能走 root-rel 的 fsBasename */
   flattenLocal(paths: string[]): FsLocalFile[] {
     const out: FsLocalFile[] = []
+    const cap = readTransferFileCap((k) => this.opts.services.config.get(k))
     const walk = (abs: string, rel: string): void => {
-      if (out.length >= MAX_LOCAL_FILES) return
+      if (out.length >= cap) return
       let st
       try { st = statSync(abs) } catch { return }
       if (st.isFile()) {
@@ -1183,7 +1222,7 @@ export class FsRuntime {
       let names: string[] = []
       try { names = readdirSync(abs).sort() } catch { return }
       for (const name of names) {
-        if (out.length >= MAX_LOCAL_FILES) return
+        if (out.length >= cap) return
         walk(join(abs, name), rel ? `${rel}/${name}` : name)
       }
     }

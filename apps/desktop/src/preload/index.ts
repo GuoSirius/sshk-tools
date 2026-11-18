@@ -374,6 +374,9 @@ const api = {
     zipLimits: (): Promise<{ fileCap: number; bytesCapMb: number }> => invoke(IPC_CHANNELS.fsZipLimits),
     setZipLimits: (req: { fileCap?: number; bytesCapMb?: number }): Promise<{ fileCap: number; bytesCapMb: number }> =>
       invoke(IPC_CHANNELS.fsZipLimitsSet, req),
+    /** 传输文件数上限（上传展平 / 下载目录递归展开共用，默认 10000） */
+    transferCaps: (): Promise<{ fileCap: number }> => invoke(IPC_CHANNELS.fsTransferCaps),
+    setTransferCaps: (req: { fileCap?: number }): Promise<{ fileCap: number }> => invoke(IPC_CHANNELS.fsTransferCapsSet, req),
     /** 目录备注 / 收藏夹（§十一，应用侧集合） */
     annotationList: (profileId: string): Promise<Record<string, string>> => invoke(IPC_CHANNELS.fsAnnotationList, profileId),
     annotationSet: (req: { profileId: string; path: string; note: string }): Promise<boolean> => invoke(IPC_CHANNELS.fsAnnotationSet, req),

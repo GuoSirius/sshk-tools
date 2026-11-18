@@ -69,7 +69,7 @@ import { ShareDialog } from '@sshk/ui-kit'
 const channels = ref<FsChannelInfo[]>([])
 const outputRoot = ref('')
 const profileId = ref('')
-const path = ref('')
+const path = ref('/') // 内部规范：根 = '/'，子路径 = /a/b/c
 const pathInput = ref('')
 const pathEditing = ref(false)
 const entries = ref<FsEntry[]>([])
@@ -199,6 +199,25 @@ async function submitZipLimits(): Promise<void> {
   }
 }
 
+// ── 传输文件数上限设置（上传展平 / 下载目录递归展开共用，默认 10000）──
+const transferCapsOpen = ref(false)
+const transferCapsForm = ref({ fileCap: 10000 })
+const transferCapsSaving = ref(false)
+async function openTransferCaps(): Promise<void> {
+  try { transferCapsForm.value = await window.api.fs.transferCaps() } catch { /* 读取失败按缺省值 */ }
+  transferCapsOpen.value = true
+}
+async function submitTransferCaps(): Promise<void> {
+  transferCapsSaving.value = true
+  try {
+    const r = await window.api.fs.setTransferCaps({ fileCap: transferCapsForm.value.fileCap })
+    transferCapsForm.value = r
+    ElMessage.success('传输文件数上限已更新（上传与下载目录展开共用）')
+    transferCapsOpen.value = false
+  } catch (err) { ElMessage.error(friendlyError(err)) }
+  finally { transferCapsSaving.value = false }
+}
+
 // ── §十一：目录备注（应用侧 fsAnnotations）──
 const annotations = ref(new Map<string, string>())
 async function loadAnnotations(): Promise<void> {
@@ -277,9 +296,7 @@ const filteredEntries = computed(() => {
   })
 })
 const selectedEntries = computed(() => filteredEntries.value.filter((e) => selection.value.has(e.path)))
-const selectedDirs = computed(() => selectedEntries.value.filter((e) => e.kind === 'dir').length)
-const selectedFiles = computed(() => selectedEntries.value.length - selectedDirs.value)
-const crumbs = computed(() => path.value ? path.value.split('/') : [])
+const crumbs = computed(() => path.value === '/' ? [] : path.value.split('/').filter(Boolean))
 const hasWritable = computed(() => activeChannel.value?.writable === true)
 
 function fmtTime(ts: number | undefined): string {
@@ -366,7 +383,7 @@ function friendlyError(err: unknown): string {
 
 watch(profileId, () => {
   localStorage.setItem('sshk.fs.profileId', profileId.value)
-  path.value = ''
+  path.value = '/'
   usageResults.value = new Map()
   usageLoadingPaths.value = new Set()
   if (!profileId.value) return
@@ -387,24 +404,26 @@ function enterDir(entry: FsEntry): void {
   void list()
 }
 function goUp(): void {
-  if (!path.value) return
+  if (path.value === '/') return
   const i = path.value.lastIndexOf('/')
-  path.value = i < 0 ? '' : path.value.slice(0, i)
+  path.value = i <= 0 ? '/' : path.value.slice(0, i)
   void list()
 }
 function gotoCrumb(index: number): void {
-  path.value = index < 0 ? '' : crumbs.value.slice(0, index + 1).join('/')
+  path.value = index < 0 ? '/' : `/${crumbs.value.slice(0, index + 1).join('/')}`
   void list()
 }
 function submitPathInput(): void {
   pathEditing.value = false
-  const target = pathInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/')
-  if (target.split('/').some((p) => !p || p === '.' || p === '..')) {
-    ElMessage.warning('路径不允许包含 . / .. 或空段')
+  // 内部规范 `/a/b/c`：输入兼容 a/b 与 /a/b/，统一补前导 /、去尾 /；根输入 '' 或 '/' 都是 '/'
+  const raw = pathInput.value.trim().replace(/\\/g, '/')
+  const segs = raw.split('/').map((s) => s.trim()).filter(Boolean)
+  if (segs.some((p) => p === '.' || p === '..')) {
+    ElMessage.warning('路径不允许包含 . / ..')
     pathInput.value = path.value
     return
   }
-  path.value = target
+  path.value = `/${segs.join('/')}`
   void list()
 }
 function refresh(): void {
@@ -421,15 +440,20 @@ async function runSearch(): Promise<void> {
   activeSearchId = reqId
   searchLoading.value = true
   searchActive.value = true // 立刻进入搜索态，横幅显示「扫描中…」
-  searchEntries.value = []
+  // 先把当前目录（已加载）的命中作为首批结果——保证「不回车能看到的，回车后也一定在」
+  // （用户 2026-11-18：输入 tool 有 6 个，回车递归只剩 1 个，因云扫描上限截断漏掉当前目录）
+  const localHits = entries.value.filter((e) => e.name.toLowerCase().includes(kw.toLowerCase()))
+  searchEntries.value = localHits.slice()
   searchScannedDirs.value = 0
   searchTruncated.value = false
   selection.value = new Set()
   const off = window.api.fs.onSearchEvent((e) => {
     if (activeSearchId !== reqId || e.reqId !== reqId) return // 旧会话批次一律丢弃
     if (e.entries.length) {
-      // 边收边排序，与最终全量结果（sortFsEntries）顺序保持一致，避免完成时列表跳动
-      searchEntries.value = [...searchEntries.value, ...e.entries].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+      // 与当前目录首批命中按 path 去重后合并；边收边排序，与最终全量结果顺序一致避免跳动
+      const seen = new Set(searchEntries.value.map((x) => x.path))
+      const merged = [...searchEntries.value, ...e.entries.filter((x) => !seen.has(x.path))]
+      searchEntries.value = merged.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
     }
     searchScannedDirs.value = e.scannedDirs
     if (e.done) searchLoading.value = false
@@ -437,7 +461,10 @@ async function runSearch(): Promise<void> {
   try {
     const r = await window.api.fs.search({ profileId: profileId.value, path: path.value, keyword: kw, reqId })
     if (activeSearchId !== reqId) return // 期间已退出或被新搜索取代
-    searchEntries.value = r.entries // 最终全量（权威，含截断标记）
+    // 最终全量结果与当前目录首批命中合并（递归截断时仍保留当前目录命中）
+    const seen = new Set(r.entries.map((x) => x.path))
+    searchEntries.value = [...r.entries, ...localHits.filter((x) => !seen.has(x.path))]
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
     searchTruncated.value = r.truncated
     if (!r.entries.length) ElMessage.info('递归搜索没有结果')
   } catch (err) {
@@ -795,14 +822,42 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
  *  多文件选目标目录（默认通道下载落点），同名冲突仍由传输队列逐个确认 */
 async function downloadEntries(list0: FsEntry[]): Promise<void> {
-  const files = list0.filter((e) => e.kind === 'file')
-  if (!files.length || !profileId.value) return
+  const targets = list0.filter((e) => e.kind === 'file' || e.kind === 'dir')
+  if (!targets.length || !profileId.value) return
+  // 目录递归展开为文件（保留相对结构），上限从配置读取（默认 10000）
+  let cap = 10000
+  try { cap = (await window.api.fs.transferCaps()).fileCap } catch { /* 失败用默认 */ }
+  const files: { entry: FsEntry; relDir: string }[] = []
+  let truncated = false
+  const expand = async (entry: FsEntry, rel: string): Promise<void> => {
+    if (files.length >= cap) { truncated = true; return }
+    if (entry.kind === 'file') { files.push({ entry, relDir: rel }); return }
+    const collect = async (dirPath: string, dirRel: string): Promise<void> => {
+      let cursor: string | null = null
+      do {
+        const page = await window.api.fs.list({ profileId: profileId.value, path: dirPath, cursor })
+        for (const child of page.entries) {
+          if (files.length >= cap) { truncated = true; return }
+          if (child.kind === 'file') files.push({ entry: child, relDir: dirRel })
+          else await collect(child.path, dirRel ? `${dirRel}/${child.name}` : child.name)
+          if (truncated) return
+        }
+        cursor = page.nextCursor ?? null
+      } while (cursor)
+    }
+    await collect(entry.path, rel)
+  }
+  for (const t of targets) {
+    await expand(t, t.kind === 'dir' ? t.name : '')
+    if (truncated) break
+  }
+  if (!files.length) { ElMessage.warning('所选目录中没有可下载的文件'); return }
   const base = await window.api.fs.downloadDir(profileId.value)
-  const single = files.length === 1
+  const single = files.length === 1 && targets.length === 1 && targets[0]!.kind === 'file'
   let destDir = base
   let singleDestPath = ''
   if (single) {
-    const picked = await window.api.os.pickSave({ fileName: files[0]!.name, defaultPath: base })
+    const picked = await window.api.os.pickSave({ fileName: files[0]!.entry.name, defaultPath: base })
     if (!picked) return
     singleDestPath = picked
   } else {
@@ -810,18 +865,19 @@ async function downloadEntries(list0: FsEntry[]): Promise<void> {
     if (!dir) return
     destDir = dir
   }
-  const inputs = files.map((f) => ({
+  const cleanDest = destDir.replace(/[\\/]+$/, '')
+  const inputs = files.map(({ entry, relDir }) => ({
     kind: 'download' as const,
     profileId: profileId.value!,
-    name: f.name,
-    remotePath: f.path,
-    destPath: single ? singleDestPath : `${destDir.replace(/[\\/]+$/, '')}/${f.name}`,
-    // 单文件已在系统对话框确认替换 → 跳过引擎 conflict 二次确认
+    name: entry.name,
+    remotePath: entry.path,
+    destPath: single ? singleDestPath : (relDir ? `${cleanDest}/${relDir}/${entry.name}` : `${cleanDest}/${entry.name}`),
     ...(single ? { overwrite: true } : {}),
-    size: f.size ?? 0,
+    size: entry.size ?? 0,
   }))
   const { taskIds } = await window.api.fs.transferStart(inputs)
   if (taskIds.length) drawerOpen.value = true
+  ElMessage.success(`已入队下载 ${files.length} 个文件${truncated ? `（已达 ${cap} 个上限，结果可能不全）` : ''}`)
 }
 
 // ── 新建 / 重命名 / 删除 ──
@@ -829,7 +885,7 @@ async function submitMkdir(): Promise<void> {
   const name = mkdirName.value.trim()
   if (!name || /[\\/]/.test(name)) { ElMessage.warning('目录名不能为空且不含斜杠'); return }
   try {
-    await window.api.fs.mkdir({ profileId: profileId.value, path: path.value ? `${path.value}/${name}` : name })
+    await window.api.fs.mkdir({ profileId: profileId.value, path: path.value === '/' ? `/${name}` : `${path.value}/${name}` })
     mkdirOpen.value = false
     mkdirName.value = ''
     ElMessage.success('目录已创建')
@@ -931,7 +987,7 @@ const moveDirProps = {
   lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
     const pid = moveDestProfile.value || profileId.value
     if (!pid) { resolve([]); return }
-    const parent = node.level === 0 ? '' : String(node.value ?? '')
+    const parent = node.level === 0 ? '/' : String(node.value ?? '')
     try {
       const page = await window.api.fs.list({ profileId: pid, path: parent })
       resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
@@ -956,11 +1012,65 @@ function rowMove(entry: FsEntry): void {
   selection.value = new Set([entry.path])
   openMove('move')
 }
+/** 目标目录输入 → 内部规范（`/a/b`；空串与 `/` = 根）。返回 null 表示非法 */
+function normalizeDestInput(raw: string): string | null {
+  const s = String(raw ?? '').trim().replace(/\\/g, '/')
+  const segs = s.split('/').map((p) => p.trim()).filter(Boolean)
+  if (segs.some((p) => p === '.' || p === '..')) return null
+  return `/${segs.join('/')}`
+}
+/** 目标路径是否已存在（用于同目录复制/移动的重名检查） */
+async function destExists(destPath: string): Promise<boolean> {
+  try {
+    const parent = destPath.lastIndexOf('/') <= 0 ? '/' : destPath.slice(0, destPath.lastIndexOf('/'))
+    const page = await window.api.fs.list({ profileId: profileId.value, path: parent })
+    return page.entries.some((e) => e.path === destPath)
+  } catch { return false }
+}
+/** 同源同目录的重命名循环（用户 2026-11-18）：确认后仍重名就继续弹，取消才终止 */
+async function askRenameForConflict(src: FsEntry, destDir: string): Promise<string | null> {
+  while (true) {
+    let value: string | null = null
+    try {
+      const r = await ElMessageBox.prompt(
+        `「${src.name}」在目标目录中已存在（同源同目录不允许直接覆盖）。请输入新名称后确认；若仍重名会再次提示。`,
+        '重命名以避免覆盖',
+        {
+          inputValue: src.name, confirmButtonText: '确认', cancelButtonText: '取消',
+          inputPattern: /^[^\\/:]+$/, inputErrorMessage: '名称不能含斜杠',
+          closeOnClickModal: false, closeOnPressEscape: false,
+        },
+      )
+      value = r.value?.trim() ?? ''
+    } catch { return null } // 用户取消 → 整个操作终止
+    if (!value || value === src.name) continue
+    const destPath = destDir === '/' ? `/${value}` : `${destDir}/${value}`
+    if (!(await destExists(destPath))) return value
+    ElMessage.warning('该名称已存在，请换一个')
+  }
+}
+
 async function submitMove(): Promise<void> {
-  const dest = moveDirInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/')
-  if (dest.split('/').some((p) => !p)) { ElMessage.warning('目标目录不合法'); return }
+  const dest = normalizeDestInput(moveDirInput.value)
+  if (dest === null) { ElMessage.warning('目标目录不合法（不允许 . / .. 或反斜杠）'); return }
   const sources = selectedEntries.value.map((e) => ({ path: e.path, kind: e.kind }))
   const cross = Boolean(moveDestProfile.value && moveDestProfile.value !== profileId.value)
+
+  // 同源同目录复制/移动：目标与源同名会覆盖自身 → 弹重命名框循环直到不重名或取消
+  let renameTo = ''
+  if (!cross && sources.length === 1) {
+    const src = sources[0]!
+    const srcParent = src.path.lastIndexOf('/') <= 0 ? '/' : src.path.slice(0, src.path.lastIndexOf('/'))
+    if (srcParent === dest) {
+      const destPath = dest === '/' ? src.path : `${dest}${src.path.slice(srcParent.length)}`
+      if (await destExists(destPath)) {
+        const renamed = await askRenameForConflict(selectedEntries.value[0]!, dest)
+        if (renamed === null) return // 用户取消：操作终止，保持弹框打开
+        renameTo = renamed
+      }
+    }
+  }
+
   moveOpen.value = false
   try {
     if (cross) {
@@ -972,12 +1082,12 @@ async function submitMove(): Promise<void> {
       drawerOpen.value = true
       ElMessage.info(`跨通道${moveMode.value === 'move' ? '移动' : '复制'}已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
     } else if (moveMode.value === 'move') {
-      await window.api.fs.mv({ profileId: profileId.value, sources, destDir: dest })
+      await window.api.fs.mv({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
       ElMessage.success('已移动')
     } else {
-      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources, destDir: dest })
+      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
       if (taskIds.length) { drawerOpen.value = true; ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
-      else ElMessage.success('已复制')
+      else ElMessage.success(renameTo ? `已复制为 ${renameTo}` : '已复制')
     }
     selection.value = new Set()
     void list(false)
@@ -1038,6 +1148,7 @@ function moreCommand(cmd: unknown): void {
     case 'opendir': void openDownloadDir(); return
     case 'cols': colsOpen.value = true; return
     case 'ziplimits': void openZipLimits(); return
+    case 'transfercaps': void openTransferCaps(); return
     case 'note': openNote(selectedEntries.value); return
     case 'favorite': void addFavorites(selectedEntries.value); return
     case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
@@ -1280,7 +1391,7 @@ async function doZip(targets?: FsEntry[]): Promise<void> {
     const name = String(value ?? '').trim()
     if (!name) return
     zipSaving.value = true
-    const zipPath = path.value ? `${path.value}/${name}` : name
+    const zipPath = path.value === '/' ? `/${name}` : `${path.value}/${name}`
     const r = await window.api.fs.zip({
       profileId: profileId.value,
       zipPath,
@@ -1317,7 +1428,7 @@ async function newFile(): Promise<void> {
     })
     const name = String(value ?? '').trim()
     if (!name) return
-    const full = path.value ? `${path.value}/${name}` : name
+    const full = path.value === '/' ? `/${name}` : `${path.value}/${name}`
     await window.api.fs.write({ profileId: profileId.value, path: full, contentBase64: '' })
     void list(false)
     await openFile({ kind: 'file', name, path: full })
@@ -1563,10 +1674,10 @@ function onKeydown(event: KeyboardEvent): void {
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-button size="small" type="primary" :icon="Download" :disabled="selectedFiles === 0" @click="downloadEntries(selectedEntries)">下载</el-button>
+      <el-button size="small" type="primary" :icon="Download" :disabled="!selectedEntries.length" @click="downloadEntries(selectedEntries)">下载</el-button>
       <el-button size="small" type="primary" plain :icon="FolderAdd" :disabled="!hasWritable || !profileId" @click="mkdirOpen = true">新建文件夹</el-button>
       <el-button size="small" type="primary" plain :icon="Document" :disabled="!hasWritable || !profileId" @click="newFile">新建文件</el-button>
-      <el-button size="small" type="warning" plain :icon="CopyDocument" :disabled="!selectedEntries.length" @click="clipCopy('copy')">复制</el-button>
+      <el-button size="small" type="warning" plain :icon="CopyDocument" title="复制到剪贴板，再到目标目录点「粘贴」；行内「复制」是弹框直落" :disabled="!selectedEntries.length" @click="clipCopy('copy')">复制（剪贴板）</el-button>
       <el-button size="small" type="success" plain :icon="Plus" title="粘贴 (Ctrl+V)；跨通道粘贴按复制执行" :disabled="!clipboard || !hasWritable" @click="paste">
         粘贴{{ clipboard ? `（${clipboard.items.length} 项${clipboard.op === 'cut' ? ' · 剪切' : ''}${clipboard.profileId !== profileId ? ' · 跨通道' : ''}）` : '' }}
       </el-button>
@@ -1595,6 +1706,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-dropdown-item command="copyto" :icon="CopyDocument" divided :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
             <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
             <el-dropdown-item command="ziplimits" :icon="Setting">压缩上限设置…</el-dropdown-item>
+            <el-dropdown-item command="transfercaps" :icon="Setting">传输上限设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
@@ -1733,7 +1845,8 @@ function onKeydown(event: KeyboardEvent): void {
             @contextmenu.prevent="openCtxMenu(entry, $event)"
           >
             <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
-            <span class="fs-cell-name">{{ entry.name }}<span v-if="searchDirHint(entry)" class="fs-name-sub">{{ searchDirHint(entry) }}</span></span>
+            <span class="fs-cell-name">{{ entry.name }}</span>
+            <span v-if="searchDirHint(entry)" class="fs-cell-dir" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
           </div>
         </div>
@@ -1786,8 +1899,8 @@ function onKeydown(event: KeyboardEvent): void {
             <el-option v-for="c in channels" :key="c.id" :value="c.id" :label="`${c.name}（${c.detail}）`" :disabled="!c.hasSecret" />
           </el-select>
         </template>
-        <div class="hint" style="margin-bottom: 8px">目标目录（通道根相对路径，如 a/b；留空为根目录）：</div>
-        <el-input clearable v-model="moveDirInput" placeholder="a/b，也可从下方目录树选择" @keyup.enter="submitMove" />
+        <div class="hint" style="margin-bottom: 8px">目标目录（如 /a/b；留空或 / 为根目录）：</div>
+        <el-input clearable v-model="moveDirInput" placeholder="/a/b，也可从下方目录树选择" @keyup.enter="submitMove" />
         <el-cascader
           ref="moveCascaderRef"
           :key="moveDestProfile || profileId || ''"
@@ -1799,7 +1912,7 @@ function onKeydown(event: KeyboardEvent): void {
           style="width: 100%; margin-top: 8px"
           @change="onMoveDirPicked"
         />
-        <div class="fs-crumb" style="margin-top: 10px; display: inline-block" @click="moveDirInput = path">填当前目录：{{ path || '(根)' }}</div>
+        <div class="fs-crumb" style="margin-top: 10px; display: inline-block" @click="moveDirInput = path">填当前目录：{{ path === '/' ? '/（根）' : path }}</div>
       </div>
       <template #footer>
         <el-button @click="moveOpen = false">取消</el-button>
@@ -2075,6 +2188,22 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
+    <!-- 传输文件数上限（上传展平 / 下载目录递归展开共用） -->
+    <el-dialog v-model="transferCapsOpen" title="传输上限设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
+      <div class="fs-ziplimits">
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">文件数上限</span>
+          <el-input-number v-model="transferCapsForm.fileCap" size="small" :min="100" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
+          <span class="fs-ziplimits-unit">个</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">上传目录展平与下载目录递归展开共用此上限（默认 10000）；超出即截断并提示。</div>
+      </div>
+      <template #footer>
+        <el-button @click="transferCapsOpen = false">取消</el-button>
+        <el-button type="primary" :loading="transferCapsSaving" @click="submitTransferCaps">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- §十一：收藏夹（跨通道直达） -->
     <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" close-on-click-modal="false" close-on-press-escape="false">
       <div v-if="!favorites.length" class="fs-empty"><p>还没有收藏</p><p class="fs-empty-hint">选中文件/目录后在「更多 ▾」里添加收藏</p></div>
@@ -2164,7 +2293,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-col-note, .fs-col-owner { font-size: 12px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .fs-more { text-align: center; padding: 8px 0; }
-.fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; position: sticky; top: 30px; z-index: 1; }
+/* 搜索横幅不再 sticky（用户 2026-11-18：与 sticky 表头 top:0 叠住导致表格被遮）；随内容正常滚动即可 */
+.fs-search-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin: 4px 8px; border-radius: 8px; background: var(--el-color-primary-light-9); font-size: 13px; }
 .fs-player-body { display: flex; align-items: center; justify-content: center; min-height: 260px; background: var(--el-fill-color-dark); border-radius: 8px; padding: 12px; }
 .fs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; }
 .fs-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 8px; cursor: default; border: 1px solid transparent; }
@@ -2173,6 +2303,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-cell-icon { font-size: 40px; color: var(--el-text-color-secondary); }
 .fs-cell-icon.is-dir { color: var(--el-color-warning); }
 .fs-cell-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+/* 搜索结果的目录提示单独一行（用户 2026-11-18：卡片式名称与目录分行显示） */
+.fs-cell-dir { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; opacity: .55; margin-top: -2px; }
 .fs-cell-meta { font-size: 11px; opacity: .6; }
 
 .fs-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 60px 20px; text-align: center; }

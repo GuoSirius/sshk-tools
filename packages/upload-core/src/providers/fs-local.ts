@@ -14,7 +14,7 @@ import {
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
-import { normalizeRootRel } from '../fs-paths'
+import { fsJoin, normalizeRootRel } from '../fs-paths'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { nameMatches, sortFsEntries, walkRemote, type FsSearchBatchFn } from '../fs-driver'
 
@@ -51,9 +51,9 @@ export class LocalFsDriver implements FsDriver {
 
   constructor(private readonly rootDir: string) {}
 
-  /** 本地绝对路径：rootDir 为根，rel 为根相对（'a/b'） */
+  /** 本地绝对路径：rootDir 为根；内部路径 `/a/b` 去掉前导 / 后拼接（本地绝对路径不带该 /） */
   private abs(p: string): string {
-    const rel = normalizeRootRel(p)
+    const rel = normalizeRootRel(p).replace(/^\//, '')
     const root = this.rootDir.replace(/[\\/]+$/, '')
     return rel ? path.join(root, ...rel.split('/')) : root
   }
@@ -73,7 +73,7 @@ export class LocalFsDriver implements FsDriver {
       out.push({
         kind: isDir ? 'dir' : 'file',
         name,
-        path: p ? `${p}/${name}` : name,
+        path: fsJoin(p, name),
         size: isDir ? undefined : st.size,
         modified: st.mtimeMs,
         createdAt: st.birthtimeMs > 0 ? st.birthtimeMs : undefined,

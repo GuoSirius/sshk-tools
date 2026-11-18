@@ -108,6 +108,8 @@ export interface FsCpRequest {
   sources: { path: string; kind: FsEntryKind }[]
   /** 目标目录（通道根相对） */
   destDir: string
+  /** 同源同目录复制时的新文件名（避免覆盖自身；仅单源有意义） */
+  renameTo?: string
 }
 
 export interface FsMvRequest {

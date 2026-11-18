@@ -26,8 +26,18 @@ const MAX_CLOUD_BUFFER = 200 * 1024 * 1024
 const CLOUD_DELETE_BATCH = 500
 /** 递归列前缀删的安全页数上限 */
 const CLOUD_DELETE_MAX_PAGES = 200
-/** 递归搜索 / 容量统计的安全页数上限（1000/页 → 最多扫 5 万 key） */
-const CLOUD_SCAN_MAX_PAGES = 50
+/** 递归搜索 / 容量统计的安全页数上限（1000/页 → 最多扫 20 万 key；用户 2026-11-18：50 页太早截断，当前目录命中都漏掉） */
+const CLOUD_SCAN_MAX_PAGES = 200
+
+/** 内部路径（`/a/b`）→ 云 SDK prefix（无前导 /、无尾 /；根返回 ''） */
+function sdkPrefix(path: string): string {
+  return cloudKey(path, 'file') // file 形态即无前导 /、无尾 /，根为 ''
+}
+
+/** 云 SDK key → 内部规范路径（补回前导 /） */
+function fromSdkKey(key: string): string {
+  return normalizeRootRel(key)
+}
 
 function notWritable(provider: string, op: string): Error {
   return new Error(`文件系统暂不支持「${provider}」的${op}：当前支持阿里云 OSS 与 AWS S3（其余厂商仅可浏览）`)
@@ -112,7 +122,7 @@ export class CloudFsDriver implements FsDriver {
 
   async list(path: string, opts?: { pageSize?: number; cursor?: string | null }): Promise<FsListPage> {
     const mod = await loadSdk(specOf(this.profile))
-    const base = normalizeRootRel(path)
+    const base = sdkPrefix(path)
     const page = await listCloudPage(this.profile, mod, {
       bucket: this.bucketOf(),
       prefix: base,
@@ -140,7 +150,7 @@ export class CloudFsDriver implements FsDriver {
       files.push({
         kind: 'file',
         name,
-        path: marker + name,
+        path: fromSdkKey(marker + name),
         size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
         modified: parseModified(o),
       })
@@ -271,7 +281,7 @@ export class CloudFsDriver implements FsDriver {
   async rmDir(path: string, onProgress?: (done: number, total: number) => void): Promise<number> {
     this.assertWritable('删除目录')
     const mod = await loadSdk(specOf(this.profile))
-    const base = normalizeRootRel(path)
+    const base = sdkPrefix(path)
     const marker = cloudKey(path, 'dir')
     if (!marker) throw new Error('根目录不可删除')
     await this.ensureCanDelete('删除目录')
@@ -498,7 +508,7 @@ export class CloudFsDriver implements FsDriver {
    *  且不再排除子目录文件——平铺扫前缀天然递归，与本地/远端驱动的 BFS 递归语义一致 */
   async search(path: string, keyword: string, opts?: { maxResults?: number; onBatch?: FsSearchBatchFn }): Promise<FsSearchResult> {
     const mod = await loadSdk(specOf(this.profile))
-    const base = normalizeRootRel(path)
+    const base = sdkPrefix(path)
     const marker = base ? `${base}/` : ''
     const kw = keyword.trim().toLowerCase()
     const maxResults = Math.max(1, Math.min(1000, Math.floor(opts?.maxResults ?? 300)))
@@ -525,7 +535,7 @@ export class CloudFsDriver implements FsDriver {
         out.push({
           kind: 'file',
           name,
-          path: marker + rel,
+          path: fromSdkKey(marker + rel),
           size: Number(strOf(o, ['Size', 'size', 'fsize'])) || 0,
           modified: parseModified(o),
         })
@@ -547,7 +557,7 @@ export class CloudFsDriver implements FsDriver {
    *  同名字头兄弟目录的文件一起算进来（用户 2026-11-18 实测「1 个文件统计成 4 个」即此因） */
   async usage(path: string): Promise<FsUsageResult> {
     const mod = await loadSdk(specOf(this.profile))
-    const base = normalizeRootRel(path)
+    const base = sdkPrefix(path)
     const marker = base ? `${base}/` : ''
     let size = 0
     let files = 0
@@ -571,7 +581,7 @@ export class CloudFsDriver implements FsDriver {
   }
 }
 
-/** 把完整前缀（如 'a/b/'）折算成 base 之下的相对路径与末段名 */
+/** 把云 SDK 完整前缀（如 'a/b/'）折算成 base 之下的内部规范路径（`/a/b/x`）与末段名 */
 function toRelUnder(base: string, fullPrefix: string): { path: string; name: string } | null {
   const marker = base ? `${base}/` : ''
   let p = fullPrefix.replace(/\/+$/, '')
@@ -582,5 +592,5 @@ function toRelUnder(base: string, fullPrefix: string): { path: string; name: str
   if (!p) return null
   const name = p.slice(p.lastIndexOf('/') + 1)
   if (!name) return null
-  return { path: marker + name, name }
+  return { path: fromSdkKey(marker + name), name }
 }

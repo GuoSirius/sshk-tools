@@ -7,7 +7,7 @@ import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
 import {
   toolId, loadConfigAndRecent, loadPosters,
-  hasHtml, hasStats, generating, currentPosterId, capturing, downloading,
+  hasHtml, generating, currentPosterId, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, shareDialog, openShare,
   backToListConfirm, startNewPosterConfirm,
@@ -71,7 +71,7 @@ onMounted(() => {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button size="small" :disabled="!hasHtml || !hasStats" @click="markBeforeGenerate">批量补属性</el-button>
+        <el-button size="small" :disabled="!hasHtml" @click="markBeforeGenerate">批量补属性</el-button>
         <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml" @click="generate">
           生成海报
         </el-button>

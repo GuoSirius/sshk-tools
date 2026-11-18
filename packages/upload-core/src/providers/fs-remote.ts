@@ -3,7 +3,7 @@ import { Readable, Transform, Writable } from 'node:stream'
 import { Client as FtpClient } from 'basic-ftp'
 import { Client as SshClient } from 'ssh2'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
-import { fsBasename, fsJoin, normalizeRootRel } from '../fs-paths'
+import { fsBasename, fsJoin, fsParent, normalizeRootRel } from '../fs-paths'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { nameMatches, sortFsEntries, walkRemote, type FsSearchBatchFn } from '../fs-driver'
 import type { RemoteProfile } from './remote'
@@ -155,9 +155,9 @@ export class RemoteFsDriver implements FsDriver {
     return this.profile.protocol === 'ftp'
   }
 
-  /** 远程绝对路径：profile.remoteDir 为根（缺省 /） */
+  /** 远程绝对路径：profile.remoteDir 为根（缺省 /）；内部 `/a/b` 去掉前导 / 再拼 root */
   private abs(path: string): string {
-    const rel = normalizeRootRel(path)
+    const rel = normalizeRootRel(path).replace(/^\//, '')
     const root = (this.profile.remoteDir?.replace(/\/+$/, '') || '')
     const joined = root && rel ? `${root}/${rel}` : (root || (rel ? `/${rel}` : '/'))
     return joined.startsWith('/') ? joined : `/${joined}`
@@ -307,7 +307,7 @@ export class RemoteFsDriver implements FsDriver {
     const to = this.abs(dest)
     // 先保证目标父目录存在（跨目录移动常见）
     const parentRel = fsParentOf(dest)
-    if (parentRel) await this.mkdir(parentRel)
+    if (parentRel !== '/') await this.mkdir(parentRel)
     if (this.isFtp) {
       await withFtp(this.profile, (client) => client.rename(from, to))
       return
@@ -352,7 +352,7 @@ export class RemoteFsDriver implements FsDriver {
   async write(path: string, body: Buffer | Readable, onProgress?: (bytes: number) => void): Promise<void> {
     const target = this.abs(path)
     const parentRel = fsParentOf(path)
-    if (parentRel) await this.mkdir(parentRel)
+    if (parentRel !== '/') await this.mkdir(parentRel)
     if (this.isFtp) {
       await withFtp(this.profile, async (client) => {
         if (Buffer.isBuffer(body)) {
@@ -432,9 +432,7 @@ export class RemoteFsDriver implements FsDriver {
   }
 }
 
-/** dest 的父目录（相对根） */
+/** dest 的父目录（内部规范形式，根 = `/`） */
 function fsParentOf(dest: string): string {
-  const p = normalizeRootRel(dest)
-  const i = p.lastIndexOf('/')
-  return i < 0 ? '' : p.slice(0, i)
+  return fsParent(dest)
 }

@@ -85,6 +85,14 @@ describe('badge 注入（严格门控）', () => {
     expect(marked).toContain('href="https://a.com/p/1" data-edm-badge')
     expect(marked).not.toContain('href="https://other.com" data-edm-badge')
   })
+
+  it('markBadges：无统计数据时给全部 http(s) 链接补空属性（不必等数据）', () => {
+    const html = '<a href="https://a.com/p/1">A</a><a href="https://other.com">B</a><a href="#anchor">C</a>'
+    const marked = markBadges(html, [], cfg)
+    expect(marked).toContain('href="https://a.com/p/1" data-edm-badge')
+    expect(marked).toContain('href="https://other.com" data-edm-badge')
+    expect(marked).not.toContain('href="#anchor" data-edm-badge')
+  })
 })
 
 describe('角标定位与样式覆盖（2026-11-16 批次）', () => {

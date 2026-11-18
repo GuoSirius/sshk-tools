@@ -274,6 +274,14 @@ export function clearSourceMail(): void {
   sourceMailId.value = null
 }
 
+/** 清空 HTML 选择：清除路径与编辑区内容（用户 2026-11-18：清空选择框 = 清除已选且清空 HTML 内容） */
+export function clearHtmlSelection(): void {
+  htmlPath.value = ''
+  pastedHtml.value = ''
+  previewHtml.value = ''
+  clearSourceMail()
+}
+
 export async function removeRecent(item: RecentHtml): Promise<void> {
   recentHtmls.value = recentHtmls.value.filter((r) => r.path !== item.path)
   await host.config.set(configKey('recentHtmls'), recentHtmls.value)
@@ -441,11 +449,14 @@ export async function saveVisionConfig(): Promise<void> {
   }
 }
 
-/** 批量补属性：给命中但未带 badgeAttr 的链接补上（只在生成的副本里生效，原文件不动） */
+/** 批量补属性：给未带 badgeAttr 的链接补空属性（只在生成的副本里生效，原文件不动）。
+ *  用户 2026-11-18：只要有 HTML 内容就能补，不必等统计数据；无数据时补全部 http(s) 链接。 */
 export async function markBeforeGenerate(): Promise<void> {
-  if (!hasHtml.value || !hasStats.value) return
+  if (!hasHtml.value) { ElMessage.warning('请先选择或粘贴邮件 HTML'); return }
   pastedHtml.value = await host.badge.markBadges({ html: pastedHtml.value, stats: statRows.value, badgeAttr: badgeAttr.value })
-  ElMessage.success('已在工作区副本中补齐 badge 属性，可直接生成')
+  ElMessage.success(hasStats.value
+    ? '已在工作区副本中补齐命中链接的 badge 属性，可直接生成'
+    : '已给工作区副本中全部链接补上 badge 属性（暂无统计数据，后续补数据即可注入）')
 }
 
 export async function generate(): Promise<void> {

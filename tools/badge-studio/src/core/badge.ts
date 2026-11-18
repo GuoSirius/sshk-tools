@@ -140,17 +140,19 @@ export function injectBadges(html: string, stats: StatRow[], cfg: BadgeInjectCon
 }
 
 /**
- * 批量补属性（M6 先行方案 §3-5）：按 URL 命中后给「命中但未带属性」的 <a> 补 badgeAttr。
- * 只在 badge 副本上操作；stats 命中数 = 0 的链接不动。
+ * 批量补属性（M6 先行方案 §3-5）：给「未带 badgeAttr」的 <a> 补空属性。
+ * 只在 badge 副本上操作；有 stats 时只补 URL 命中的链接，**stats 为空时补全部 http(s) 链接**
+ * （用户 2026-11-18：只要有 HTML 内容就能补，不必等统计数据；空属性后续有数据即可直接注入）。
  */
 export function markBadges(html: string, stats: StatRow[], cfg: Pick<BadgeInjectConfig, 'badgeAttr' | 'urlNorm'>): string {
   const keys = new Set(stats.map((s) => normalizeUrl(s.url, cfg.urlNorm)).filter((k) => k !== ''))
+  const hasStats = keys.size > 0
   const $ = cheerio.load(html)
   for (const el of $('a[href]').toArray()) {
     const href = $(el).attr('href') ?? ''
     if (!/^https?:\/\//i.test(href)) continue
     if ($(el).attr(cfg.badgeAttr) !== undefined) continue
-    if (keys.has(normalizeUrl(href, cfg.urlNorm))) $(el).attr(cfg.badgeAttr, '')
+    if (!hasStats || keys.has(normalizeUrl(href, cfg.urlNorm))) $(el).attr(cfg.badgeAttr, '')
   }
   return $.html()
 }

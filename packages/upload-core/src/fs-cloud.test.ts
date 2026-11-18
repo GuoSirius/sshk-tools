@@ -88,10 +88,10 @@ describe('CloudFsDriver.mv 云 ACL 拒绝删源', () => {
 
     const driver = makeDriver('ak-search')
     const inDemo = await driver.search('demo', 'html')
-    expect(inDemo.entries.map((e) => e.path)).toEqual(['demo/index.html'])
+    expect(inDemo.entries.map((e) => e.path)).toEqual(['/demo/index.html'])
 
     const whole = await driver.search('', 'html')
-    expect(whole.entries.map((e) => e.path)).toEqual(['demo/index.html', 'demo-2/index.html', 'demo备份/x.html'])
+    expect(whole.entries.map((e) => e.path)).toEqual(['/demo/index.html', '/demo-2/index.html', '/demo备份/x.html'])
     expect(whole.entries.map((e) => e.name)).toEqual(['index.html', 'index.html', 'x.html'])
   })
 })
