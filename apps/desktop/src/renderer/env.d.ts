@@ -133,6 +133,8 @@ interface Window {
       writeBinary(path: string, base64: string): Promise<boolean>
       clipboardWrite(text: string): Promise<boolean>
       shellOpen(target: string): Promise<boolean>
+      /** 是否管理员权限运行（Windows UIPI 拖放拦截提示用） */
+      isElevated(): Promise<boolean>
     }
     /** X6 文件系统：已配置上传通道的远端/云浏览管理 + 统一传输队列（密钥只在 main） */
     fs: {

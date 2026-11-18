@@ -147,6 +147,8 @@ const api = {
     clipboardWrite: (text: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.osClipboardWrite, text),
     shellOpen: (target: string): Promise<boolean> => invoke(IPC_CHANNELS.osShellOpen, target),
+    /** 是否管理员权限运行（Windows 下拖放被 UIPI 拦截时的页面提示） */
+    isElevated: (): Promise<boolean> => invoke(IPC_CHANNELS.osIsElevated),
   },
   badge: {
     parseDatasource: (file: string): Promise<unknown> => invoke(IPC_CHANNELS.badgeParseDatasource, file),

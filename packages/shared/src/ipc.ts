@@ -118,6 +118,8 @@ export const IPC_CHANNELS = {
   osWriteBinary: 'os:writeBinary',
   osClipboardWrite: 'os:clipboardWrite',
   osShellOpen: 'os:shellOpen',
+  /** 是否管理员权限运行（Windows UIPI 拖放拦截提示用） */
+  osIsElevated: 'os:isElevated',
   edmListMails: 'edm:listMails',
   edmGenerate: 'edm:generate',
   edmRegenerate: 'edm:regenerate',

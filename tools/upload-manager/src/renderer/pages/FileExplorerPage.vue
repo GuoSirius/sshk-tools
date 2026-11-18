@@ -17,10 +17,12 @@ import {
   FolderOpened,
   Grid,
   InfoFilled,
+  Link,
   Loading,
   Lock,
   MagicStick,
   Menu as MenuIcon,
+  DocumentCopy,
   Picture,
   Plus,
   Rank,
@@ -242,8 +244,8 @@ const selSingleFile = computed(() => (selSingle.value?.kind === 'file' ? selSing
 const selSingleDir = computed(() => (selSingle.value?.kind === 'dir' ? selSingle.value : null))
 /** 编辑权限可用：单选 + 本地/SFTP 通道 + 有当前权限值（无值 = 列表没给，无从改起） */
 const canPerm = computed(() => selSingle.value != null && hasMode.value && Boolean(selSingle.value.mode))
-const canZip = computed(() => hasWritable.value && selectedEntries.value.length > 0)
-const canUnzip = computed(() => hasWritable.value && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
+const canZip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selectedEntries.value.length > 0)
+const canUnzip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
 const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
 
 // ── 传输队列 ──
@@ -595,24 +597,30 @@ function dataUriOf(name: string, base64: string): string {
 }
 
 // ── 上传（文件 / 文件夹 / EDM 产物） ──
+/** 展平 + 入队统一容错：flattenLocal 抛错（如旧版反斜杠问题）必须有可见提示，不许静默 */
+async function flattenAndEnqueue(paths: string[], label: string): Promise<void> {
+  try {
+    const files = await window.api.fs.flattenLocal(paths)
+    await enqueueUploads(files)
+  } catch (err) {
+    ElMessage.error(`${label}失败：${friendlyError(err)}`)
+  }
+}
 async function uploadFiles(): Promise<void> {
   const paths = await window.api.fs.pickUpload({ type: 'file' })
   if (!paths.length || !profileId.value) return
-  const files = await window.api.fs.flattenLocal(paths)
-  await enqueueUploads(files)
+  await flattenAndEnqueue(paths, '上传')
 }
 async function uploadDirs(): Promise<void> {
   const paths = await window.api.fs.pickUpload({ type: 'dir' })
   if (!paths.length || !profileId.value) return
-  const files = await window.api.fs.flattenLocal(paths)
-  await enqueueUploads(files)
+  await flattenAndEnqueue(paths, '上传')
 }
 async function uploadFromOutput(): Promise<void> {
   if (!outputRoot.value) { ElMessage.info('未找到 EDM 产物目录'); return }
   const paths = await window.api.os.pickFile({ multi: true, defaultPath: outputRoot.value })
   if (!paths.length || !profileId.value) return
-  const files = await window.api.fs.flattenLocal(paths)
-  await enqueueUploads(files)
+  await flattenAndEnqueue(paths, '上传')
 }
 
 /** 本地展平结果 → 传输队列上传任务（relPath 保留目录结构） */
@@ -642,8 +650,9 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
 // 关键（2026-11-17 三修）：HTML5 DnD 规范要求 dragenter **和** dragover 都 preventDefault，
 // 缺一不可——此前只有 dragover preventDefault，dragenter 放过 → Chromium 判定「不接受放置」，
 // 鼠标显示圆圈加横杠的禁放光标，drop 事件根本不触发。同时必须设 dropEffect='copy' 才是复制光标。
-// 不区分管理员/普通权限：UIPI 只影响「 dragged 到更低完整性进程」，实测两条路径都可拖，
-// 真正的病根是上面的事件契约，管理员警示条已移除。
+// 管理员模式（2026-11-18 用户实测）：Windows UIPI 拦截「普通权限资源管理器 → 提权进程」的拖放消息，
+// 拖拽事件根本不进应用——这是系统安全边界，代码无法绕过；页面用提示条引导改用「上传文件」按钮。
+const elevated = ref(false)
 const dragOver = ref(false)
 let dragDepth = 0
 function isFileDrag(e: DragEvent): boolean {
@@ -1010,9 +1019,17 @@ function moreCommand(cmd: unknown): void {
   }
 }
 
-/** 行「更多 ▾」分发（§11.4 定版：信息组/工具组/权限组，按条目类型与通道实时显隐） */
+/** 行「更多 ▾」/ 网格右键 共用分发（§11.4 定版 + 行外显操作全集） */
 function rowMoreCommand(cmd: string, entry: FsEntry): void {
   switch (cmd) {
+    case 'open': rowOpen(entry); return
+    case 'download': void downloadEntries([entry]); return
+    case 'link': void rowLink(entry); return
+    case 'paste': void rowPaste(entry); return
+    case 'copy': rowCopy(entry); return
+    case 'move': rowMove(entry); return
+    case 'rename': openRename(entry); return
+    case 'delete': openDelete([entry]); return
     case 'usage': if (entry.kind === 'dir') void showUsage(entry); return
     case 'note': openNote([entry]); return
     case 'favorite': if (isFavorited(entry.path)) void removeFavorite(entry); else void addFavorites([entry]); return
@@ -1024,6 +1041,34 @@ function rowMoreCommand(cmd: string, entry: FsEntry): void {
     case 'props': void openPropsFor(entry); return
     case 'share': selection.value = new Set([entry.path]); rowShare(entry); return
   }
+}
+
+// ── 网格视图右键菜单（用户 2026-11-18：卡片展示同所有行操作）──
+const ctxMenu = ref<{ x: number; y: number; entry: FsEntry } | null>(null)
+function openCtxMenu(entry: FsEntry, e: MouseEvent): void {
+  // 简单钳制：避免菜单溢出视口右/下边缘
+  ctxMenu.value = {
+    x: Math.min(e.clientX, window.innerWidth - 200),
+    y: Math.min(e.clientY, window.innerHeight - 360),
+    entry,
+  }
+}
+function ctxRun(cmd: string): void {
+  const entry = ctxMenu.value?.entry
+  ctxMenu.value = null
+  if (entry) rowMoreCommand(cmd, entry)
+}
+/** 事件委托：独立 el-dropdown-menu 的 command 属性不会自动分发，从点击目标读 command */
+function ctxClick(e: MouseEvent): void {
+  const item = (e.target as HTMLElement | null)?.closest?.('.el-dropdown-menu__item')
+  if (!item || item.classList.contains('is-disabled')) return
+  const cmd = item.getAttribute('command')
+  if (cmd) ctxRun(cmd)
+}
+function onWindowCtxMaybeClose(e: Event): void {
+  // 右键另一个卡片时由其自身 handler 重新开菜单，不先关
+  if (e.type === 'contextmenu' && (e.target as HTMLElement | null)?.closest?.('.fs-cell')) return
+  ctxMenu.value = null
 }
 
 // ── §十一：设置备注（遵守确认后生效；多选批量同备注）──
@@ -1184,7 +1229,7 @@ async function submitConvert(): Promise<void> {
 
 // ── §十一：压缩 / 解压（仅本地通道，fflate）──
 async function doZip(targets?: FsEntry[]): Promise<void> {
-  if (!hasWritable.value || activeChannel.value?.type !== 'local') return
+  if (!hasWritable.value || activeChannel.value?.type !== 'local') { ElMessage.warning('压缩仅支持可写的本地目录通道'); return }
   const list0 = targets ?? selectedEntries.value
   if (!list0.length) return
   const first = list0[0]!
@@ -1212,7 +1257,8 @@ async function doZip(targets?: FsEntry[]): Promise<void> {
   } finally { zipSaving.value = false }
 }
 async function doUnzip(entry: FsEntry): Promise<void> {
-  if (!hasWritable.value || activeChannel.value?.type !== 'local' || !isFsZipName(entry.name)) return
+  if (!hasWritable.value || activeChannel.value?.type !== 'local') { ElMessage.warning('解压仅支持可写的本地目录通道'); return }
+  if (!isFsZipName(entry.name)) { ElMessage.warning('仅支持 .zip 压缩包'); return }
   try {
     await ElMessageBox.confirm(
       `将把「${entry.name}」解压到同级目录「${entry.name.replace(/\.zip$/i, '')}/」。确认解压吗？`,
@@ -1362,6 +1408,11 @@ onMounted(() => {
     tasks.value = new Map(tasks.value)
     if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy' || task.kind === 'cross')) scheduleRefresh()
   })
+  // 管理员模式提示：Windows UIPI 会拦截「低权限资源管理器 → 高权限应用」的拖放（系统级，代码无法绕过）
+  void window.api.os.isElevated().then((v) => { elevated.value = v })
+  // 网格右键菜单：点击任意处 / 在非卡片处右键 / Escape 关闭
+  window.addEventListener('click', onWindowCtxMaybeClose)
+  window.addEventListener('contextmenu', onWindowCtxMaybeClose)
   void loadChannels().then(() => { if (profileId.value) void list() })
   void loadFavorites() // §十一 收藏夹
   // 队列已有历史任务（页面刷新恢复）
@@ -1376,6 +1427,8 @@ onMounted(() => {
   window.addEventListener('drop', onWindowDrop, { capture: true })
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('click', onWindowCtxMaybeClose)
+  window.removeEventListener('contextmenu', onWindowCtxMaybeClose)
   if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
   window.removeEventListener('dragenter', onWindowDragEnter, { capture: true } as EventListenerOptions)
   window.removeEventListener('dragover', onWindowDragOver, { capture: true } as EventListenerOptions)
@@ -1385,6 +1438,7 @@ onBeforeUnmount(() => {
 
 // ── 键盘（§3.3） ──
 function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && ctxMenu.value) { ctxMenu.value = null; return }
   if (preview.value.open || editor.value.open || player.value.open || mkdirOpen.value || renameOpen.value || moveOpen.value || deleteOpen.value) return
   const target = event.target as HTMLElement
   if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return
@@ -1514,6 +1568,12 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <!-- 文件列表 -->
+    <el-alert
+      v-if="elevated"
+      class="fs-admin-tip"
+      type="warning" :closable="false" show-icon
+      title="当前以管理员模式运行：Windows 系统会拦截资源管理器向本应用的拖放（UIPI 安全限制），请改用「上传文件」按钮选择，或以普通权限运行应用"
+    />
     <div class="fs-list" :class="{ 'is-drag': dragOver }">
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
@@ -1536,30 +1596,31 @@ function onKeydown(event: KeyboardEvent): void {
         <p class="fs-empty-hint">{{ searchActive ? '换个关键词，或到上级目录再搜' : '把文件或文件夹拖进来即可上传到当前目录' }}</p>
       </div>
 
-      <!-- 列表视图 -->
+      <!-- 列表视图：单一 grid 容器 + subgrid 行——表头/数据行共用同一组列轨道，
+           修复操作列 max-content 被两个独立 grid 各自计算导致的列错位（用户 2026-11-18） -->
       <template v-else-if="viewMode === 'list'">
-        <div class="fs-thead" :style="{ gridTemplateColumns: listGridCols }">
-          <span class="fs-col-check">
-            <el-checkbox :model-value="selection.size > 0 && selection.size === filteredEntries.length" :indeterminate="selection.size > 0 && selection.size < filteredEntries.length" @change="selectAll" />
-          </span>
-          <span class="fs-col-name fs-sortable" @click="sortKey = 'name'; sortDir = sortKey === 'name' && sortDir === 'asc' ? 'desc' : 'asc'">名称{{ sortKey === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
-          <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">类型/大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
-          <span class="fs-col-time fs-sortable" @click="sortKey = 'time'; sortDir = sortKey === 'time' && sortDir === 'asc' ? 'desc' : 'asc'">修改时间{{ sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
-          <span v-if="colShown.createdAt" class="fs-col-time">创建时间</span>
-          <span v-if="colShown.mode" class="fs-col-mode">权限</span>
-          <span v-if="colShown.owner" class="fs-col-owner">用户/组</span>
-          <span v-if="colShown.note" class="fs-col-note">备注</span>
-          <span class="fs-col-op">操作</span>
-        </div>
-        <div
-          v-for="entry in filteredEntries"
-          :key="entry.path"
-          class="fs-row"
-          :class="{ selected: selection.has(entry.path) }"
-          :style="{ gridTemplateColumns: listGridCols }"
-          @click="rowClick(entry, $event)"
-          @dblclick="rowOpen(entry)"
-        >
+        <div class="fs-table" :style="{ gridTemplateColumns: listGridCols }">
+          <div class="fs-thead">
+            <span class="fs-col-check">
+              <el-checkbox :model-value="selection.size > 0 && selection.size === filteredEntries.length" :indeterminate="selection.size > 0 && selection.size < filteredEntries.length" @change="selectAll" />
+            </span>
+            <span class="fs-col-name fs-sortable" @click="sortKey = 'name'; sortDir = sortKey === 'name' && sortDir === 'asc' ? 'desc' : 'asc'">名称{{ sortKey === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
+            <span class="fs-col-size fs-sortable" @click="sortKey = 'size'; sortDir = sortKey === 'size' && sortDir === 'asc' ? 'desc' : 'asc'">类型/大小{{ sortKey === 'size' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
+            <span class="fs-col-time fs-sortable" @click="sortKey = 'time'; sortDir = sortKey === 'time' && sortDir === 'asc' ? 'desc' : 'asc'">修改时间{{ sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}</span>
+            <span v-if="colShown.createdAt" class="fs-col-time">创建时间</span>
+            <span v-if="colShown.mode" class="fs-col-mode">权限</span>
+            <span v-if="colShown.owner" class="fs-col-owner">用户/组</span>
+            <span v-if="colShown.note" class="fs-col-note">备注</span>
+            <span class="fs-col-op">操作</span>
+          </div>
+          <div
+            v-for="entry in filteredEntries"
+            :key="entry.path"
+            class="fs-row"
+            :class="{ selected: selection.has(entry.path) }"
+            @click="rowClick(entry, $event)"
+            @dblclick="rowOpen(entry)"
+          >
           <span class="fs-col-check"><el-checkbox :model-value="selection.has(entry.path)" @click.stop @dblclick.stop @change="toggleCheck(entry)" /></span>
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
@@ -1605,9 +1666,10 @@ function onKeydown(event: KeyboardEvent): void {
               </template>
             </el-dropdown>
           </span>
-        </div>
-        <div v-if="cursor" class="fs-more">
-          <el-button size="small" text :loading="loadingMore" @click="loadMore">加载更多…</el-button>
+          </div>
+          <div v-if="cursor" class="fs-more">
+            <el-button size="small" text :loading="loadingMore" @click="loadMore">加载更多…</el-button>
+          </div>
         </div>
       </template>
 
@@ -1622,6 +1684,7 @@ function onKeydown(event: KeyboardEvent): void {
             :title="`${entry.name}\n${entry.kind === 'dir' ? '目录' : fsFormatSize(entry.size)} · ${fmtTime(entry.modified)}`"
             @click="rowClick(entry, $event)"
             @dblclick="rowOpen(entry)"
+            @contextmenu.prevent="openCtxMenu(entry, $event)"
           >
             <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-cell-name">{{ entry.name }}<span v-if="searchDirHint(entry)" class="fs-name-sub">{{ searchDirHint(entry) }}</span></span>
@@ -1724,18 +1787,51 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- 文本编辑器 -->
-    <el-dialog v-model="editor.open" :title="editor.name" width="900px" top="4vh" close-on-click-modal="false" close-on-press-escape="false" class="fs-editor-dialog">
+    <!-- 文本编辑器（文件名 · 大小 统计信息置顶，用户 2026-11-18） -->
+    <el-dialog v-model="editor.open" width="900px" top="4vh" close-on-click-modal="false" close-on-press-escape="false" class="fs-editor-dialog">
+      <template #header>
+        <span class="fs-editor-title">{{ editor.name }}<span class="fs-editor-meta">{{ fsFormatSize(editor.size) }}</span></span>
+      </template>
       <div class="fs-editor-body">
         <CodeEditor v-model="editor.content" :path="editor.path" :readonly="editor.readonly" :height="'100%'" :dark="themeDark" :minimap="true" />
       </div>
       <template #footer>
         <span v-if="editor.conflict" class="fs-conflict-hint">远端已变化，可覆盖保存</span>
-        <span class="hint">{{ editor.name }} · {{ fsFormatSize(editor.size) }}</span>
         <el-button @click="editor.open = false">关闭</el-button>
         <el-button type="primary" :loading="editor.saving" :disabled="editor.readonly" @click="saveEditor">保存到远端</el-button>
       </template>
     </el-dialog>
+
+    <!-- 网格视图右键菜单（与行操作全集一致，Teleport 到 body 防被列表容器裁切） -->
+    <Teleport to="body">
+      <div v-if="ctxMenu" class="fs-ctx" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @click="ctxClick">
+        <el-dropdown-menu>
+          <el-dropdown-item command="open" :icon="FolderOpened">打开</el-dropdown-item>
+          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file'" command="download" :icon="Download">下载</el-dropdown-item>
+          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file'" command="link" :icon="Link">链接</el-dropdown-item>
+          <el-dropdown-item v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" command="paste" :icon="DocumentCopy">粘贴</el-dropdown-item>
+          <el-dropdown-item v-if="hasWritable" command="copy" :icon="CopyDocument" divided>复制</el-dropdown-item>
+          <el-dropdown-item v-if="hasWritable" command="move" :icon="Rank">移动</el-dropdown-item>
+          <el-dropdown-item v-if="hasWritable" command="rename" :icon="EditPen">重命名</el-dropdown-item>
+          <el-dropdown-item v-if="hasWritable" command="delete" :icon="Delete">删除</el-dropdown-item>
+          <!-- 信息组 -->
+          <el-dropdown-item command="props" :icon="InfoFilled" divided>属性</el-dropdown-item>
+          <el-dropdown-item v-if="ctxMenu.entry.kind === 'dir'" command="usage" :icon="TrendCharts">统计</el-dropdown-item>
+          <el-dropdown-item command="note" :icon="ChatDotRound">设置备注…</el-dropdown-item>
+          <el-dropdown-item command="favorite" :icon="CollectionTag">{{ isFavorited(ctxMenu.entry.path) ? '取消收藏' : '添加收藏' }}</el-dropdown-item>
+          <el-dropdown-item command="copypath" :icon="CopyDocument">复制路径</el-dropdown-item>
+          <!-- 工具组（按通道与文件类型实时显隐） -->
+          <template v-if="activeChannel?.type === 'local'">
+            <el-dropdown-item command="zip" :icon="Box" divided>压缩为 zip…</el-dropdown-item>
+            <el-dropdown-item v-if="isFsZipName(ctxMenu.entry.name)" command="unzip" :icon="FolderOpened">解压到新目录</el-dropdown-item>
+          </template>
+          <el-dropdown-item v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" command="convert" :icon="MagicStick" divided>转换编码 / 换行符…</el-dropdown-item>
+          <!-- 权限组 -->
+          <el-dropdown-item v-if="hasMode" command="perm" :icon="Lock" divided :disabled="!ctxMenu.entry.mode">编辑权限…</el-dropdown-item>
+          <el-dropdown-item v-if="activeChannel?.type === 'local'" command="share" :icon="Star" divided>安全分享</el-dropdown-item>
+        </el-dropdown-menu>
+      </div>
+    </Teleport>
 
     <!-- 音视频播放（二期） -->
     <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" close-on-click-modal="false" close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''">
@@ -1978,13 +2074,24 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; position: relative; }
 .fs-list.is-drag { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
 
-/* 列表 grid：模板列由 §十一 列设置动态生成（listGridCols 内联 style），这里只留兜底缺省 */
-.fs-thead, .fs-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 130px 150px max-content; align-items: center; padding: 0 10px; }
+/* 列表表格：单一 grid 容器定义列轨道，表头与数据行用 subgrid 共享同一组轨道——
+   修复操作列 max-content 被表头/数据行两个独立 grid 各自计算导致的列错位（用户 2026-11-18） */
+.fs-table { display: grid; }
+.fs-thead, .fs-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 0 10px; }
+.fs-more { grid-column: 1 / -1; }
 /* 表头不透明底色（用户反馈 2026-11-17：此前 opacity:.75 连背景一起半透明，滚动后与内容重叠）；muted 观感用文字色实现 */
 .fs-thead { position: sticky; top: 0; background: var(--el-bg-color); z-index: 2; font-size: 12px; color: var(--el-text-color-secondary); height: 30px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .fs-row { height: 34px; cursor: default; border-bottom: 1px solid var(--el-border-color-extra-light); }
 .fs-row:hover { background: var(--el-fill-color-light); background-clip: padding-box; }
 .fs-row.selected { background: var(--el-color-primary-light-9); background-clip: padding-box; }
+/* 首尾两列横向固定（用户 2026-11-18）：复选框贴左、操作贴右，水平滚动时保持可见可操作 */
+.fs-col-check, .fs-col-op { position: sticky; background: var(--el-bg-color); }
+.fs-col-check { left: 0; z-index: 1; }
+.fs-col-op { right: 0; z-index: 1; }
+.fs-row:hover .fs-col-check, .fs-row:hover .fs-col-op { background: var(--el-fill-color-light); }
+.fs-row.selected .fs-col-check, .fs-row.selected .fs-col-op { background: var(--el-color-primary-light-9); }
+/* 表头本身 sticky（z2），其固定列更高一层（z3）盖过数据行固定列 */
+.fs-thead .fs-col-check, .fs-thead .fs-col-op { background: var(--el-bg-color); z-index: 3; }
 .fs-sortable { cursor: pointer; user-select: none; }
 .fs-col-check { display: flex; align-items: center; }
 .fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -2035,6 +2142,12 @@ function onKeydown(event: KeyboardEvent): void {
 /* PDF：Chromium 内置 viewer，iframe 撑满弹框可视区 */
 .fs-preview-body .fs-preview-pdf { width: 100%; height: 60vh; border: none; border-radius: 8px; background: var(--el-bg-color); }
 .fs-editor-body { height: 60vh; }
+/* 编辑器标题行：文件名 · 大小（统计信息自 footer 移到顶部，用户 2026-11-18） */
+.fs-editor-title { display: inline-flex; align-items: baseline; gap: 10px; font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
+.fs-editor-meta { font-size: 12px; font-weight: 400; opacity: .6; }
+.fs-admin-tip { margin-bottom: 8px; }
+/* 网格视图右键菜单（Teleport 到 body，fixed 定位） */
+.fs-ctx { position: fixed; z-index: 3000; background: var(--el-bg-color-overlay); border-radius: 6px; box-shadow: var(--el-box-shadow-light); }
 .fs-conflict-hint { color: var(--el-color-warning); font-size: 12px; margin-right: 12px; }
 .fs-move-body { display: flex; flex-direction: column; }
 
@@ -2065,7 +2178,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-props-k { flex: none; width: 72px; opacity: .6; }
 .fs-props-v { flex: 1; min-width: 0; word-break: break-all; }
 .fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.fs-convert-label { flex: none; width: 64px; font-size: 13px; opacity: .7; }
+/* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行） */
+.fs-convert-label { flex: none; width: auto; white-space: nowrap; font-size: 13px; opacity: .7; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }
 .fs-ziplimits-unit { flex: none; font-size: 13px; opacity: .7; }
 .fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }

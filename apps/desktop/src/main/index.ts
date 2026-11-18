@@ -7,6 +7,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tra
 import electronUpdaterPkg from 'electron-updater'
 const { autoUpdater } = electronUpdaterPkg
 import { cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { createHash, createPublicKey } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
@@ -186,6 +187,16 @@ function allManifests(): ToolDescriptor[] {
 
 function assertKnownTool(id: string): void {
   if (!allManifests().some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
+}
+
+/** Windows 是否提权运行：net session 仅管理员可成功（结果缓存，权限不会中途变化） */
+let elevatedCache: boolean | null = null
+function isElevated(): boolean {
+  if (process.platform !== 'win32') return false
+  if (elevatedCache === null) {
+    try { execSync('net session', { stdio: 'ignore' }); elevatedCache = true } catch { elevatedCache = false }
+  }
+  return elevatedCache
 }
 
 function readRecord<T>(key: string): Record<string, T> {
@@ -823,6 +834,7 @@ async function registerIpc(): Promise<void> {
     if (await shell.openPath(t)) throw new Error(`拒绝打开: ${t}`)
     return true
   })
+  handleOk(IPC_CHANNELS.osIsElevated, () => isElevated())
 
   // ── H3 日志落盘：渲染层日志汇入 + 日志目录信息 / 清空 ──
   ipcMain.on(IPC_CHANNELS.logFrontend, (_event, payload: { level?: string; scope?: string; msg?: string; detail?: unknown }) => {
