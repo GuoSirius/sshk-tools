@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { snapdom } from '@zumer/snapdom'
-import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, toStatRows } from '@sshk/badge-studio'
+import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, sanitizeMetricKey, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo, ShareRouteInfo } from '@sshk/shared'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
@@ -337,7 +337,7 @@ export function clearRows(): void {
   pastedStats.value = ''
 }
 export function addMetric(): void {
-  const key = newMetricKey.value.trim()
+  const key = sanitizeMetricKey(newMetricKey.value)
   if (!key) return
   if (['url', 'clicks', 'totalClicks'].includes(key) || customMetricKeys.value.includes(key)) {
     ElMessage.warning('列名重复或为保留列（url / clicks / totalClicks）')
@@ -615,7 +615,8 @@ export async function savePosterMeta(): Promise<void> {
       },
     })
     if (res?.posterId) currentPosterId.value = res.posterId
-    resetMetaBaseline()
+    // 保存即基线（用户 2026-11-18）：名称/配置与内容基线一并重置，保存后返回列表不再弹 dirty 提示
+    snapshotWorkspaceBaseline()
     ElMessage.success('已保存（名称与角标配置），无需重新生成')
     await loadPosters()
   } catch (err) {
@@ -922,10 +923,14 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
       const { html } = await host.badge.readHtml(row.source.htmlPath)
       pastedHtml.value = html
       statRows.value = toStatRows(row.statsSnapshot ?? [], [])
-      // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）
-      const savedMarks = (row as PosterRecord & { markCounts?: Record<string, number> }).markCounts
+      // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）；
+      // 2026-11-18 起落库为数组形态（url 含「.」不能作 Mongo 字段键），兼容旧 Record 形态
+      const savedMarks = (row as PosterRecord & { markCounts?: Array<{ url: string; count: number }> | Record<string, number> }).markCounts
       if (savedMarks) {
-        for (const r of statRows.value) r.matched = savedMarks[r.url] ?? 0
+        const marks = Array.isArray(savedMarks)
+          ? Object.fromEntries(savedMarks.map((m) => [m.url, m.count]))
+          : savedMarks
+        for (const r of statRows.value) r.matched = marks[r.url] ?? 0
       }
     } catch (err) {
       ElMessage.error('载入海报失败：' + (err as Error).message)
@@ -977,7 +982,6 @@ function takeBaseline(): WorkspaceBaseline {
   }
 }
 function snapshotAll(): void { metaBaseline = takeBaseline(); contentBaseline = takeBaseline() }
-function resetMetaBaseline(): void { if (metaBaseline) metaBaseline = takeBaseline() }
 
 /** 进入生成页（应用启动/新建/载入海报）时记录基线；生成成功也重置（生成即保存了内容与配置） */
 export function snapshotWorkspaceBaseline(): void { snapshotAll() }

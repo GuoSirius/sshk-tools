@@ -3,6 +3,7 @@ export {
   parseDatasource,
   parseCsvText,
   parseNumberToken,
+  sanitizeMetricKey,
   rowsToCsv,
   toStatRows,
 } from './core/datasource.js'

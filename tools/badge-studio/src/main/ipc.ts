@@ -298,6 +298,8 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       badgePositionImage: input.config.defaultPositions?.image,
     }
     const outputs: Poster['outputs'] = { badged: badgedRel }
+    // markCounts 数组形态落库：url 作字段键必含「.」，Mongo 会拒插（2026-11-18 事故）
+    const markCounts = Object.entries(matchCounts).map(([url, count]) => ({ url, count }))
     const datasources: Poster['datasources'] = input.statsFileRel
       ? [{ file: input.statsFileRel, kind: kindOf(input.statsFileRel) }]
       : []
@@ -323,7 +325,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         datasources,
         configSnapshot: snapshot,
         statsSnapshot: input.stats,
-        markCounts: matchCounts,
+        markCounts,
         markReport: markReportRel,
         outputs: { ...existing.outputs, badged: badgedRel },
         status: 'generated',
@@ -338,7 +340,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         source,
         sourceHash,
         statsSnapshot: input.stats,
-        markCounts: matchCounts,
+        markCounts,
         markReport: markReportRel,
         datasources,
         configSnapshot: snapshot,

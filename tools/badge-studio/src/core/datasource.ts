@@ -30,6 +30,12 @@ export function parseNumberToken(raw: unknown, thousandsSeparator = true): numbe
   return Number(cleaned)
 }
 
+/** 自定义数值列名净化：列名会进统计快照落库，Mongo 字段键不允许「.」（2026-11-18 事故），
+ *  解析入口统一把半角点替换为间隔点「·」，全链（表格/CSV/快照）保持一致 */
+export function sanitizeMetricKey(name: string): string {
+  return name.trim().replaceAll('.', '·')
+}
+
 function pick(row: Record<string, unknown>, keys: string[]): unknown {
   for (const key of keys) {
     const hit = Object.keys(row).find((k) => k.trim().toLowerCase() === key)
@@ -42,7 +48,7 @@ function pick(row: Record<string, unknown>, keys: string[]): unknown {
 function collectMetrics(raw: Record<string, unknown>): Record<string, number> | undefined {
   const metrics: Record<string, number> = {}
   for (const [key, value] of Object.entries(raw)) {
-    const name = key.trim()
+    const name = sanitizeMetricKey(key)
     if (!name || RESERVED.has(name.toLowerCase()) || String(value ?? '').trim() === '') continue
     const num = parseNumberToken(value)
     if (Number.isFinite(num)) metrics[name] = Math.round(num)
@@ -109,7 +115,7 @@ export function parseCsvText(
     const metrics: Record<string, number> = {}
     for (const { name, index } of customCols) {
       const num = parseNumberToken(cells[index], options.thousandsSeparator ?? true)
-      if (Number.isFinite(num)) metrics[name] = Math.round(num)
+      if (Number.isFinite(num)) metrics[sanitizeMetricKey(name)] = Math.round(num)
     }
     rows.push({
       url,

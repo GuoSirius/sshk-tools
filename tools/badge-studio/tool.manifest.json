@@ -10,7 +10,7 @@
     "海报生成"
   ],
   "icon": "auto",
-  "entryRoute": "generate",
+  "entryRoute": "posters",
   "enabled": true,
   "configLayout": "single",
   "plugin": {
@@ -40,12 +40,12 @@
   "requiredGrant": "",
   "menus": [
     {
-      "id": "generate",
-      "label": "生成海报"
-    },
-    {
       "id": "posters",
       "label": "海报列表"
+    },
+    {
+      "id": "generate",
+      "label": "生成海报"
     },
     {
       "id": "config",

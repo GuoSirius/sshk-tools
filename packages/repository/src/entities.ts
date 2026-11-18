@@ -153,8 +153,9 @@ export interface Poster extends BaseEntity {
   status: EntityStatus
   /** 生成时的点击统计（可编辑重生成） */
   statsSnapshot?: StatsSnapshot
-  /** 生成后的标记核对数据：url → 实际被标记次数（用户 2026-11-17：随海报保存，重开可回显） */
-  markCounts?: Record<string, number>
+  /** 生成后的标记核对数据（用户 2026-11-17：随海报保存，重开可回显）。
+   *  数组形态存储：url 作 Mongo 字段键必含「.」会插入失败（2026-11-18 事故），读端兼容旧 Record 形态 */
+  markCounts?: Array<{ url: string; count: number }>
   /** 标记核对报告（CSV，相对 app.outputDir） */
   markReport?: string
   lastGeneratedAt?: string

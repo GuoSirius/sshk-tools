@@ -26,7 +26,7 @@ const props = defineProps<{ menu?: string; toolId?: string }>()
 toolId.value = props.toolId ?? ''
 provideToolId(() => props.toolId ?? '')
 
-const tab = computed(() => props.menu ?? 'generate')
+const tab = computed(() => props.menu ?? 'posters')
 const pages: Record<string, unknown> = { generate: GeneratePage, posters: PostersPage }
 const active = computed(() => pages[tab.value] ?? GeneratePage)
 const isPosters = computed(() => tab.value === 'posters')

@@ -371,15 +371,21 @@ watch(() => props.open, (open) => {
         <p class="share-error">分享状态读取失败：{{ loadError }}，可点「重试」或关闭。</p>
       </div>
 
-      <!-- 创建态（无票 / 撤销后统一回这里）：同一套设置行，点「创建分享」才生效 -->
+      <!-- 创建态（无票 / 撤销后统一回这里）：固定高度居中表单，点「创建分享」才生效 -->
       <template v-else-if="phase === 'form'">
-        <p class="share-form-title">当前未创建分享链接{{ formHint }}。</p>
-        <div class="share-form-tip">点「创建分享」后才会创建链接并自动复制；下方设置随创建生效。</div>
-        <div class="share-ttl-row">
-          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" :disabled="permanentSel" />
-          <span class="ttl-unit">小时</span>
-          <el-checkbox v-model="permanentSel" class="perm-check">永久有效</el-checkbox>
-          <el-checkbox v-model="allowIndex" class="allow-index-check" title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问">允许访问目录</el-checkbox>
+        <div class="share-form">
+          <p class="share-form-title">当前未创建分享链接{{ formHint }}。</p>
+          <div class="share-form-tip">点「创建分享」后才会创建链接并自动复制；下方设置随创建生效。</div>
+          <div class="share-field">
+            <span class="field-label">有效期</span>
+            <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-num" :disabled="permanentSel" />
+            <span class="ttl-unit">小时</span>
+            <el-checkbox v-model="permanentSel" class="perm-check">永久有效</el-checkbox>
+          </div>
+          <div class="share-field">
+            <span class="field-label">目录访问</span>
+            <el-checkbox v-model="allowIndex" class="allow-index-check" title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问">允许访问目录</el-checkbox>
+          </div>
         </div>
       </template>
 
@@ -449,10 +455,17 @@ watch(() => props.open, (open) => {
 </template>
 
 <style scoped>
-.share-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; }
+.share-dialog { min-height: 340px; display: flex; flex-direction: column; }
+.share-loading { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 340px; text-align: center; }
 .share-error { margin: 0 16px; color: var(--el-color-danger); line-height: 1.6; }
-.share-form-title { margin: 0 0 2px; line-height: 1.6; }
-.share-form-tip { margin: 0 0 10px; font-size: 12px; opacity: 0.65; }
+.share-form { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 0 24px; }
+.share-form-title { margin: 0; line-height: 1.6; }
+.share-form-tip { margin: -6px 0 4px; font-size: 12px; opacity: 0.65; }
+.share-field { display: flex; align-items: center; gap: 10px; }
+.share-field .field-label { flex: none; width: 64px; font-size: 12px; opacity: 0.7; }
+.share-field .ttl-num { flex: none; width: 150px; }
+.share-field .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; margin-right: 4px; }
+.dirty-tip { color: var(--el-color-warning); opacity: 1; }
 .allow-index-check { flex: none; height: auto; }
 .allow-index-check :deep(.el-checkbox__label) { font-size: 12px; }
 .perm-check { flex: none; height: auto; }
@@ -464,7 +477,6 @@ watch(() => props.open, (open) => {
 .share-ttl-row .ttl-input { flex: 1; min-width: 0; }
 .share-ttl-row .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; }
 .share-ttl-row .el-button { flex: none; }
-.share-ttl-row .el-checkbox { flex: none; }
 .share-qr-block { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 14px; }
 .share-qr { flex: none; width: 132px; height: 132px; border: 1px solid var(--el-border-color); border-radius: 6px; overflow: hidden; background: #fff; }
 .share-qr :deep(svg) { width: 100%; height: 100%; display: block; }

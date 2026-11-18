@@ -1,4 +1,4 @@
-import { parseNumberToken, type StatRow } from './datasource.js'
+import { parseNumberToken, sanitizeMetricKey, type StatRow } from './datasource.js'
 
 /**
  * PaddleOCR 版式配置（用户可配，宿主不猜）。
@@ -60,7 +60,7 @@ function toRow(url: string, nums: number[], columns: string[]): StatRow | null {
     if (value === undefined) continue
     if (column === 'clicks') row.clicks = value
     else if (column.toLowerCase() === 'totalclicks') row.totalClicks = value
-    else metrics[column] = value
+    else metrics[sanitizeMetricKey(column)] = value
   }
   if (row.totalClicks === 0) row.totalClicks = row.clicks
   if (Object.keys(metrics).length > 0) row.metrics = metrics
