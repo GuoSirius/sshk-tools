@@ -26,6 +26,7 @@ import {
   Rank,
   Refresh,
   Search,
+  Setting,
   Star,
   TrendCharts,
   Upload,
@@ -166,6 +167,31 @@ const listGridCols = computed(() => {
   cols.push('max-content')
   return cols.join(' ')
 })
+
+// ── §十一：压缩/解压上限设置（持久到 app 配置，main 侧钳制合法区间）──
+const zipLimitsOpen = ref(false)
+const zipLimitsForm = ref({ fileCap: 3000, bytesCapMb: 500 })
+const zipLimitsSaving = ref(false)
+async function openZipLimits(): Promise<void> {
+  try {
+    const cur = await window.api.fs.zipLimits()
+    zipLimitsForm.value = { fileCap: cur.fileCap, bytesCapMb: cur.bytesCapMb }
+  } catch { /* 读取失败按缺省值打开 */ }
+  zipLimitsOpen.value = true
+}
+async function submitZipLimits(): Promise<void> {
+  zipLimitsSaving.value = true
+  try {
+    const r = await window.api.fs.setZipLimits({ fileCap: zipLimitsForm.value.fileCap, bytesCapMb: zipLimitsForm.value.bytesCapMb })
+    zipLimitsForm.value = { fileCap: r.fileCap, bytesCapMb: r.bytesCapMb }
+    ElMessage.success('压缩上限已更新')
+    zipLimitsOpen.value = false
+  } catch (err) {
+    ElMessage.error(friendlyError(err))
+  } finally {
+    zipLimitsSaving.value = false
+  }
+}
 
 // ── §十一：目录备注（应用侧 fsAnnotations）──
 const annotations = ref(new Map<string, string>())
@@ -971,6 +997,7 @@ function moreCommand(cmd: unknown): void {
     case 'downloaddir': void changeDownloadDir(); return
     case 'opendir': void openDownloadDir(); return
     case 'cols': colsOpen.value = true; return
+    case 'ziplimits': void openZipLimits(); return
     case 'note': openNote(selectedEntries.value); return
     case 'favorite': void addFavorites(selectedEntries.value); return
     case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
@@ -1477,6 +1504,7 @@ function onKeydown(event: KeyboardEvent): void {
             <!-- 视图与设置组 -->
             <el-dropdown-item command="copyto" :icon="CopyDocument" divided :disabled="!selectedEntries.length">复制到…</el-dropdown-item>
             <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
+            <el-dropdown-item command="ziplimits" :icon="Setting">压缩上限设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
@@ -1882,6 +1910,27 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
+    <!-- §十一：压缩/解压上限设置（app.fs.zipFileCap / zipBytesCap） -->
+    <el-dialog v-model="zipLimitsOpen" title="压缩上限设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
+      <div class="fs-ziplimits">
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">文件数上限</span>
+          <el-input-number v-model="zipLimitsForm.fileCap" size="small" :min="10" :max="100000" :step="100" :controls="false" style="width: 150px" data-autofocus />
+          <span class="fs-ziplimits-unit">个</span>
+        </div>
+        <div class="fs-convert-row" style="margin-top: 10px">
+          <span class="fs-convert-label">容量上限</span>
+          <el-input-number v-model="zipLimitsForm.bytesCapMb" size="small" :min="1" :max="4096" :step="50" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">MB</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">单次压缩 / 解压共用；超出即中止，防大目录占满内存。</div>
+      </div>
+      <template #footer>
+        <el-button @click="zipLimitsOpen = false">取消</el-button>
+        <el-button type="primary" :loading="zipLimitsSaving" @click="submitZipLimits">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- §十一：收藏夹（跨通道直达） -->
     <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" close-on-click-modal="false" close-on-press-escape="false">
       <div v-if="!favorites.length" class="fs-empty"><p>还没有收藏</p><p class="fs-empty-hint">选中文件/目录后在「更多 ▾」里添加收藏</p></div>
@@ -2018,6 +2067,7 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .fs-convert-label { flex: none; width: 64px; font-size: 13px; opacity: .7; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }
+.fs-ziplimits-unit { flex: none; font-size: 13px; opacity: .7; }
 .fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }
 .fs-fav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
 .fs-fav-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }

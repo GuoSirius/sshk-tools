@@ -100,6 +100,9 @@ export const IPC_CHANNELS = {
   /** 压缩 / 解压（§十一，仅本地通道，fflate） */
   fsZip: 'fs:zip',
   fsUnzip: 'fs:unzip',
+  /** 压缩/解压上限设置（app.fs.zipFileCap / zipBytesCap，可配置） */
+  fsZipLimits: 'fs:zipLimits',
+  fsZipLimitsSet: 'fs:zipLimitsSet',
   /** 目录备注 / 收藏夹（§十一，应用侧 fsAnnotations / fsFavorites 集合） */
   fsAnnotationList: 'fs:annotation:list',
   fsAnnotationSet: 'fs:annotation:set',

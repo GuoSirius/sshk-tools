@@ -68,9 +68,36 @@ const MAX_TASKS = 2000
 const MAX_LOCAL_FILES = 5000
 /** 文本编码/换行符转换的文件大小上限（§十一 转换格式 A） */
 const FS_TEXT_CONVERT_LIMIT = 20 * 1024 * 1024
-/** zip 压缩/解压的文件数与字节上限（内存型操作，防 OOM） */
-const FS_ZIP_FILE_CAP = 3000
-const FS_ZIP_BYTES_CAP = 500 * 1024 * 1024
+/** zip 压缩/解压上限的可配置键与缺省值（内存型操作，防 OOM；渲染层可在「压缩上限设置」调整） */
+const CFG_ZIP_FILE_CAP = 'app.fs.zipFileCap'
+const CFG_ZIP_BYTES_CAP = 'app.fs.zipBytesCap'
+const FS_ZIP_FILE_CAP_DEFAULT = 3000
+const FS_ZIP_BYTES_CAP_DEFAULT = 500 * 1024 * 1024
+/** 配置读取后的合法区间钳制（防止误填离谱值） */
+const FS_ZIP_FILE_CAP_MIN = 10
+const FS_ZIP_FILE_CAP_MAX = 100_000
+const FS_ZIP_BYTES_CAP_MIN = 1024 * 1024
+const FS_ZIP_BYTES_CAP_MAX = 4 * 1024 * 1024 * 1024
+
+/** 本地绝对路径取最后一段：系统弹框/拖拽在 Windows 下是反斜杠路径，不适用 root-rel 的 fsBasename */
+function localBasename(abs: string): string {
+  const s = String(abs ?? '').replace(/[\\/]+$/, '')
+  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
+  return i < 0 ? s : s.slice(i + 1)
+}
+
+/** 从配置读 zip 上限（缺省/非法回落默认值并钳制到合法区间） */
+function readZipCaps(get: (key: string) => unknown): { fileCap: number; bytesCap: number } {
+  const fileCap = Math.min(
+    FS_ZIP_FILE_CAP_MAX,
+    Math.max(FS_ZIP_FILE_CAP_MIN, Math.floor(Number(get(CFG_ZIP_FILE_CAP)) || FS_ZIP_FILE_CAP_DEFAULT)),
+  )
+  const bytesCap = Math.min(
+    FS_ZIP_BYTES_CAP_MAX,
+    Math.max(FS_ZIP_BYTES_CAP_MIN, Math.floor(Number(get(CFG_ZIP_BYTES_CAP)) || FS_ZIP_BYTES_CAP_DEFAULT)),
+  )
+  return { fileCap, bytesCap }
+}
 /** 删除任务计入队列的目录（递归删除走队列，带进度） */
 
 interface RuntimeResolved {
@@ -833,15 +860,16 @@ export class FsRuntime {
     if (!/\.zip$/i.test(zipPath)) throw new Error('压缩包名须以 .zip 结尾')
     const exists = await driver.stat(zipPath)
     if (exists.exists) throw new Error('同名压缩包已存在，请换一个名字')
+    const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
     const zipData: Record<string, Uint8Array> = {}
     let files = 0
     let bytes = 0
 
     const addFile = async (rel: string, zipRel: string): Promise<void> => {
-      if (files >= FS_ZIP_FILE_CAP) throw new Error(`超过单次压缩 ${FS_ZIP_FILE_CAP} 个文件上限，已中止`)
+      if (files >= fileCap) throw new Error(`超过单次压缩 ${fileCap} 个文件上限，已中止`)
       const { data } = await driver.readBuffer(rel)
-      if (bytes + data.length > FS_ZIP_BYTES_CAP) {
-        throw new Error(`超过单次压缩 ${fsFormatSize(FS_ZIP_BYTES_CAP)} 上限，已中止`)
+      if (bytes + data.length > bytesCap) {
+        throw new Error(`超过单次压缩 ${fsFormatSize(bytesCap)} 上限，已中止`)
       }
       zipData[zipRel] = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
       files++
@@ -879,7 +907,8 @@ export class FsRuntime {
     if (!isFsZipName(zipPath)) throw new Error('仅支持 .zip 压缩包')
     const stat = await driver.stat(zipPath)
     if (!stat.exists || stat.isDir) throw new Error('压缩包不存在')
-    if ((stat.size ?? 0) > FS_ZIP_BYTES_CAP) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
+    const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
+    if ((stat.size ?? 0) > bytesCap) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
     const { data } = await driver.readBuffer(zipPath)
     const entries = unzipSync(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
     const destDir = zipPath.replace(/\.zip$/i, '')
@@ -890,8 +919,8 @@ export class FsRuntime {
       if (/^[\\/]/.test(name) || name.includes('..') || name.includes('\\')) {
         throw new Error(`压缩包含非法路径条目：${name}（已中止，未解出任何文件）`)
       }
-      if (bytes + content.length > FS_ZIP_BYTES_CAP) throw new Error(`解压内容超过 ${fsFormatSize(FS_ZIP_BYTES_CAP)} 上限，已中止`)
-      if (files >= FS_ZIP_FILE_CAP) throw new Error(`解压内容超过 ${FS_ZIP_FILE_CAP} 个文件上限，已中止`)
+      if (bytes + content.length > bytesCap) throw new Error(`解压内容超过 ${fsFormatSize(bytesCap)} 上限，已中止`)
+      if (files >= fileCap) throw new Error(`解压内容超过 ${fileCap} 个文件上限，已中止`)
       if (name.endsWith('/')) {
         await driver.mkdir(`${destDir}/${name.replace(/\/+$/, '')}`)
         continue
@@ -1102,6 +1131,27 @@ export class FsRuntime {
     return clean
   }
 
+  /** 压缩/解压上限（可配置；bytes 以 MB 供 UI 展示，内部按字节持久化） */
+  zipLimits(): { fileCap: number; bytesCapMb: number } {
+    const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
+    return { fileCap, bytesCapMb: Math.round(bytesCap / (1024 * 1024)) }
+  }
+
+  setZipLimits(req: { fileCap?: number; bytesCapMb?: number }): { fileCap: number; bytesCapMb: number } {
+    const cfg = this.opts.services.config
+    if (req?.fileCap != null) {
+      const v = Math.floor(Number(req.fileCap))
+      if (!Number.isFinite(v)) throw new Error('文件数上限必须是数字')
+      cfg.set(CFG_ZIP_FILE_CAP, Math.min(FS_ZIP_FILE_CAP_MAX, Math.max(FS_ZIP_FILE_CAP_MIN, v)))
+    }
+    if (req?.bytesCapMb != null) {
+      const v = Math.floor(Number(req.bytesCapMb))
+      if (!Number.isFinite(v)) throw new Error('容量上限必须是数字')
+      cfg.set(CFG_ZIP_BYTES_CAP, Math.min(FS_ZIP_BYTES_CAP_MAX, Math.max(FS_ZIP_BYTES_CAP_MIN, v * 1024 * 1024)))
+    }
+    return this.zipLimits()
+  }
+
   // ── 本地文件选择 / 展平 ──
 
   async pickUpload(opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]> {
@@ -1117,7 +1167,8 @@ export class FsRuntime {
     return result.canceled ? [] : result.filePaths
   }
 
-  /** 递归展平本地待上传路径（保留相对目录结构；上限 5000 个文件） */
+  /** 递归展平本地待上传路径（保留相对目录结构；上限 5000 个文件）
+   *  注意：入参是本地绝对路径（系统弹框/拖拽，Windows 下带反斜杠），不能走 root-rel 的 fsBasename */
   flattenLocal(paths: string[]): FsLocalFile[] {
     const out: FsLocalFile[] = []
     const walk = (abs: string, rel: string): void => {
@@ -1125,7 +1176,7 @@ export class FsRuntime {
       let st
       try { st = statSync(abs) } catch { return }
       if (st.isFile()) {
-        out.push({ name: rel.split('/').pop() ?? rel, localPath: abs, relPath: rel || fsBasename(abs), size: st.size })
+        out.push({ name: rel.split('/').pop() ?? rel, localPath: abs, relPath: rel || localBasename(abs), size: st.size })
         return
       }
       if (!st.isDirectory()) return
@@ -1139,7 +1190,7 @@ export class FsRuntime {
     for (const raw of Array.isArray(paths) ? paths.slice(0, 100) : []) {
       const abs = String(raw ?? '')
       if (!abs || !existsSync(abs)) continue
-      walk(abs, fsBasename(abs))
+      walk(abs, localBasename(abs))
     }
     return out
   }

@@ -154,6 +154,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H22', group: 'H', title: '编辑权限与属性（§十一）', guide: '本地/SFTP 单选文件或目录「编辑权限…」：rwx 勾选与八进制双向联动，点修改后二次确认才写入并刷新列表；「属性」弹框按通道如实展示名称/路径/大小/时间/权限/用户组/备注（含编辑入口）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
   { id: 'H23', group: 'H', title: '文本编码/换行符转换与压缩解压（§十一）', guide: '本地/SFTP/云对文本文件「转换编码/换行符…」：自动检测源编码 → 确认后写回并提示实际判定结果；本地通道「压缩为 zip…」（多选也支持）与「解压到新目录」（zip 文件才出），解压结果在同级新目录', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
   { id: 'H24', group: 'H', title: '必填红星与弹框自动聚焦', guide: '各处新建/编辑表单必填项（通道名称/Bucket/AccessKey ID、主机、品牌 code/名称、模板/片段名称、邮件名称、海报名等）显示红星并在保存时拦截空值；所有弹框打开后输入框自动聚焦，不用先点一下', entry: { type: 'route', target: 'upload-manager' }, relates: 'U1' },
+  { id: 'H25', group: 'H', title: '压缩上限设置与 Windows 路径修复（§十一）', guide: '「更多 ▾ → 压缩上限设置…」可调单次压缩/解压的文件数与容量上限（默认 3000 个 / 500MB），保存后立即生效并跨重启记忆；Windows 下拖拽或系统弹框选择文件/文件夹上传不再报「路径不允许包含反斜杠」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§十一' },
 
   // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──
   { id: 'S1', group: 'S', title: '冷启动 autoStart 开 → 运行中', guide: '设置 →「分享服务」tab：服务状态显示「运行中 · 端口 xxxxx」，展示 IP 为自动优选地址', entry: { type: 'settings', target: 'share' }, auto: { kind: 'hostCapability', spec: 'shareHub' }, relates: 'ShareHub/§3.1' },

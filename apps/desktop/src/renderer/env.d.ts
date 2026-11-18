@@ -168,6 +168,9 @@ interface Window {
       /** 压缩 / 解压（§十一，仅本地通道） */
       zip(req: import('@sshk/shared').FsZipRequest): Promise<import('@sshk/shared').FsZipResult>
       unzip(req: import('@sshk/shared').FsUnzipRequest): Promise<import('@sshk/shared').FsUnzipResult>
+      /** 压缩/解压上限（可配置） */
+      zipLimits(): Promise<{ fileCap: number; bytesCapMb: number }>
+      setZipLimits(req: { fileCap?: number; bytesCapMb?: number }): Promise<{ fileCap: number; bytesCapMb: number }>
       /** 目录备注 / 收藏夹（§十一，应用侧集合） */
       annotationList(profileId: string): Promise<Record<string, string>>
       annotationSet(req: { profileId: string; path: string; note: string }): Promise<boolean>

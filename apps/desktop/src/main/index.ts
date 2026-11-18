@@ -747,6 +747,8 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.fsConvertText, (_event, req: Parameters<FsRuntime['convertText']>[0]) => fsRuntime.convertText(req))
   handleOk(IPC_CHANNELS.fsZip, (_event, req: Parameters<FsRuntime['zip']>[0]) => fsRuntime.zip(req))
   handleOk(IPC_CHANNELS.fsUnzip, (_event, req: Parameters<FsRuntime['unzip']>[0]) => fsRuntime.unzip(req))
+  handleOk(IPC_CHANNELS.fsZipLimits, () => fsRuntime.zipLimits())
+  handleOk(IPC_CHANNELS.fsZipLimitsSet, (_event, req: Parameters<FsRuntime['setZipLimits']>[0]) => fsRuntime.setZipLimits(req))
   handleOk(IPC_CHANNELS.fsAnnotationList, (_event, profileId: string) => fsRuntime.annotationList(profileId))
   handleOk(IPC_CHANNELS.fsAnnotationSet, (_event, req: Parameters<FsRuntime['annotationSet']>[0]) => fsRuntime.annotationSet(req))
   handleOk(IPC_CHANNELS.fsFavoriteList, () => fsRuntime.favoriteList())
