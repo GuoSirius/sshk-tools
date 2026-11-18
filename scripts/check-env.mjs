@@ -43,6 +43,8 @@ const EXTERNAL_KEYS = new Map([
   ['CI', 'CI 平台注入'],
   ['NO_COLOR', '终端通用约定（no-color.org）'],
   ['ELECTRON_RENDERER_URL', 'Vite / Electron 开发服务器启动时注入'],
+  ['LOCALAPPDATA', 'OS 标准目录变量（Windows），对齐 electron-updater 缓存目录口径'],
+  ['XDG_CACHE_HOME', 'XDG 基础目录规范（Linux 缓存目录），对齐 electron-updater 缓存目录口径'],
 ])
 /** Vite 内置编译期常量，不是环境变量 */
 const VITE_BUILTIN = new Set(['DEV', 'PROD', 'MODE', 'BASE_URL', 'SSR'])

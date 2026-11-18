@@ -476,6 +476,8 @@ export interface ShareRouteInfo {
   createdAt: number
   /** 访问/下载命中计数 */
   hits: number
+  /** 访问口令（空串=无）；工具拼「前缀+路径」直达链接时需追加 ?key= 才能通过校验 */
+  password?: string
 }
 
 /** 一个候选展示 IP（供设置 tab 下拉展示） */

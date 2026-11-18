@@ -797,7 +797,8 @@ export async function openShare(poster: Pick<PosterRecord, '_id' | 'name'>): Pro
 const SHARE_LIST_SPEC: HostApiSpec = { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' }
 const LIST_SHARE_LABEL = '海报列表'
 
-/** 打开列表分享对话框（右上角「分享列表」）：root=产物根、entry=''；TTL 在对话框内自行调（0=永久） */
+/** 打开列表分享对话框（右上角「分享列表」）：root=产物根（一份公用票），其 URL 即「短链前缀」；
+ *  前缀本身单独打开是目录列表页，但行级「复制链接」永远复制 前缀+本行路径 的直达链接，不是目录。TTL 弹框内自调（0=永久） */
 export async function openListShare(): Promise<void> {
   shareDialog.loading = true
   try {
@@ -810,31 +811,48 @@ export async function openListShare(): Promise<void> {
   }
 }
 
-/** 校验路由存活（撤销/过期的不复制）；list 失败时信任本地未过期记录 */
-async function ticketAlive(toolId: string, ticket: { id: string; expiresAt: number }): Promise<boolean> {
-  if (ticket.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && ticket.expiresAt <= Date.now()) return false
+/** 校验路由存活并返回路由信息（撤销/过期判死；list 失败时信任本地未过期记录，password 未知按无口令拼） */
+async function findAliveRoute(toolId: string, ticket: { id: string; token: string; expiresAt: number }): Promise<ShareRouteInfo | null> {
+  if (ticket.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && ticket.expiresAt <= Date.now()) return null
   try {
     const routes = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolId)
-    return routes.some((r) => r.id === ticket.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
-  } catch { return true }
+    const hit = routes.find((r) => r.id === ticket.id)
+    if (!hit) return null
+    if (hit.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && hit.expiresAt <= Date.now()) return null
+    return hit
+  } catch {
+    // list 不可用（如宿主桥接旧）时退化为信任本地票：只保「能复制」，不保口令拼接
+    return { id: ticket.id, token: ticket.token, urls: [], expiresAt: ticket.expiresAt, password: '' } as unknown as ShareRouteInfo
+  }
 }
 
-/** 行级「复制链接」：自己有分享用自己（含口令链接），否则用列表分享前缀拼本行产物路径 */
+/** 拼「前缀+相对路径」直达链接：路径逐段编码（中文/空格），带口令的路由补 ?key=（否则 403） */
+function buildShareUrl(prefix: string, relPath: string, route: ShareRouteInfo | null): string {
+  const base = prefix.replace(/\/+$/, '') + '/' + relPath.split('/').map(encodeURIComponent).join('/')
+  const key = route && typeof route.password === 'string' && route.password ? `?key=${encodeURIComponent(route.password)}` : ''
+  return base + key
+}
+
+/** 行级「复制链接」（用户 2026-11-18 定版）：
+ *  ① 本行自己的分享页面（更多→分享页面创建，TTL 自定）存活 → 复制它；
+ *  ② 否则用顶部「分享列表」生成的公用前缀 + 本行产物相对路径 → 直达本行的短链；
+ *  ③ 都没有 → 引导去生成。绝不复制裸前缀（目录页）链接。 */
 export async function copyPosterLink(row: PosterRecord): Promise<void> {
   const resolved = await host.badge.shareResolve({ posterId: row._id }) as { root: string; entry: string; label: string }
   // ① 本行自己的分享
   const own = readShareTicket(toolId.value, resolved.label, resolved.root, resolved.entry)
-  if (own && await ticketAlive(toolId.value, own)) {
-    await host.os.clipboardWrite(own.urls[0] ?? '')
-    ElMessage.success('已复制本海报的分享链接')
+  const ownRoute = own && await findAliveRoute(toolId.value, own)
+  if (own && ownRoute && own.urls[0]) {
+    await host.os.clipboardWrite(buildShareUrl(own.urls[0], '', ownRoute))
+    ElMessage.success('已复制本海报的专属分享链接')
     return
   }
   // ② 列表分享前缀 + 本行产物相对路径
   const list = readShareTicket(toolId.value, LIST_SHARE_LABEL, resolved.root, '')
-  if (list && await ticketAlive(toolId.value, list)) {
-    const prefix = (list.urls[0] ?? '').replace(/\/+$/, '')
-    await host.os.clipboardWrite(prefix + '/' + resolved.entry)
-    ElMessage.success('已复制分享链接（来自列表分享）')
+  const listRoute = list && await findAliveRoute(toolId.value, list)
+  if (list && listRoute && list.urls[0] && resolved.entry) {
+    await host.os.clipboardWrite(buildShareUrl(list.urls[0], resolved.entry, listRoute))
+    ElMessage.success('已复制分享链接（列表前缀 + 本海报）')
     return
   }
   ElMessage.warning('还没有可用分享：点右上角「分享列表」生成链接前缀，或在「更多 → 分享页面」为本海报单独分享')

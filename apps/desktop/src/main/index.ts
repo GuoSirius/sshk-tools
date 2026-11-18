@@ -1,7 +1,7 @@
 import './env-load'
 // ⚠️ 必须在 import 'electron-updater' 之前求值：electron-updater 构造期缓存 app 版本快照，
 // dev 伪装版本号的覆盖必须先发生（详见 update-dev-fake.ts 头注释）
-import { updateDevCheck } from './update-dev-fake'
+import { updateDevCheck, resetDevUpdatePendingCache } from './update-dev-fake'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tray, Menu } from 'electron'
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
@@ -526,6 +526,8 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.updateCheck, async () => {
     if (autoUpdateDisabled) { pushUpdate({ phase: 'disabled' }); return { disabled: true } }
     if (isDev && !updateDevCheck) { pushUpdate({ phase: 'dev' }); return { dev: true } }
+    // dev 更新测试：每次检查前清 pending 缓存 → 每次都重新下载，进度条可反复观察（KEEP_CACHE=1 保留）
+    if (updateDevCheck) resetDevUpdatePendingCache()
     try {
       const result = await autoUpdater.checkForUpdates()
       const version = result?.updateInfo?.version ?? null
@@ -987,6 +989,8 @@ function setupAutoUpdate(): void {
   // 尊重「自动更新」开关：关闭则仅在用户手动「检查更新」时检测
   const auto = services?.config.get('app.autoUpdate')
   if (auto !== false) {
+    // dev 更新测试：启动自动检查同样先清 pending 缓存（与手动检查口径一致）
+    if (updateDevCheck) resetDevUpdatePendingCache()
     void autoUpdater.checkForUpdates().catch((err: unknown) => {
       console.warn('[sshk] 自动更新检查失败：', err)
       pushUpdate({ phase: 'error', error: (err as Error).message })
