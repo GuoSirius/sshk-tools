@@ -30,6 +30,7 @@ import {
   Search,
   Setting,
   Star,
+  StarFilled,
   TrendCharts,
   Upload,
   VideoCamera,
@@ -166,6 +167,7 @@ const listGridCols = computed(() => {
   if (colShown.value.mode) cols.push('64px')
   if (colShown.value.owner) cols.push('110px')
   if (colShown.value.note) cols.push('150px')
+  cols.push('32px') // 收藏快捷列（hover 显示 / 已收藏常显）
   cols.push('max-content')
   return cols.join(' ')
 })
@@ -653,6 +655,12 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
 // 管理员模式（2026-11-18 用户实测）：Windows UIPI 拦截「普通权限资源管理器 → 提权进程」的拖放消息，
 // 拖拽事件根本不进应用——这是系统安全边界，代码无法绕过；页面用提示条引导改用「上传文件」按钮。
 const elevated = ref(false)
+/** 管理员拖放提示：用户可关闭，关闭后记忆不再打扰（localStorage） */
+const adminTipDismissed = ref(localStorage.getItem('sshk.fs.adminTipDismissed') === '1')
+function dismissAdminTip(): void {
+  adminTipDismissed.value = true
+  localStorage.setItem('sshk.fs.adminTipDismissed', '1')
+}
 const dragOver = ref(false)
 let dragDepth = 0
 function isFileDrag(e: DragEvent): boolean {
@@ -1120,6 +1128,11 @@ async function removeFavorite(entry: FsEntry): Promise<void> {
     ElMessage.error(friendlyError(err))
   }
 }
+/** 行末星标快捷收藏：已收藏=取消，未收藏=添加；复用同一状态与提示 */
+function toggleFav(entry: FsEntry): void {
+  if (isFavorited(entry.path)) void removeFavorite(entry)
+  else void addFavorites([entry])
+}
 async function removeFavoriteById(f: FsFavorite): Promise<void> {
   try {
     await window.api.fs.favoriteRemove(f._id)
@@ -1569,10 +1582,11 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 文件列表 -->
     <el-alert
-      v-if="elevated"
+      v-if="elevated && !adminTipDismissed"
       class="fs-admin-tip"
-      type="warning" :closable="false" show-icon
+      type="warning" closable show-icon
       title="当前以管理员模式运行：Windows 系统会拦截资源管理器向本应用的拖放（UIPI 安全限制），请改用「上传文件」按钮选择，或以普通权限运行应用"
+      @close="dismissAdminTip"
     />
     <div class="fs-list" :class="{ 'is-drag': dragOver }">
       <!-- 递归搜索结果横幅（二期） -->
@@ -1611,6 +1625,7 @@ function onKeydown(event: KeyboardEvent): void {
             <span v-if="colShown.mode" class="fs-col-mode">权限</span>
             <span v-if="colShown.owner" class="fs-col-owner">用户/组</span>
             <span v-if="colShown.note" class="fs-col-note">备注</span>
+            <span class="fs-col-fav" title="收藏" />
             <span class="fs-col-op">操作</span>
           </div>
           <div
@@ -1634,6 +1649,15 @@ function onKeydown(event: KeyboardEvent): void {
           <span v-if="colShown.mode" class="fs-col-mode" :title="entry.mode ? `${entry.mode} ${fsModeToRwx(entry.mode)}` : ''">{{ entry.mode ?? '—' }}</span>
           <span v-if="colShown.owner" class="fs-col-owner" :title="entry.owner ? `${entry.owner}:${entry.group ?? ''}` : ''">{{ entry.owner ? `${entry.owner}:${entry.group ?? '—'}` : '—' }}</span>
           <span v-if="colShown.note" class="fs-col-note" :title="annotations.get(entry.path) ?? ''">{{ annotations.get(entry.path) ?? '' }}</span>
+          <span class="fs-col-fav">
+            <el-button
+              size="small" text
+              :class="['fs-fav-toggle', { 'is-fav': isFavorited(entry.path) }]"
+              :title="isFavorited(entry.path) ? '取消收藏' : '收藏'"
+              :aria-label="isFavorited(entry.path) ? '取消收藏' : '收藏'"
+              @click.stop="toggleFav(entry)"
+            ><el-icon><component :is="isFavorited(entry.path) ? StarFilled : Star" /></el-icon></el-button>
+          </span>
           <span class="fs-col-op">
             <!-- §11.4 定版顺序：下载(文件)→链接(文件)→粘贴(目录)→复制→移动→重命名→删除→更多▾ -->
             <el-button v-if="entry.kind === 'file'" size="small" text type="success" @click.stop="downloadEntries([entry])">下载</el-button>
@@ -2142,6 +2166,11 @@ function onKeydown(event: KeyboardEvent): void {
 /* PDF：Chromium 内置 viewer，iframe 撑满弹框可视区 */
 .fs-preview-body .fs-preview-pdf { width: 100%; height: 60vh; border: none; border-radius: 8px; background: var(--el-bg-color); }
 .fs-editor-body { height: 60vh; }
+/* 行末收藏快捷列（用户 2026-11-18）：未收藏 hover 才显，已收藏常显黄色实心星 */
+.fs-col-fav { display: flex; align-items: center; justify-content: center; }
+.fs-fav-toggle { opacity: 0; transition: opacity .12s; padding: 0 4px; height: 22px; color: var(--el-text-color-secondary); }
+.fs-row:hover .fs-fav-toggle, .fs-fav-toggle.is-fav { opacity: 1; }
+.fs-fav-toggle.is-fav { color: var(--el-color-warning); }
 /* 编辑器标题行：文件名 · 大小（统计信息自 footer 移到顶部，用户 2026-11-18） */
 .fs-editor-title { display: inline-flex; align-items: baseline; gap: 10px; font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
 .fs-editor-meta { font-size: 12px; font-weight: 400; opacity: .6; }
