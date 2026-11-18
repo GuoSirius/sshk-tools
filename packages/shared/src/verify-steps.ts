@@ -146,7 +146,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H14', group: 'H', title: '验证标记随代码同步', guide: '验证引导里标记 pass/fail + 填备注 → dev 下会话文件落在 docs/verify-sessions/<日期>.json（git status 可见，随代码提交同步到其它设备/成员；打包版本地留存）', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
   { id: 'H15', group: 'H', title: '复制/移动到目标目录回显与跨通道移动', guide: '复制到/移动到弹框：第二次打开时手输框与下拉显示同一个目录；目标通道选其它通道 → 复制走跨通道入队、移动=复制成功删源（源通道须可写）；云目录复制/移动按文件递归展开不再报「检查 Bucket 与目录」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6' },
   { id: 'H16', group: 'H', title: 'Badge Studio HTML 高亮与模板下载', guide: '选择压缩版 minified.html → 单行不再显示「Rendering paused」，点「格式化」换行后高亮正常；「模板下载」主按钮直接下 Excel（含填写说明 sheet），箭头可选 CSV/JSON；最近使用改下拉（每项尾部删、右侧清空）', entry: { type: 'route', target: 'badge-studio' }, relates: 'E-T5' },
-  { id: 'H17', group: 'H', title: '更新流程（dev 测试模式）', guide: 'dev 设 SSHK_UPDATE_DEV_CHECK=1 且本地 package.json 版本改旧 → 顶栏显示下载进度条横幅（可关闭），完成出「立即更新」；点已下载按钮不再回退到「检查中」；点安装仅提示不真装；验完改回版本号', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
+  { id: 'H17', group: 'H', title: '更新流程（dev 测试模式）', guide: 'dev 设 SSHK_DEV_UPDATE_TEST=1 且本地 package.json 版本改旧 → 顶栏显示下载进度条横幅（可关闭），完成出「立即更新」；点已下载按钮不再回退到「检查中」；点安装仅提示不真装；验完改回版本号', entry: { type: 'settings', target: '系统与数据' }, relates: 'U2' },
   { id: 'H18', group: 'H', title: '分享链接跨重启有效', guide: '分享海报/邮件生成链接 → 关闭应用重新打开（TTL 未过）→ 原链接仍可访问；点重新生成 → 旧链接失效（新 token）；72h 到期链接自动 404', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-T1' },
 
   // ── S 组：常驻分享服务（ShareHub · plans/09；单例多路由，替代旧 ShareServer）──

@@ -93,7 +93,7 @@ export function collectDiagnostics(
   } catch { /* 保持空 */ }
   const secrets = {
     accessKey: cfg.get('app.accessKeyHash') != null,
-    devtoolsKey: cfg.get('app.devtoolsKeyHash') != null || Boolean(getEnv('SSHK_DEVTOOLS_KEY')?.trim()),
+    devtoolsKey: cfg.get('app.devtoolsKeyHash') != null || Boolean(getEnv('SSHK_APP_DEVTOOLS_KEY')?.trim()),
     providers,
     uploads,
   }

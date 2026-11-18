@@ -318,7 +318,7 @@ async function checkUpdate(): Promise<void> {
   if (updater.value.phase === 'checking' || updater.value.phase === 'downloading' || updater.value.phase === 'available') return
   const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
   if (result.disabled) {
-    ElMessage.info('自动更新已禁用（SSHK_AUTO_UPDATE=0）')
+    ElMessage.info('自动更新已禁用（SSHK_APP_AUTO_UPDATE=0）')
   } else if (result.dev) {
     ElMessage.info('开发环境不检查更新')
   } else if (result.error) {
@@ -363,7 +363,7 @@ onMounted(async () => {
         <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
       <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
-      <!-- SSHK_AUTO_UPDATE=0 时自动更新整体禁用（phase=disabled）：顶栏不渲染任何更新入口 -->
+      <!-- SSHK_APP_AUTO_UPDATE=0 时自动更新整体禁用（phase=disabled）：顶栏不渲染任何更新入口 -->
       <template v-if="updater.phase !== 'disabled'">
         <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
         <el-button

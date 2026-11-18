@@ -2,11 +2,11 @@
  * X5-A 构建裁剪：内建工具选择 + 依赖闭合（纯函数，构建期消费）。
  *
  * 语义（用户 2026-11-16 拍板）：
- * - 打包时通过 SSHK_BUILTIN_TOOLS=a,b 指定内建工具；未指定的工具不跟随打包
+ * - 打包时通过 SSHK_BUILD_TOOLS=a,b 指定内建工具；未指定的工具不跟随打包
  * - c 被 a 依赖（a.dependsOn 含 c）→ c 自动搭进去（依赖闭包，root 之外拉入的记 pulledIn）
  * - 未设置 / all / * = 全量（默认零行为变化）
  *
- * 消费方：electron.vite.config.ts（define __SSHK_BUILTIN_TOOLS__ + stub 插件，
+ * 消费方：electron.vite.config.ts（define __SSHK_BUILD_TOOLS__ + stub 插件，
  * 并把结果写 apps/desktop/.build-selection.json 供 electron-builder.config.cjs
  * 计算 extraResources——单一事实源在构建期落盘，打包配置只读盘不重算）。
  */
@@ -27,7 +27,7 @@ export interface BuiltinSelection {
   pulledIn: string[]
 }
 
-/** 解析 SSHK_BUILTIN_TOOLS：空 / all / * → 全量；逗号 / 分号 / 空白分隔 → 去重 id 列表 */
+/** 解析 SSHK_BUILD_TOOLS：空 / all / * → 全量；逗号 / 分号 / 空白分隔 → 去重 id 列表 */
 export function parseBuiltinSpec(raw: string | undefined): string[] | 'all' {
   const v = (raw ?? '').trim()
   if (!v || v === 'all' || v === '*') return 'all'
@@ -45,7 +45,7 @@ export function resolveBuiltinSelection(roots: string[] | 'all', manifests: Buil
   const missing = roots.filter((id) => !byId.has(id))
   if (missing.length) {
     throw new Error(
-      `SSHK_BUILTIN_TOOLS 含未知工具 id：${missing.join('、')}（可用：${manifests.map((m) => m.id).join('、') || '无'}）`,
+      `SSHK_BUILD_TOOLS 含未知工具 id：${missing.join('、')}（可用：${manifests.map((m) => m.id).join('、') || '无'}）`,
     )
   }
   const kept = new Set<string>()

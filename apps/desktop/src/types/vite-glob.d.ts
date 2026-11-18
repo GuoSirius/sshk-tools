@@ -23,8 +23,8 @@ interface ImportMetaEnv {
  * mode=all 全量（ids/pulledIn 均为 null）；mode=list 时 ids=全部内建（root+依赖闭包），
  * pulledIn=非用户显式选择、被依赖闭包拉入的工具——能力保留但任何位置强制不可见。
  */
-declare const __SSHK_BUILTIN_TOOLS__: { mode: 'all' | 'list'; ids: string[] | null; pulledIn: string[] | null }
-/** 分发期固定旋钮：构建期读 .env 的 SSHK_AUTO_UPDATE=0 → true（打包版运行时无 .env，只能靠注入） */
+declare const __SSHK_BUILD_TOOLS__: { mode: 'all' | 'list'; ids: string[] | null; pulledIn: string[] | null }
+/** 分发期固定旋钮：构建期读 .env 的 SSHK_APP_AUTO_UPDATE=0 → true（打包版运行时无 .env，只能靠注入） */
 declare const __SSHK_AUTO_UPDATE_DISABLED__: boolean
 
 interface ImportMeta {

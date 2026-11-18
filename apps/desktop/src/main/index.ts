@@ -58,16 +58,16 @@ const trayIconFile = path.join(here, '../../build/tray.png')
 const isDev = !app.isPackaged
 /** dev 更新测试（用户验收项7）：仅 dev 生效，走真实 GitHub 更新源验证全流程，下载后不自动安装。
  *  版本号来源二选一（都不用改 package.json）：
- *   - SSHK_UPDATE_DEV_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
+ *   - SSHK_DEV_UPDATE_FAKE_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
-const updateDevCheck = isDev && envOn(getEnv('SSHK_UPDATE_DEV_CHECK'))
-/** 分发包自动更新总开关：SSHK_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
+const updateDevCheck = isDev && envOn(getEnv('SSHK_DEV_UPDATE_TEST'))
+/** 分发包自动更新总开关：SSHK_APP_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
  *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。
  *  打包版没有 .env（env-load 静默跳过），构建期走 __SSHK_AUTO_UPDATE_DISABLED__ define +
  *  __SSHK_BAKED_ENV__ 烤入双保险，任一生效即禁用；.env 声明的键默认不允许本机 env 覆盖（baked-env）。 */
-const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(getEnv('SSHK_AUTO_UPDATE'))
+const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(getEnv('SSHK_APP_AUTO_UPDATE'))
 if (updateDevCheck) {
-  const fakeVersion = String(getEnv('SSHK_UPDATE_DEV_VERSION') ?? '').trim()
+  const fakeVersion = String(getEnv('SSHK_DEV_UPDATE_FAKE_VERSION') ?? '').trim()
   if (fakeVersion) {
     const realGetVersion = app.getVersion.bind(app)
     // electron-updater 用 app.getVersion() 与线上 latest.yml 对比；dev 测试期改返回值即可伪装旧版本，
@@ -383,7 +383,7 @@ async function registerIpc(): Promise<void> {
     return true
   })
   // 开发者工具：会话内按操作缓存密钥（项9）——有效期内再开不重输；与「开发者模式」各自独立。
-  // 打包版密钥优先级：settings.json 显式哈希 > env SSHK_DEVTOOLS_KEY > 内置 sshk-tools@888
+  // 打包版密钥优先级：settings.json 显式哈希 > env SSHK_APP_DEVTOOLS_KEY > 内置 sshk-tools@888
   handleOk(IPC_CHANNELS.appToggleDevTools, (_event, key?: string) => {
     if (isDev) { mainWindow?.webContents.toggleDevTools(); return true }
     if (!isDevOpAuthorized('devtools')) {
@@ -968,7 +968,7 @@ function wireAutoUpdater(): void {
 }
 
 function setupAutoUpdate(): void {
-  // SSHK_AUTO_UPDATE=0：自动更新机制整体禁用——不挂监听、不检查，推 disabled 让渲染层隐藏全部更新入口
+  // SSHK_APP_AUTO_UPDATE=0：自动更新机制整体禁用——不挂监听、不检查，推 disabled 让渲染层隐藏全部更新入口
   if (autoUpdateDisabled) {
     pushUpdate({ phase: 'disabled' })
     return

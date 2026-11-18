@@ -6,7 +6,7 @@
  *     （签名私钥等构建专用键除外）注入 __SSHK_BAKED_ENV__ 字面量。打包版没有 .env，
  *     这些键仍能读到构建时的值——相当于 webpack 把 env 替换成字面量的效果。
  *  2. 覆盖白名单：默认所有烤入键【不允许】被本机环境变量覆盖（.env 即最终值）；
- *     仅 .env 中声明的 SSHK_ENV_OVERRIDABLE（逗号分隔键名，白名单自身也锁死）列出的键，
+ *     仅 .env 中声明的 SSHK_APP_OVERRIDABLE（逗号分隔键名，白名单自身也锁死）列出的键，
  *     才允许用户本机同名环境变量覆盖——作为预留的定制入口，可设可不设。
  *
  * 未被烤入的键（.env 未声明）走运行时 process.env 读取，行为不变。
@@ -22,7 +22,7 @@ let overridable: Set<string> | null = null
 function overridableKeys(): Set<string> {
   if (!overridable) {
     overridable = new Set(
-      String(getEnv('SSHK_ENV_OVERRIDABLE') ?? '')
+      String(getEnv('SSHK_APP_OVERRIDABLE') ?? '')
         .split(/[,\s]+/)
         .map((s) => s.trim())
         .filter(Boolean),
@@ -39,8 +39,8 @@ function overridableKeys(): Set<string> {
  */
 export function getEnv(key: string): string | undefined {
   const baked = BAKED[key]
-  // SSHK_ENV_OVERRIDABLE 自身永远锁死（否则本机可自行给自己授权覆盖）
-  const canOverride = key !== 'SSHK_ENV_OVERRIDABLE' && overridableKeys().has(key)
+  // SSHK_APP_OVERRIDABLE 自身永远锁死（否则本机可自行给自己授权覆盖）
+  const canOverride = key !== 'SSHK_APP_OVERRIDABLE' && overridableKeys().has(key)
   if (baked !== undefined && !canOverride) return baked
   if (typeof process !== 'undefined' && process.env) {
     const live = process.env[key]

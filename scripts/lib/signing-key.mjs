@@ -6,9 +6,9 @@
  * 默认位置：<homedir>/.sshk/official-signing-key.pem —— 用户级、跨项目共用、天然不在仓库内。
  *
  * 私钥来源优先级：
- *   1. env SSHK_OFFICIAL_SIGNING_KEY（PEM 文本，CI / 发布流水线）
+ *   1. env SSHK_BUILD_SIGNING_KEY（PEM 文本，CI / 发布流水线）
  *   2. 本机用户级文件（本机开发，推荐；由 pnpm keys:init 生成或导入）
- *   3. SSHK_ROTATE_SIGNING_KEY=1 → 现场轮换，并把新私钥落盘到用户级目录（旧实现只打印公钥、私钥会丢）
+ *   3. SSHK_BUILD_SIGNING_ROTATE=1 → 现场轮换，并把新私钥落盘到用户级目录（旧实现只打印公钥、私钥会丢）
  * 三者都没有 → 明确报错并给出初始化指引，而不是笼统的「未设置环境变量」。
  *
  * 跨设备策略：不搬运私钥，而是每台设备各自持有一把密钥、把公钥登记进
@@ -69,11 +69,11 @@ export function rotateLocalKey() {
 }
 
 export function resolvePrivateKey() {
-  if (process.env.SSHK_ROTATE_SIGNING_KEY === '1') {
+  if (process.env.SSHK_BUILD_SIGNING_ROTATE === '1') {
     return { privatePem: rotateLocalKey(), source: KEY_FILE, rotated: true }
   }
-  if (process.env.SSHK_OFFICIAL_SIGNING_KEY) {
-    return { privatePem: process.env.SSHK_OFFICIAL_SIGNING_KEY, source: 'env:SSHK_OFFICIAL_SIGNING_KEY' }
+  if (process.env.SSHK_BUILD_SIGNING_KEY) {
+    return { privatePem: process.env.SSHK_BUILD_SIGNING_KEY, source: 'env:SSHK_BUILD_SIGNING_KEY' }
   }
   if (existsSync(KEY_FILE)) {
     return { privatePem: readFileSync(KEY_FILE, 'utf8'), source: KEY_FILE }
@@ -82,6 +82,6 @@ export function resolvePrivateKey() {
     '未找到官方签名私钥。任选其一：\n' +
     '  1) pnpm keys:init                     本机生成新密钥（推荐，公钥需登记进 official-keys.json）\n' +
     '  2) pnpm keys:init -- --import <file>  从密钥库/旧设备导入已有私钥\n' +
-    `  3) 设置 SSHK_OFFICIAL_SIGNING_KEY     CI Secret / 临时注入（私钥位置 ${KEY_FILE}）`,
+    `  3) 设置 SSHK_BUILD_SIGNING_KEY     CI Secret / 临时注入（私钥位置 ${KEY_FILE}）`,
   )
 }

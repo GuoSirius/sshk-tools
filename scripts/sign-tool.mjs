@@ -3,7 +3,7 @@
  * 工具包签名：node scripts/sign-tool.mjs <id> [--src <dir>]
  *
  * 私钥来源（详见 scripts/lib/signing-key.mjs，绝不入库）：
- *   env SSHK_OFFICIAL_SIGNING_KEY > 本机 ~/.sshk/official-signing-key.pem > SSHK_ROTATE_SIGNING_KEY=1 轮换
+ *   env SSHK_BUILD_SIGNING_KEY > 本机 ~/.sshk/official-signing-key.pem > SSHK_BUILD_SIGNING_ROTATE=1 轮换
  *   三者都没有时执行 pnpm keys:init 初始化；换设备开发见 docs/05-release/官方签名密钥跨设备开发.md。
  *
  * 行为（口径统一由 scripts/lib/tool-package.mjs 提供，与运行时验签严格一致）：
@@ -14,7 +14,7 @@
  *      - manifest.package.signature（契约要求 main 必带；兜底字段）
  *   4. 重跑 scripts/pack-tool.mjs <id> 即得到带签名的 .sshktool
  *
- * 轮换：SSHK_ROTATE_SIGNING_KEY=1 时生成全新密钥对、落盘新私钥，并打印新公钥 PEM 与 keyId，
+ * 轮换：SSHK_BUILD_SIGNING_ROTATE=1 时生成全新密钥对、落盘新私钥，并打印新公钥 PEM 与 keyId，
  *   供登记进 packages/shared/src/official-keys.json（旧公钥保留，此前签发的包继续可信）。
  */
 import { sign as cryptoSign } from 'node:crypto'

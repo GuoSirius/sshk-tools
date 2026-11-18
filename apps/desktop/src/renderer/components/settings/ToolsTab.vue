@@ -219,7 +219,7 @@ onMounted(() => {
 
     <section v-if="isDev" class="settings-card">
       <div class="card-title">分发白名单（仅开发）</div>
-      <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见（运行时可见性，不影响安装包内容）。要「构建时只打选中的工具」，打包前设环境变量 SSHK_BUILTIN_TOOLS=工具id1,工具id2。</div>
+      <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见（运行时可见性，不影响安装包内容）。要「构建时只打选中的工具」，打包前设环境变量 SSHK_BUILD_TOOLS=工具id1,工具id2。</div>
       <div class="inline-form">
         <el-select v-model="distribution" multiple collapse-tags clearable placeholder="全部工具" style="min-width: 340px">
           <el-option v-for="tool in payload.tools" :key="tool.id" :label="tool.name" :value="tool.id" />

@@ -10,7 +10,7 @@ function sampleData(): DiagnosisData {
     platform: { os: 'win32', arch: 'x64', release: '10.0.26100', memoryGB: '31.9', displays: [{ w: 2560, h: 1440, scale: 1.5 }] },
     env: [
       { name: 'GH_TOKEN', set: true },
-      { name: 'SSHK_DEVTOOLS_KEY', set: false },
+      { name: 'SSHK_APP_DEVTOOLS_KEY', set: false },
     ],
     secrets: {
       accessKey: true,
@@ -48,7 +48,7 @@ describe('buildReportMd（N1 诊断报告 Markdown）', () => {
   it('env 只出现变量名与设置布尔，绝不出现值', () => {
     const md = buildReportMd(sampleData())
     expect(md).toContain('| GH_TOKEN | ✓ |')
-    expect(md).toContain('| SSHK_DEVTOOLS_KEY | — |')
+    expect(md).toContain('| SSHK_APP_DEVTOOLS_KEY | — |')
   })
 
   it('密钥只出布尔状态文字，无任何明文段落', () => {

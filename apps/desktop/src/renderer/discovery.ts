@@ -17,7 +17,7 @@ function toolIdOf(path: string): string {
 }
 
 /** X5-A 构建裁剪：与 main/discovery.ts 同一 define（all=全量 / list=内建 id 名单） */
-const BUILTIN = __SSHK_BUILTIN_TOOLS__
+const BUILTIN = __SSHK_BUILD_TOOLS__
 function builtinIncluded(id: string): boolean {
   return BUILTIN.mode === 'all' || (BUILTIN.ids ?? []).includes(id)
 }

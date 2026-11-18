@@ -2,7 +2,7 @@
 // 2026-11-16 由 electron-builder.yml 迁移为 JS 配置：X5-A 构建裁剪需要按
 // 「内建工具名单」动态计算 extraResources（yml 静态结构做不到条件化）。
 // 名单来源：electron.vite.config.ts 构建期写入的 .build-selection.json
-// （SSHK_BUILTIN_TOOLS 环境变量 + 依赖闭包的唯一事实源）；文件缺失 = 全量。
+// （SSHK_BUILD_TOOLS 环境变量 + 依赖闭包的唯一事实源）；文件缺失 = 全量。
 // 参考：热更新文档、发布流程文档第九节
 // 图标由 scripts/generate-icons.py 生成，位于 build/
 const { readFileSync } = require('node:fs')

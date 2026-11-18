@@ -14,7 +14,7 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const pkg = (rel: string): string => fileURLToPath(new URL(`../../${rel}`, import.meta.url))
 
 // 构建期加载仓库根 .env（真实环境变量优先，dotenv 默认不覆盖）：
-// SSHK_BUILTIN_TOOLS / SSHK_AUTO_UPDATE 等构建旋钮由此进入 process.env——
+// SSHK_BUILD_* / SSHK_APP_* 等构建旋钮由此进入 process.env——
 // 此前只在主进程 env-load.ts 加载，pnpm dist 打包期读不到导致裁剪/禁更全部失效（2026-11-17 用户实测）。
 if (existsSync(join(ROOT, '.env'))) loadDotenv({ path: join(ROOT, '.env'), quiet: true })
 
@@ -33,7 +33,7 @@ const APP_COMMIT_DEFINE = { __APP_COMMIT__: JSON.stringify(gitCommit()) }
  * ③ 结果落盘 .build-selection.json，electron-builder.config.cjs 据此裁 extraResources。
  */
 const BUILTIN = (() => {
-  const sel = resolveBuiltinSelectionFromEnv(process.env.SSHK_BUILTIN_TOOLS, collectBuiltinToolInfo(ROOT))
+  const sel = resolveBuiltinSelectionFromEnv(process.env.SSHK_BUILD_TOOLS, collectBuiltinToolInfo(ROOT))
   if (sel.mode === 'list') {
     console.log(
       `[sshk] 内建裁剪：${sel.ids?.join('、')}` +
@@ -48,22 +48,24 @@ const BUILTIN = (() => {
   )
   return sel
 })()
-const BUILTIN_DEFINE = { __SSHK_BUILTIN_TOOLS__: JSON.stringify({ mode: BUILTIN.mode, ids: BUILTIN.ids, pulledIn: BUILTIN.pulledIn }) }
+const BUILTIN_DEFINE = { __SSHK_BUILD_TOOLS__: JSON.stringify({ mode: BUILTIN.mode, ids: BUILTIN.ids, pulledIn: BUILTIN.pulledIn }) }
 
 /**
  * 分发期固定旋钮：打包版没有 .env（env-load 静默跳过），运行时读不到构建时的
  * SSHK_AUTO_UPDATE——构建期读一次并注入产物，SSHK_AUTO_UPDATE=0 打包后立即生效。
  */
-const AUTO_UPDATE_DEFINE = { __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(envOff(process.env.SSHK_AUTO_UPDATE)) }
+const AUTO_UPDATE_DEFINE = { __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(envOff(process.env.SSHK_APP_AUTO_UPDATE)) }
 
 /**
  * 构建期烤入 env（用户 2026-11-18 拍板）：.env 中声明的 SSHK_ 前缀键整批注入
  * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
- * 默认不允许本机环境变量覆盖，SSHK_ENV_OVERRIDABLE 列出可覆盖的键（语义见 shared/baked-env.ts）。
+ * 构建期把 .env 中声明的 SSHK_ 前缀键整批注入
+ * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
+ * 默认不允许本机环境变量覆盖，SSHK_APP_OVERRIDABLE 列出可覆盖的键（语义见 shared/baked-env.ts）。
  * 只注入主进程：渲染层没有本机 env 可言，且避免把敏感值打进渲染 bundle；
- * 构建专用键（签名私钥等）不烤入——进产物等于泄漏。
+ * 构建专用键（SSHK_BUILD_*）不烤入——进产物等于泄漏。
  */
-const BAKED_ENV_DENYLIST = new Set(['SSHK_OFFICIAL_SIGNING_KEY', 'SSHK_ROTATE_SIGNING_KEY'])
+const BAKED_ENV_DENYLIST = new Set(['SSHK_BUILD_SIGNING_KEY', 'SSHK_BUILD_SIGNING_ROTATE'])
 const BAKED_ENV = (() => {
   const envFile = existsSync(join(ROOT, '.env')) ? parseDotenv(readFileSync(join(ROOT, '.env'))) : {}
   const out: Record<string, string> = {}

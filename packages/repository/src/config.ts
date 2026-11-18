@@ -164,7 +164,7 @@ export const DEFAULT_SETTINGS: Settings = {
     /** 运行时包信任的第三方公钥（PEM + 元数据） */
     runtimePublicKeys: [],
     /**
-     * 打包版打开开发者工具的密钥哈希。默认 null：由主进程从 env SSHK_DEVTOOLS_KEY 派生
+     * 打包版打开开发者工具的密钥哈希。默认 null：由主进程从 env SSHK_APP_DEVTOOLS_KEY 派生
      * （未设置时回落内置 sshk-tools@888），方便统一改密钥而不必改代码/配置文件。
      * 仅当此处显式写了哈希时才覆盖 env（高级用法）。
      */

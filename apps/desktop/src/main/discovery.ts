@@ -24,8 +24,8 @@ function toolIdOf(path: string): string {
   return path.replace(/\\/g, '/').match(/\/tools\/([^/]+)\//)?.[1] ?? ''
 }
 
-/** X5-A 构建裁剪：__SSHK_BUILTIN_TOOLS__ 由 electron.vite.config 注入（all=全量 / list=内建 id 名单） */
-const BUILTIN = __SSHK_BUILTIN_TOOLS__
+/** X5-A 构建裁剪：__SSHK_BUILD_TOOLS__ 由 electron.vite.config 注入（all=全量 / list=内建 id 名单） */
+const BUILTIN = __SSHK_BUILD_TOOLS__
 function builtinIncluded(id: string): boolean {
   return BUILTIN.mode === 'all' || (BUILTIN.ids ?? []).includes(id)
 }

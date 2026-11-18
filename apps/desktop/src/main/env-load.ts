@@ -2,8 +2,8 @@
  * 环境变量统一加载（必须作为主进程第一个 import）：读取仓库根目录 .env（模板见 .env.example）。
  * 解析用 dotenv，不自己实现；dotenv 默认不覆盖已存在的真实环境变量。
  * dev 时 cwd=apps/desktop，向上两级找根目录 .env；打包后无 .env，静默跳过——
- * 需要进包的构建期旋钮（SSHK_BUILTIN_TOOLS / SSHK_AUTO_UPDATE）由 electron.vite.config.ts
- * 在构建时读取并注入产物（__SSHK_BUILTIN_TOOLS__ / __SSHK_AUTO_UPDATE_DISABLED__）。
+ * 需要进包的构建期旋钮（SSHK_BUILD_TOOLS / SSHK_APP_*）由 electron.vite.config.ts
+ * 在构建时读取并注入产物（__SSHK_BUILD_TOOLS__ / __SSHK_BAKED_ENV__ 等）。
  */
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'

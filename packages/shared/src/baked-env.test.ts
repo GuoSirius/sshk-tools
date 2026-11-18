@@ -20,34 +20,34 @@ describe('getEnv：烤入 + 覆盖白名单', () => {
   }
 
   it('烤入键默认锁定：本机 env 无法覆盖', async () => {
-    const { getEnv } = await load({ SSHK_DEVTOOLS_KEY: 'from-env-file' })
-    vi.stubEnv('SSHK_DEVTOOLS_KEY', 'from-machine')
-    expect(getEnv('SSHK_DEVTOOLS_KEY')).toBe('from-env-file')
+    const { getEnv } = await load({ SSHK_APP_DEVTOOLS_KEY: 'from-env-file' })
+    vi.stubEnv('SSHK_APP_DEVTOOLS_KEY', 'from-machine')
+    expect(getEnv('SSHK_APP_DEVTOOLS_KEY')).toBe('from-env-file')
   })
 
   it('白名单键允许本机覆盖，未设置时回落烤入值', async () => {
     const { getEnv } = await load({
-      SSHK_AUTO_UPDATE: '1',
-      SSHK_ENV_OVERRIDABLE: 'SSHK_AUTO_UPDATE',
+      SSHK_APP_AUTO_UPDATE: '1',
+      SSHK_APP_OVERRIDABLE: 'SSHK_APP_AUTO_UPDATE',
     })
-    expect(getEnv('SSHK_AUTO_UPDATE')).toBe('1')
-    vi.stubEnv('SSHK_AUTO_UPDATE', '0')
-    expect(getEnv('SSHK_AUTO_UPDATE')).toBe('0')
+    expect(getEnv('SSHK_APP_AUTO_UPDATE')).toBe('1')
+    vi.stubEnv('SSHK_APP_AUTO_UPDATE', '0')
+    expect(getEnv('SSHK_APP_AUTO_UPDATE')).toBe('0')
   })
 
   it('白名单自身永远锁死：本机无法给自己授权', async () => {
-    const { getEnv } = await load({ SSHK_ENV_OVERRIDABLE: 'SSHK_AUTO_UPDATE' })
-    vi.stubEnv('SSHK_ENV_OVERRIDABLE', 'SSHK_DEVTOOLS_KEY,SSHK_AUTO_UPDATE')
-    expect(getEnv('SSHK_ENV_OVERRIDABLE')).toBe('SSHK_AUTO_UPDATE')
+    const { getEnv } = await load({ SSHK_APP_OVERRIDABLE: 'SSHK_APP_AUTO_UPDATE' })
+    vi.stubEnv('SSHK_APP_OVERRIDABLE', 'SSHK_APP_DEVTOOLS_KEY,SSHK_APP_AUTO_UPDATE')
+    expect(getEnv('SSHK_APP_OVERRIDABLE')).toBe('SSHK_APP_AUTO_UPDATE')
     // 白名单按烤入值生效；未烤入键不受白名单约束（本机 env 是其唯一来源，照常读取）
-    vi.stubEnv('SSHK_DEVTOOLS_KEY', 'from-machine')
-    expect(getEnv('SSHK_DEVTOOLS_KEY')).toBe('from-machine')
+    vi.stubEnv('SSHK_APP_DEVTOOLS_KEY', 'from-machine')
+    expect(getEnv('SSHK_APP_DEVTOOLS_KEY')).toBe('from-machine')
   })
 
   it('未烤入的键走运行时本机 env（可设可不设）', async () => {
     const { getEnv } = await load({})
-    expect(getEnv('SSHK_UPDATE_DEV_CHECK')).toBeUndefined()
-    vi.stubEnv('SSHK_UPDATE_DEV_CHECK', '1')
-    expect(getEnv('SSHK_UPDATE_DEV_CHECK')).toBe('1')
+    expect(getEnv('SSHK_DEV_UPDATE_TEST')).toBeUndefined()
+    vi.stubEnv('SSHK_DEV_UPDATE_TEST', '1')
+    expect(getEnv('SSHK_DEV_UPDATE_TEST')).toBe('1')
   })
 })
