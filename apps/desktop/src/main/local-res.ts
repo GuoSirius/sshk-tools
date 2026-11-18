@@ -11,19 +11,15 @@ import { collectResRoots, isAllowedResPath, RES_MIME_BY_EXT } from './local-res-
  * 仅渲染层【预览显示】把 file:/// 转成 localres:///，由主进程白名单放行：
  * 允许根 = 全局本地上传目录 + 各工具 localDir 覆盖目录，且仅放行图片扩展名。
  * 白名单判定纯逻辑在 local-res-rules.ts（可单测）。
+ *
+ * 特权注册统一在 renderer-protocol.ts（与 app:// 一次性注册，必须 app ready 前）。
  */
-const SCHEME = 'localres'
 
 interface ConfigLike {
   get(key: string): unknown
 }
 
-/** 必须在 app ready 之前调用（Electron 对自定义 protocol 的时序要求） */
-export function registerLocalResScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    { scheme: SCHEME, privileges: { secure: true, supportFetchAPI: true } },
-  ])
-}
+const SCHEME = 'localres'
 
 /** localres:///D:/xxx.png → 主进程按白名单读文件回图（仅图片扩展名，防目录遍历/任意读） */
 export function installLocalResHandler(config: ConfigLike): void {

@@ -41,16 +41,16 @@ import { MANIFESTS, reloadManifestFile, PULLED_IN_TOOLS } from './discovery'
 import { registerDevTools } from './dev-tools'
 import { UploadRuntime, type UploadListRequest, type UploadRequest, type UploadTestRequest } from './upload'
 import { FsRuntime } from './fs'
-import { installLocalResHandler, registerLocalResScheme } from './local-res'
+import { installLocalResHandler } from './local-res'
+import { APP_RENDERER_URL, installAppProtocolHandler, registerPrivilegedSchemes } from './renderer-protocol'
 import { allowWindowDrop } from './win32-drop'
 import { createShareHubHost, registerShareHubIpc, type ShareHubHost } from './share-hub'
 
-/** 必须在 app ready 前注册：localres:// 预览协议（本地上传图片在渲染层的显示通道） */
-registerLocalResScheme()
+/** 必须在 app ready 前注册：localres:// 预览协议 + app:// 渲染层加载协议（特权一次性注册） */
+registerPrivilegedSchemes()
 import { devtoolsKeyMatches, isDevOpAuthorized, markDevOpAuthorized, type DevKeyOperation } from './dev-access'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const rendererHtml = path.join(here, '../renderer/index.html')
 const preloadScript = path.join(here, '../preload/index.cjs')
 const iconFile = path.join(here, '../../build/icon.png')
 const trayIconFile = path.join(here, '../../build/tray.png')
@@ -116,6 +116,17 @@ function createWindow(): void {
     else mainWindow?.webContents.reload()
   })
 
+  // 渲染层 console 落盘（warn/error）：打包版排查「高亮丢失 / 弹框异常」等只有现场才有的问题时，
+  // 不再依赖用户开 DevTools——日志文件里直接看渲染层报错（console-message Electron 35+ 为 detail 对象，兼容旧签名）
+  mainWindow.webContents.on('console-message', (_event, ...args: unknown[]) => {
+    const detail = args[0] as { level?: number | string; message?: string } | number
+    const level = typeof detail === 'object' ? (detail.level ?? 0) : (detail as number)
+    const message = typeof detail === 'object' ? (detail.message ?? '') : String(args[1] ?? '')
+    if (typeof level === 'number' && level >= 2 && message) {
+      logger.warn('renderer', `[console] ${message}`)
+    }
+  })
+
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
     // 管理员模式拖放放行：应用清单强制 requireAdministrator，UIPI 会拦截 Explorer 的拖入消息；
@@ -143,9 +154,13 @@ function createWindow(): void {
     mainWindow!.webContents.send(IPC_CHANNELS.appRequestClose)
   })
 
+  // 加载通道统一（用户 2026-11-18 拍板）：打包版一律 app://（file:// 是 opaque origin，
+  // fetch/CORS/Worker/动态 chunk 行为与 dev http 不一致，是 dev/打包差异的温床）；
+  // dev 默认走 dev server http，SSHK_DEV_APP_PROTOCOL=1 时也走 app:// 便于同协议排查。
   const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (isDev && devUrl) void mainWindow.loadURL(devUrl)
-  else void mainWindow.loadFile(rendererHtml)
+  const devUseApp = isDev && envOn(getEnv('SSHK_DEV_APP_PROTOCOL'))
+  if (isDev && devUrl && !devUseApp) void mainWindow.loadURL(devUrl)
+  else void mainWindow.loadURL(APP_RENDERER_URL)
 }
 
 function createTray(): void {
@@ -975,6 +990,8 @@ void app.whenReady().then(async () => {
   migrateLegacyUserData()
   services = setupServices()
   installLocalResHandler(services.config)
+  // app:// 渲染层静态文件服务（打包版 / dev 显式开启时替代 loadFile 的 file://）
+  installAppProtocolHandler(path.join(here, '../renderer'))
   // ShareHub 常驻分享服务（plans/09）：单例创建 + 自动启动 + 旧状态文件清理 + powerMonitor
   shareHubHost = createShareHubHost(services.config, {
     userDataDir: app.getPath('userData'),
