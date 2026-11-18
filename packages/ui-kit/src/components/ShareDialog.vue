@@ -123,8 +123,8 @@ async function loadTicket(): Promise<void> {
   loadError.value = ''
   formHint.value = ''
   try {
-    const hours = await resolveTtlHours()
-    ttlHours.value = hours > 0 ? hours : 72
+    // 应用设置 defaultTtlHours：0 = 永久（内核既定语义），数字框直接显示 0，不强转
+    ttlHours.value = await resolveTtlHours()
     permanentSel.value = false
     allowIndex.value = await resolveAppAllowIndex()
     const saved = readTicket()
@@ -154,17 +154,24 @@ async function loadTicket(): Promise<void> {
 }
 
 function validateTtl(): boolean {
-  if (permanentSel.value) return true
-  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 1) {
-    ElMessage.warning('时长需为不小于 1 的整数小时（或勾选「永久有效」）')
+  if (permanentSel.value || ttlHours.value === 0) return true // 0 = 永久（内核既定语义）
+  if (!Number.isInteger(ttlHours.value) || ttlHours.value < 0) {
+    ElMessage.warning('时长需为不小于 0 的整数小时（0 = 永久有效）')
     return false
   }
   return true
 }
 
-/** 创建分享（form 态唯一生效入口）：按当前设置创建路由并复制链接 */
+/** 「永久有效」勾选与数字框联动：勾选 → 数字框归 0；取消勾选且为 0 → 回落 72 */
+watch(permanentSel, (on) => {
+  if (on) ttlHours.value = 0
+  else if (ttlHours.value === 0) ttlHours.value = 72
+})
+
+/** 创建分享（form 态唯一生效入口）：按当前设置创建路由并复制链接；0 = 永久 */
 async function createTicket(): Promise<void> {
   if (!validateTtl()) return
+  const permanentCreate = permanentSel.value || ttlHours.value === 0
   busy.value = true
   try {
     const t = await callHostApi<ShareRouteTicket>(SPEC.create, {
@@ -172,7 +179,7 @@ async function createTicket(): Promise<void> {
       label: props.label,
       root: props.defaultRoot,
       entry: props.defaultEntry ?? '',
-      ttlHours: permanentSel.value ? 0 : ttlHours.value,
+      ttlHours: permanentCreate ? 0 : ttlHours.value,
       password: props.password,
       allowIndex: allowIndex.value,
     })
@@ -183,48 +190,49 @@ async function createTicket(): Promise<void> {
     allowIndexEffective.value = allowIndex.value
     phase.value = 'ready'
     if (t.urls[0]) await copyUrl(t.urls[0])
-    ElMessage.success(permanentSel.value ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
+    ElMessage.success(permanentCreate ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally { busy.value = false }
 }
 
-/** TTL 三按钮（用户 2026-11-18 恢复上一版界面）：点击只暂存选择，应用时才 renew（复用 token，URL 不变）；再点已选中的按钮 = 取消暂存 */
+/** TTL 三按钮（用户 2026-11-18 恢复上一版界面）：点击只暂存选择，应用时才 renew（复用 token，URL 不变）；再点已选中的按钮 = 取消暂存；时长 0 = 永久 */
 function stageTtl(mode: 'extend' | 'reset' | 'permanent'): void {
   if (pendingTtl.value === mode) { pendingTtl.value = null; return }
-  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
-    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 0)) {
+    ElMessage.warning('时长需为不小于 0 的整数小时（0 = 永久有效）'); return
   }
   pendingTtl.value = mode
 }
 
-/** 暂存描述（实时取数字框当前值，应用时以此为准） */
+/** 暂存描述（实时取数字框当前值，应用时以此为准）；时长 0 = 永久 */
 const pendingTtlText = computed(() => {
+  const zero = ttlHours.value === 0
   switch (pendingTtl.value) {
     case 'extend': return permanent.value
       ? '当前已是永久有效，续期不会改变有效期'
-      : `将在当前到期上累加 ${ttlHours.value} 小时`
-    case 'reset': return `有效期将更新为 ${ttlHours.value} 小时（从当前重新计时）`
+      : zero ? '时长为 0，将设为永久有效' : `将在当前到期上累加 ${ttlHours.value} 小时`
+    case 'reset': return zero ? '时长为 0，将设为永久有效' : `有效期将更新为 ${ttlHours.value} 小时（从当前重新计时）`
     case 'permanent': return permanent.value ? '当前已是永久有效' : '将设为永久有效'
     default: return ''
   }
 })
 
-/** 应用更改（ready 态唯一 TTL 生效入口）：按暂存项一次 renew */
+/** 应用更改（ready 态唯一 TTL 生效入口）：按暂存项一次 renew；时长 0 = 永久 */
 async function applyPendingTtl(): Promise<void> {
   const mode = pendingTtl.value
   if (!ticket.value || !mode || busy.value) return
-  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
-    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 0)) {
+    ElMessage.warning('时长需为不小于 0 的整数小时（0 = 永久有效）'); return
   }
   busy.value = true
   try {
-    const hours = mode === 'permanent' ? 0 : ttlHours.value
+    const hours = mode === 'permanent' || ttlHours.value === 0 ? 0 : ttlHours.value
     const next = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, hours, props.toolId, mode === 'reset' ? 'reset' : 'extend')
     ticket.value = next
     saveTicket(next)
     pendingTtl.value = null
-    const msg = mode === 'permanent' ? '已设为永久有效，链接不变'
+    const msg = hours === 0 ? '已设为永久有效，链接不变'
       : mode === 'extend' ? `已累加 ${hours} 小时，链接不变`
       : `已更新为 ${hours} 小时（从当前重新计时），链接不变`
     ElMessage.success(msg)
@@ -283,12 +291,12 @@ async function copyActive(): Promise<void> {
 }
 
 /** 重新生成：二次确认后撤旧路由（立即失效）并按当前设置创建、复制新路由——确认即生效；
- *  暂存了「永久有效」则按永久生成（用户 2026-11-18），否则按数字框时长 */
+ *  暂存了「永久有效」或时长为 0（0 = 永久，内核既定语义）则按永久生成，否则按数字框时长 */
 async function regenerate(): Promise<void> {
   if (!ticket.value) return
-  const regenPermanent = pendingTtl.value === 'permanent'
-  if (!regenPermanent && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
-    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  const regenPermanent = pendingTtl.value === 'permanent' || ttlHours.value === 0
+  if (!regenPermanent && (!Number.isInteger(ttlHours.value) || ttlHours.value < 0)) {
+    ElMessage.warning('时长需为不小于 0 的整数小时（0 = 永久有效）'); return
   }
   const regenText = regenPermanent ? '永久有效' : `${ttlHours.value} 小时`
   try {
@@ -402,8 +410,8 @@ watch(() => props.open, (open) => {
           <div class="form-card">
             <div class="form-row">
               <span class="row-label">有效期</span>
-              <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-num" :disabled="permanentSel" />
-              <span class="row-unit">小时</span>
+              <el-input-number v-model="ttlHours" :min="0" :precision="0" :step="1" size="small" class="ttl-num" :disabled="permanentSel" />
+              <span class="row-unit">小时（0 = 永久）</span>
               <el-checkbox v-model="permanentSel" class="row-check">永久有效</el-checkbox>
             </div>
             <el-divider class="card-divider" />
@@ -422,8 +430,8 @@ watch(() => props.open, (open) => {
       <!-- 已有链接：TTL 三按钮（暂存选择）+ 链接行（下拉+目录开关+复制）+ 二维码 + 剩余时间 -->
       <template v-else>
         <div class="share-ttl-row">
-          <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" />
-          <span class="ttl-unit">小时</span>
+          <el-input-number v-model="ttlHours" :min="0" :precision="0" :step="1" size="small" class="ttl-input" />
+          <span class="ttl-unit">小时（0 = 永久）</span>
           <!-- 三按钮只暂存选择（选中变实心高亮），点「应用更改」才生效；permanent 下三按钮均可选（续期对永久是安全 no-op） -->
           <el-button type="primary" size="small" :plain="pendingTtl !== 'extend'" :loading="busy" @click="stageTtl('extend')">续期 TTL</el-button>
           <el-button type="warning" size="small" :plain="pendingTtl !== 'reset'" :loading="busy" @click="stageTtl('reset')">更新 TTL</el-button>
