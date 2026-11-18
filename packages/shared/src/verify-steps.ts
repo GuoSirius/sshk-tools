@@ -169,6 +169,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S17', group: 'S', title: '永久有效 → tag 改文案颜色、URL 不变', guide: 'ShareDialog 点「永久有效」→ 剩余时间 tag 变「永久有效」（warning 色），链接地址不变；重启应用后仍可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
   { id: 'S18', group: 'S', title: '续期 TTL 累加 / 更新 TTL 重置', guide: '剩余约 48h 时点「续期 TTL」填 72 → 剩余约 120h（URL 不变）；点「更新 TTL」填 5 → 从当前重新计时为约 5h', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
   { id: 'S19', group: 'S', title: 'TTL 数字框默认取应用设置、整数约束', guide: '设置默认时长改 12 → 打开分享弹框数字框显示 12；输入小数被取整；设置页端口/时长输入小数保存被拦截', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
+  { id: 'S20', group: 'S', title: '自动分配端口跨重启沿用', guide: '设置端口 0（自动）→ 启动后记录实际端口 → 重启应用端口不变（链接稳定）；被占回落新端口后 autoPort 自动更新；固定端口（默认 56789）直接生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
 ]
 
 /** 步骤总数（页脚展示用） */

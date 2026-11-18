@@ -33,6 +33,8 @@ const ENV_RES = [
   /process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g,
   /process\.env\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g,
   /import\.meta\.env\.([A-Za-z_][A-Za-z0-9_]*)/g,
+  // 统一取值入口 getEnv('KEY')（baked-env：构建期烤入 + 覆盖白名单），与直接读 process.env 同等对待
+  /\bgetEnv\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\)/g,
 ]
 /** 由运行环境 / 框架注入，无需在 .env.example 声明；每项写明理由 */
 const EXTERNAL_KEYS = new Map([

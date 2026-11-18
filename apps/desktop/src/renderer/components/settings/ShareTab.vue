@@ -183,7 +183,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
         <FormGrid>
           <el-form-item label="监听端口">
             <el-input-number v-model="appConfig.sharePort" :min="0" :max="65535" :precision="0" :step="1" />
-            <FormHint inline>0 = 随机；被占用时自动回落并告警</FormHint>
+            <FormHint inline>0 = 自动分配（沿用上次端口，保证链接稳定）；被占用时自动回落并告警</FormHint>
           </el-form-item>
           <el-form-item label="默认分享时长">
             <el-input-number v-model="appConfig.shareDefaultTtlHours" :min="0" :precision="0" :step="1" />

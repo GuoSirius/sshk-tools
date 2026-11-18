@@ -1,5 +1,7 @@
 export * from './time'
 export * from './id'
+/** 构建期烤入 env + 覆盖白名单（getEnv 统一取值入口） */
+export * from './baked-env'
 export * from './constants'
 export * from './ipc'
 export * from './ipc-result'

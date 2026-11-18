@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Alias, Plugin } from 'vite'
-import { config as loadDotenv } from 'dotenv'
+import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { collectBuiltinToolInfo, resolveBuiltinSelectionFromEnv } from './src/main/builtin-selection'
 import { envOff } from '../../packages/shared/src/env'
 
@@ -55,6 +55,26 @@ const BUILTIN_DEFINE = { __SSHK_BUILTIN_TOOLS__: JSON.stringify({ mode: BUILTIN.
  * SSHK_AUTO_UPDATE——构建期读一次并注入产物，SSHK_AUTO_UPDATE=0 打包后立即生效。
  */
 const AUTO_UPDATE_DEFINE = { __SSHK_AUTO_UPDATE_DISABLED__: JSON.stringify(envOff(process.env.SSHK_AUTO_UPDATE)) }
+
+/**
+ * 构建期烤入 env（用户 2026-11-18 拍板）：.env 中声明的 SSHK_ 前缀键整批注入
+ * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
+ * 默认不允许本机环境变量覆盖，SSHK_ENV_OVERRIDABLE 列出可覆盖的键（语义见 shared/baked-env.ts）。
+ * 只注入主进程：渲染层没有本机 env 可言，且避免把敏感值打进渲染 bundle；
+ * 构建专用键（签名私钥等）不烤入——进产物等于泄漏。
+ */
+const BAKED_ENV_DENYLIST = new Set(['SSHK_OFFICIAL_SIGNING_KEY', 'SSHK_ROTATE_SIGNING_KEY'])
+const BAKED_ENV = (() => {
+  const envFile = existsSync(join(ROOT, '.env')) ? parseDotenv(readFileSync(join(ROOT, '.env'))) : {}
+  const out: Record<string, string> = {}
+  for (const key of Object.keys(envFile)) {
+    if (!key.startsWith('SSHK_') || BAKED_ENV_DENYLIST.has(key)) continue
+    const value = process.env[key] ?? envFile[key]
+    if (value !== undefined && value !== '') out[key] = String(value)
+  }
+  return out
+})()
+const BAKED_ENV_DEFINE = { __SSHK_BAKED_ENV__: JSON.stringify(BAKED_ENV) }
 
 /** 未选工具的所有模块替换为空导出：eager 清单/图标/懒加载页面/主进程入口都不进 bundle */
 function builtinStubPlugin(excluded: readonly string[]): Plugin {
@@ -122,7 +142,7 @@ export default defineConfig({
   main: {
     plugins: [builtinStubPlugin(BUILTIN.excluded), externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
-    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
+    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE, ...BAKED_ENV_DEFINE },
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是

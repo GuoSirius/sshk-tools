@@ -20,6 +20,7 @@ import {
   now,
   envOn,
   envOff,
+  getEnv,
 } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
@@ -59,14 +60,14 @@ const isDev = !app.isPackaged
  *  版本号来源二选一（都不用改 package.json）：
  *   - SSHK_UPDATE_DEV_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
  *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
-const updateDevCheck = isDev && envOn(process.env.SSHK_UPDATE_DEV_CHECK)
+const updateDevCheck = isDev && envOn(getEnv('SSHK_UPDATE_DEV_CHECK'))
 /** 分发包自动更新总开关：SSHK_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
  *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。
- *  打包版没有 .env（env-load 静默跳过），所以构建期把 .env 的取值注入 __SSHK_AUTO_UPDATE_DISABLED__，
- *  运行时真实环境变量仍可叠加覆盖（两者任一为 0 即禁用）。 */
-const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(process.env.SSHK_AUTO_UPDATE)
+ *  打包版没有 .env（env-load 静默跳过），构建期走 __SSHK_AUTO_UPDATE_DISABLED__ define +
+ *  __SSHK_BAKED_ENV__ 烤入双保险，任一生效即禁用；.env 声明的键默认不允许本机 env 覆盖（baked-env）。 */
+const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || envOff(getEnv('SSHK_AUTO_UPDATE'))
 if (updateDevCheck) {
-  const fakeVersion = String(process.env.SSHK_UPDATE_DEV_VERSION ?? '').trim()
+  const fakeVersion = String(getEnv('SSHK_UPDATE_DEV_VERSION') ?? '').trim()
   if (fakeVersion) {
     const realGetVersion = app.getVersion.bind(app)
     // electron-updater 用 app.getVersion() 与线上 latest.yml 对比；dev 测试期改返回值即可伪装旧版本，

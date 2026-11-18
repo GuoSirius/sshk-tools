@@ -150,9 +150,10 @@ export const DEFAULT_SETTINGS: Settings = {
     locale: 'zh-CN',
     outputDir: null,
     /** ShareHub 常驻分享服务（plans/09）：单端口多路由。autoStart 默认开（用户拍板）；
-     *  port 0=系统随机，被占回落随机；preferredIp ''=按 §4.3 自动优选，可手输。
-     *  defaultTtlHours=新建/更新的默认时长（小时，非负整数），0=永久有效。 */
-    shareHub: { autoStart: true, port: 0, preferredIp: '', defaultTtlHours: 72 },
+     *  port 固定端口（默认 56789），0=自动分配；preferredIp ''=按 §4.3 自动优选，可手输。
+     *  autoPort：自动分配模式下实际拿到的端口（主进程持久化，重启沿用，链接不变）；
+     *  被占用回落新随机端口后自动更新。用户手输固定端口（port>0）时忽略 autoPort。 */
+    shareHub: { autoStart: true, port: 56789, autoPort: 0, preferredIp: '', defaultTtlHours: 72 },
     launchOnBoot: false,
     tray: true,
     window: { width: 1440, height: 900, maximized: false },

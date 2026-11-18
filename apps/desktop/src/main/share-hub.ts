@@ -20,6 +20,8 @@ import { logger } from './logger'
 
 export interface ShareHubHost {
   hub: ShareHub
+  /** 启动应使用的端口：固定端口（port>0）优先；自动分配模式沿用上次持久化的 autoPort */
+  resolvePort(): number
   /** 由 index.ts 在 whenReady 中调用；重复调用幂等 */
   init(): Promise<void>
   /** 退出前停止并落盘 */
@@ -46,6 +48,37 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     hub.setPreferredIp(String(cfg.get('app.shareHub.preferredIp') ?? ''))
   }
 
+  /**
+   * 启动端口决策（用户 2026-11-18：自动分配也要沿用，链接不能每次变）：
+   *  - 固定端口 port>0 → 直接用（被占由内核回落随机）
+   *  - port=0 自动分配 → 沿用上次持久化的 autoPort；首次为 0 时交给系统分配
+   */
+  function resolvePort(): number {
+    const fixed = Number(cfg.get('app.shareHub.port') ?? 0) || 0
+    if (fixed > 0) return fixed
+    return Number(cfg.get('app.shareHub.autoPort') ?? 0) || 0
+  }
+
+  /** 自动分配模式下把实际端口持久化到 autoPort（固定端口模式不动，保留用户的 0 设置） */
+  function persistAutoPort(): void {
+    const fixed = Number(cfg.get('app.shareHub.port') ?? 0) || 0
+    if (fixed > 0) return
+    const actual = hub.getPort()
+    if (actual > 0 && Number(cfg.get('app.shareHub.autoPort') ?? 0) !== actual) {
+      cfg.set('app.shareHub.autoPort', actual)
+    }
+  }
+
+  /** 统一启动入口：按 resolvePort 启动 + 回写 autoPort。
+   *  已在运行时先 stop 再 start——内核 restart(requestedPort) 会沿用旧端口，
+   *  固定端口变更必须走显式重启才能生效。 */
+  async function startHub(): Promise<void> {
+    const port = resolvePort()
+    if (hub.running) await hub.stop()
+    await hub.start(port)
+    persistAutoPort()
+  }
+
   function removeLegacyStates(): void {
     for (const name of LEGACY_SHARE_STATE_FILES) {
       const file = join(opts.userDataDir, name)
@@ -61,8 +94,7 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     removeLegacyStates()
     applyPreferredIp()
     if (cfg.get('app.shareHub.autoStart') !== false) {
-      const port = Number(cfg.get('app.shareHub.port') ?? 0) || 0
-      try { await hub.start(port) } catch (err) {
+      try { await startHub() } catch (err) {
         logger.error('shareHub', `自动启动失败：${(err as Error).message}`)
       }
     }
@@ -72,12 +104,13 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
       if (key === 'shareHub.preferredIp') { applyPreferredIp(); return }
       if (key === 'shareHub.autoStart') {
         const on = cfg.get('app.shareHub.autoStart') !== false
-        if (on && !hub.running) void hub.start(Number(cfg.get('app.shareHub.port') ?? 0) || 0)
+        if (on && !hub.running) void startHub()
         if (!on && hub.running) void hub.stop()
         return
       }
+      // autoPort 由本宿主自己写入（persistAutoPort），不触发重启
       if (key === 'shareHub.port' && hub.running) {
-        void hub.restart(Number(cfg.get('app.shareHub.port') ?? 0) || 0)
+        void startHub()
       }
     })
     // 系统睡眠恢复：自动 restart（保留路由与 token）
@@ -90,7 +123,7 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     await hub.stop()
   }
 
-  return { hub, init, dispose }
+  return { hub, resolvePort, init, dispose }
 }
 
 /** 注册 ShareHub 的 6 条 IPC（6 通道 → create/list/revoke/renew/status/control）。
@@ -127,7 +160,7 @@ export function registerShareHubIpc(host: ShareHubHost): void {
   // 生命周期控制：宿主「分享服务」tab 使用（action 白名单，防误用）
   handleOk(IPC_CHANNELS.shareHubControl, async (_e, action: 'start' | 'restart' | 'stop' | 'clear') => {
     switch (action) {
-      case 'start': return hub.start(Number(hub.getPort() || 0) || 0)
+      case 'start': return hub.start(host.resolvePort())
       case 'restart': return hub.restart()
       case 'stop': await hub.stop(); return { port: 0 }
       case 'clear': await hub.clear(); return { port: 0 }
