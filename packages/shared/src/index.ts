@@ -53,6 +53,7 @@ export type {
   ShareRouteTicket,
   ShareRouteInfo,
   ShareHubMount,
+  ShareHubProxy,
   ShareIpInfo,
   ShareAccessLog,
   HubStatus,

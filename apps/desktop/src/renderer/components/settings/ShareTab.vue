@@ -7,7 +7,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, CopyDocument } from '@element-plus/icons-vue'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ShareHubMount } from '@sshk/shared'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ShareHubMount, type ShareHubProxy } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { appConfig, saveAppConfig } from '../../composables/useAppConfig'
 
@@ -145,10 +145,10 @@ async function save(): Promise<void> {
   finally { saving.value = false }
 }
 
-// ── 挂载目录（多目录分享，用户 2026-11-18 定版）──
-// 一行一个：目录（选择）+ 别名（新增自动生成可改，留空保存时随机生成并持久化）
-// + 复选（是否允许访问）+ 只读链接 + 删除；保存即生效，无需重启
-interface MountRow { id: string; dir: string; alias: string; enabled: boolean }
+// ── 挂载目录（多目录分享，用户 2026-11-18 三行卡片版）──
+// 行1：目录显示+选择+允许访问目录复选框(allowIndex)；行2：挂载点+是否启用开关(enabled)；
+// 行3：地址+复制+删除；保存即生效，无需重启
+interface MountRow { id: string; dir: string; alias: string; enabled: boolean; allowIndex: boolean }
 const mounts = ref<MountRow[]>([])
 const mountsSaving = ref(false)
 /** 别名规范化：与内核 normalizeMountAlias 同规则（渲染层不能 import node 依赖包，规则真相源在内核） */
@@ -161,7 +161,7 @@ function randomAlias(): string {
   return `dir-${Math.random().toString(36).slice(2, 8)}`
 }
 function addMount(): void {
-  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true })
+  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true, allowIndex: true })
 }
 async function pickMountDir(row: MountRow): Promise<void> {
   try {
@@ -210,32 +210,95 @@ async function saveMounts(): Promise<void> {
     if (seen.has(alias)) { ElMessage.error(`挂载点「${alias}」重复，请修改`); return }
     seen.add(alias)
     row.alias = alias
-    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true })
+    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true, allowIndex: row.allowIndex !== false })
   }
   mountsSaving.value = true
   try {
     await window.api.config.set('app.shareHub.mounts', rows)
     appConfig.shareMounts = rows.map((r) => ({ ...r }))
-    await refreshShare()
-    if (!shareStatus.value?.running) {
-      // 服务未运行：挂载已保存但不可访问——询问是否立即启动（用户 2026-11-18：需生效确认）
-      try {
-        await ElMessageBox.confirm('挂载目录已保存。分享服务当前未运行，是否立即启动使链接可访问？', '保存成功', {
-          type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
-          confirmButtonText: '启动服务', cancelButtonText: '暂不启动',
-        })
-        await shareControl('start')
-      } catch { /* 暂不启动 */ }
-    } else {
-      ElMessage.success('挂载目录已保存并即时生效')
-    }
+    await askStartAfterSave('挂载目录')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { mountsSaving.value = false }
 }
 
+/** 保存后服务未运行的生效确认（挂载/代理共用，用户 2026-11-18：需生效确认） */
+async function askStartAfterSave(label: string): Promise<void> {
+  await refreshShare()
+  if (shareStatus.value?.running) { ElMessage.success(`${label}已保存并即时生效`); return }
+  try {
+    await ElMessageBox.confirm(`${label}已保存。分享服务当前未运行，是否立即启动使链接可访问？`, '保存成功', {
+      type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+      confirmButtonText: '启动服务', cancelButtonText: '暂不启动',
+    })
+    await shareControl('start')
+  } catch { /* 暂不启动 */ }
+}
+
+// ── 代理规则（用户 2026-11-18 定版）：URL 命中路径前缀 → 全方法反向代理（含 POST 请求体）──
+// 行1：目标地址 + 保留原始 Host 复选框；行2：路径前缀 + 启用开关；行3：地址 + 复制 + 删除
+interface ProxyRow { id: string; prefix: string; target: string; keepHost: boolean; enabled: boolean }
+/** 属性值含 http:// 字面量会触发 vue-tsc v-for 作用域解析 bug，示例文案走 script 常量绑定 */
+const TARGET_PLACEHOLDER = '目标地址（示例 http://192.168.1.10:8080/base，支持 https）' 
+const proxyRows = ref<ProxyRow[]>([])
+const proxiesSaving = ref(false)
+function addProxy(): void {
+  proxyRows.value.push({ id: window.crypto.randomUUID(), prefix: '', target: '', keepHost: true, enabled: true })
+}
+async function removeProxy(index: number): Promise<void> {
+  const row = proxyRows.value[index]
+  if (!row) return
+  // 已保存过的规则删除保存后立即失效——按危险操作约定二次确认（禁遮罩禁 ESC）
+  const saved = appConfig.shareProxies.some((m) => m.id === row.id)
+  if (saved) {
+    try {
+      await ElMessageBox.confirm(
+        `移除代理「/${row.prefix || '未命名'}」？保存后该代理入口将立即失效。`,
+        '移除代理规则',
+        { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留' },
+      )
+    } catch { return }
+  }
+  proxyRows.value.splice(index, 1)
+}
+/** 代理入口地址展示：服务运行中拼 displayIp+端口+前缀 */
+function proxyLink(row: ProxyRow): string {
+  const s = shareStatus.value
+  if (!s?.running || !s.port || !row.prefix) return ''
+  return `http://${s.displayIp}:${s.port}/${row.prefix}/`
+}
+async function copyProxyLink(row: ProxyRow): Promise<void> {
+  const url = proxyLink(row)
+  if (!url) return
+  try {
+    await window.api.os.clipboardWrite(url)
+    ElMessage.success('代理地址已复制')
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
+async function saveProxies(): Promise<void> {
+  // 前缀有语义（不同于挂载点随机生成）：留空/非法一律拦截；目标地址必填
+  const seen = new Set<string>()
+  const rows: ShareHubProxy[] = []
+  for (const row of proxyRows.value) {
+    const prefix = normAlias(row.prefix)
+    if (!prefix) { ElMessage.warning('存在路径前缀为空或非法的代理卡片（限小写字母/数字/连字符/下划线）'); return }
+    if (!row.target.trim()) { ElMessage.warning('存在目标地址为空的代理卡片，请补全或删除'); return }
+    if (seen.has(prefix)) { ElMessage.error(`路径前缀「${prefix}」重复，请修改`); return }
+    seen.add(prefix)
+    rows.push({ id: row.id, prefix, target: row.target.trim(), keepHost: row.keepHost !== false, enabled: row.enabled === true })
+  }
+  proxiesSaving.value = true
+  try {
+    await window.api.config.set('app.shareHub.proxies', rows)
+    appConfig.shareProxies = rows.map((r) => ({ ...r }))
+    await askStartAfterSave('代理规则')
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { proxiesSaving.value = false }
+}
+
 onMounted(() => {
   // 挂载目录编辑态：从已保存配置拷贝（保存成功前不影响权威配置）
-  mounts.value = appConfig.shareMounts.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled }))
+  mounts.value = appConfig.shareMounts.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled, allowIndex: m.allowIndex !== false }))
+  proxyRows.value = appConfig.shareProxies.map((r) => ({ id: r.id, prefix: r.prefix, target: r.target, keepHost: r.keepHost !== false, enabled: r.enabled }))
   void refreshShare()
   // 组件仅在激活时挂载：定时器跟随生命周期，持续刷新路由状态/访问日志/倒计时
   shareTimer = setInterval(() => { void refreshShare() }, 3000)
@@ -318,26 +381,66 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
         每个目录一条固定链接（http://IP:端口/挂载点/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。挂载点留空保存时随机生成并记住。
       </div>
       <div v-for="(row, i) in mounts" :key="row.id" class="mount-card">
-        <!-- 第一行：选择 + 目录显示（仅查看）+ 挂载点输入 + 允许访问目录复选框 -->
+        <!-- 行1：目录显示（仅查看）+ 选择目录 + 允许访问目录复选框（逐目录目录浏览开关） -->
         <div class="mount-line1">
-          <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择…</el-button>
           <el-input :model-value="row.dir" readonly size="small" placeholder="未选择目录" class="mount-dir" />
+          <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择目录</el-button>
+          <el-checkbox v-model="row.allowIndex" size="small">允许访问目录</el-checkbox>
+        </div>
+        <!-- 行2：挂载点输入 + 是否启用开关（关 = 整目录 404） -->
+        <div class="mount-line2">
           <el-input v-model="row.alias" size="small" placeholder="挂载点" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
             <template #prepend>/</template>
           </el-input>
-          <el-checkbox v-model="row.enabled" size="small">允许访问目录</el-checkbox>
+          <span class="switch-inline-label">启用</span>
+          <el-switch v-model="row.enabled" />
         </div>
-        <!-- 第二行：访问地址（仅查看）+ 复制 + 删除 -->
-        <div class="mount-line2">
+        <!-- 行3：访问地址（仅查看）+ 复制 + 删除(icon+文案) -->
+        <div class="mount-line3">
           <el-input :model-value="mountLink(row)" readonly size="small" class="mount-link" placeholder="（服务未运行）" />
           <el-button size="small" text type="primary" :icon="CopyDocument" title="复制访问地址" :disabled="!mountLink(row)" @click="copyMountLink(row)">复制</el-button>
-          <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)" />
+          <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)">删除</el-button>
         </div>
       </div>
       <div v-if="!mounts.length" class="hint">还没有挂载目录，点「添加目录」开始。</div>
       <div class="card-actions share-actions">
         <el-button size="small" type="success" plain @click="addMount">添加目录</el-button>
         <el-button size="small" type="primary" :loading="mountsSaving" @click="saveMounts">保存挂载目录</el-button>
+      </div>
+    </section>
+
+    <!-- 代理规则（用户 2026-11-18 定版）：URL 命中前缀 → 全方法反向代理 -->
+    <section class="settings-card">
+      <div class="card-title">代理规则 <el-tag size="small" type="info" class="mini-tag">{{ proxyRows.length }} 条</el-tag></div>
+      <div class="hint" style="margin-bottom: 10px">
+        访问 http://IP:端口/前缀/… 的请求转发到目标地址（全方法含 POST 请求体，响应流式回传）；目标地址不限网络；保存即生效，无需重启。前缀不得与分享链接/挂载点重复。
+      </div>
+      <div v-for="(prow, pi) in proxyRows" :key="prow.id" class="mount-card">
+        <div class="mount-line1">
+          <el-input :model-value="prow.target" size="small" :placeholder="TARGET_PLACEHOLDER" class="mount-dir" @update:model-value="prow.target = $event" />
+          <el-button size="small" type="primary" plain>选择目录</el-button>
+          <el-checkbox :model-value="prow.keepHost" size="small" @update:model-value="prow.keepHost = $event === true">
+            保留原始 Host
+            <FormHint inline detail="转发时 Host 头怎么填：保留（默认）= 带客户端访问的 IP:端口，适合目标按域名/虚拟主机路由（如 Nginx 多站点）或校验来源域的场景；不保留 = Host 改为目标地址自己的 host，适合直连 IP 的服务，避免目标因陌生 Host 拒绝请求">默认保留</FormHint>
+          </el-checkbox>
+        </div>
+        <div class="mount-line2">
+          <el-input :model-value="prow.prefix" size="small" class="mount-alias" @update:model-value="prow.prefix = normAlias($event) || $event" @blur="prow.prefix = normAlias(prow.prefix) || prow.prefix">
+            <template #prepend>/</template>
+          </el-input>
+          <span class="switch-inline-label">启用</span>
+          <el-switch v-model="prow.enabled" />
+        </div>
+        <div class="mount-line3">
+          <el-input :model-value="proxyLink(prow)" readonly size="small" class="mount-link" placeholder="（服务未运行）" />
+          <el-button size="small" text type="primary" :icon="CopyDocument" :disabled="!proxyLink(prow)" @click="copyProxyLink(prow)">复制</el-button>
+          <el-button size="small" text type="danger" :icon="Delete" @click="removeProxy(pi)">删除</el-button>
+        </div>
+      </div>
+      <div v-if="!proxyRows.length" class="hint">还没有代理规则，点「添加规则」开始。</div>
+      <div class="card-actions share-actions">
+        <el-button size="small" type="success" plain @click="addProxy">添加规则</el-button>
+        <el-button size="small" type="primary" :loading="proxiesSaving" @click="saveProxies">保存代理规则</el-button>
       </div>
     </section>
 
@@ -410,9 +513,10 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
    第一行：选择+目录显示+挂载点+允许访问复选框；第二行：访问地址+复制+删除 */
 .mount-card { border: 1px solid var(--el-border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
 .mount-line1 { display: flex; align-items: center; gap: 8px; }
-.mount-line2 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.mount-line2, .mount-line3 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.switch-inline-label { font-size: 12px; color: var(--el-text-color-secondary); white-space: nowrap; }
 .mount-dir { flex: 1; min-width: 160px; }
-.mount-alias { width: 180px; }
+.mount-alias { flex: 1; min-width: 140px; }
 .mount-link { flex: 1; min-width: 200px; }
 .mount-line2 :deep(.el-button + .el-button) { margin-left: 0; }
 .mount-line2 :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }

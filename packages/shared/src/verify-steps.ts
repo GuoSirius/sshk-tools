@@ -181,7 +181,8 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S18', group: 'S', title: '续期 TTL 累加 / 更新 TTL 重置', guide: '剩余约 48h 时点「续期 TTL」填 72 → 剩余约 120h（URL 不变）；点「更新 TTL」填 5 → 从当前重新计时为约 5h', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§3.2' },
   { id: 'S19', group: 'S', title: 'TTL 数字框默认取应用设置、整数约束', guide: '设置默认时长改 12 → 打开分享弹框数字框显示 12；输入小数被取整；设置页端口/时长输入小数保存被拦截', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
   { id: 'S20', group: 'S', title: '自动分配端口跨重启沿用', guide: '设置端口 0（自动）→ 启动后记录实际端口 → 重启应用端口不变（链接稳定）；被占回落新端口后 autoPort 自动更新；固定端口（默认 56789）直接生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
-  { id: 'S21', group: 'S', title: '挂载目录多目录分享（2026-11-18）', guide: '设置 →「分享服务」→ 挂载目录：添加多个本地目录（各配别名，新增自动生成可改，留空保存随机生成并记住）→ 保存即生效无需重启；手机访问 http://IP:端口/别名/ 可列出/下载该目录文件；复选关闭的目录访问 404；删除行保存后链接失效（有二次确认）', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/挂载目录' },
+  { id: 'S21', group: 'S', title: '挂载目录三行卡片（2026-11-18）', guide: '设置 →「分享服务」→ 挂载目录：每项圆角卡片三行——行1 目录显示+选择目录+「允许访问目录」复选框（关=目录列表 404，具体文件路径仍可达）；行2 挂载点输入框（沾满剩余空间）+「启用」开关（关=整目录 404）；行3 地址+复制+删除；挂载点留空保存随机生成并记住；保存即生效无需重启', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/挂载目录' },
+  { id: 'S22', group: 'S', title: '代理规则（2026-11-18）', guide: '「代理规则」区块：每项三行卡片——行1 目标地址（示例占位）+「保留原始 Host」复选框（默认保留，❓有场景解释）；行2 路径前缀+启用开关；行3 代理地址+复制+删除。访问 http://IP:端口/前缀/… 全方法（含 POST 请求体）转发到目标地址；转发带 X-Forwarded-For/Host/Proto（覆盖式防伪造）；目标不限网络；保存即生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/代理规则' },
 ]
 
 /** 步骤总数（页脚展示用） */

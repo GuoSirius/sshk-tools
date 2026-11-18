@@ -4,7 +4,7 @@
  * 供 GeneralTab / ShareTab 等共用，避免每个 tab 重复实现配置读写与保存。
  */
 import { reactive } from 'vue'
-import type { ShareHubMount } from '@sshk/shared'
+import type { ShareHubMount, ShareHubProxy } from '@sshk/shared'
 
 export const appConfig = reactive({
   outputDir: '',
@@ -23,6 +23,8 @@ export const appConfig = reactive({
   shareAllowIndex: false,
   /** 挂载目录（多目录分享，用户 2026-11-18）：app.shareHub.mounts 数组 */
   shareMounts: [] as ShareHubMount[],
+  /** 代理规则（用户 2026-11-18）：app.shareHub.proxies 数组 */
+  shareProxies: [] as ShareHubProxy[],
 })
 
 async function str(key: string, fallback: string): Promise<string> {
@@ -55,6 +57,7 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.shareDefaultTtlHours = Number.isInteger(ttl) && ttl >= 0 ? ttl : 72
   appConfig.shareAllowIndex = await bool('app.shareHub.allowIndex', false)
   appConfig.shareMounts = (await arr<ShareHubMount>('app.shareHub.mounts')) ?? []
+  appConfig.shareProxies = (await arr<ShareHubProxy>('app.shareHub.proxies')) ?? []
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
@@ -62,7 +65,7 @@ export async function loadAppConfig(): Promise<void> {
 }
 
 /** 保存指定分组的配置；groups='general' | 'share'，各 tab 只写自己负责的 key。
- *  shareMounts（挂载目录）不走此函数：ShareTab 在校验/规范化后单独写 app.shareHub.mounts。 */
+ *  shareMounts（挂载目录）/ shareProxies（代理规则）不走此函数：ShareTab 校验/规范化后单独写 app.shareHub.*。 */
 export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean> {
   const pairs: [string, unknown][] = group === 'share'
     ? [

@@ -1,4 +1,6 @@
 import { createServer, type Server } from 'node:http'
+import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { networkInterfaces } from 'node:os'
 import { existsSync, readFileSync, statSync, createReadStream, mkdirSync, readdirSync } from 'node:fs'
 import { writeFile, unlink, stat } from 'node:fs/promises'
@@ -10,6 +12,7 @@ import type {
   ShareRouteTicket,
   ShareRouteInfo,
   ShareHubMount,
+  ShareHubProxy,
   ShareIpInfo,
   ShareAccessLog,
   HubStatus,
@@ -96,12 +99,30 @@ export function normalizeMountAlias(raw: unknown): string {
   return /^[a-z0-9][a-z0-9-_]{0,31}$/.test(s) ? s : ''
 }
 
+/** 代理规则运行态（ShareHubProxy 解析后）：target 解析为 URL 对象 */
+interface ProxyRule {
+  id: string
+  prefix: string
+  targetUrl: URL
+  keepHost: boolean
+}
+
+/** 逐跳头（RFC 7230）：代理转发/回传两侧都要剥掉，交给 Node 自己管理连接 */
+const HOP_BY_HOP_HEADERS = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']
+
+/** 客户端 IP 规范化：IPv4-mapped IPv6（::ffff:192.168.1.5）还原为点分 IPv4 */
+function normalizeClientIp(ip: string): string {
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip
+}
+
 export class ShareHub {
   private server: Server | null = null
   private port = 0
   private routes = new Map<string, ShareRoute>()
   /** 挂载目录路由（key=别名）：配置权威、即时生效、不持久化到 hub-state（重启由宿主 setMounts 重建） */
   private mountRoutes = new Map<string, ShareRoute>()
+  /** 代理规则（key=路径前缀）：配置权威、即时生效、不持久化（用户 2026-11-18 定版） */
+  private proxyRules = new Map<string, ProxyRule>()
   private logs: ShareAccessLog[] = []
   private cleanTimer: ReturnType<typeof setInterval> | null = null
   private persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -195,10 +216,38 @@ export class ShareHub {
         id: `mount:${m.id || alias}`, token: alias, toolId: 'share-hub-mount',
         label: alias, root: dir, entry: '', ttlHours: 0,
         createdAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: '',
-        allowIndex: true, hits: 0, mountId: m.id || alias,
+        // 逐目录目录浏览开关（用户 2026-11-18 拆分）：默认允许，关 = 仅具体文件路径可达
+        allowIndex: m.allowIndex !== false, hits: 0, mountId: m.id || alias,
       })
     }
     this.mountRoutes = next
+    return skipped
+  }
+
+  /** 设置代理规则（用户 2026-11-18 定版）：配置权威、即时生效、无需重启。
+   *  全方法反向代理（GET/POST/…含请求体流式转发）；目标地址不限网络；keepHost 控制转发 Host。
+   *  enabled=false / 前缀非法 / 目标非法 / 前缀冲突 → 不注册（访问 404），返回跳过明细供宿主日志。 */
+  setProxies(proxies: ShareHubProxy[]): string[] {
+    const skipped: string[] = []
+    const next = new Map<string, ProxyRule>()
+    for (const p of Array.isArray(proxies) ? proxies : []) {
+      const prefix = normalizeMountAlias(p?.prefix)
+      const rawTarget = String(p?.target ?? '').trim()
+      const shown = prefix || String(p?.prefix ?? '').trim() || rawTarget || '(空行)'
+      if (!prefix) { skipped.push(`「${shown}」：前缀非法（限小写字母/数字/连字符/下划线）`); continue }
+      if (!rawTarget) { skipped.push(`「${prefix}」：目标地址为空`); continue }
+      let u: URL
+      try { u = new URL(rawTarget) } catch { skipped.push(`「${prefix}」→ ${rawTarget}：目标地址不是合法 URL`); continue }
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') { skipped.push(`「${prefix}」→ ${rawTarget}：仅支持 http/https`); continue }
+      if (next.has(prefix)) { skipped.push(`「${prefix}」：前缀重复`); continue }
+      // 前缀不得与分享 token / 挂载别名冲突：解析顺序 token → 挂载 → 代理，冲突的代理永远不可达
+      if (this.routes.has(prefix) || this.mountRoutes.has(prefix)) {
+        skipped.push(`「${prefix}」：与既有分享链接/挂载目录冲突`); continue
+      }
+      if (p.enabled === false) continue // 关 = 不注册（保存后重新打开即时恢复）
+      next.set(prefix, { id: p.id || prefix, prefix, targetUrl: u, keepHost: p.keepHost !== false }) // 默认保留原始 Host（用户 2026-11-18 拍板）
+    }
+    this.proxyRules = next
     return skipped
   }
 
@@ -384,10 +433,20 @@ export class ShareHub {
     try {
       const url = new URL(req.url ?? '/', 'http://local')
       const token = url.pathname.split('/')[1] ?? ''
-      // 先查工具分享路由（token），未命中再查挂载目录路由（别名）；token 冲突时分享路由优先
+      // 三级解析（用户 2026-11-18）：工具分享 token → 挂载别名 → 代理前缀（前缀冲突时先注册者语义优先由 setProxies 拦截）
       const route = this.routes.get(token) ?? this.mountRoutes.get(token)
-      if (!route || Date.now() > route.expiresAt) {
-        if (route && Date.now() > route.expiresAt) this.routes.delete(token)
+      if (!route) {
+        const rule = this.proxyRules.get(token)
+        if (rule) {
+          await this.handleProxy(req, res, rule, clientIp, token, url)
+          return
+        }
+        this.finish(res, 404, 'Not Found')
+        this.log(clientIp, routeId, rel, 404)
+        return
+      }
+      if (Date.now() > route.expiresAt) {
+        this.routes.delete(token)
         this.finish(res, 404, 'Not Found')
         this.log(clientIp, routeId, rel, 404)
         return
@@ -474,6 +533,53 @@ export class ShareHub {
       this.finish(res, 404, 'Not Found')
       this.log(clientIp, routeId, rel, 404)
     }
+  }
+
+  /** 全方法反向代理（用户 2026-11-18 定版）：请求体/响应体流式 pipe（支持 POST 等），不落盘不缓存；
+   *  hop-by-hop 头两侧剥离；keepHost=false 时 Host 改为目标 host，true 保留客户端原始 Host。 */
+  private async handleProxy(
+    req: IncomingMessage,
+    res: ServerResponse,
+    rule: ProxyRule,
+    clientIp: string,
+    token: string,
+    url: URL,
+  ): Promise<void> {
+    // 剩余路径透传编码串（目标服务器自行 decode）；拼目标基础路径与 query
+    const rel = url.pathname.slice(token.length + 1)
+    const basePath = rule.targetUrl.pathname.replace(/\/+$/, '')
+    const outPath = `${basePath}/${rel}${url.search}`
+    const headers: Record<string, string | string[] | undefined> = { ...req.headers }
+    for (const h of HOP_BY_HOP_HEADERS) delete headers[h]
+    if (!rule.keepHost) headers.host = rule.targetUrl.host
+    // X-Forwarded-*（用户 2026-11-18 拍板）：本服务是可信代理，一律**覆盖**而非追加，防访客伪造链路；
+    // 后端需要代理链信息时从这三个头取（X-Forwarded-Host=客户端访问的 host，Proto=客户端协议恒 http，For=客户端 IP）
+    headers['x-forwarded-for'] = normalizeClientIp(clientIp)
+    headers['x-forwarded-host'] = String(req.headers.host ?? '')
+    headers['x-forwarded-proto'] = 'http'
+    const send = rule.targetUrl.protocol === 'https:' ? httpsRequest : httpRequest
+    const proxyReq = send({
+      protocol: rule.targetUrl.protocol,
+      hostname: rule.targetUrl.hostname,
+      port: rule.targetUrl.port || (rule.targetUrl.protocol === 'https:' ? 443 : 80),
+      method: req.method,
+      path: outPath,
+      headers,
+    }, (pr) => {
+      const status = pr.statusCode ?? 502
+      const outHeaders: Record<string, string | string[] | undefined> = { ...pr.headers }
+      for (const h of HOP_BY_HOP_HEADERS) delete outHeaders[h]
+      res.writeHead(status, outHeaders)
+      pr.pipe(res) // 响应体流式回传
+      this.log(clientIp, `proxy:${rule.id}`, rel || '/', status)
+    })
+    proxyReq.setTimeout(30_000, () => proxyReq.destroy(new Error('代理请求超时（30s）')))
+    proxyReq.on('error', (err) => {
+      if (res.headersSent) { res.destroy(); return }
+      this.finish(res, 502, `Bad Gateway: ${(err as Error).message}`)
+      this.log(clientIp, `proxy:${rule.id}`, rel || '/', 502)
+    })
+    req.pipe(proxyReq) // 请求体流式转发（GET body 为空无影响）
   }
 
   /** 目录列表页：HTML 转义防 XSS，条目带 URL 编码的 rel 路径。 */

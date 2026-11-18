@@ -13,6 +13,7 @@ import {
   IPC_CHANNELS,
   type ShareRouteInput,
   type ShareHubMount,
+  type ShareHubProxy,
   type HubStatus,
 } from '@sshk/shared'
 import type { ConfigService } from '@sshk/repository'
@@ -101,6 +102,16 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     if (skipped.length) logger.warn('shareHub', `挂载目录部分无效已跳过：${skipped.join('；')}`)
   }
 
+  /** 代理规则（用户 2026-11-18）：配置 app.shareHub.proxies 为权威，变更即时生效（setProxies）。 */
+  function applyProxies(): void {
+    const raw = cfg.get('app.shareHub.proxies')
+    const proxies: ShareHubProxy[] = (Array.isArray(raw) ? raw : []).filter(
+      (p): p is ShareHubProxy => !!p && typeof p === 'object' && typeof (p as ShareHubProxy).target === 'string',
+    )
+    const skipped = hub.setProxies(proxies)
+    if (skipped.length) logger.warn('shareHub', `代理规则部分无效已跳过：${skipped.join('；')}`)
+  }
+
   let initialized = false
 
   async function init(): Promise<void> {
@@ -109,6 +120,7 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     removeLegacyStates()
     applyPreferredIp()
     applyMounts()
+    applyProxies()
     if (cfg.get('app.shareHub.autoStart') !== false) {
       try { await startHub() } catch (err) {
         logger.error('shareHub', `自动启动失败：${(err as Error).message}`)
@@ -118,8 +130,9 @@ export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: stri
     cfg.onChanged((ns, key) => {
       if (ns !== 'app' || !key.startsWith('shareHub.')) return
       if (key === 'shareHub.preferredIp') { applyPreferredIp(); return }
-      // 挂载目录变更即时生效（保存即生效，无需重启——用户 2026-11-18 定版）
+      // 挂载目录/代理规则变更即时生效（保存即生效，无需重启——用户 2026-11-18 定版）
       if (key === 'shareHub.mounts') { applyMounts(); return }
+      if (key === 'shareHub.proxies') { applyProxies(); return }
       if (key === 'shareHub.autoStart') {
         const on = cfg.get('app.shareHub.autoStart') !== false
         if (on && !hub.running) void startHub()

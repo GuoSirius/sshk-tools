@@ -449,7 +449,24 @@ export interface ShareHubMount {
   dir: string
   /** 访问别名：URL 形如 http://ip:port/{alias}/；新增时自动生成，用户可改，留空保存时随机生成并持久化 */
   alias: string
-  /** 是否允许访问该目录（关 = 整目录 404，链接也不可用） */
+  /** 是否启用该挂载（关 = 整目录 404，链接不可用） */
+  enabled: boolean
+  /** 是否允许浏览目录列表（用户 2026-11-18 拆分：默认 true；关 = 具体文件路径可达、目录列表 404） */
+  allowIndex?: boolean
+}
+
+/** ShareHub 代理规则（用户 2026-11-18 定版）：URL 命中路径前缀 → 全方法反向代理到目标地址。
+ *  配置键 app.shareHub.proxies 为权威持久化，内核 setProxies 即时生效，无需重启。 */
+export interface ShareHubProxy {
+  /** 稳定 id（新增时生成，编辑/保存不重生成） */
+  id: string
+  /** 匹配前缀：URL 第一段路径（如 api → /api/... 全部命中），规则同挂载点（小写 [a-z0-9-_]） */
+  prefix: string
+  /** 目标地址（不限网络）：http/https origin，可带基础路径（如 http://192.168.1.10:8080/base） */
+  target: string
+  /** 转发时保留原始 Host（默认 false → Host 改为目标地址的 host） */
+  keepHost?: boolean
+  /** 是否启用该规则（关 = 不代理，访问 404） */
   enabled: boolean
 }
 
