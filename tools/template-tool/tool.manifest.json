@@ -54,8 +54,9 @@
         {
           "key": "llm.defaultProviderId",
           "label": "默认 Provider",
-          "type": "string",
-          "hint": "留空则运行时从应用级 Provider 列表选择"
+          "type": "select",
+          "optionsSource": "llm:providers",
+          "hint": "下拉选择 Provider；选「跟随应用激活」则运行时从应用级 Provider 列表取激活项"
         },
         {
           "key": "llm.systemPrompt",

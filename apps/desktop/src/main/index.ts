@@ -1,4 +1,7 @@
 import './env-load'
+// ⚠️ 必须在 import 'electron-updater' 之前求值：electron-updater 构造期缓存 app 版本快照，
+// dev 伪装版本号的覆盖必须先发生（详见 update-dev-fake.ts 头注释）
+import { updateDevCheck } from './update-dev-fake'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, Tray, Menu } from 'electron'
 // electron-updater 是 CJS 模块：ESM 主进程必须默认导入再解构（具名导入运行时报错）
 import electronUpdaterPkg from 'electron-updater'
@@ -18,7 +21,6 @@ import {
   type ToolOverrides,
   type ToolPluginStatus,
   now,
-  getEnvStr,
   getEnvBool,
 } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
@@ -55,26 +57,14 @@ const iconFile = path.join(here, '../../build/icon.png')
 const trayIconFile = path.join(here, '../../build/tray.png')
 
 const isDev = !app.isPackaged
-/** dev 更新测试（用户验收项7）：仅 dev 生效，走真实 GitHub 更新源验证全流程，下载后不自动安装。
- *  版本号来源二选一（都不用改 package.json）：
- *   - SSHK_DEV_UPDATE_FAKE_VERSION=1.1.0：覆盖 app.getVersion()，updater 据此判定有新版（推荐）；
- *   - 不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
-const updateDevCheck = isDev && getEnvBool('SSHK_DEV_UPDATE_TEST', false)
+/** dev 更新测试开关与版本号伪装统一收敛在 ./update-dev-fake（必须在 electron-updater import 前求值，见其头注释）。
+ *  版本号伪装：SSHK_DEV_UPDATE_FAKE_VERSION=1.1.0 覆盖 app.getVersion()，updater 据此判定有新版；
+ *  不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
 /** 分发包自动更新总开关：SSHK_APP_AUTO_UPDATE=0/false 显式关闭——顶栏按钮不显示、更新流程完全不走（默认开启）。
  *  用于内网/定制分发场景：即使包里带着更新源配置，也不会发起任何网络检查。
  *  打包版没有 .env（env-load 静默跳过），构建期走 __SSHK_AUTO_UPDATE_DISABLED__ define +
  *  __SSHK_BAKED_ENV__ 烤入双保险，任一生效即禁用；.env 声明的键默认不允许本机 env 覆盖（baked-env）。 */
 const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || !getEnvBool('SSHK_APP_AUTO_UPDATE', true)
-if (updateDevCheck) {
-  const fakeVersion = getEnvStr('SSHK_DEV_UPDATE_FAKE_VERSION')
-  if (fakeVersion) {
-    const realGetVersion = app.getVersion.bind(app)
-    // electron-updater 用 app.getVersion() 与线上 latest.yml 对比；dev 测试期改返回值即可伪装旧版本，
-    // 不动任何 package.json（版本号只在 dev + 显式 env 时被覆盖，打包版零影响）。
-    app.getVersion = () => fakeVersion
-    console.log(`[sshk] dev 更新测试：版本号覆盖为 ${fakeVersion}（真实 ${realGetVersion()}），仅影响本次 dev 进程`)
-  }
-}
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let services: AppServices | null = null

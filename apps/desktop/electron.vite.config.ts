@@ -1,6 +1,9 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
+// Vue DevTools（用户 2026-11-18 需求）：dev 期内置调试面板（组件树/状态/路由/Pinia），
+// Alt+Shift+D 或底栏齿轮唤起；该插件仅在 dev server 下注入，build 产物零影响
+import VueDevTools from 'vite-plugin-vue-devtools'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -178,7 +181,7 @@ export default defineConfig({
     root: fileURLToPath(new URL('.', import.meta.url)),
     // 局域网可访问（手机 / 其他设备调试分享页）；仅 dev 生效
     server: { host: true },
-    plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS()],
+    plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS(), VueDevTools()],
     resolve: { alias: sshkAlias },
     define: { ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
     build: {

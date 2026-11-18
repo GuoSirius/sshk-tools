@@ -48,8 +48,13 @@ const options = computed(() => ({
   // 表现为「压缩 HTML 没有高亮 + 顶部提示 Rendering paused for long line」。设为 -1 关闭限制。
   stopRenderingLineAfter: -1,
   // 关键（用户复核）：即使渲染不暂停，Monaco 默认 maxTokenizationLineLength=20000 会跳过超长行的
-  // 语法着色（tokenize），压缩 HTML 单行常几十万字符 → 整行纯白无高亮。设为 -1 不限制，恢复着色。
-  maxTokenizationLineLength: -1,
+  // 语法着色（tokenize），压缩 HTML 单行常几十万字符 → 整行纯白无高亮。
+  // ⚠️ 此项不能设 -1：Monarch lexer 的判断是 `line.length >= maxTokenizationLineLength`，
+  // -1 会让**所有行**（长度≥0 恒 > -1）都被 nullTokenize → 整个文件无高亮（2026-11-18 事故）。
+  // -1 是「关闭限制」的语义仅对 stopRenderingLineAfter 成立；此处只能用大数值上限，
+  // MAX_SAFE_INTEGER = 不限制（Monaco 源码只做比较不参与运算；压缩 HTML 内嵌 base64 时
+  // 单行可超 200 万字符，固定数值上限会留隐性截断）。
+  maxTokenizationLineLength: Number.MAX_SAFE_INTEGER,
   // 大文件优化默认会在超大内容上关闭 tokenization / 折叠等特性，压缩产物场景需关闭以保证高亮
   largeFileOptimizations: false,
 }))

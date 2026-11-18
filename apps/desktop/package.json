@@ -43,6 +43,7 @@
     "electron-vite": "latest",
     "typescript": "6",
     "vite": "latest",
+    "vite-plugin-vue-devtools": "latest",
     "vitest": "latest"
   },
   "engines": {

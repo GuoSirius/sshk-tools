@@ -114,6 +114,18 @@ async function load(): Promise<void> {
       } catch {
         dynamicOptions[field.key] = [{ label: '（上传能力未就绪）', value: '' }]
       }
+    } else if (field.optionsSource === 'llm:providers') {
+      // 应用级 Provider 清单（手输 id 易错，改下拉选择，2026-11-18 用户反馈）：
+      // 列表第一项「跟随应用激活 Provider」即默认值（value='' 走 fallbackKey 生效值）
+      try {
+        const list = await window.api.llm.providers()
+        dynamicOptions[field.key] = [
+          { label: '（跟随应用激活 Provider）', value: '' },
+          ...list.map((p) => ({ label: p.name, value: p._id })),
+        ]
+      } catch {
+        dynamicOptions[field.key] = [{ label: '（Provider 清单未就绪）', value: '' }]
+      }
     }
   }
   for (const dep of tool.value?.configDeps ?? []) {
