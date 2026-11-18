@@ -265,12 +265,21 @@ async function onAllowIndexChange(next: boolean): Promise<void> {
   } finally { busy.value = false }
 }
 
-async function copyUrl(url?: string): Promise<void> {
+/** 写剪贴板：成功 true / 失败 false（创建、重新生成的静默复制不弹反馈，按钮路径由 copyActive 提示） */
+async function copyUrl(url?: string): Promise<boolean> {
   const target = url ?? activeUrl.value
-  if (!target) return
+  if (!target) return false
   try {
     await callHostApi({ group: 'os', method: 'clipboardWrite', channel: IPC_CHANNELS.osClipboardWrite, label: '写剪贴板' }, target)
-  } catch { /* 剪贴板不可用时用户可点首行「复制」 */ }
+    return true
+  } catch { return false /* 剪贴板不可用时由调用方提示 */ }
+}
+
+/** 链接行「复制」按钮：写剪贴板并给出成功/失败反馈（创建/重新生成的静默复制不带此提示，避免双 toast） */
+async function copyActive(): Promise<void> {
+  const ok = await copyUrl()
+  if (ok) ElMessage.success('链接已复制到剪贴板')
+  else ElMessage.error('复制失败：剪贴板不可用，可手动选中链接复制')
 }
 
 /** 重新生成：二次确认后撤旧路由（立即失效）并按当前设置创建、复制新路由——确认即生效 */
@@ -431,7 +440,7 @@ watch(() => props.open, (open) => {
             title="允许访客打开裸链接/目录路径时浏览文件列表；关闭时仅具体文件链接可访问"
             @change="(v: unknown) => onAllowIndexChange(v === true)"
           >允许访问目录</el-checkbox>
-          <el-button type="success" size="small" :disabled="!activeUrl" @click="copyUrl()">复制</el-button>
+          <el-button type="success" size="small" :disabled="!activeUrl" @click="copyActive">复制</el-button>
         </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
