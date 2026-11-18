@@ -140,6 +140,12 @@ function createWindow(): void {
   mainWindow.on('close', (event) => {
     if (quitting || isDev) return
     event.preventDefault()
+    // 「关闭时最小化到托盘」开启（用户 2026-11-18）：点关闭 = 隐藏到托盘不退出；
+    // 托盘不可用（设置里关了系统托盘/创建失败）时回落二次确认退出，避免窗口藏起来找不到
+    if (services?.config.get('app.closeToTray') === true && tray) {
+      mainWindow!.hide()
+      return
+    }
     // 交给渲染层弹出主题色确认框；用户确认后渲染层回调 app:confirmClose 真正退出
     mainWindow!.webContents.send(IPC_CHANNELS.appRequestClose)
   })

@@ -14,6 +14,8 @@ export const appConfig = reactive({
   autoInstallOnAppQuit: false,
   developerMode: false,
   outputSnapshot: false,
+  /** 关闭按钮最小化到托盘（用户 2026-11-18）：默认关=关闭需二次确认后退出应用；开=点关闭隐藏到托盘 */
+  closeToTray: false,
   /** ShareHub（plans/09） */
   shareAutoStart: true,
   sharePort: 56789,
@@ -62,6 +64,7 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)
   appConfig.outputSnapshot = await bool('app.outputSnapshot', false)
+  appConfig.closeToTray = await bool('app.closeToTray', false)
 }
 
 /** 保存指定分组的配置；groups='general' | 'share'，各 tab 只写自己负责的 key。
@@ -82,6 +85,7 @@ export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean
         ['app.autoUpdate', appConfig.autoUpdate],
         ['app.autoInstallOnAppQuit', appConfig.autoInstallOnAppQuit],
         ['app.developerMode', appConfig.developerMode],
+        ['app.closeToTray', appConfig.closeToTray === true],
       ]
   for (const [key, value] of pairs) await window.api.config.set(key, value)
   return true

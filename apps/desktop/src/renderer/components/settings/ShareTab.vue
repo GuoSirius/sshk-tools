@@ -512,6 +512,10 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .mount-card { border: 1px solid var(--el-border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
 .mount-line1 { display: flex; align-items: center; gap: 8px; }
 .mount-line2, .mount-line3 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* 行3 复制/删除紧凑（用户 2026-11-18）：EP 邻接按钮默认 margin-left 12px 归零（间距交给 gap），内边距收窄 */
+.mount-line3 { gap: 6px; }
+.mount-line3 :deep(.el-button + .el-button) { margin-left: 0; }
+.mount-line3 :deep(.el-button) { padding: 3px 6px; }
 .switch-inline-label { font-size: 12px; color: var(--el-text-color-secondary); white-space: nowrap; }
 .mount-dir { flex: 1; min-width: 160px; }
 .mount-alias { flex: 1; min-width: 140px; }

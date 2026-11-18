@@ -87,6 +87,14 @@ onMounted(() => { void loadAppConfig() })
             <el-switch v-model="appConfig.tray" />
           </div>
         </el-form-item>
+        <el-form-item label="关闭按钮最小化到托盘">
+          <div class="switch-row">
+            <span class="switch-label">关闭按钮最小化到托盘
+              <FormHint inline detail="默认关：点关闭弹确认框，确认后退出应用；开启后点关闭直接隐藏到托盘（托盘需开启）。托盘不可用时仍走确认退出">默认关</FormHint>
+            </span>
+            <el-switch v-model="appConfig.closeToTray" />
+          </div>
+        </el-form-item>
         <el-form-item label="自动更新">
           <div class="switch-row">
             <span class="switch-label">自动更新

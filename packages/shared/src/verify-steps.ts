@@ -107,6 +107,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'F/A-V5', group: 'F', title: '备份导出→清空→导入还原', guide: '备份导出 zip → 清空数据 → 导入还原一致（含 D18 密钥加密迁移）', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V5/H5' },
   { id: 'F/A-V6', group: 'F', title: '产物目录迁移 6 步', guide: '预检/停写/复制/校验/切换/清理全走通；旧目录绝不递归删', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V6' },
   { id: 'F/A-V7', group: 'F', title: '右键菜单/开机自启 OS 授权', guide: '三平台各自验：右键菜单项出现、开机自启生效', entry: { type: 'settings', target: '系统与数据' }, relates: 'A-V7' },
+  { id: 'F/A-V8', group: 'F', title: '关闭按钮最小化到托盘（2026-11-18）', guide: '常规设置开关默认关：点关闭弹确认框→确认退出；开启并保存后点关闭=窗口隐藏到托盘、托盘点开可回；关闭「系统托盘」开关时回落确认退出（不会藏丢）', entry: { type: 'settings', target: '常规' }, relates: 'A-V7' },
   { id: 'F/B-V1', group: 'F', title: '设置页左栏点击定位', guide: '逐个点左栏分组 → 右栏滚动定位且左栏高亮跟随（含反向滚动高亮）', entry: { type: 'route', target: 'badge-studio' }, relates: 'B-V1' },
   { id: 'F/B-V2', group: 'F', title: '形态 2 页级隔离复验', guide: '「模型与调用」改字段保存 → 切「路径与输出」确认自己改动在且上页字段未被带过来 → 再切回双方均在', entry: { type: 'route', target: 'template-tool' }, relates: 'B-V2/D15/D16' },
   { id: 'F/C-V2', group: 'F', title: 'badge 四种数据源导入', guide: 'pickStats 用真实 xlsx/xls/csv/tsv/json 文件导入 → 三类解析齐备结果正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V2' },
