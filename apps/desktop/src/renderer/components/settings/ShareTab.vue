@@ -418,10 +418,8 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
       <div v-for="(prow, pi) in proxyRows" :key="prow.id" class="mount-card">
         <div class="mount-line1">
           <el-input :model-value="prow.target" size="small" :placeholder="TARGET_PLACEHOLDER" class="mount-dir" @update:model-value="prow.target = $event" />
-          <el-button size="small" type="primary" plain>选择目录</el-button>
           <el-checkbox :model-value="prow.keepHost" size="small" @update:model-value="prow.keepHost = $event === true">
-            保留原始 Host
-            <FormHint inline detail="转发时 Host 头怎么填：保留（默认）= 带客户端访问的 IP:端口，适合目标按域名/虚拟主机路由（如 Nginx 多站点）或校验来源域的场景；不保留 = Host 改为目标地址自己的 host，适合直连 IP 的服务，避免目标因陌生 Host 拒绝请求">默认保留</FormHint>
+            保留原始 Host<FormHint inline detail="转发时 Host 头怎么填：保留（默认）= 带客户端访问的 IP:端口，适合目标按域名/虚拟主机路由（如 Nginx 多站点）或校验来源域的场景；不保留 = Host 改为目标地址自己的 host，适合直连 IP 的服务，避免目标因陌生 Host 拒绝请求" />
           </el-checkbox>
         </div>
         <div class="mount-line2">
