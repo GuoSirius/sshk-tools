@@ -88,7 +88,7 @@ onMounted(() => {
       <template v-else>
         <!-- 列表页按钮合并一行（用户 2026-11-18）：新建（primary）+ 批量导出/删除 + 分享列表，均右对齐 -->
         <el-button type="primary" size="small" @click="startNewPoster">新建海报</el-button>
-        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出 HTML（{{ selectedPosters.length }}）</el-button>
+        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
         <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
       </template>

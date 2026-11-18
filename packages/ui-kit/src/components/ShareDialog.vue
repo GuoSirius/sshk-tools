@@ -57,6 +57,8 @@ const permanentSel = ref(false)
  *  生效值单独跟踪（allowIndexEffective）：ticket 类型不含 allowIndex，勾选态需与生效值比对判断变更与回滚 */
 const allowIndex = ref(false)
 const allowIndexEffective = ref(false)
+/** TTL 暂存（用户 2026-11-18 定版）：三按钮只选择「要做什么」，点「应用更改」才 renew 生效 */
+const pendingTtl = ref<null | 'extend' | 'reset' | 'permanent'>(null)
 /** form 态补充提示（如「（当前链接已撤销）」） */
 const formHint = ref('')
 
@@ -186,18 +188,38 @@ async function createTicket(): Promise<void> {
   } finally { busy.value = false }
 }
 
-/** TTL 三操作统一入口（用户 2026-11-18 恢复上一版）：均复用 token，URL 不变；点按钮本身即确认生效 */
-async function applyTtl(mode: 'extend' | 'reset' | 'permanent'): Promise<void> {
-  if (!ticket.value) return
-  const hours = mode === 'permanent' ? 0 : ttlHours.value
-  if (mode !== 'permanent' && (!Number.isInteger(hours) || hours < 1)) {
+/** TTL 三按钮（用户 2026-11-18 恢复上一版界面）：点击只暂存选择，应用时才 renew（复用 token，URL 不变） */
+function stageTtl(mode: 'extend' | 'reset' | 'permanent'): void {
+  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
+    ElMessage.warning('时长需为不小于 1 的整数小时'); return
+  }
+  pendingTtl.value = mode
+}
+
+/** 暂存描述（实时取数字框当前值，应用时以此为准） */
+const pendingTtlText = computed(() => {
+  switch (pendingTtl.value) {
+    case 'extend': return `将在当前到期上累加 ${ttlHours.value} 小时`
+    case 'reset': return `有效期将更新为 ${ttlHours.value} 小时（从当前重新计时）`
+    case 'permanent': return '将设为永久有效'
+    default: return ''
+  }
+})
+
+/** 应用更改（ready 态唯一 TTL 生效入口）：按暂存项一次 renew */
+async function applyPendingTtl(): Promise<void> {
+  const mode = pendingTtl.value
+  if (!ticket.value || !mode || busy.value) return
+  if (mode !== 'permanent' && (!Number.isInteger(ttlHours.value) || ttlHours.value < 1)) {
     ElMessage.warning('时长需为不小于 1 的整数小时'); return
   }
   busy.value = true
   try {
+    const hours = mode === 'permanent' ? 0 : ttlHours.value
     const next = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, hours, props.toolId, mode === 'reset' ? 'reset' : 'extend')
     ticket.value = next
     saveTicket(next)
+    pendingTtl.value = null
     const msg = mode === 'permanent' ? '已设为永久有效，链接不变'
       : mode === 'extend' ? `已累加 ${hours} 小时，链接不变`
       : `已更新为 ${hours} 小时（从当前重新计时），链接不变`
@@ -280,6 +302,7 @@ async function regenerate(): Promise<void> {
     ticket.value = t
     saveTicket(t)
     activeUrlIndex.value = 0
+    pendingTtl.value = null
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success('新分享已创建，链接已复制（旧链接已失效）')
   } catch (err) { ElMessage.error((err as Error).message) }
@@ -305,6 +328,7 @@ async function revoke(): Promise<void> {
     ticket.value = null
     saveTicket(null)
     permanentSel.value = false
+    pendingTtl.value = null
     phase.value = 'form'
     formHint.value = '（当前链接已撤销）'
     ElMessage.success('已撤销分享')
@@ -318,6 +342,7 @@ watch(() => props.open, (open) => {
   if (open) {
     ticket.value = null
     activeUrlIndex.value = 0
+    pendingTtl.value = null
     void loadTicket()
     if (!tickTimer) tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
   } else if (tickTimer) {
@@ -357,14 +382,18 @@ watch(() => props.open, (open) => {
         </div>
       </template>
 
-      <!-- 已有链接：TTL 三按钮 + 链接行（下拉+目录开关+复制）+ 二维码 + 剩余时间 -->
+      <!-- 已有链接：TTL 三按钮（暂存选择）+ 链接行（下拉+目录开关+复制）+ 二维码 + 剩余时间 -->
       <template v-else>
         <div class="share-ttl-row">
           <el-input-number v-model="ttlHours" :min="1" :precision="0" :step="1" size="small" class="ttl-input" />
           <span class="ttl-unit">小时</span>
-          <el-button type="primary" size="small" :loading="busy" :disabled="permanent" @click="applyTtl('extend')">续期 TTL</el-button>
-          <el-button type="warning" size="small" plain :loading="busy" @click="applyTtl('reset')">更新 TTL</el-button>
-          <el-button type="success" size="small" plain :loading="busy" :disabled="permanent" @click="applyTtl('permanent')">永久有效</el-button>
+          <!-- 三按钮只暂存选择（选中变实心高亮），点「应用更改」才生效 -->
+          <el-button type="primary" size="small" :plain="pendingTtl !== 'extend'" :loading="busy" :disabled="permanent" @click="stageTtl('extend')">续期 TTL</el-button>
+          <el-button type="warning" size="small" :plain="pendingTtl !== 'reset'" :loading="busy" @click="stageTtl('reset')">更新 TTL</el-button>
+          <el-button type="success" size="small" :plain="pendingTtl !== 'permanent'" :loading="busy" :disabled="permanent" @click="stageTtl('permanent')">永久有效</el-button>
+        </div>
+        <div v-if="pendingTtl" class="share-form-tip">
+          <span class="dirty-tip">{{ pendingTtlText }}，点「应用更改」后生效（链接不变）。</span>
         </div>
         <div class="share-link-head">
           <el-select v-if="(ticket?.urls.length ?? 0) > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
@@ -411,6 +440,7 @@ watch(() => props.open, (open) => {
       <template v-else>
         <el-button type="danger" size="small" plain :loading="busy" @click="revoke">撤销分享</el-button>
         <el-button type="warning" size="small" :loading="busy" @click="regenerate">重新生成</el-button>
+        <el-button type="primary" size="small" :loading="busy" :disabled="!pendingTtl" @click="applyPendingTtl">应用更改</el-button>
         <el-button size="small" @click="close">关闭</el-button>
       </template>
     </template>
