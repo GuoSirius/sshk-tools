@@ -168,20 +168,25 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect(hub.displayIp()).toBe('8.8.8.8')
   })
 
-  it('status() 返回 running/port/displayIp/routes/logs，访问日志有条目', async () => {
+  it('status() 返回 running/port/displayIp/routes（无 logs）；访问日志经 logSink 落库且带 UUID id', async () => {
     const { hub, root } = makeHub()
+    const flushed: Array<{ id: string; status: number; routeId: string }[]> = []
+    hub.setLogSink((rows) => { flushed.push(rows) })
     const { port } = await hub.start(0)
     const t = await hub.create({ toolId: 't', label: 'x', root, entry: 'index.html' })
     await fetch(`http://127.0.0.1:${port}/${t.token}/`)
-    await new Promise((r) => setTimeout(r, 20))
+    await hub.flushLogs()
     const s = hub.status()
     expect(s.running).toBe(true)
     expect(s.port).toBe(port)
     expect(s.displayIp).toMatch(/^\d+\.\d+\.\d+\.\d+$/)
     expect(Array.isArray(s.ips)).toBe(true)
     expect(s.routes).toHaveLength(1)
-    expect(s.logs.length).toBeGreaterThanOrEqual(1)
-    expect(s.logs[0]).toMatchObject({ status: 200, routeId: t.id })
+    expect('logs' in s).toBe(false)
+    const rows = flushed.flat()
+    expect(rows.length).toBeGreaterThanOrEqual(1)
+    expect(rows[0]).toMatchObject({ status: 200, routeId: t.id })
+    expect(rows[0]!.id).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   it('stop 保留路由、restart 恢复端口可用；ttlMinutesLeft / 旧文件常量', async () => {
@@ -240,6 +245,25 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     const stillPermanent = await hub.renew(t.id, 2, 'extend')
     expect(stillPermanent.expiresAt).toBe(SHARE_PERMANENT_EXPIRES_AT)
     expect(stillPermanent.urls[0]).toBe(expectUrl)
+  })
+
+  it('updatedAt：create=createdAt，renew/patch 刷新，访问命中不刷新（plans/12）', async () => {
+    const { hub, root } = makeHub()
+    const { port } = await hub.start(0)
+    const t = await hub.create({ toolId: 't', label: 'x', root, entry: 'index.html', ttlHours: 10 })
+    const created = hub.listRoutes().find((r) => r.id === t.id)!
+    expect(created.updatedAt).toBe(created.createdAt)
+
+    await new Promise((r) => setTimeout(r, 15))
+    await fetch(`http://127.0.0.1:${port}/${t.token}/`)
+    const afterHit = hub.listRoutes().find((r) => r.id === t.id)!
+    expect(afterHit.updatedAt).toBe(created.updatedAt)
+    expect(afterHit.hits).toBeGreaterThan(created.hits)
+
+    await new Promise((r) => setTimeout(r, 15))
+    await hub.renew(t.id, null, 'reset', { allowIndex: true })
+    const afterRenew = hub.listRoutes().find((r) => r.id === t.id)!
+    expect(afterRenew.updatedAt).toBeGreaterThan(created.updatedAt)
   })
 
   it('ttlHours 非法（负数/小数）回落默认 72，0 视为永久', async () => {

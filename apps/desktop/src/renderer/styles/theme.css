@@ -9,6 +9,17 @@
   --sshk-hover: #eef2fa;
 }
 
+/* ── 页面留白 / 间距规范（2026-11-19 用户拍板：全项目页面统一执行）──
+   ★ 所有页面根容器必须留白、页内各区块之间必须有间距，禁止内容贴边。
+     页面根内边距用 --sshk-page-padding；区块间距按层次用 sm/md/lg。
+     调留白只改这里（单点调参，全项目生效）。详见 docs/02-architecture/页面留白与间距规范.md */
+:root {
+  --sshk-page-padding: 20px;   /* 页面内容区四周留白（桌面落地页因大网格用 28px 32px 属既定特例） */
+  --sshk-gap-sm: 8px;          /* 紧凑：工具栏内、表格/分页与工具栏之间 */
+  --sshk-gap-md: 12px;         /* 常规：卡片之间、常规区块之间 */
+  --sshk-gap-lg: 16px;         /* 宽松：大区块、桌面卡片网格 */
+}
+
 html.dark {
   --sshk-bg: #0b0e1c;
   --sshk-panel: #141a2d;
@@ -391,7 +402,7 @@ body {
   padding: 14px 20px;
   border-bottom: 1px solid var(--sshk-border);
 }
-.tool-page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; }
+.tool-page-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sshk-page-padding); }
 .tool-page-foot { flex: none; padding: 8px 20px; border-top: 1px solid var(--sshk-border); }
 
 .desktop { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 32px; }

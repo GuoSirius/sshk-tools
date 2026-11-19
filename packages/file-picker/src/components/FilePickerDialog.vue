@@ -233,7 +233,11 @@ const dirPanelKey = ref(0)
 const dirCascaderPicked = ref<string | null>(null)
 /** 面板交互代次：用户显式选择或面板重挂时自增，作废在途的「空目录自动选中」，防止覆盖用户新选择 */
 const dirPanelGen = ref(0)
-watch(dirPanelKey, () => { dirPanelGen.value++; dirCascaderPicked.value = null })
+watch(dirPanelKey, () => {
+  dirPanelGen.value++
+  // 目录为空 = 根目录：保持根选中态补显 /（用户 2026-11-19 反馈：初次打开默认选中根目录）
+  dirCascaderPicked.value = dirModel.value ? null : ''
+})
 const cascaderRef = ref<CascaderInstance | null>(null)
 /** 文件名搜索关键词 */
 const keyword = ref('')
@@ -532,6 +536,9 @@ watch(
     }
     normalizeRestoredDir()
     tab.value = saved?.tab ?? props.initialTab ?? 'upload'
+    // 初次打开无已存目录时默认选中根目录（用户 2026-11-19 反馈）：
+    // dirModel 空 = 根语义，补 is-root-selected class 让级联输入框回显「/」
+    if (!dirModel.value) dirCascaderPicked.value = ''
     // 设置恢复后再打开写回监听，防止空值落盘覆盖
     await nextTick()
     restored.value = true
@@ -547,6 +554,8 @@ watch(sourceId, async (id) => {
     ...(targetCache[props.stateKey]?.[id] ?? {}),
   }
   normalizeRestoredDir()
+  // 换源后无已存目录时同样默认根选中（与首次打开口径一致）
+  if (!dirModel.value) dirCascaderPicked.value = ''
   items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
   dirError.value = ''
   dirPanelKey.value++ // 换源重挂级联：清掉上一来源的懒加载缓存

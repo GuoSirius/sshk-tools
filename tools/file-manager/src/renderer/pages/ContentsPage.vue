@@ -295,10 +295,11 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 </template>
 
 <style scoped>
-.contents-page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-.toolbar { flex: none; display: flex; gap: 8px; align-items: center; }
-.table-wrap { flex: 1; min-height: 0; margin-top: 8px; }
-.foot { flex: none; display: flex; justify-content: flex-end; margin-top: 8px; }
+/* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
+.contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
+.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; }
+.table-wrap { flex: 1; min-height: 0; }
+.foot { flex: none; display: flex; justify-content: flex-end; }
 .op-row { display: flex; gap: 4px; justify-content: center; align-items: center; }
 .op-row .el-button + .el-button { margin-left: 0; }
 .share-cell { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }

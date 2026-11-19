@@ -16,6 +16,8 @@ export const appConfig = reactive({
   outputSnapshot: false,
   /** 关闭按钮最小化到托盘（用户 2026-11-18）：默认关=关闭需二次确认后退出应用；开=点关闭隐藏到托盘 */
   closeToTray: false,
+  /** 内容编辑器形态（plans/11 #8）：dialog=弹框（默认）/ page=整页；两壳共用 ContentEditorCore */
+  contentEditorMode: 'dialog' as 'dialog' | 'page',
   /** ShareHub（plans/09） */
   shareAutoStart: true,
   sharePort: 56789,
@@ -65,6 +67,7 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.developerMode = await bool('app.developerMode', false)
   appConfig.outputSnapshot = await bool('app.outputSnapshot', false)
   appConfig.closeToTray = await bool('app.closeToTray', false)
+  appConfig.contentEditorMode = (await str('app.content.editorMode', 'dialog')) === 'page' ? 'page' : 'dialog'
 }
 
 /** 保存指定分组的配置；groups='general' | 'share'，各 tab 只写自己负责的 key。
@@ -86,6 +89,7 @@ export async function saveAppConfig(group: 'general' | 'share'): Promise<boolean
         ['app.autoInstallOnAppQuit', appConfig.autoInstallOnAppQuit],
         ['app.developerMode', appConfig.developerMode],
         ['app.closeToTray', appConfig.closeToTray === true],
+        ['app.content.editorMode', appConfig.contentEditorMode],
       ]
   for (const [key, value] of pairs) await window.api.config.set(key, value)
   return true

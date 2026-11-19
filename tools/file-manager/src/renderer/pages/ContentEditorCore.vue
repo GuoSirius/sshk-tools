@@ -56,12 +56,21 @@ defineExpose({ submit, canSave })
 <template>
   <div class="ce-core">
     <el-form label-width="auto" size="small" class="ce-meta">
-      <el-form-item label="名称" required>
-        <el-input ref="nameRef" v-model="form.name" placeholder="内容名称（必填）" clearable data-autofocus />
-      </el-form-item>
-      <el-form-item label="标签">
-        <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入回车添加标签" style="width: 100%" />
-      </el-form-item>
+      <div class="ce-meta-grid">
+        <el-form-item label="名称" required>
+          <el-input ref="nameRef" v-model="form.name" placeholder="内容名称（必填）" clearable data-autofocus />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入回车添加标签" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="form.status" style="width: 100%">
+            <el-option label="草稿" value="draft" />
+            <el-option label="已发布" value="published" />
+            <el-option label="已下线" value="retracted" />
+          </el-select>
+        </el-form-item>
+      </div>
     </el-form>
     <div class="ce-editor">
       <RichTextEditor v-model="form.html" :on-upload-image="onUploadImage" :image-library="imageLibrary" :state-key="record?._id ?? 'new'" />
@@ -70,7 +79,10 @@ defineExpose({ submit, canSave })
 </template>
 
 <style scoped>
-.ce-core { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: 10px; }
+.ce-core { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: var(--sshk-gap-md); }
 .ce-meta { flex: none; }
-.ce-editor { flex: 1; min-height: 260px; overflow: auto; }
+/* 名称/标签两列、状态换行（用户 2026-11-19 拍板：名称标签可两列） */
+.ce-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sshk-gap-lg); }
+/* 默认编辑区域再加一倍（用户 2026-11-19）：min-height 260 → 520 */
+.ce-editor { flex: 1; min-height: 520px; overflow: auto; }
 </style>

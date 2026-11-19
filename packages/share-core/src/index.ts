@@ -73,6 +73,8 @@ interface ShareRoute {
   entry: string
   ttlHours: number
   createdAt: number
+  /** 最近变更时刻：create=createdAt，renew/patch 刷新，访问命中不刷新（plans/12） */
+  updatedAt: number
   expiresAt: number
   password: string
   /** 是否允许浏览目录列表（用户 2026-11-18：默认不允许；旧路由无此字段视为允许，不破坏既有链接） */
@@ -93,7 +95,9 @@ interface PersistedHub {
 }
 
 const DEFAULT_TTL_HOURS = 72
-const LOG_LIMIT = 500
+/** 日志容量默认与滚动清理（可经宿主注入覆盖，plans/12） */
+export const DEFAULT_LOG_MAX_COUNT = 5000
+export const DEFAULT_LOG_RETENTION_DAYS = 30
 const CLEAN_INTERVAL_MS = 60_000
 
 /** 挂载别名规范化（URL 路径段）：小写、去首尾空白、空白转连字符；白名单 [a-z0-9-_] 长度 1-32。
@@ -128,7 +132,14 @@ export class ShareHub {
   private mountRoutes = new Map<string, ShareRoute>()
   /** 代理规则（key=路径前缀）：配置权威、即时生效、不持久化（用户 2026-11-18 定版） */
   private proxyRules = new Map<string, ProxyRule>()
-  private logs: ShareAccessLog[] = []
+  /** 日志待写入队列（不再是读取源；500ms 防抖 flush 到注入的持久化层） */
+  private logQueue: ShareAccessLog[] = []
+  /** 日志持久化回调（宿主注入写 NeDB shareLogs）；未注入时日志仅存队列内存，不落库 */
+  private logSink: ((rows: ShareAccessLog[]) => void | Promise<void>) | null = null
+  /** 日志容量配置（宿主注入，默认 5000 条 / 30 天） */
+  private logMaxCount = DEFAULT_LOG_MAX_COUNT
+  private logRetentionDays = DEFAULT_LOG_RETENTION_DAYS
+  private logFlushTimer: ReturnType<typeof setTimeout> | null = null
   private cleanTimer: ReturnType<typeof setInterval> | null = null
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   /** 用户配置的展示 IP；'' = 每次生成链接时按 §4.3 自动优选 */
@@ -149,6 +160,31 @@ export class ShareHub {
   /** 注入宿主回调：固定端口被占回落时告警 */
   setPortFallbackHandler(fn: (requested: number, actual: number) => void): void {
     this.onPortFallback = fn
+  }
+
+  /** 注入日志持久化回调（plans/12）：宿主把日志批量写入 NeDB shareLogs。
+   *  500ms 防抖合并；未注入时日志只在内存队列、不落库（测试/无数据层场景）。 */
+  setLogSink(fn: (rows: ShareAccessLog[]) => void | Promise<void>): void {
+    this.logSink = fn
+  }
+
+  /** 设置日志容量（条数/保留天数），宿主读 app.shareHub.logMaxCount/logRetentionDays 注入 */
+  setLogCapacity(maxCount: number, retentionDays: number): void {
+    this.logMaxCount = Number.isFinite(maxCount) && maxCount > 0 ? Math.floor(maxCount) : DEFAULT_LOG_MAX_COUNT
+    this.logRetentionDays = Number.isFinite(retentionDays) && retentionDays > 0 ? Math.floor(retentionDays) : DEFAULT_LOG_RETENTION_DAYS
+  }
+
+  /** 立即冲刷日志队列（退出/清空时调用）；循环防重入：sink 内若再产生日志留待下次 */
+  async flushLogs(): Promise<void> {
+    if (this.logFlushTimer) { clearTimeout(this.logFlushTimer); this.logFlushTimer = null }
+    if (!this.logQueue.length) return
+    // 容量裁剪：按保留天数截掉过旧的，再按 maxCount 只留最近 N 条（防队列无限膨胀）
+    const minAt = Date.now() - this.logRetentionDays * 86_400_000
+    let batch = this.logQueue.filter((l) => l.at >= minAt)
+    if (batch.length > this.logMaxCount) batch = batch.slice(batch.length - this.logMaxCount)
+    this.logQueue = []
+    if (!this.logSink) return
+    try { await this.logSink(batch) } catch { /* 日志写入失败不影响分享服务 */ }
   }
 
   /** 注入内容 resolver（plans/11）：宿主读库并把展示态 HTML 交给内核渲染阅读页。
@@ -201,14 +237,16 @@ export class ShareHub {
       this.port = 0
     }
     await this.flushPersist()
+    await this.flushLogs()
   }
 
   /** 停止并清空全部路由 + 删除状态文件（所有链接永久失效）。 */
   async clear(): Promise<void> {
     await this.stop()
     this.routes.clear()
-    this.logs = []
+    this.logQueue = []
     if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null }
+    if (this.logFlushTimer) { clearTimeout(this.logFlushTimer); this.logFlushTimer = null }
     await unlink(this.stateFile).catch(() => { /* 本就不存在，忽略 */ })
   }
 
@@ -241,7 +279,7 @@ export class ShareHub {
       next.set(alias, {
         id: `mount:${m.id || alias}`, token: alias, toolId: 'share-hub-mount',
         label: alias, root: dir, entry: '', ttlHours: 0,
-        createdAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: String(m.password ?? ''),
+        createdAt: 0, updatedAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: String(m.password ?? ''),
         // 逐目录目录浏览开关（用户 2026-11-18 拆分）：默认允许，关 = 仅具体文件路径可达
         allowIndex: m.allowIndex !== false, hits: 0, mountId: m.id || alias,
       })
@@ -319,6 +357,7 @@ export class ShareHub {
       entry,
       ttlHours,
       createdAt: now,
+      updatedAt: now,
       expiresAt: expiresAtFor(ttlHours, now),
       password,
       // 应用级默认（app.shareHub.allowIndex）由宿主在 IPC 层注入；share-core 未收到时保持允许（兼容旧调用方）
@@ -371,6 +410,7 @@ export class ShareHub {
     }
     if (patch && patch.allowIndex !== undefined) route.allowIndex = Boolean(patch.allowIndex)
     if (patch && patch.password !== undefined) route.password = String(patch.password ?? '')
+    route.updatedAt = Date.now()
     this.schedulePersist()
     return this.ticket(route)
   }
@@ -382,7 +422,7 @@ export class ShareHub {
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((r) => ({
         id: r.id, toolId: r.toolId, label: r.label, entry: r.entry, root: r.root,
-        ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, hits: r.hits,
+        ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, updatedAt: r.updatedAt, hits: r.hits,
         allowIndex: r.allowIndex !== false, password: r.password ?? '',
         kind: r.kind ?? 'file', contentId: r.contentId,
       }))
@@ -396,7 +436,6 @@ export class ShareHub {
       displayIp: this.displayIp(),
       ips: this.listIps(),
       routes: this.listRoutes(),
-      logs: [...this.logs].reverse(),
     }
   }
 
@@ -704,8 +743,20 @@ export class ShareHub {
   }
 
   private log(ip: string, routeId: string, path: string, status: number): void {
-    this.logs.push({ at: Date.now(), ip, path, status, routeId })
-    if (this.logs.length > LOG_LIMIT) this.logs.splice(0, this.logs.length - LOG_LIMIT)
+    // 写入时即生成 UUID（不依赖 NeDB _id 回执），作为删除/批量勾选的稳定键
+    this.logQueue.push({ id: randomUUID(), at: Date.now(), ip, path, status, routeId })
+    if (this.logFlushTimer) return
+    this.logFlushTimer = setTimeout(() => {
+      this.logFlushTimer = null
+      void this.flushLogs()
+    }, 500)
+    this.logFlushTimer.unref?.()
+  }
+
+  /** 按内容 id 移除尚未落库的日志（删除已查出的记录时，防止队列里旧的再写回） */
+  removeQueuedLogs(ids: string[]): void {
+    const kill = new Set(ids)
+    this.logQueue = this.logQueue.filter((l) => !kill.has(l.id))
   }
 
   /** TTL 双保险之一：定时清理过期路由（之二为命中时惰性校验）。 */
@@ -726,7 +777,8 @@ export class ShareHub {
       if (!saved || !Array.isArray(saved.routes)) return
       const now = Date.now()
       for (const r of saved.routes) {
-        if (!r?.token || !r.root || !r.expiresAt) continue
+        // plans/12 总原则：不兼容旧数据——缺 updatedAt 的旧路由视为脏数据丢弃（旧链接失效，用户已接受）
+        if (!r?.token || !r.root || !r.expiresAt || typeof r.updatedAt !== 'number') continue
         if (now > r.expiresAt) continue
         // content kind 的 root 是虚拟标记（内容在 NeDB），不校验磁盘存在；file kind 保持
         if (r.kind !== 'content' && !existsSync(r.root)) continue
@@ -734,7 +786,7 @@ export class ShareHub {
           id: r.id ?? randomUUID(), token: r.token, toolId: r.toolId ?? '',
           label: r.label ?? '分享', root: r.root, entry: r.entry ?? '',
           ttlHours: r.ttlHours ?? DEFAULT_TTL_HOURS, createdAt: r.createdAt ?? now,
-          expiresAt: r.expiresAt, password: r.password ?? '',
+          updatedAt: r.updatedAt, expiresAt: r.expiresAt, password: r.password ?? '',
           allowIndex: r.allowIndex, hits: r.hits ?? 0,
           kind: r.kind ?? 'file', contentId: r.contentId,
         })

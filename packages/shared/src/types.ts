@@ -553,6 +553,8 @@ export interface ShareRouteInfo {
   ttlHours: number
   expiresAt: number
   createdAt: number
+  /** 最近一次变更时刻（ms）：create=createdAt，renew/patch/重新生成刷新；hits 访问不刷新。必填，不兼容旧数据（plans/12 20:12） */
+  updatedAt: number
   /** 访问/下载命中计数 */
   hits: number
   /** 访问密钥 accessKey（空串=无）；工具拼「前缀+路径」直达链接时需保留链接自带的 ?ak= 才能通过校验 */
@@ -574,8 +576,9 @@ export interface ShareIpInfo {
   virtual: boolean
 }
 
-/** 单条访问日志（环形缓冲，最近 500 条） */
+/** 单条访问日志（持久化到 NeDB shareLogs，plans/12）：id=写入时自生成 UUID，作为删除/批量勾选的稳定键 */
 export interface ShareAccessLog {
+  id: string
   at: number
   ip: string
   path: string
@@ -583,7 +586,26 @@ export interface ShareAccessLog {
   routeId: string
 }
 
-/** 服务状态快照（status() 返回） */
+/** 日志查询条件（shareHub:logs / exportLogs）：时间范围为毫秒时间戳，UI 层组好再传内核 */
+export interface ShareLogsQuery {
+  from?: number
+  to?: number
+  ip?: string
+  path?: string
+  statusGroup?: '2xx' | '3xx' | '4xx' | '5xx'
+  toolId?: string
+  routeId?: string
+  limit?: number
+  offset?: number
+}
+
+/** 日志查询结果 */
+export interface ShareLogsResult {
+  rows: ShareAccessLog[]
+  total: number
+}
+
+/** 服务状态快照（status() 返回，已移除 logs——日志走 shareHub:logs 独立通道） */
 export interface HubStatus {
   running: boolean
   port: number
@@ -592,6 +614,4 @@ export interface HubStatus {
   /** 本机候选 IP（供设置页下拉 / ShareDialog 多 IP 切换） */
   ips: ShareIpInfo[]
   routes: ShareRouteInfo[]
-  /** 最近访问日志（时间倒序） */
-  logs: ShareAccessLog[]
 }
