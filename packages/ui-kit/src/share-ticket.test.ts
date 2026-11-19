@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildDirectUrl, findShareTicketById, readShareTicket, shareDialogStorageKey, shareFileDirectUrl } from './share-ticket'
+import { buildDirectUrl, findShareTicketById, migrateShareTickets, readShareTicket, shareDialogStorageKey, shareFileDirectUrl } from './share-ticket'
 
 /** 简易 localStorage mock（Node 环境无 DOM） */
 function mockStorage(): Map<string, string> {
@@ -66,5 +66,37 @@ describe('分享凭证按 id 反查', () => {
     expect(findShareTicketById('r-2')?.urls[0]).toBe('http://x/tok-2')
     expect(findShareTicketById('missing')).toBeNull()
     expect(findShareTicketById('')).toBeNull()
+  })
+})
+
+describe('工具改名凭证迁移（migrateShareTickets）', () => {
+  it('旧 toolId 键按路由反查重写到新 toolId 键，旧键清除、其它工具凭证不动', () => {
+    const store = mockStorage()
+    const t1 = ticket('r-1', 'http://x/s/tok-1')
+    const t2 = ticket('r-2', 'http://x/s/tok-2')
+    // 旧 id 的本工具凭证 + 其它工具（badge-studio）凭证
+    const oldKey = shareDialogStorageKey('upload-manager', '文件：a.jpg', '/root', 'a.jpg')
+    const otherKey = shareDialogStorageKey('badge-studio', '海报：x', '/o', 'x')
+    store.set(oldKey, JSON.stringify(t1))
+    store.set(otherKey, JSON.stringify(t2))
+    // 迁移：新 id + 路由快照（ShareRouteInfo 含 label/root/entry）
+    migrateShareTickets('file-manager', [{ id: 'r-1', label: '文件：a.jpg', root: '/root', entry: 'a.jpg' }])
+    // 新键命中、旧键清除、其它工具原样保留
+    expect(readShareTicket('file-manager', '文件：a.jpg', '/root', 'a.jpg')?.urls[0]).toBe('http://x/s/tok-1')
+    expect(store.has(oldKey)).toBe(false)
+    expect(store.get(otherKey)).toBe(JSON.stringify(t2))
+  })
+
+  it('幂等：新键已存在时不覆盖，重复迁移不报错', () => {
+    const store = mockStorage()
+    const routes = [{ id: 'r-1', label: '文件：a', root: '/r', entry: 'a' }]
+    const newKey = shareDialogStorageKey('file-manager', '文件：a', '/r', 'a')
+    const existing = JSON.stringify(ticket('r-1', 'http://x/new'))
+    store.set(shareDialogStorageKey('upload-manager', '文件：a', '/r', 'a'), JSON.stringify(ticket('r-1', 'http://x/old')))
+    store.set(newKey, existing)
+    migrateShareTickets('file-manager', routes)
+    expect(store.get(newKey)).toBe(existing) // 以新为准
+    migrateShareTickets('file-manager', routes) // 再跑一次不报错、不误删
+    expect(store.get(newKey)).toBe(existing)
   })
 })

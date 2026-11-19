@@ -474,7 +474,7 @@ export interface ShareHubProxy {
 
 /** 创建一条分享路由的入参 */
 export interface ShareRouteInput {
-  /** 归属工具 id（'badge-studio' | 'edm-studio' | 'upload-manager' | …）；按此记账鉴权 */
+  /** 归属工具 id（'badge-studio' | 'edm-studio' | 'file-manager' | …）；按此记账鉴权 */
   toolId: string
   /** 展示名（如「海报：产品A」） */
   label: string
@@ -505,6 +505,8 @@ export interface ShareRouteInfo {
   toolId: string
   label: string
   entry: string
+  /** 分享根路径（2026-11-19 补暴露：工具按 ticket.id 反查路由做凭证缓存迁移需要四元组） */
+  root: string
   ttlHours: number
   expiresAt: number
   createdAt: number

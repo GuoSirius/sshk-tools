@@ -87,3 +87,36 @@ export function findShareTicketById(id: string): ShareRouteTicket | null {
   } catch { /* localStorage 不可用 */ }
   return null
 }
+
+/** 工具改名后的分享凭证缓存迁移（2026-11-19 upload-manager → file-manager）。
+ *  键 = toolId+label+root+entry 四元组哈希，toolId 变了旧键全部失配——ShareDialog 会误判
+ *  「无既有链接」诱导用户重复建路由。按路由反查：ticket.id ∈ routes → 用路由的
+ *  label/root/entry + 新 toolId 重算键写入（新键已存在则以新为准），旧键一律清掉。
+ *  只动能对上本工具路由的键，其它工具的凭证不受影响。幂等。 */
+export function migrateShareTickets(
+  toolId: string,
+  routes: Array<{ id: string; label: string; root: string; entry: string }>,
+): void {
+  try {
+    const prefix = 'sshk:share-dialog:'
+    const byId = new Map(routes.map((r) => [r.id, r]))
+    // 先快照扫描前已有的键：迁移中途写入的新键绝不能再进处理队列（会被自己误删）
+    const snapshot: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix)) snapshot.push(key)
+    }
+    for (const key of snapshot) {
+      const raw = localStorage.getItem(key)
+      if (!raw) { localStorage.removeItem(key); continue }
+      let t: ShareRouteTicket | null = null
+      try { t = JSON.parse(raw) as ShareRouteTicket } catch { localStorage.removeItem(key); continue }
+      const route = t?.id ? byId.get(t.id) : undefined
+      if (!route) continue // 非本工具（或已失效）的凭证：不动
+      const nextKey = shareDialogStorageKey(toolId, route.label, route.root, route.entry)
+      if (nextKey === key) continue // 已是正确的新键：原样保留（幂等）
+      if (!localStorage.getItem(nextKey)) localStorage.setItem(nextKey, raw)
+      localStorage.removeItem(key)
+    }
+  } catch { /* localStorage 不可用 */ }
+}

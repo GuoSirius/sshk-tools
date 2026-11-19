@@ -20,6 +20,7 @@ import {
 import {
   ACCESS_GRANT,
   ACCESS_KEY_SECRET_ID,
+  TOOL_IDS,
   mergeToolDefaults,
   type LlmProviderInfo,
   type ToolHostCapabilities,
@@ -323,35 +324,42 @@ export function setupServices(): AppServices {
   }
 
   /**
-   * 工具改名迁移（2026-11-17「上传配置」→「上传管理」，id upload-config → upload-manager）：
-   * - secrets.bin：`app:tool:upload-config:<profileId>` → `app:tool:upload-manager:<profileId>`
-   * - settings.json：`tools.upload-config.*` → `tools.upload-manager.*`
+   * 工具改名迁移（幂等，legacy 链式：upload-config → upload-manager → file-manager）：
+   * - 2026-11-17「上传配置」→「上传管理」：secrets `app:tool:upload-config:<pid>` → `…upload-manager:<pid>`、settings `tools.upload-config.*` → `tools.upload-manager.*`
+   * - 2026-11-19「上传管理」→「文件管理」：secrets `app:tool:upload-manager:<pid>` → `…file-manager:<pid>`、settings `tools.upload-manager.*` → `tools.file-manager.*`
    * 幂等：新键已存在时不覆盖（以新为准），旧键一律清掉。配置不迁移用户会"丢密钥/丢工具配置"。
    */
-  function migrateUploadManagerRename(): void {
+  function migrateToolRenames(): void {
+    // 迁移链：按序执行，每段只处理自己那对 旧→新（新 id 已存在则以新为准）
+    const CHAIN: Array<{ legacy: string; next: string; from: string; to: string; note: string }> = [
+      { legacy: 'upload-config', next: 'upload-manager', from: 'tools.upload-config', to: 'tools.upload-manager', note: 'upload-config → upload-manager' },
+      { legacy: 'upload-manager', next: TOOL_IDS.fileManager, from: 'tools.upload-manager', to: `tools.${TOOL_IDS.fileManager}`, note: 'upload-manager → file-manager' },
+    ]
     try {
-      const LEGACY = 'app:tool:upload-config:'
       const secrets = currentSecrets()
       let moved = 0
-      for (const key of Object.keys(secrets)) {
-        if (!key.startsWith(LEGACY)) continue
-        const next = `app:tool:upload-manager:${key.slice(LEGACY.length)}`
-        if (!secrets[next]) { secrets[next] = secrets[key]!; moved++ }
-        delete secrets[key]
+      for (const step of CHAIN) {
+        const LEGACY = `app:tool:${step.legacy}:`
+        for (const key of Object.keys(secrets)) {
+          if (!key.startsWith(LEGACY)) continue
+          const nextKey = `app:tool:${step.next}:${key.slice(LEGACY.length)}`
+          if (!secrets[nextKey]) { secrets[nextKey] = secrets[key]!; moved++ }
+          delete secrets[key]
+        }
+        const legacyCfg = config.get(step.from)
+        if (legacyCfg && typeof legacyCfg === 'object' && !Array.isArray(legacyCfg)) {
+          if (config.get(step.to) == null) config.set(step.to, legacyCfg)
+          config.remove(step.from)
+        }
+        if (moved > 0 || legacyCfg) logger.info('upload', `工具改名迁移：${step.note}（本次密钥累计 ${moved} 条）`)
       }
       if (moved > 0) void saveSecrets(secrets)
-      const legacyCfg = config.get('tools.upload-config')
-      if (legacyCfg && typeof legacyCfg === 'object' && !Array.isArray(legacyCfg)) {
-        if (config.get('tools.upload-manager') == null) config.set('tools.upload-manager', legacyCfg)
-        config.remove('tools.upload-config')
-      }
-      if (moved > 0) logger.info('upload', `工具改名迁移：upload-config → upload-manager（密钥 ${moved} 条）`)
     } catch (err) {
       logger.error('upload', `工具改名迁移失败（不影响启动）：${(err as Error).message}`)
     }
   }
 
-  void loadSecrets().then(migrateUploadManagerRename)
+  void loadSecrets().then(migrateToolRenames)
 
   return {
     config,

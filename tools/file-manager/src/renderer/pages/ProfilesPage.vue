@@ -37,7 +37,7 @@ import CloudProfileForm from '../CloudProfileForm.vue'
 import { host } from '../host'
 
 /**
- * T6 上传管理工具 · 通道配置页（应用级全局配置）。
+ * T6 文件管理工具 · 通道配置页（应用级全局配置）。
  *
  * N6：远程 + 云合并为一张统一列表，行头即「列表 + 操作列」，新增/编辑/删除/设为默认/测试
  *     全部在列表内完成（对齐 model-console 的 Provider 管理范式），不再分两个卡片各自维护。

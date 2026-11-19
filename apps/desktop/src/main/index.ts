@@ -14,6 +14,7 @@ import path, { join } from 'node:path'
 import {
   ACCESS_GRANT,
   IPC_CHANNELS,
+  TOOL_IDS,
   collectDefaultProviders,
   resolveToolCatalog,
   shouldSeedDefaultProviders,
@@ -901,9 +902,9 @@ async function registerIpc(): Promise<void> {
   // 预设密钥投影：含密钥导出/导入时经 services 读写 safeStorage（默认导出不带密钥，红线不变）
   const presetSecrets: PresetSecretStore = {
     getProviderKey: (id) => services!.getApiKey(id),
-    getUploadKey: (id) => services!.host.getToolSecret('upload-manager', id),
+    getUploadKey: (id) => services!.host.getToolSecret(TOOL_IDS.fileManager, id),
     setProviderKey: (id, key) => services!.setApiKey(id, key),
-    setUploadKey: (id, key) => services!.host.setToolSecret('upload-manager', id, key),
+    setUploadKey: (id, key) => services!.host.setToolSecret(TOOL_IDS.fileManager, id, key),
   }
   handleOk(IPC_CHANNELS.presetExport, (_event, req: string | { outPath: string; includeSecrets?: boolean }, inc?: boolean) => {
     // 兼容两条调用路径：命名方法传 (outPath, includeSecrets)；通用 IPC 透传 (channel, outPath, includeSecrets)

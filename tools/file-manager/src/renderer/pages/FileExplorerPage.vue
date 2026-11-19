@@ -49,6 +49,7 @@ import {
   isFsVideoName,
   isFsZipName,
   normalizeUploadConfig,
+  TOOL_IDS,
   type FsChannelInfo,
   type FsEntry,
   type FsFavorite,
@@ -57,15 +58,18 @@ import {
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
-import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, shareFileDirectUrl } from '@sshk/ui-kit'
+import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
- * X6 文件系统页（plans/08 §3）：进入上传管理工具默认展示。
+ * X6 文件系统页（plans/08 §3）：进入文件管理工具默认展示。
  * 布局三段：通道切换条 / 路径区（面包屑 + 可编辑路径）+ 工具栏 / 文件列表（列表·网格双视图）
  * + 状态条 + 右下角传输队列悬浮面板（plans/10，可拖拽/可收起）。
- * 通道 = 上传管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
+ * 通道 = 文件管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
  */
+
+/** 工具 id 唯一真相源：manifest 的 id（'file-manager'）。分享路由归属/凭证缓存都按它记账 */
+const TOOL_ID = TOOL_IDS.fileManager
 
 // ── 通道与目录状态 ──
 const channels = ref<FsChannelInfo[]>([])
@@ -492,7 +496,7 @@ function friendlyError(err: unknown): string {
   if (/no right to access|bucket acl|AccessDenied|403|permission|Forbidden|无权|权限/i.test(msg)) {
     return '权限不足：当前密钥无此操作权限，请到云控制台检查 Bucket ACL 与子账号授权'
   }
-  if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「上传管理 · 通道配置」填写并保存'
+  if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「文件管理 · 通道配置」填写并保存'
   return msg
 }
 
@@ -1103,7 +1107,11 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
 // 数据源：本工具的有效分享路由（内核 list 自带 entry/allowIndex/expiresAt），无需读 localStorage 判定。
 const shareRoutes = ref<ShareRouteInfo[]>([])
 async function loadShareRoutes(): Promise<void> {
-  try { shareRoutes.value = await window.api.shareHub.list('upload-manager') }
+  try {
+    shareRoutes.value = await window.api.shareHub.list(TOOL_ID)
+    // 工具改名（upload-manager→file-manager）后凭证缓存键失配：按路由反查迁移，保证旧链接继续复用
+    migrateShareTickets(TOOL_ID, shareRoutes.value)
+  }
   catch { shareRoutes.value = [] }
 }
 /** 路径归一：FsEntry.path 带前导 /，route.entry 已去前导 /，统一去前导/尾斜杠后比较 */
@@ -2630,7 +2638,7 @@ function onKeydown(event: KeyboardEvent): void {
     <!-- ShareHub 安全分享（plans/09 S15）：本地通道文件的 TTL/可撤销分享 -->
     <ShareDialog
       v-model:open="shareDialog.open"
-      tool-id="upload-manager"
+      :tool-id="TOOL_ID"
       :label="shareDialog.label"
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"

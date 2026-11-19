@@ -38,7 +38,7 @@ import type { AppServices } from './services'
  * - 每次调用重建 Service/Provider（成本极低），保证改配置后无需重启即生效。
  * - 校验：全局默认传给 Service，工具级 ctx.validation 由 mergeValidation 收紧（不能放宽）。
  */
-const SECRET_TOOL_ID = TOOL_IDS.uploadManager
+const SECRET_TOOL_ID = TOOL_IDS.fileManager // 文件管理（2026-11-19 由 upload-manager 改名；密钥启动时自动迁移）
 const DATA_URL_RE = /^data:[^;,]*;base64,([\s\S]+)$/
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
@@ -150,7 +150,7 @@ export class UploadRuntime {
 
     if (ctx.targetType === 'remote') {
       const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到远程上传 profile：请先在「上传管理」中添加并选择')
+      if (!p) throw new Error('未找到远程上传 profile：请先在「文件管理」中添加并选择')
       const password = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
       service.register(new RemoteUploadProvider({
         protocol: p.protocol,
@@ -166,7 +166,7 @@ export class UploadRuntime {
     }
     if (ctx.targetType === 'cloud') {
       const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到云上传 profile：请先在「上传管理」中添加并选择')
+      if (!p) throw new Error('未找到云上传 profile：请先在「文件管理」中添加并选择')
       const accessKeySecret = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
       service.register(new CloudUploadProvider({
         provider: p.provider,
@@ -212,7 +212,7 @@ export class UploadRuntime {
     service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
     if (ctx.targetType === 'remote') {
       const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到远程上传 profile：请先在「上传管理」中添加并选择')
+      if (!p) throw new Error('未找到远程上传 profile：请先在「文件管理」中添加并选择')
       service.register(new RemoteUploadProvider({
         protocol: p.protocol,
         host: p.host,
@@ -227,7 +227,7 @@ export class UploadRuntime {
     }
     if (ctx.targetType === 'cloud') {
       const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到云上传 profile：请先在「上传管理」中添加并选择')
+      if (!p) throw new Error('未找到云上传 profile：请先在「文件管理」中添加并选择')
       service.register(new CloudUploadProvider({
         provider: p.provider,
         sdk: uploadVendorMeta(p.provider).sdk,

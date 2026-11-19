@@ -1,11 +1,11 @@
 {
-  "id": "upload-manager",
-  "name": "上传管理",
-  "description": "文件系统（远端/云存储浏览管理 + 上传下载传输队列）与应用级上传通道配置；密钥经 safeStorage 加密，不下发渲染层。",
+  "id": "file-manager",
+  "name": "文件管理",
+  "description": "文件系统（本地/远端/云存储浏览管理 + 上传下载传输队列）与应用级上传通道配置；密钥经 safeStorage 加密，不下发渲染层。",
   "category": "系统能力",
   "tags": [
+    "文件系统",
     "上传",
-    "profile",
     "安全存储"
   ],
   "icon": "auto",
@@ -16,7 +16,7 @@
   "plugin": {
     "source": "builtin",
     "main": "",
-    "renderer": "src/renderer/UploadManagerPage.vue",
+    "renderer": "src/renderer/FileManagerPage.vue",
     "channels": []
   },
   "dependsOn": [],

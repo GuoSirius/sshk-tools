@@ -23,8 +23,9 @@ export const TOOL_IDS = {
   edmStudio: 'edm-studio',
   badgeStudio: 'badge-studio',
   modelConsole: 'model-console',
-  /** 2026-11-17 由 upload-config 改名（上传配置→上传管理）；旧密钥/配置段启动时自动迁移 */
-  uploadManager: 'upload-manager',
+  /** 2026-11-17 由 upload-config 改名（上传配置→上传管理）；2026-11-19 再改名（上传管理→文件管理）。
+   *  旧 id 链 upload-config → upload-manager → file-manager 的密钥/配置段/hub 路由启动时自动迁移 */
+  fileManager: 'file-manager',
 } as const
 
 export const CONFIG_NAMESPACE = {

@@ -65,14 +65,14 @@ import { logger } from './logger'
  * 文件系统运行时（X6 F-4 / plans/08）：main 进程持有，
  * 对已配置上传通道做远端/云文件浏览与管理 + 统一传输队列。
  *
- * - 通道 = 上传管理（原上传配置）的 remote/cloud profile；密钥经 safeStorage 注入驱动，渲染层零接触。
+ * - 通道 = 文件管理（原上传管理/上传配置）的 remote/cloud profile；密钥经 safeStorage 注入驱动，渲染层零接触。
  * - 路径安全：所有入参先过 normalizeRootRel（`..` / 反斜杠 / 控制字符拒绝，§六）。
  * - 传输队列：同通道并发限制（远程 3 / 云 5）、失败自动重试 1 次、可取消/手动重试、
  *   冲突（远端已存在同名 / 本地已存在同名）先确认再执行；进度节流推给渲染层。
  * - 审计：全部写操作落日志（scope=upload，action/路径/结果，不含内容），error 级纳入 N2。
  */
 
-const SECRET_TOOL_ID = TOOL_IDS.uploadManager
+const SECRET_TOOL_ID = TOOL_IDS.fileManager // 文件管理（2026-11-19 由 upload-manager 改名；密钥启动时自动迁移）
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
@@ -1131,7 +1131,7 @@ export class FsRuntime {
     // 本地目录通道（二期，2026-11-17 定版：通道顺序 云→远端→本地）
     if (profileId === 'local') {
       const root = String(cfg.local.defaultDir ?? '').trim()
-      if (!root) throw new Error('本地目录未配置：请到「上传管理」设置本地默认目录并保存')
+      if (!root) throw new Error('本地目录未配置：请到「文件管理」设置本地默认目录并保存')
       return {
         driver: new LocalFsDriver(root),
         channel: {
@@ -1197,7 +1197,7 @@ export class FsRuntime {
         },
       }
     }
-    throw new Error('未找到对应上传通道：请先在「上传管理」中添加')
+    throw new Error('未找到对应上传通道：请先在「文件管理」中添加')
   }
 
   private assertPath(raw: string): string {

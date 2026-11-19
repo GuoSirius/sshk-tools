@@ -5,12 +5,13 @@
  * - 旧状态文件（badge-share-state.json / edm-share-state.json）启动检测即静默删除（决策 11）
  * - toolId 记账鉴权：工具只能撤销/续期自己创建的路由，宿主（空 toolId）可管理全部
  */
-import { existsSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { powerMonitor } from 'electron'
 import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
 import {
   IPC_CHANNELS,
+  TOOL_IDS,
   type ShareRouteInput,
   type ShareHubMount,
   type ShareHubProxy,
@@ -37,8 +38,33 @@ function resolveToolId(raw: unknown): string {
   return typeof raw === 'string' ? raw : ''
 }
 
+/**
+ * hub-state.json 工具改名迁移（2026-11-19 上传管理→文件管理，幂等）：
+ * 路由的 toolId 是撤销/续期的记账鉴权依据（内核 handle 校验 route.toolId === caller），
+ * 不迁移的话改名后工具对自己的旧分享路由「无权操作」且列表查不到（复用原则被破坏）。
+ * 在内核加载状态文件前重写 routes[].toolId；无文件/无匹配时零副作用。
+ */
+function migrateShareStateToolId(stateFile: string): void {
+  try {
+    if (!existsSync(stateFile)) return
+    const raw = JSON.parse(readFileSync(stateFile, 'utf8')) as { routes?: Array<{ toolId?: string }> }
+    if (!Array.isArray(raw.routes)) return
+    let moved = 0
+    for (const r of raw.routes) {
+      if (r?.toolId === 'upload-manager') { r.toolId = TOOL_IDS.fileManager; moved++ }
+    }
+    if (moved > 0) {
+      writeFileSync(stateFile, JSON.stringify(raw, null, 2), 'utf8')
+      logger.info('shareHub', `分享路由归属迁移：upload-manager → ${TOOL_IDS.fileManager}（${moved} 条）`)
+    }
+  } catch (err) {
+    logger.error('shareHub', `分享路由归属迁移失败（不影响启动）：${(err as Error).message}`)
+  }
+}
+
 export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: string; isDev: boolean }): ShareHubHost {
   const stateFile = join(opts.userDataDir, 'hub-state.json')
+  migrateShareStateToolId(stateFile)
   const hub = new ShareHub(stateFile)
 
   // 固定端口被占回落 → 日志 +（dev）终端告警；ElMessage 由渲染层 status 轮询感知端口变化后提示

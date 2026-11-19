@@ -351,7 +351,7 @@ export class ShareHub {
       .filter((r) => !toolId || r.toolId === toolId)
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((r) => ({
-        id: r.id, toolId: r.toolId, label: r.label, entry: r.entry,
+        id: r.id, toolId: r.toolId, label: r.label, entry: r.entry, root: r.root,
         ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, hits: r.hits,
         allowIndex: r.allowIndex !== false, password: r.password ?? '',
       }))

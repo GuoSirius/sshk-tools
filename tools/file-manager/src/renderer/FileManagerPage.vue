@@ -4,7 +4,7 @@ import FileExplorerPage from './pages/FileExplorerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
 
 /**
- * upload-manager（上传管理，原 upload-config）渲染层壳（与 badge-studio 同一约定）：
+ * file-manager（文件管理，原上传管理 upload-manager / 上传配置 upload-config）渲染层壳（与 badge-studio 同一约定）：
  * 入口 *Page.vue 只负责接收宿主 menu/toolId 并分发到 pages/ 下各菜单页面；
  * pages/ 子目录的 *Page.vue 不会被 discovery 的单层 glob 命中，避免多入口互相顶替。
  * 「工具配置」菜单由宿主 ToolSettingsPage 接管，不进本组件。

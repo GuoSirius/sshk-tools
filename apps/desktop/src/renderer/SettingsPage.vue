@@ -21,7 +21,7 @@ import BadgeStylePreview from './components/settings/BadgeStylePreview.vue'
  *   形态 2（layout=menu）：section 是 configPages[].id，一个二级菜单 = 一个真实页面，
  *     左栏只列该页声明的分组，页内继续复用同一套左右布局；切二级菜单即换页。
  *
- * 注意：上传管理工具 manifest 没有 configGroups，走独立的 UploadManagerPage，不受本页影响。
+ * 注意：文件管理工具 manifest 没有 configGroups，走独立的 FileManagerPage，不受本页影响。
  */
 const props = defineProps<{
   toolId: string
