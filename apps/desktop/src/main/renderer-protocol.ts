@@ -21,8 +21,10 @@ export function registerPrivilegedSchemes(): void {
   protocol.registerSchemesAsPrivileged([
     // localres：预览协议（见 local-res.ts），图片 + 音视频扩展名白名单（Range 回放靠 Response 206）
     // stream: true 是 <video>/<audio> 能播放的命门（2026-11-19 用户实测「下载完依然不能看」定位）：
-    // 媒体栈要求协议按流式处理响应体，缺了它即使 Range/206 全对也无法播放；图片不受影响
-    { scheme: 'localres', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // 媒体栈要求协议按流式处理响应体，缺了它即使 Range/206 全对也无法播放；图片不受影响。
+    // ⚠️ 不能加 standard: true：标准解析会把 localres:///C:/... 的盘符 C: 当 host（localres://c/Users/...），
+    // 路径丢盘符 → 白名单 403（2026-11-19 用户实测重启 dev 后 403）；保持 opaque 解析，handler 自己剥前导 /
+    { scheme: 'localres', privileges: { secure: true, supportFetchAPI: true, stream: true } },
     // app：标准协议（origin 解析 / 相对路径 / fetch / CORS 全按 http 语义）
     { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   ])

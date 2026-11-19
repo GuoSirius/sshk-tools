@@ -627,16 +627,15 @@ function openPlayer(entry: FsEntry): void {
     open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true,
     source: 'stream', entry, mediaKey: '', dlUploaded: 0, dlTotal: 0, dlDone: false,
   }
-  if (previewDirectLink.value) {
-    void mediaDirectUrl(entry).then((url) => {
-      // 弹框可能已被关闭 / 用户切了别的条目
-      if (!player.value.open || player.value.entry !== entry) return
-      if (url) startDirectPlay(url)
-      else startStreamPlay(entry)
-    }).catch(() => { if (player.value.open && player.value.entry === entry) startStreamPlay(entry) })
-    return
-  }
-  startStreamPlay(entry)
+  // 直链决策（用户 2026-11-19 定版）：本地分享直链走本机 ShareHub 服务、零外网流量，
+  // 不受「预览优先用直链」开关牵连、恒优先；开关只管控云/远程域名直链（流量/隐私针对外部域名）
+  void mediaDirectUrl(entry).then((url) => {
+    // 弹框可能已被关闭 / 用户切了别的条目
+    if (!player.value.open || player.value.entry !== entry) return
+    const directOk = Boolean(url) && (previewDirectLink.value || activeChannel.value?.type === 'local')
+    if (directOk) startDirectPlay(url as string)
+    else startStreamPlay(entry)
+  }).catch(() => { if (player.value.open && player.value.entry === entry) startStreamPlay(entry) })
 }
 
 /** 直链播放：不动本地下载上限（不落盘）；失败由 onMediaError 回退 */
@@ -2705,7 +2704,7 @@ function onKeydown(event: KeyboardEvent): void {
         </el-form-item>
         <el-form-item label="预览优先直链">
           <el-switch v-model="transferCapsForm.previewDirectLink" />
-          <FormHint inline detail="默认开：音视频预览优先用访问域名/分享链接直链（服务端 Range，免下载、秒开）。直链需签名时在通道配置填「签名URL模板」。直链失效或签名过期会自动回退为边下边播。关闭则一律边下边播。" />
+          <FormHint inline detail="默认开：云/远程音视频预览优先用访问域名直链（服务端 Range，免下载、秒开），直链需签名时在通道配置填「签名URL模板」，失效自动回退边下边播；关闭则云/远程一律边下边播。本地分享直链走本机服务，不受此开关影响、恒优先。" />
         </el-form-item>
       </el-form>
       <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览大小上限仅对「边下边播」生效，默认 100MB，0 = 不限。</div>
