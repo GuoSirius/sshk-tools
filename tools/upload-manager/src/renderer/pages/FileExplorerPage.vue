@@ -7,6 +7,7 @@ import {
   Box,
   ChatDotRound,
   CollectionTag,
+  Connection,
   CopyDocument,
   Delete,
   Document,
@@ -53,9 +54,10 @@ import {
   type FsFavorite,
   type FsListPage,
   type FsTransferTask,
+  type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
-import { ShareDialog } from '@sshk/ui-kit'
+import { ShareDialog, readShareTicket } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
@@ -364,7 +366,7 @@ async function list(resetCursor = true): Promise<void> {
     // 清掉已不在列表里的统计缓存（目录被删后同路径新目录不显示旧统计）
     const valid = new Set(page.entries.map((e) => e.path))
     usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
-    if (resetCursor) void loadAnnotations() // 备注列数据（应用侧集合）跟随目录重载
+    if (resetCursor) { void loadAnnotations(); void loadShareRoutes() } // 备注/分享状态跟随目录重载
   } catch (err) {
     entries.value = []
     cursor.value = null
@@ -417,6 +419,8 @@ watch(profileId, () => {
   void list()
 })
 watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
+// 分享弹框关闭后刷新路由（创建/撤销/TTL 变更后同步名称列状态图标）
+watch(() => shareDialog.value.open, (v) => { if (!v) void loadShareRoutes() })
 
 // ── 导航 ──
 function enterDir(entry: FsEntry): void {
@@ -950,6 +954,63 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
     label: `${entry.kind === 'dir' ? '目录' : '文件'}：${entry.name}`,
     open: true,
   })
+}
+
+// ── 分享状态标记（用户 2026-11-19）：名称列内小图标区分「自己分享 / 随父级 / 未分享」──
+// 数据源：本工具的有效分享路由（内核 list 自带 entry/allowIndex/expiresAt），无需读 localStorage 判定。
+const shareRoutes = ref<ShareRouteInfo[]>([])
+async function loadShareRoutes(): Promise<void> {
+  try { shareRoutes.value = await window.api.shareHub.list('upload-manager') }
+  catch { shareRoutes.value = [] }
+}
+/** 路径归一：FsEntry.path 带前导 /，route.entry 已去前导 /，统一去前导/尾斜杠后比较 */
+function normSharePath(p: string): string {
+  return String(p ?? '').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '')
+}
+type ShareMark = 'none' | 'own' | 'inherited'
+interface ShareMarkInfo { kind: ShareMark; route?: ShareRouteInfo; parent?: ShareRouteInfo }
+/** 三态：自身有路由=own；否则祖先目录是树链接(allowIndex)=inherited（取最长匹配=最近父级）；否则 none */
+function shareMarkOf(entry: FsEntry): ShareMarkInfo {
+  if (!shareRoutes.value.length || activeChannel.value?.type !== 'local') return { kind: 'none' }
+  const rel = normSharePath(entry.path)
+  const own = shareRoutes.value.find((r) => normSharePath(r.entry) === rel)
+  if (own) return { kind: 'own', route: own }
+  // 祖先目录树链接：entry 是「父目录/...」且该父路由 allowIndex
+  let best: ShareRouteInfo | undefined
+  for (const r of shareRoutes.value) {
+    if (r.allowIndex === false) continue
+    const dir = normSharePath(r.entry)
+    if (dir && (rel === dir || rel.startsWith(dir + '/'))) {
+      if (dir === rel) return { kind: 'own', route: r } // 恰好命中目录本身
+      if (!best || dir.length > normSharePath(best.entry).length) best = r
+    }
+  }
+  return best ? { kind: 'inherited', parent: best } : { kind: 'none' }
+}
+/** 悬浮说明文案 */
+function shareMarkTip(entry: FsEntry): string {
+  const m = shareMarkOf(entry)
+  if (m.kind === 'own') {
+    const r = m.route!
+    const life = r.expiresAt <= 0 || r.expiresAt > 8e15 ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
+    return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击管理`
+  }
+  if (m.kind === 'inherited') return `随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
+  return '未分享 · 点行操作「分享链接」创建'
+}
+/** 继承项点击：复制父目录链接（从 localStorage 的 ticket 取 urls[0]） */
+async function copyParentShareLink(entry: FsEntry): Promise<void> {
+  const m = shareMarkOf(entry)
+  if (m.kind !== 'inherited' || !m.parent) return
+  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
+  const root = cfg.local.defaultDir?.trim()
+  if (!root) { ElMessage.warning('未配置本地默认目录'); return }
+  const parent = m.parent
+  const ticket = readShareTicket('upload-manager', parent.label, root, parent.entry)
+  const url = ticket?.urls?.[0]
+  if (!url) { ElMessage.warning('父级链接凭证已失效，请重新分享父目录'); return }
+  await window.api.os.clipboardWrite(url)
+  ElMessage.success('已复制父级分享链接')
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
@@ -2001,6 +2062,14 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
+            <!-- 分享状态标记（用户 2026-11-19）：绿=自己的分享、橙=随父级树链接、无=未分享 -->
+            <el-tooltip v-if="shareMarkOf(entry).kind !== 'none'" :content="shareMarkTip(entry)" placement="top">
+              <el-icon
+                class="fs-share-mark"
+                :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
+                @click.stop="shareMarkOf(entry).kind === 'inherited' ? copyParentShareLink(entry) : rowShare(entry)"
+              ><component :is="shareMarkOf(entry).kind === 'own' ? (entry.kind === 'dir' ? FolderOpened : Link) : Connection" /></el-icon>
+            </el-tooltip>
             <span v-if="searchDirHint(entry)" class="fs-name-sub" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
             <el-button
@@ -2074,6 +2143,13 @@ function onKeydown(event: KeyboardEvent): void {
           >
             <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-cell-name">{{ entry.name }}</span>
+            <el-tooltip v-if="shareMarkOf(entry).kind !== 'none'" :content="shareMarkTip(entry)" placement="top">
+              <el-icon
+                class="fs-share-mark"
+                :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
+                @click.stop="shareMarkOf(entry).kind === 'inherited' ? copyParentShareLink(entry) : rowShare(entry)"
+              ><component :is="shareMarkOf(entry).kind === 'own' ? (entry.kind === 'dir' ? FolderOpened : Link) : Connection" /></el-icon>
+            </el-tooltip>
             <span v-if="searchDirHint(entry)" class="fs-cell-dir" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
           </div>
@@ -2569,6 +2645,11 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-sortable { cursor: pointer; user-select: none; }
 .fs-col-check { display: flex; align-items: center; }
 .fs-col-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; padding-right: 24px; }
+/* 分享状态标记：绿=自己的分享、橙=随父级树链接（用户 2026-11-19） */
+.fs-share-mark { flex: none; font-size: 14px; cursor: pointer; transition: transform .12s; }
+.fs-share-mark:hover { transform: scale(1.2); }
+.fs-share-mark.is-own { color: var(--el-color-success); }
+.fs-share-mark.is-inherited { color: var(--el-color-warning); }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
 /* 搜索结果嵌套文件的子目录灰字提示（searchDirHint） */
