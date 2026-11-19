@@ -6,7 +6,6 @@ import { zipSync, type Zippable } from 'fflate'
 import { listOutputFiles } from '@sshk/repository'
 import { getEnvHas } from '@sshk/shared'
 import {
-  TOOL_IDS,
   format,
   normalizeUploadConfig,
   now,
@@ -88,7 +87,7 @@ export function collectDiagnostics(
     uploads = [...uploadCfg.remote.profiles, ...uploadCfg.cloud.profiles].map((p) => ({
       id: p.id,
       name: p.name,
-      hasSecret: Boolean(services.host.getToolSecret(TOOL_IDS.fileManager, p.id)),
+      hasSecret: Boolean(services.getUploadSecret(p.id)),
     }))
   } catch { /* 保持空 */ }
   const secrets = {

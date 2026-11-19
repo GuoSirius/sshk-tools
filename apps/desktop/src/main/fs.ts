@@ -18,7 +18,6 @@ import { beginMediaDownload, finishMediaDownload, updateMediaDownload } from './
 import type { FsDriver, FsSearchBatchFn } from '@sshk/upload-core'
 import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
 import {
-  TOOL_IDS,
   fsFormatSize,
   isFsZipName,
   normalizeUploadConfig,
@@ -72,7 +71,6 @@ import { logger } from './logger'
  * - 审计：全部写操作落日志（scope=upload，action/路径/结果，不含内容），error 级纳入 N2。
  */
 
-const SECRET_TOOL_ID = TOOL_IDS.fileManager // 文件管理（2026-11-19 由 upload-manager 改名；密钥启动时自动迁移）
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
 /** 传输队列任务总量上限：防止异常入参把队列撑爆 */
@@ -1147,7 +1145,7 @@ export class FsRuntime {
     }
     const remote = cfg.remote.profiles.find((p) => p.id === profileId)
     if (remote) {
-      const password = this.opts.services.host.getToolSecret(SECRET_TOOL_ID, remote.id)
+      const password = this.opts.services.getUploadSecret(remote.id)
       return {
         driver: new RemoteFsDriver({
           protocol: remote.protocol,
@@ -1173,7 +1171,7 @@ export class FsRuntime {
     }
     const cloud = cfg.cloud.profiles.find((p) => p.id === profileId)
     if (cloud) {
-      const accessKeySecret = this.opts.services.host.getToolSecret(SECRET_TOOL_ID, cloud.id)
+      const accessKeySecret = this.opts.services.getUploadSecret(cloud.id)
       return {
         driver: new CloudFsDriver({
           provider: cloud.provider,
@@ -1864,7 +1862,7 @@ export class FsRuntime {
         ? [...list.filter((p) => p.id === defaultId), ...list.filter((p) => p.id !== defaultId)]
         : list
     for (const p of ordered(cfg.cloud.profiles, cfg.cloud.defaultId)) {
-      const hasSecret = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
+      const hasSecret = Boolean(this.opts.services.getUploadSecret(p.id))
       out.push({
         id: p.id,
         name: p.name,
@@ -1878,7 +1876,7 @@ export class FsRuntime {
       })
     }
     for (const p of ordered(cfg.remote.profiles, cfg.remote.defaultId)) {
-      const hasSecret = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
+      const hasSecret = Boolean(this.opts.services.getUploadSecret(p.id))
       out.push({
         id: p.id,
         name: p.name,
