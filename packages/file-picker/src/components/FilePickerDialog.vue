@@ -227,9 +227,13 @@ const loadingList = ref(false)
 const dirError = ref('')
 /** 级联面板序号：换源/换桶/上传成功后自增重挂载，清掉已加载的懒加载缓存 */
 const dirPanelKey = ref(0)
+/** 级联自身选中值镜像（仅 @change 驱动）：用于「只选根」回显 / 的 class 判断。
+ *  三态：null=从未经级联选择（不补显 /）；''=只选了根；其他=选了子目录。
+ *  不直接判 dirModel——它和手输框共享，用户手输不该影响级联框显示 */
+const dirCascaderPicked = ref<string | null>(null)
 /** 面板交互代次：用户显式选择或面板重挂时自增，作废在途的「空目录自动选中」，防止覆盖用户新选择 */
 const dirPanelGen = ref(0)
-watch(dirPanelKey, () => { dirPanelGen.value++ })
+watch(dirPanelKey, () => { dirPanelGen.value++; dirCascaderPicked.value = null })
 const cascaderRef = ref<CascaderInstance | null>(null)
 /** 文件名搜索关键词 */
 const keyword = ref('')
@@ -367,12 +371,16 @@ const cascaderProps = {
         )
       })
     }
+    // 根目录规则（2026-11-19 定版，与文件管理页目录级联一致）：
+    // 根 label 置 '' + 级联 separator="/" → 回显 /a/b/c（根 label 为 '/' 会拼出 //a/b 双斜杠）；
+    // 面板首列根节点的 "/" 由非 scoped CSS 伪元素补显示（fp-dir-cascader-popper）
+    if (node.level === 0) { resolve([{ value: '', label: '' }]); return } // 根目录独立首级（value '' = 三种源的根语义）
     const source = activeSource.value
     if (!source || !props.library.listDirectories) {
       resolve([])
       return
     }
-    const parent = node.level === 0 ? '' : String(node.value ?? '')
+    const parent = String(node.value ?? '')
     // 捕获交互代次与已选值：在途期间用户另做选择/面板重挂则放弃自动选中；值已选中说明是回显同步加载
     const gen = dirPanelGen.value
     const echoing = dirModel.value === parent
@@ -383,7 +391,8 @@ const cascaderProps = {
       // 非叶子（isLeaf 直接取 data.leaf，不再走推断），导致空目录不被标记为叶子、点文字永远不能选中
       resolve(
         children.map((seg) => {
-          const last = seg.slice(seg.lastIndexOf('/') + 1) || seg
+          // label 取末段（兼容 Windows 本地绝对路径的反斜杠）；value 保持完整路径供 dirModel 语义
+          const last = seg.slice(Math.max(seg.lastIndexOf('/'), seg.lastIndexOf('\\')) + 1) || seg
           return { value: seg, label: last }
         }),
       )
@@ -403,6 +412,7 @@ const cascaderProps = {
 /** 点单选圈选中：回显 + 关闭面板（checkStrictly 下 EP 不会自动收起）；点文字由 EP 下钻 */
 function onDirChange(v: string | null): void {
   dirPanelGen.value++
+  dirCascaderPicked.value = String(v ?? '') // 镜像级联自身选中值：只选根（''）时靠它判 is-root-selected 补显 /
   cascaderRef.value?.togglePopperVisible(false)
   dirModel.value = v ?? ''
 }
@@ -987,8 +997,11 @@ function onPaneScroll(e: Event): void {
               :key="dirPanelKey"
               v-model="dirModel"
               :props="cascaderProps"
+              separator="/"
               clearable
               class="dir-cascader"
+              :class="{ 'is-root-selected': dirCascaderPicked === '' }"
+              popper-class="fp-dir-cascader-popper"
               :placeholder="showBucket ? '目录前缀（逐级选或手输）' : typeOf === 'remote' ? '远程目录（逐级选或手输）' : '本地目录（逐级选或手输）'"
               @change="onDirChange"
             />
@@ -1352,4 +1365,29 @@ function onPaneScroll(e: Event): void {
 :global(.file-picker-dialog .el-dialog__footer) { flex: 0 0 auto; padding: 12px 0 16px !important; }
 /* 缩略图区占满剩余高度并单独滚动；已选清单用 flex-basis 受自身 max-height 约束后单独滚动 */
 .lib-pane { flex: 1 1 0; min-height: 120px; overflow-y: auto; padding-right: 6px; }
+</style>
+
+<!-- 非 scoped：根目录回显规则（2026-11-19 定版，与文件管理页 fs-dir-cascader-popper 同一套）。
+     根 label='' 守「子级回显 /a/b 不双斜杠」（pathLabels=['','a','b'].join('/')=/a/b）；
+     代价是只选根时 join 结果为空 → 输入框/面板根节点都空，此处补显示，不改 label 机制。
+     popper 经 teleport 挂 body、el-input 内部元素不带 scope 属性，均需全局选择器。 -->
+<style>
+/* 面板首列（根列）首节点补 /：根列是第一个 .el-cascader-menu 且只含根节点；
+   子级 menu 非 first-child 不受影响（不用 :empty——空文本节点会让它匹配失败） */
+.fp-dir-cascader-popper .el-cascader-menu:first-child .el-cascader-node:first-child .el-cascader-node__label::before { content: '/'; }
+/* 只选根时，级联输入框在占位层补 / 并隐藏空值+占位文字，视觉等同正常回显。
+   placeholder 由 ::placeholder 伪元素渲染，必须单独透明化，否则「/」与占位文字叠字 */
+.dir-cascader.is-root-selected .el-input__inner,
+.dir-cascader.is-root-selected .el-input__inner::placeholder { color: transparent; }
+.dir-cascader.is-root-selected .el-input__wrapper { position: relative; }
+.dir-cascader.is-root-selected .el-input__wrapper::after {
+  content: '/';
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  pointer-events: none;
+}
 </style>
