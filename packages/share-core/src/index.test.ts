@@ -279,3 +279,56 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect((await fetch(`http://127.0.0.1:${port}/secured/`)).status).toBe(200)
   })
 })
+
+describe('ShareHub 内容路由（plans/11 方案 B/C · core 不依赖 repository）', () => {
+  it('方案 B：单篇 content 路由走 resolver 渲染阅读页；resolver 返回 null → 404', async () => {
+    const { hub } = makeHub()
+    await hub.start(0)
+    const port = hub.getPort()
+    hub.registerContentResolver((id) => id === 'cnt_ok'
+      ? { title: '测试文章', html: '<p>正文</p>', summary: '摘要' }
+      : null)
+    const ok = await hub.create({ toolId: 'file-manager', label: '文章A', root: 'content://contents', kind: 'content', contentId: 'cnt_ok' })
+    const dead = await hub.create({ toolId: 'file-manager', label: '文章已删', root: 'content://contents', kind: 'content', contentId: 'cnt_gone' })
+    const okRes = await fetch(`http://127.0.0.1:${port}/${ok.token}/`)
+    expect(okRes.status).toBe(200)
+    const html = await okRes.text()
+    expect(html).toContain('测试文章')
+    expect(html).toContain('<p>正文</p>')
+    expect((await fetch(`http://127.0.0.1:${port}/${dead.token}/`)).status).toBe(404)
+    // list 暴露 kind/contentId
+    expect(hub.listRoutes().find((r) => r.id === ok.id)).toMatchObject({ kind: 'content', contentId: 'cnt_ok' })
+  })
+
+  it('方案 C：__list__ 路由出列表页，?id= 走单篇，?id= 保留 ak', async () => {
+    const { hub } = makeHub()
+    await hub.start(0)
+    const port = hub.getPort()
+    hub.registerContentResolver((id) => ({ title: `文章 ${id}`, html: `<p>${id}</p>` }))
+    hub.registerContentListResolver((ak) => `<ul><li><a href="?id=cnt_1&ak=${ak}">文章1</a></li></ul>`)
+    const t = await hub.create({ toolId: 'file-manager', label: '公用总链', root: 'content://contents', kind: 'content', entry: '__list__', password: 'sekret' })
+    // 无 ak → 403
+    expect((await fetch(`http://127.0.0.1:${port}/${t.token}/__list__`)).status).toBe(403)
+    const listRes = await fetch(`http://127.0.0.1:${port}/${t.token}/__list__?ak=sekret`)
+    expect(listRes.status).toBe(200)
+    expect(await listRes.text()).toContain('?id=cnt_1&ak=sekret')
+    // ?id= 走单篇 resolver（列表页点进文章的通路）
+    const one = await fetch(`http://127.0.0.1:${port}/${t.token}/?id=cnt_1&ak=sekret`)
+    expect(one.status).toBe(200)
+    expect(await one.text()).toContain('文章 cnt_1')
+  })
+
+  it('content 路由 resume 不校验磁盘 root（虚拟标记）', async () => {
+    const { hub, state } = makeHub()
+    await hub.start(0)
+    hub.registerContentResolver(() => ({ title: 'x', html: '<p>x</p>' }))
+    await hub.create({ toolId: 'file-manager', label: 'x', root: 'content://contents', kind: 'content', contentId: 'cnt_1' })
+    await hub.stop()
+    // 手动确保状态已落盘（stop 会 flush）
+    expect(existsSync(state)).toBe(true)
+    const saved = JSON.parse(readFileSync(state, 'utf8')) as { routes: Array<{ kind?: string; contentId?: string }> }
+    expect(saved.routes.some((r) => r.kind === 'content' && r.contentId === 'cnt_1')).toBe(true)
+    await hub.start(0)
+    expect(hub.listRoutes().some((r) => r.kind === 'content' && r.contentId === 'cnt_1')).toBe(true)
+  })
+})

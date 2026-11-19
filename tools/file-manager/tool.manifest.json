@@ -32,6 +32,11 @@
       "id": "profiles",
       "label": "通道配置",
       "icon": "M12 15V4M8 8l4-4 4 4M4 20h16"
+    },
+    {
+      "id": "contents",
+      "label": "内容管理",
+      "icon": "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"
     }
   ],
   "configGroups": [],

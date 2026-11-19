@@ -7,6 +7,8 @@
 export { default as RichTextEditor } from './components/RichTextEditor.vue'
 export { htmlToMarkdown, markdownToHtml } from './markdown'
 export { toDisplayHtml, toStoredHtml, toDisplaySrc } from './display'
+export { countText, countHtmlWords, htmlToPlainText } from './word-count'
+export type { TextStats } from './word-count'
 export type {
   RichTextImageItem,
   RichTextImageLibrary,

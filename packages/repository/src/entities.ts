@@ -1,4 +1,4 @@
-import type { DatasourceKind, EntityStatus, FragmentPolicy, Origin, TemplateSlot } from '@sshk/shared'
+import type { ContentStatus, DatasourceKind, EntityStatus, FragmentPolicy, Origin, TemplateSlot } from '@sshk/shared'
 
 /** 公共基类：时间一律北京时间 ISO 8601 带 +08:00 偏移（由 @sshk/shared/time 生成） */
 export interface BaseEntity {
@@ -167,6 +167,19 @@ export interface Poster extends BaseEntity {
   sourceHash?: string
 }
 
+/** 通用文章内容（plans/11 §二）：html 存储态、字数入库、图片一律外链不落库 */
+export interface ContentDoc extends BaseEntity {
+  name: string
+  /** wangEditor 存储态 HTML（toStoredHtml） */
+  html: string
+  /** 摘要（阅读页/公用列表展示） */
+  summary?: string
+  tags?: string[]
+  status: ContentStatus
+  /** 保存时由 html 提纯文本后 countHtmlWords() 算好入库，列表直出不解析 HTML */
+  wordCount: number
+}
+
 /** zip 包内 data/ 目录与实体的对应关系（@sshk/backup 使用） */
 export const BACKUP_COLLECTIONS = [
   'brands',
@@ -176,6 +189,7 @@ export const BACKUP_COLLECTIONS = [
   'fragmentVersions',
   'mails',
   'posters',
+  'contents',
 ] as const
 
 export type CollectionName = (typeof BACKUP_COLLECTIONS)[number]

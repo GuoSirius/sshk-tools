@@ -1,5 +1,5 @@
 import { ElMessage } from 'element-plus'
-import type { FilePickerLibrary, FilePickerSource, FilePickerTarget } from '@sshk/file-picker'
+import { createHostImageLibrary, type FilePickerLibrary } from '@sshk/file-picker'
 import type { RichTextUploadHook } from '@sshk/rich-text'
 import { extractInlineImages, replaceInlineImages, replacementFor } from '../core/inline-images.js'
 import { beginUploadSession, endUploadSession } from './upload-progress'
@@ -16,7 +16,6 @@ import { host } from './host'
  * 支持专属桶/目录覆盖，上传后插入；也可列出该来源已有图片挑选插入。
  * 本地默认项 id 用 __local__（非真实 profile，type=local 时 profileId 不下发）。
  */
-const LOCAL_SOURCE_ID = '__local__'
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -79,63 +78,8 @@ export async function uploadInlineImages(html: string, toolId: string): Promise<
   return replaceInlineImages(html, pairs)
 }
 
-interface ProfileOption {
-  id: string
-  name: string
-  targetType: 'local' | 'remote' | 'cloud'
-  label: string
-}
-
-/** 富文本「图片库」桥接：来源 = 本地默认 + 已配置远程/云 profile；密钥解析全在 main */
+/** 富文本「图片库」桥接：收敛到 @sshk/file-picker 单一实现（plans/11 §七 S2）。
+ *  EDM 历史行为把 local 型 profile 也列为独立来源，故 includeLocalProfiles=true。 */
 export function createImageLibrary(toolId: string): FilePickerLibrary {
-  const requestOf = (source: FilePickerSource, target?: FilePickerTarget) => ({
-    toolId,
-    targetType: source.type,
-    profileId: source.type === 'local' ? undefined : source.id,
-    overrides: {
-      localDir: target?.localDir || undefined,
-      remotePath: target?.remotePath || undefined,
-      bucket: target?.bucket || undefined,
-      prefix: target?.prefix || undefined,
-    },
-  })
-  return {
-    async sources(): Promise<FilePickerSource[]> {
-      const profiles = (await host.upload.profiles()) as ProfileOption[]
-      return [
-        { id: LOCAL_SOURCE_ID, type: 'local', label: '本地（应用默认上传目录）' },
-        ...profiles.map((p) => ({ id: p.id, type: p.targetType, label: p.label })),
-      ]
-    },
-    async upload(file, source, target, onProgress) {
-      onProgress?.({ percent: 0, status: 'uploading' })
-      try {
-        const dataUrl = await readAsDataUrl(file)
-        const result = await host.upload.single({ ...requestOf(source, target ?? {}), name: file.name, size: file.size, mime: file.type, dataUrl })
-        onProgress?.({ percent: 100, status: 'success' })
-        return result.url
-      } catch (err) {
-        // 失败由 reject 表达，UI 据此标记该项并可重试/删除
-        throw err
-      }
-    },
-    async list(source, target, opts) {
-      const page = (await host.upload.listImages({
-        ...requestOf(source, target ?? {}),
-        limit: opts?.limit,
-        cursor: opts?.cursor,
-        kind: opts?.kind,
-      })) as {
-        items: { url: string; name: string; key?: string; size?: number; modified?: number }[]
-        nextCursor?: string | null
-      }
-      return {
-        items: page.items.map((i) => ({ url: i.url, name: i.name, size: i.size, modified: i.modified, key: i.key })),
-        nextCursor: page.nextCursor ?? null,
-      }
-    },
-    async listDirectories(source, target) {
-      return (await host.upload.listDirectories(requestOf(source, target ?? {}))) as string[]
-    },
-  }
+  return createHostImageLibrary(toolId, host.upload, { includeLocalProfiles: true })
 }

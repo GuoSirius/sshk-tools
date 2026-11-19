@@ -398,6 +398,13 @@ const api = {
       invoke(IPC_CHANNELS.fsFavoriteAdd, req),
     favoriteRemove: (id: string): Promise<boolean> => invoke(IPC_CHANNELS.fsFavoriteRemove, id),
   },
+  /** 内容管理（plans/11）：文章 CRUD（contents 集合） */
+  content: {
+    list: (): Promise<import('@sshk/shared').ContentRecord[]> => invoke(IPC_CHANNELS.contentList),
+    get: (id: string): Promise<import('@sshk/shared').ContentRecord | null> => invoke(IPC_CHANNELS.contentGet, id),
+    save: (req: import('@sshk/shared').ContentSaveInput): Promise<import('@sshk/shared').ContentRecord> => invoke(IPC_CHANNELS.contentSave, req),
+    remove: (req: { id: string; hard?: boolean }): Promise<boolean> => invoke(IPC_CHANNELS.contentRemove, req),
+  },
   /** ShareHub 常驻分享服务（plans/09）：工具侧路由管理。toolId 由调用方传入做归属鉴权 */
   shareHub: {
     create: (input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket> =>

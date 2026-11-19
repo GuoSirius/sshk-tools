@@ -34,6 +34,7 @@ import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoChe
 import type { VerifySession } from '@sshk/shared'
 import { exportPreset, importPreset, type PresetSecretStore } from './presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
+import { contentList, contentGet, contentSave, contentRemove, makeContentResolver, makeContentListResolver } from './content'
 import { exportBackup } from '@sshk/backup'
 import { importBackup } from '@sshk/backup'
 import { installPackage, listInstalled, loadRuntimeManifests, previewInstall, readRenderer, uninstallPackage } from './runtime-installer'
@@ -796,6 +797,13 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.fsFavoriteAdd, (_event, req: Parameters<FsRuntime['favoriteAdd']>[0]) => fsRuntime.favoriteAdd(req))
   handleOk(IPC_CHANNELS.fsFavoriteRemove, (_event, id: string) => fsRuntime.favoriteRemove(id))
 
+  // ── 内容管理（plans/11）：文章 CRUD（contents 集合）──
+  handleOk(IPC_CHANNELS.contentList, () => contentList(services!.repository))
+  handleOk(IPC_CHANNELS.contentGet, (_event, id: string) => contentGet(services!.repository, id))
+  handleOk(IPC_CHANNELS.contentSave, (_event, req: Parameters<typeof contentSave>[1]) => contentSave(services!.repository, req))
+  handleOk(IPC_CHANNELS.contentRemove, (_event, req: { id: string; hard?: boolean }) =>
+    contentRemove(services!.repository, req?.id, req?.hard === true))
+
   // ── OS 能力（宿主提供） ──
   handleOk(IPC_CHANNELS.osPickFile, async (_event, opts?: { filters?: { name: string; extensions: string[] }[]; multi?: boolean; defaultPath?: string }) => {
     const win = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
@@ -1078,6 +1086,9 @@ void app.whenReady().then(async () => {
   shareHubHost = createShareHubHost(services.config, {
     userDataDir: app.getPath('userData'),
     isDev,
+    // 内容 resolver 由宿主注入：core 不依赖 repository，读库回调在此提供（plans/11 方案 B/C）
+    contentResolver: makeContentResolver(services.repository),
+    contentListResolver: makeContentListResolver(services.repository),
   })
   await shareHubHost.init()
   seedDefaultProviders()

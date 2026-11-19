@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import FileExplorerPage from './pages/FileExplorerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
+import ContentsPage from './pages/ContentsPage.vue'
 
 /**
  * file-manager（文件管理，原上传管理 upload-manager / 上传配置 upload-config）渲染层壳（与 badge-studio 同一约定）：
@@ -10,7 +11,7 @@ import ProfilesPage from './pages/ProfilesPage.vue'
  * 「工具配置」菜单由宿主 ToolSettingsPage 接管，不进本组件。
  */
 const props = defineProps<{ menu?: string; toolId?: string }>()
-const pages: Record<string, unknown> = { files: FileExplorerPage, profiles: ProfilesPage }
+const pages: Record<string, unknown> = { files: FileExplorerPage, profiles: ProfilesPage, contents: ContentsPage }
 const active = computed(() => pages[props.menu ?? 'files'] ?? FileExplorerPage)
 </script>
 

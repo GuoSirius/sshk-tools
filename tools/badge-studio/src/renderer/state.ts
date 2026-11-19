@@ -872,10 +872,11 @@ async function findAliveRoute(toolId: string, ticket: { id: string; token: strin
   }
 }
 
-/** 拼「前缀+相对路径」直达链接：路径逐段编码（中文/空格），带口令的路由补 ?key=（否则 403） */
+/** 拼「前缀+相对路径」直达链接：路径逐段编码（中文/空格），带口令的路由补 ?ak=（否则 403）。
+ *  2026-11-19 修正：内核访问密钥查询参数已由 ?key= 改名 ?ak=（plans/09），此处同步——旧 ?key= 会被内核忽略导致 403。 */
 function buildShareUrl(prefix: string, relPath: string, route: ShareRouteInfo | null): string {
   const base = prefix.replace(/\/+$/, '') + '/' + relPath.split('/').map(encodeURIComponent).join('/')
-  const key = route && typeof route.password === 'string' && route.password ? `?key=${encodeURIComponent(route.password)}` : ''
+  const key = route && typeof route.password === 'string' && route.password ? `?ak=${encodeURIComponent(route.password)}` : ''
   return base + key
 }
 

@@ -12,10 +12,11 @@ import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
 import {
   IPC_CHANNELS,
   TOOL_IDS,
-  type ShareRouteInput,
+  type   ShareRouteInput,
   type ShareHubMount,
   type ShareHubProxy,
   type HubStatus,
+  type ShareContentResolverResult,
 } from '@sshk/shared'
 import type { ConfigService } from '@sshk/repository'
 import { handleOk } from './ipc-wrap'
@@ -63,10 +64,19 @@ function migrateShareStateToolId(stateFile: string): void {
   }
 }
 
-export function createShareHubHost(cfg: ConfigService, opts: { userDataDir: string; isDev: boolean }): ShareHubHost {
+export function createShareHubHost(cfg: ConfigService, opts: {
+  userDataDir: string
+  isDev: boolean
+  /** 内容 resolver（plans/11 方案 B）：由 index.ts 注入（宿主读库），core 不依赖 repository */
+  contentResolver?: (contentId: string) => ShareContentResolverResult | null | Promise<ShareContentResolverResult | null>
+  /** 内容列表页 resolver（plans/11 方案 C）：宿主构造已发布文章列表页 HTML */
+  contentListResolver?: (accessKey: string) => string | null | Promise<string | null>
+}): ShareHubHost {
   const stateFile = join(opts.userDataDir, 'hub-state.json')
   migrateShareStateToolId(stateFile)
   const hub = new ShareHub(stateFile)
+  if (opts.contentResolver) hub.registerContentResolver(opts.contentResolver)
+  if (opts.contentListResolver) hub.registerContentListResolver(opts.contentListResolver)
 
   // 固定端口被占回落 → 日志 +（dev）终端告警；ElMessage 由渲染层 status 轮询感知端口变化后提示
   hub.setPortFallbackHandler((requested, actual) => {

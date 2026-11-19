@@ -29,3 +29,6 @@ export {
 } from './picker-settings'
 export type { DirValidation, DirValidationLevel, FilePickerSettings } from './picker-settings'
 export { contentName, fingerprintKey, hashFile, resolveUploadName } from './upload-dedupe'
+/** 宿主上传能力图片库桥接（plans/11：EDM/模板/内容管理单一实现） */
+export { createHostImageLibrary } from './host-library'
+export type { HostUploadBridge, HostImageLibraryOptions } from './host-library'

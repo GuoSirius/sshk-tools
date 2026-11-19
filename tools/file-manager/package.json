@@ -15,9 +15,12 @@
     "@element-plus/icons-vue": "latest",
     "@vueuse/core": "latest",
     "@sshk/code-editor": "workspace:*",
+    "@sshk/file-picker": "workspace:*",
+    "@sshk/rich-text": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "element-plus": "latest",
+    "fflate": "latest",
     "vue": "latest",
     "vue-draggable-plus": "latest"
   },

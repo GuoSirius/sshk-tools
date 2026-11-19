@@ -7,6 +7,12 @@ import { createSafeHost } from '@sshk/ui-kit'
  */
 export const host = createSafeHost({
   os: { pickDir: C.osPickDir },
+  content: {
+    list: C.contentList,
+    get: C.contentGet,
+    save: C.contentSave,
+    remove: C.contentRemove,
+  },
   upload: {
     getConfig: C.uploadManagerGet,
     setConfig: C.uploadManagerSet,

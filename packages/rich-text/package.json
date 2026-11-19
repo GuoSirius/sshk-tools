@@ -5,7 +5,8 @@
   "type": "module",
   "description": "sshk-tools 共享富文本编辑器：wangEditor 封装、全屏适配、图片上传钩子、Markdown 互转",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./pure": "./src/pure.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

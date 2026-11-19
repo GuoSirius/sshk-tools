@@ -473,15 +473,58 @@ export interface ShareHubProxy {
 }
 
 /** 创建一条分享路由的入参 */
+/** 内容状态机（plans/11 §五）：草稿/已发布/已下线；删除走独立 archived 位 */
+export type ContentStatus = 'draft' | 'published' | 'retracted'
+
+/** 文章内容记录（渲染层视图，plans/11） */
+export interface ContentRecord {
+  _id: string
+  name: string
+  html: string
+  summary?: string
+  tags?: string[]
+  status: ContentStatus
+  wordCount: number
+  createdAt: string
+  updatedAt: string
+  archived: boolean
+}
+
+/** 新建/保存内容请求（plans/11）：_id 缺省=新建；wordCount/summary 由主进程算好入库 */
+export interface ContentSaveInput {
+  _id?: string
+  name: string
+  html: string
+  summary?: string
+  tags?: string[]
+  status?: ContentStatus
+}
+
+/** 分享路由种类（plans/11 方案 B）：file=静态文件（默认）；content=文章内容（resolver 动态渲染阅读页） */
+export type ShareRouteKind = 'file' | 'content'
+
+/** 内容 resolver 返回（plans/11）：宿主注入读库回调，core 不依赖 repository；null=文章不存在→404 */
+export interface ShareContentResolverResult {
+  title: string
+  /** toDisplayHtml 处理过的展示态 HTML（图片协议已转换） */
+  html: string
+  /** 摘要，可选 */
+  summary?: string
+}
+
 export interface ShareRouteInput {
   /** 归属工具 id（'badge-studio' | 'edm-studio' | 'file-manager' | …）；按此记账鉴权 */
   toolId: string
   /** 展示名（如「海报：产品A」） */
   label: string
-  /** 允许被访问的根目录（绝对路径，主进程校验存在） */
+  /** 允许被访问的根目录（绝对路径，主进程校验存在）；content kind 用虚拟根标记 */
   root: string
   /** 入口相对路径（缺省 = 目录列表页） */
   entry?: string
+  /** 路由种类，缺省 file（plans/11 方案 B） */
+  kind?: ShareRouteKind
+  /** content kind 的内容 id（cnt_*），由宿主注入的 resolver 按此读库 */
+  contentId?: string
   /** 有效期小时数，默认 72；0.01 可用于测试 */
   ttlHours?: number
   /** 是否允许浏览目录列表（缺省由宿主注入应用级默认 app.shareHub.allowIndex，默认不允许）；直接文件路径不受影响 */
@@ -516,6 +559,10 @@ export interface ShareRouteInfo {
   password?: string
   /** 是否允许浏览目录列表（旧路由缺省视为允许） */
   allowIndex?: boolean
+  /** 路由种类，缺省 file（plans/11 方案 B） */
+  kind?: ShareRouteKind
+  /** content kind 的内容 id */
+  contentId?: string
 }
 
 /** 一个候选展示 IP（供设置 tab 下拉展示） */

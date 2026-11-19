@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { countText } from './word-count'
+import { countHtmlWords, countText, htmlToPlainText } from './word-count'
+
+describe('htmlToPlainText / countHtmlWords（plans/11 H1：HTML 提纯入库）', () => {
+  it('剥标签并解码实体，块级标签转换行', () => {
+    expect(htmlToPlainText('<p>你好，&nbsp;<b>世界</b></p><p>第二&amp;段</p>'))
+      .toBe('你好， 世界\n第二&段')
+  })
+
+  it('script/style 整段丢弃', () => {
+    expect(htmlToPlainText('<style>.x{color:red}</style><p>正文</p><script>alert(1)</script>'))
+      .toBe('正文')
+  })
+
+  it('数字实体解码', () => {
+    expect(htmlToPlainText('&#x4f60;&#22909;')).toBe('你好')
+  })
+
+  it('countHtmlWords 对 HTML 与等价纯文本同结果', () => {
+    expect(countHtmlWords('<p>你好 React 是一个 UI 库</p>')).toBe(countText('你好 React 是一个 UI 库').words)
+    expect(countHtmlWords(null)).toBe(0)
+    expect(countHtmlWords('')).toBe(0)
+  })
+})
 
 describe('countText（Word 口径近似）', () => {
   it('空文本全为 0', () => {

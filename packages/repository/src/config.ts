@@ -173,6 +173,8 @@ export const DEFAULT_SETTINGS: Settings = {
     distribution: { includeTools: null },
     /** 工具元数据覆盖：app.toolOverrides.<id> = { name, description, category, icon } */
     toolOverrides: {},
+    /** 内容管理（plans/11）：编辑器容器形态，默认弹框；dev 下两种模式全量可切（AGENTS.md 开发铁律） */
+    content: { editorMode: 'dialog' },
   },
   /**
    * 工具配置默认值不在这里硬编码：宿主启动时由

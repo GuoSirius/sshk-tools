@@ -31,6 +31,10 @@ const props = defineProps<{
   defaultEntry?: string
   /** 可选访问口令 */
   password?: string
+  /** 路由种类（plans/11 方案 B）：缺省 file；content=文章内容，由宿主注入的 resolver 动态渲染阅读页 */
+  routeKind?: import('@sshk/shared').ShareRouteKind
+  /** content kind 的内容 id（cnt_*），随 create 透传给内核 resolver */
+  contentId?: string
 }>()
 const emit = defineEmits<{ 'update:open': [boolean]; /** 创建/重新生成/撤销等路由变更后通知宿主刷新列表状态（无需等弹框关闭） */ 'changed': [] }>()
 
@@ -191,6 +195,8 @@ async function createTicket(): Promise<void> {
       ttlHours: permanentCreate ? 0 : ttlHours.value,
       password: accessKey.value,
       allowIndex: allowIndex.value,
+      kind: props.routeKind,
+      contentId: props.contentId,
     })
     ticket.value = t
     saveTicket(t)
@@ -364,6 +370,8 @@ async function regenerate(): Promise<void> {
       ttlHours: regenPermanent ? 0 : ttlHours.value,
       password: accessKey.value,
       allowIndex: allowIndex.value,
+      kind: props.routeKind,
+      contentId: props.contentId,
     })
     ticket.value = t
     saveTicket(t)

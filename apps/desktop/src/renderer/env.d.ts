@@ -306,6 +306,13 @@ interface Window {
     edm: {
       api(action: string, data?: Record<string, unknown>): Promise<unknown>
     }
+    /** 内容管理（plans/11）：文章 CRUD（contents 集合） */
+    content: {
+      list(): Promise<import('@sshk/shared').ContentRecord[]>
+      get(id: string): Promise<import('@sshk/shared').ContentRecord | null>
+      save(req: import('@sshk/shared').ContentSaveInput): Promise<import('@sshk/shared').ContentRecord>
+      remove(req: { id: string; hard?: boolean }): Promise<boolean>
+    }
     /** ShareHub 常驻分享服务（plans/09） */
     shareHub: {
       create(input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket>

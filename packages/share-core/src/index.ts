@@ -16,6 +16,7 @@ import type {
   ShareIpInfo,
   ShareAccessLog,
   HubStatus,
+  ShareContentResolverResult,
 } from '@sshk/shared'
 import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 
@@ -80,6 +81,10 @@ interface ShareRoute {
   hits: number
   /** 挂载目录路由标记（ShareHub mounts）：非持久化、配置权威；token 字段存别名 */
   mountId?: string
+  /** 路由种类（plans/11 方案 B）：缺省 file；content=文章内容，由注入的 resolver 动态渲染 */
+  kind?: 'file' | 'content'
+  /** content kind 的内容 id（cnt_*） */
+  contentId?: string
 }
 
 interface PersistedHub {
@@ -130,12 +135,31 @@ export class ShareHub {
   private preferredIp = ''
   /** 端口回落提示回调（固定端口被占时由宿主 ElMessage 告警） */
   private onPortFallback: ((requested: number, actual: number) => void) | null = null
+  /** 内容 resolver（plans/11 方案 B）：宿主注入读库回调，core 不依赖 repository；null/Promise 均可（NeDB 异步）。
+   *  返回 null=内容不存在/已归档→404。 */
+  private contentResolver: ((contentId: string) => ShareContentResolverResult | null | Promise<ShareContentResolverResult | null>) | null = null
+  /** 内容列表 resolver（plans/11 方案 C）：宿主构造「已发布文章列表页」完整 HTML，core 只输出，不碰数据。
+   *  命中 entry=__list__ 的 content 路由时调用；返回 null=无 resolver→404。 */
+  private contentListResolver: ((accessKey: string) => string | null | Promise<string | null>) | null = null
+  /** 内容列表页入口标记（entry 值），区别于单篇 contentId */
+  static readonly CONTENT_LIST_ENTRY = '__list__'
 
   constructor(private readonly stateFile: string) {}
 
   /** 注入宿主回调：固定端口被占回落时告警 */
   setPortFallbackHandler(fn: (requested: number, actual: number) => void): void {
     this.onPortFallback = fn
+  }
+
+  /** 注入内容 resolver（plans/11）：宿主读库并把展示态 HTML 交给内核渲染阅读页。
+   *  core 只持有函数引用，不 import repository——依赖方向 core→shared→(宿主)→repository，无反向依赖。 */
+  registerContentResolver(fn: (contentId: string) => ShareContentResolverResult | null | Promise<ShareContentResolverResult | null>): void {
+    this.contentResolver = fn
+  }
+
+  /** 注入内容列表 resolver（plans/11 方案 C）：宿主查库构造已发布文章列表页 HTML */
+  registerContentListResolver(fn: (accessKey: string) => string | null | Promise<string | null>): void {
+    this.contentListResolver = fn
   }
 
   /** 设置展示 IP（配置变更即时生效，已发链接不追溯改写） */
@@ -271,12 +295,16 @@ export class ShareHub {
   /** 创建一条分享路由。root 必须是存在的绝对路径（主进程校验），token 12B base64url。 */
   async create(input: ShareRouteInput): Promise<ShareRouteTicket> {
     const root = String(input?.root ?? '').trim()
+    const isContent = input?.kind === 'content'
     if (!root) throw new Error('分享根目录不能为空')
-    if (!existsSync(root) || !statSync(root).isDirectory()) throw new Error(`分享根目录不存在或不是目录：${root}`)
-    if (!String(input?.toolId ?? '')) throw new Error('toolId 不能为空')
-    // 防穿越：入口若给出，必须在 root 内
+    // content kind 的 root 是虚拟标记（内容在 NeDB 不在磁盘），跳过磁盘存在性校验；file kind 保持原语义
+    if (!isContent && (!existsSync(root) || !statSync(root).isDirectory())) throw new Error(`分享根目录不存在或不是目录：${root}`)
+    // 防穿越：入口若给出，必须在 root 内（content kind 无磁盘 root，跳过）
     const entry = String(input?.entry ?? '').replaceAll('\\', '/').replace(/^\/+/, '')
-    if (entry) resolveSafe(root, entry)
+    const isContentList = isContent && entry === ShareHub.CONTENT_LIST_ENTRY
+    if (isContent && !isContentList && !String(input?.contentId ?? '')) throw new Error('content 路由必须提供 contentId')
+    if (!String(input?.toolId ?? '')) throw new Error('toolId 不能为空')
+    if (entry && !isContent) resolveSafe(root, entry)
 
     const ttlHours = normalizeTtl(input.ttlHours)
     const now = Date.now()
@@ -296,6 +324,8 @@ export class ShareHub {
       // 应用级默认（app.shareHub.allowIndex）由宿主在 IPC 层注入；share-core 未收到时保持允许（兼容旧调用方）
       allowIndex: input.allowIndex === undefined ? undefined : Boolean(input.allowIndex),
       hits: 0,
+      kind: isContent ? 'content' : 'file',
+      contentId: isContent ? String(input.contentId) : undefined,
     }
     this.routes.set(route.token, route)
     this.schedulePersist()
@@ -354,6 +384,7 @@ export class ShareHub {
         id: r.id, toolId: r.toolId, label: r.label, entry: r.entry, root: r.root,
         ttlHours: r.ttlHours, expiresAt: r.expiresAt, createdAt: r.createdAt, hits: r.hits,
         allowIndex: r.allowIndex !== false, password: r.password ?? '',
+        kind: r.kind ?? 'file', contentId: r.contentId,
       }))
   }
 
@@ -478,6 +509,34 @@ export class ShareHub {
       if (route.password && url.searchParams.get('ak') !== route.password) {
         this.finish(res, 403, 'Forbidden: 需要访问口令')
         this.log(clientIp, routeId, rel, 403)
+        return
+      }
+
+      // 内容路由（plans/11 方案 B/C）：宿主注入的 resolver 读库；core 不依赖 repository。
+      //  entry=__list__ → 方案 C 公用总链（已发布文章列表页，宿主构造 HTML）；否则单篇活路由（方案 B）。
+      //  null=内容不存在/已归档/resolver 未注入→404，避免悬空旧内容。
+      if (route.kind === 'content') {
+        let html: string | null = null
+        const reqId = url.searchParams.get('id')
+        const isListRoute = route.entry === ShareHub.CONTENT_LIST_ENTRY
+        if (isListRoute && !reqId) {
+          // C 公用总链：已发布文章列表页
+          html = await this.contentListResolver?.(url.searchParams.get('ak') ?? '') ?? null
+        } else {
+          // 单篇：C 列表里点进来的 ?id=<cnt>，或行级 B 路由绑定的 contentId
+          const contentId = reqId || route.contentId
+          const content = contentId ? await this.contentResolver?.(contentId) ?? null : null
+          if (content) html = this.renderArticle(route, content)
+        }
+        if (!html) {
+          this.finish(res, 404, 'Not Found')
+          this.log(clientIp, routeId, rel, 404)
+          return
+        }
+        route.hits++
+        if (!route.mountId) this.schedulePersist()
+        this.finish(res, 200, html, { 'content-type': MIME['.html']! })
+        this.log(clientIp, routeId, rel, 200)
         return
       }
 
@@ -623,6 +682,22 @@ export class ShareHub {
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:14px/1.6 system-ui,sans-serif;margin:32px;color:#c9d3ee;background:#0b0e1c}a{color:#5eb0ff;text-decoration:none}a:hover{text-decoration:underline}li{padding:2px 0}h1{font-size:18px}</style></head><body><h1>${title}</h1>${parent}<ul>${entries.join('')}</ul></body></html>`
   }
 
+  /** 文章阅读页（plans/11 方案 B）：标题转义防 XSS；正文 html 是编辑器展示态（宿主已 toDisplayHtml），
+   *  图片为外链或有效 ShareHub 图片链接，直接内嵌。 */
+  private renderArticle(route: ShareRoute, content: ShareContentResolverResult): string {
+    const title = esc(content.title || route.label || '文章')
+    const summary = content.summary ? `<p class="summary">${esc(content.summary)}</p>` : ''
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
+      body{font:16px/1.8 system-ui,-apple-system,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#1f2430;background:#fff}
+      h1{font-size:28px;line-height:1.4;margin:0 0 8px;border-bottom:1px solid #e8eaf0;padding-bottom:16px}
+      .summary{color:#6b7280;font-size:14px;margin:0 0 28px}
+      .article img{max-width:100%;height:auto}
+      pre{overflow:auto;background:#f5f6f8;padding:12px;border-radius:6px}
+      blockquote{border-left:3px solid #5eb0ff;margin:0;padding-left:16px;color:#555}
+      a{color:#2563eb}
+    </style></head><body><article><h1>${title}</h1>${summary}<div class="article">${content.html}</div></article></body></html>`
+  }
+
   private finish(res: import('node:http').ServerResponse, code: number, body: string, headers: Record<string, string> = {}): void {
     res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8', ...headers })
     res.end(body)
@@ -653,13 +728,15 @@ export class ShareHub {
       for (const r of saved.routes) {
         if (!r?.token || !r.root || !r.expiresAt) continue
         if (now > r.expiresAt) continue
-        if (!existsSync(r.root)) continue
+        // content kind 的 root 是虚拟标记（内容在 NeDB），不校验磁盘存在；file kind 保持
+        if (r.kind !== 'content' && !existsSync(r.root)) continue
         this.routes.set(r.token, {
           id: r.id ?? randomUUID(), token: r.token, toolId: r.toolId ?? '',
           label: r.label ?? '分享', root: r.root, entry: r.entry ?? '',
           ttlHours: r.ttlHours ?? DEFAULT_TTL_HOURS, createdAt: r.createdAt ?? now,
           expiresAt: r.expiresAt, password: r.password ?? '',
           allowIndex: r.allowIndex, hits: r.hits ?? 0,
+          kind: r.kind ?? 'file', contentId: r.contentId,
         })
       }
       void this.flushPersist()

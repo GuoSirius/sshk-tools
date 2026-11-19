@@ -379,7 +379,7 @@ importers:
         version: link:../../packages/ui-kit
       '@zumer/snapdom':
         specifier: latest
-        version: 3.8.0
+        version: 3.8.1
       cheerio:
         specifier: latest
         version: 1.2.0
@@ -484,6 +484,12 @@ importers:
       '@sshk/code-editor':
         specifier: workspace:*
         version: link:../../packages/code-editor
+      '@sshk/file-picker':
+        specifier: workspace:*
+        version: link:../../packages/file-picker
+      '@sshk/rich-text':
+        specifier: workspace:*
+        version: link:../../packages/rich-text
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -496,6 +502,9 @@ importers:
       element-plus:
         specifier: latest
         version: 2.14.8(vue@3.5.45(typescript@6.0.3))
+      fflate:
+        specifier: latest
+        version: 0.8.3
       vue:
         specifier: latest
         version: 3.5.45(typescript@6.0.3)
@@ -2158,8 +2167,8 @@ packages:
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
     engines: {node: '>=10.0.0'}
 
-  '@zumer/snapdom@3.8.0':
-    resolution: {integrity: sha512-g3dx3YbM6Ipcmxi3RPSwmHh6olT8tegXgizIf4pqpx+szS3z7QQlkBy3xdSAce6iwQV5zAtp7CtetJt+5iOQpA==}
+  '@zumer/snapdom@3.8.1':
+    resolution: {integrity: sha512-3GJUDSv0mpSKPE0Ta5MSOPXlARYRo9zUMhmq/BLZVAUEg2UgFEk6z0mkDBIlmXcvJR28FIiMmn+RhDsoMiabJA==}
 
   a-sync-waterfall@1.0.1:
     resolution: {integrity: sha512-RYTOHHdWipFUliRFMCS4X2Yn2X8M87V/OpSqWzKKOGhzqyUxzyVmhHDH9sAvG+ZuQf/TAOFsLCpMw09I1ufUnA==}
@@ -7083,7 +7092,7 @@ snapshots:
 
   '@xmldom/xmldom@0.8.15': {}
 
-  '@zumer/snapdom@3.8.0': {}
+  '@zumer/snapdom@3.8.1': {}
 
   a-sync-waterfall@1.0.1: {}
 

@@ -122,6 +122,11 @@ export const IPC_CHANNELS = {
   fsFavoriteList: 'fs:favorite:list',
   fsFavoriteAdd: 'fs:favorite:add',
   fsFavoriteRemove: 'fs:favorite:remove',
+  /** 内容管理（plans/11）：文章 CRUD（NeDB contents 集合） */
+  contentList: 'content:list',
+  contentGet: 'content:get',
+  contentSave: 'content:save',
+  contentRemove: 'content:remove',
   osPickFile: 'os:pickFile',
   osPickDir: 'os:pickDir',
   osPickSave: 'os:pickSave',

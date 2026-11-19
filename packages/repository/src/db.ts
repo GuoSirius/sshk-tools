@@ -18,6 +18,7 @@ const ID_PREFIX: Record<StorageCollection, string> = {
   fragmentVersions: 'frgv',
   mails: 'mail',
   posters: 'pst',
+  contents: 'cnt',
   usage: 'use',
   fsAnnotations: 'fsa',
   fsFavorites: 'fsv',

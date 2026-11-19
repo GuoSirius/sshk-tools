@@ -4,7 +4,7 @@
  * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
  */
 
-export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S'
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M'
 
 /** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
 export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
@@ -36,6 +36,7 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
   G: 'G · 弹框与欢迎页走查（2026-11-17）',
   H: 'H · 文件系统（X6）',
   S: 'S · 常驻分享服务（ShareHub · plans/09）',
+  M: 'M · 内容管理（plans/11）',
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
@@ -192,6 +193,22 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S20', group: 'S', title: '自动分配端口跨重启沿用', guide: '设置端口 0（自动）→ 启动后记录实际端口 → 重启应用端口不变（链接稳定）；被占回落新端口后 autoPort 自动更新；固定端口（默认 56789）直接生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
   { id: 'S21', group: 'S', title: '挂载目录三行卡片（2026-11-18）', guide: '设置 →「分享服务」→ 挂载目录：每项圆角卡片三行——行1 目录显示+选择目录+「允许访问目录」复选框（关=目录列表 404，具体文件路径仍可达）；行2 挂载点输入框（沾满剩余空间）+「启用」开关（关=整目录 404）；行3 地址+复制+删除；挂载点留空保存随机生成并记住；保存即生效无需重启', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/挂载目录' },
   { id: 'S22', group: 'S', title: '代理规则（2026-11-18）', guide: '「代理规则」区块：每项三行卡片——行1 目标地址（示例占位）+「保留原始 Host」复选框（默认保留，❓有场景解释）；行2 路径前缀+启用开关；行3 代理地址+复制+删除。访问 http://IP:端口/前缀/… 全方法（含 POST 请求体）转发到目标地址；转发带 X-Forwarded-For/Host/Proto（覆盖式防伪造）；目标不限网络；保存即生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/代理规则' },
+
+  // ── M 组：内容管理（plans/11，C1-C14）──
+  { id: 'M1', group: 'M', title: 'CRUD + 名称必填 + label 不换行', guide: '文件管理→内容管理：新建/编辑/复制另存/删除均正常；名称空时保存禁用；表单一行 label 自动右对齐不换行', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C1' },
+  { id: 'M2', group: 'M', title: '字数入库正确', guide: '写一篇中英混排文章保存 → 列表字数与 Word 口径近似（CJK 每字 1、西文串 1），刷新后仍正确（入库字段非现算）', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C12/H1' },
+  { id: 'M3', group: 'M', title: '分享状态列自己/公用颜色与 tip', guide: '行分享后显示「复制链接」+ 自己的(primary)；顶部分享内容后显示公用的(warning)；可访问/已失效颜色正确', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C2' },
+  { id: 'M4', group: 'M', title: '复制链接优先级（自己优先、失效回落）', guide: '本行有存活 B 票→复制直达单篇；撤销后回落 C 公用总链；都没有→提示生成', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C3' },
+  { id: 'M5', group: 'M', title: '编辑弹框默认最大化 + 四态控件', guide: '点编辑→弹框默认最大化；最小化收为可拖拽悬浮条点击复原；最大化/还原、全屏、关闭均生效', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C4' },
+  { id: 'M6', group: 'M', title: '富文本全屏与弹框全屏互不改写', guide: '弹框最大化态点富文本工具栏全屏→正文铺满且盖住弹框 header；退出富文本全屏→回到弹框最大化态，二者状态未串', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C5' },
+  { id: 'M7', group: 'M', title: '图片库注入可用且图片外链', guide: '编辑弹框富文本点「图片库」→列表/上传可用（本地+远程/云来源）；插图后文章 HTML 只存外链不落库', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C6/S2' },
+  { id: 'M8', group: 'M', title: '三件套导出内容齐全、MD 可读', guide: '导出→ZIP 含 原始内容.html / 阅读页.html / 内容.md 三份；MD 文本可读（往返不保真已声明）', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C7' },
+  { id: 'M9', group: 'M', title: '批量操作 + 二次确认', guide: '勾选多行→批量删除/批量导出三件套/HTML/MD 生效；删除类弹二次确认（禁遮罩禁 ESC）', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C8' },
+  { id: 'M10', group: 'M', title: '状态流转与公用列表过滤', guide: '新建=草稿；发布→已发布并进入公用总链列表；下线→从公用列表消失且二次确认', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C9' },
+  { id: 'M11', group: 'M', title: 'contents 随备份 zip 进出', guide: '系统设置导出备份→zip 的 data/ 含 contents.db；清空后导入备份→文章恢复', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C10' },
+  { id: 'M12', group: 'M', title: '单篇活链接 ?ak= 可达 + 删除后 404', guide: '行分享→手机/另一设备访问链接（带 ?ak=）可读到最新正文；设置口令时无 ak 返回 403；删除文章后同链接 404 不悬空', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C11/C13/H2' },
+  { id: 'M13', group: 'M', title: '图片库单一实现三处共用', guide: '内容管理 / EDM / 模板工具的图片库来源与上传行为一致（同一份 @sshk/file-picker 桥接），无工具内重复实现', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C14/S2' },
+  { id: 'M14', group: 'M', title: 'editorMode 双容器 + dev 铁律', guide: 'app.content.editorMode=dialog 用弹框壳、=page 用整页壳，两壳共用 ContentEditorCore（切换只换容器）；dev 下两种模式代码路径全量可达，配置仅决定打包版默认', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 #8/S4' },
 ]
 
 /** 步骤总数（页脚展示用） */
