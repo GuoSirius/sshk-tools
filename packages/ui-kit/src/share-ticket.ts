@@ -33,6 +33,16 @@ export function isTicketAlive(t: ShareRouteTicket | null | undefined): boolean {
   return Boolean(t && (t.expiresAt === SHARE_PERMANENT_EXPIRES_AT || t.expiresAt > Date.now()))
 }
 
+/** 由分享链接基址 + 文件相对 root 路径拼「文件直达 URL」。
+ *  ShareHub 的 token 绑定 root，URL 子路径即相对 root 的路径；allowIndex=false 只封目录列表，
+ *  文件直达仍可用（内核 handle：非目录分支不受 indexAllowed 限制）。 */
+export function shareFileDirectUrl(baseUrl: string, relPath: string): string {
+  const base = String(baseUrl ?? '').replace(/\/+$/, '')
+  const rel = String(relPath ?? '').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '')
+  if (!base || !rel) return base
+  return `${base}/${rel.split('/').map(encodeURIComponent).join('/')}`
+}
+
 /** 按路由 id 反查凭证（遍历分享键匹配 ticket.id）。
  *  键是四元组哈希、且内核 route.entry 会 strip 前导 /，用 entry 反推键会对不上——
  *  列表「复制分享链接」按 id 匹配最稳，与 label/root/entry 格式无关。 */

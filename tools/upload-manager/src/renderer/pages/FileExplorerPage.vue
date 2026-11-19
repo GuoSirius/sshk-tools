@@ -57,7 +57,7 @@ import {
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
-import { ShareDialog, findShareTicketById } from '@sshk/ui-kit'
+import { ShareDialog, findShareTicketById, shareFileDirectUrl } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
@@ -969,19 +969,20 @@ function normSharePath(p: string): string {
 }
 type ShareMark = 'none' | 'own' | 'inherited'
 interface ShareMarkInfo { kind: ShareMark; route?: ShareRouteInfo; parent?: ShareRouteInfo }
-/** 三态：自身有路由=own；否则祖先目录是树链接(allowIndex)=inherited（取最长匹配=最近父级）；否则 none */
+/** 三态：自身有路由=own；否则祖先路由覆盖=inherited（取最长匹配=最近父级）；否则 none。
+ *  allowIndex=false 的父目录路由：目录条目不可浏览→跳过（文件夹无链接，用户认可）；
+ *  文件条目仍算 inherited——内核文件直达不受 allowIndex 限制（分享主要就是为分享文件）。 */
 function shareMarkOf(entry: FsEntry): ShareMarkInfo {
   if (!shareRoutes.value.length || activeChannel.value?.type !== 'local') return { kind: 'none' }
   const rel = normSharePath(entry.path)
   const own = shareRoutes.value.find((r) => normSharePath(r.entry) === rel)
   if (own) return { kind: 'own', route: own }
-  // 祖先目录树链接：entry 是「父目录/...」且该父路由 allowIndex
   let best: ShareRouteInfo | undefined
   for (const r of shareRoutes.value) {
-    if (r.allowIndex === false) continue
+    // 目录条目 + 父未开目录浏览 → 该父路由不覆盖（子目录/孙目录不显示链接）
+    if (r.allowIndex === false && entry.kind === 'dir') continue
     const dir = normSharePath(r.entry)
-    if (dir && (rel === dir || rel.startsWith(dir + '/'))) {
-      if (dir === rel) return { kind: 'own', route: r } // 恰好命中目录本身
+    if (dir && rel.startsWith(dir + '/')) {
       if (!best || dir.length > normSharePath(best.entry).length) best = r
     }
   }
@@ -995,19 +996,26 @@ function shareMarkTip(entry: FsEntry): string {
     const life = r.expiresAt <= 0 || r.expiresAt > 8e15 ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
     return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击复制自己的链接`
   }
-  if (m.kind === 'inherited') return `无自己的分享，随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
+  if (m.kind === 'inherited') {
+    return entry.kind === 'file'
+      ? `无自己的分享，随父目录「${m.parent!.label}」的分享可直达下载 · 点击复制文件链接`
+      : `无自己的分享，随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
+  }
   return '未分享 · 点行操作「分享链接」创建'
 }
-/** 点击分享图标：优先复制自己的链接（own），否则复制父级树链接（inherited）；按 route.id 反查 ticket 取 url */
+/** 点击分享图标：own=自己的链接；inherited 文件=拼文件直达链接（父目录即使未开浏览也能下载）；inherited 目录=父级树链接。均按 route.id 反查 ticket。 */
 async function copyShareLink(entry: FsEntry): Promise<void> {
   const m = shareMarkOf(entry)
   const route = m.kind === 'own' ? m.route : m.parent
   if (!route) return
   const ticket = findShareTicketById(route.id)
-  const url = ticket?.urls?.[0]
-  if (!url) { ElMessage.warning('分享凭证读取失败，请重新打开分享弹框刷新链接'); return }
+  const base = ticket?.urls?.[0]
+  if (!base) { ElMessage.warning('分享凭证读取失败，请重新打开分享弹框刷新链接'); return }
+  const url = m.kind === 'inherited' && entry.kind === 'file'
+    ? shareFileDirectUrl(base, entry.path) // 文件直达：base(含 token) + 相对 root 路径
+    : base
   await window.api.os.clipboardWrite(url)
-  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : '已复制父级分享链接')
+  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : (entry.kind === 'file' ? '已复制文件直达链接' : '已复制父级分享链接'))
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；

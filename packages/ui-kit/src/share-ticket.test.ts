@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { findShareTicketById, readShareTicket, shareDialogStorageKey } from './share-ticket'
+import { findShareTicketById, readShareTicket, shareDialogStorageKey, shareFileDirectUrl } from './share-ticket'
 
 /** 简易 localStorage mock（Node 环境无 DOM） */
 function mockStorage(): Map<string, string> {
@@ -31,6 +31,13 @@ describe('分享凭证按 id 反查', () => {
     expect(readShareTicket('upload-manager', '文件：a.jpg', '/root', routeEntry)).toBeNull()
     // 新做法：按 id 反查 → 命中
     expect(findShareTicketById('r-1')?.urls[0]).toBe('http://x/s/tok-1')
+  })
+
+  it('文件直达 URL：base 去尾斜杠 + 相对 root 路径逐段编码', () => {
+    expect(shareFileDirectUrl('http://192.168.1.5:8787/abc/', '/photos/子目录/a b.jpg'))
+      .toBe('http://192.168.1.5:8787/abc/photos/%E5%AD%90%E7%9B%AE%E5%BD%95/a%20b.jpg')
+    expect(shareFileDirectUrl('http://x/t/', 'a/b.txt')).toBe('http://x/t/a/b.txt')
+    expect(shareFileDirectUrl('http://x/t/', '')).toBe('http://x/t')
   })
 
   it('多条凭证中精确匹配目标 id，跳过损坏键', () => {
