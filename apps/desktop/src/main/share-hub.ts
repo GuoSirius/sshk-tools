@@ -50,12 +50,13 @@ function migrateShareStateToolId(stateFile: string): void {
     const raw = JSON.parse(readFileSync(stateFile, 'utf8')) as { routes?: Array<{ toolId?: string }> }
     if (!Array.isArray(raw.routes)) return
     let moved = 0
+    // 旧 id 链全量覆盖（upload-config 时期的路由理论上不存在，防历史遗留漏迁）
     for (const r of raw.routes) {
-      if (r?.toolId === 'upload-manager') { r.toolId = TOOL_IDS.fileManager; moved++ }
+      if (r?.toolId === 'upload-manager' || r?.toolId === 'upload-config') { r.toolId = TOOL_IDS.fileManager; moved++ }
     }
     if (moved > 0) {
       writeFileSync(stateFile, JSON.stringify(raw, null, 2), 'utf8')
-      logger.info('shareHub', `分享路由归属迁移：upload-manager → ${TOOL_IDS.fileManager}（${moved} 条）`)
+      logger.info('shareHub', `分享路由归属迁移：upload-manager/upload-config → ${TOOL_IDS.fileManager}（${moved} 条）`)
     }
   } catch (err) {
     logger.error('shareHub', `分享路由归属迁移失败（不影响启动）：${(err as Error).message}`)

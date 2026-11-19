@@ -214,12 +214,6 @@ export function resolveUploadTool(raw: unknown): UploadToolConfig {
   }
 }
 
-/** profile 密钥在 safeStorage 中的 ID（借用宿主通用工具密钥通道）。
- *  2026-11-17 由 upload-config 前缀迁移为 upload-manager，旧条目启动时自动搬迁 */
-export function uploadManagerSecretId(profileId: string): string {
-  return `app:tool:upload-manager:${profileId}`
-}
-
 /** 生成符合 secret-ids 校验（字母开头、字母数字/下划线/连字符）的 profile id */
 export function newProfileId(kind: 'remote' | 'cloud'): string {
   return `${kind === 'remote' ? 'r' : 'c'}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`

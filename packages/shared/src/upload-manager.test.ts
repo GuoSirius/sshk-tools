@@ -7,7 +7,6 @@ import {
   pickCloudProfile,
   pickRemoteProfile,
   resolveUploadTool,
-  uploadManagerSecretId,
 } from './upload-manager'
 
 const cfg = normalizeUploadConfig({
@@ -66,8 +65,7 @@ describe('R26 全局上传配置', () => {
     expect(strict.overrides.prefix).toBe('mail/')
   })
 
-  it('密钥 ID 与 profile ID 符合 safeStorage 命名约束', () => {
-    expect(uploadManagerSecretId('r1')).toBe('app:tool:upload-manager:r1')
+  it('profile ID 符合 safeStorage 命名约束', () => {
     const id = newProfileId('remote')
     expect(id).toMatch(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/)
     expect(newProfileId('cloud')).toMatch(/^c/)
