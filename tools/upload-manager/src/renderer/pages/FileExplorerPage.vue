@@ -2209,7 +2209,7 @@ function onKeydown(event: KeyboardEvent): void {
         <el-cascader
           ref="moveCascaderRef"
           :key="moveDestProfile || profileId || ''"
-          class="fs-move-cascader"
+          :class="['fs-move-cascader', { 'is-root-selected': moveDirInput === '/' }]"
           :props="moveDirProps"
           separator="/"
           popper-class="fs-dir-cascader-popper"
@@ -2243,7 +2243,7 @@ function onKeydown(event: KeyboardEvent): void {
         <el-cascader
           ref="unzipCascaderRef"
           :key="unzipDestProfile || profileId || ''"
-          class="fs-move-cascader"
+          :class="['fs-move-cascader', { 'is-root-selected': unzipDirInput === '/' }]"
           :props="unzipDirProps"
           separator="/"
           popper-class="fs-dir-cascader-popper"
@@ -2755,4 +2755,26 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-fav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
 .fs-fav-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
 .fs-fav-meta { font-size: 12px; opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+
+<!-- 非 scoped：级联 popper 经 teleport 挂在 body，scoped 属性选择器打不到。
+     根 label='' 是为守「子级回显 /a/b 不双斜杠」定版（pathLabels=['','a','b'].join('/')=/a/b）；
+     代价是只选根时 join 结果为空 → 输入框/面板根节点都空。此处补显示，不改 label 机制。 -->
+<style>
+/* 面板首列（根列）首节点补 /：根列是第一个 .el-cascader-menu 且只含根节点；
+   子级 menu 非 first-child 不受影响（不用 :empty——空文本节点会让它匹配失败） */
+.fs-dir-cascader-popper .el-cascader-menu:first-child .el-cascader-node:first-child .el-cascader-node__label::before { content: '/'; }
+/* 只选根时（手输框值为 /），级联输入框在占位层补 / 并隐藏空值，视觉等同正常回显 */
+.fs-move-cascader.is-root-selected .el-input__inner { color: transparent; }
+.fs-move-cascader.is-root-selected .el-input__wrapper { position: relative; }
+.fs-move-cascader.is-root-selected .el-input__wrapper::after {
+  content: '/';
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  pointer-events: none;
+}
 </style>
