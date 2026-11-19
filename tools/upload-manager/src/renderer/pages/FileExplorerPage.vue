@@ -89,6 +89,9 @@ const viewMode = ref<'list' | 'grid'>((localStorage.getItem('sshk.fs.view') as '
 const sortKey = ref<'name' | 'size' | 'time'>('name')
 const sortDir = ref<'asc' | 'desc'>('asc')
 const filter = ref('')
+/** 类型/链接下拉过滤（用户 2026-11-19）：仅影响显示，不影响选中集合语义 */
+const kindFilter = ref<'all' | 'file' | 'dir'>('all')
+const linkFilter = ref<'all' | 'linked' | 'unlinked'>('all')
 
 // ── 弹框 ──
 const mkdirOpen = ref(false)
@@ -345,11 +348,20 @@ void window.api.config.get('app.themeMode').then((v) => { themeDark.value = Stri
 
 // ── 派生 ──
 const activeChannel = computed(() => channels.value.find((c) => c.id === profileId.value) ?? null)
+/** 类型/链接下拉过滤：'all' 不动；带链接=own/inherited 任一（仅本地通道有分享路由，其余通道恒为 none） */
+function applyDropdownFilters(list: FsEntry[]): FsEntry[] {
+  let out = list
+  if (kindFilter.value !== 'all') out = out.filter((e) => e.kind === kindFilter.value)
+  if (linkFilter.value === 'linked') out = out.filter((e) => shareMarkOf(e).kind !== 'none')
+  else if (linkFilter.value === 'unlinked') out = out.filter((e) => shareMarkOf(e).kind === 'none')
+  return out
+}
 const filteredEntries = computed(() => {
-  // 递归搜索态：直接展示搜索结果（已按名称排序），不再叠加本地过滤/排序
-  if (searchActive.value) return searchEntries.value
   const kw = filter.value.trim().toLowerCase()
-  const list = kw ? entries.value.filter((e) => e.name.toLowerCase().includes(kw)) : entries.value
+  const nameMatch = (e: FsEntry): boolean => !kw || e.name.toLowerCase().includes(kw)
+  // 递归搜索态：结果已按名称排序，只叠加过滤不重排
+  if (searchActive.value) return applyDropdownFilters(searchEntries.value.filter(nameMatch))
+  const list = applyDropdownFilters(entries.value.filter(nameMatch))
   const dir = sortDir.value === 'asc' ? 1 : -1
   return [...list].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
@@ -423,7 +435,13 @@ async function list(resetCursor = true): Promise<void> {
     if (pendingNavSelect) {
       const target = pendingNavSelect
       pendingNavSelect = null
-      if (entries.value.some((e) => e.path === target)) selection.value = new Set([target])
+      if (entries.value.some((e) => e.path === target)) {
+        selection.value = new Set([target])
+        // 长目录滚动定位（用户 2026-11-19：默认视口在顶部看不到选中项）
+        void nextTick(() => {
+          document.querySelector(`[data-entry-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: 'center' })
+        })
+      }
     }
   } catch (err) {
     if (seq !== listSeq) return
@@ -2084,6 +2102,16 @@ function onKeydown(event: KeyboardEvent): void {
         @keyup.enter="submitPathInput"
         @blur="pathEditing = false"
       />
+      <el-select v-model="kindFilter" size="small" class="fs-dd-filter" title="按类型过滤">
+        <el-option label="全部" value="all" />
+        <el-option label="文件" value="file" />
+        <el-option label="文件夹" value="dir" />
+      </el-select>
+      <el-select v-model="linkFilter" size="small" class="fs-dd-filter" title="按分享链接过滤">
+        <el-option label="全部" value="all" />
+        <el-option label="带链接" value="linked" />
+        <el-option label="不带链接" value="unlinked" />
+      </el-select>
       <el-input
         v-model="filter"
         size="small"
@@ -2209,6 +2237,7 @@ function onKeydown(event: KeyboardEvent): void {
             :key="entry.path"
             class="fs-row"
             :class="{ selected: selection.has(entry.path) }"
+            :data-entry-path="entry.path"
             @click="rowClick(entry, $event)"
             @dblclick="rowOpen(entry)"
           >
@@ -2292,6 +2321,7 @@ function onKeydown(event: KeyboardEvent): void {
             :key="entry.path"
             class="fs-cell"
             :class="{ selected: selection.has(entry.path) }"
+            :data-entry-path="entry.path"
             :title="`${entry.name}\n${entry.kind === 'dir' ? '目录' : fsFormatSize(entry.size)} · ${fmtTime(entry.modified)}`"
             @click="rowClick(entry, $event)"
             @dblclick="rowOpen(entry)"
@@ -2799,6 +2829,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-crumb-ellipsis { opacity: .65; letter-spacing: 1px; }
 .fs-path-input { flex: 1; max-width: 560px; }
 .fs-filter { width: 200px; margin-left: auto; }
+/* 类型/链接下拉过滤（用户 2026-11-19）：紧跟搜索框左侧 */
+.fs-dd-filter { width: 92px; margin-left: auto; }
+.fs-dd-filter + .fs-dd-filter { margin-left: 8px; }
+.fs-dd-filter + .fs-filter { margin-left: 8px; }
 .fs-view-toggle { margin-left: 4px; }
 
 .fs-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
