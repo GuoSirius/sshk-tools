@@ -1,0 +1,37 @@
+{
+  "id": "share-manager",
+  "name": "分享管理",
+  "description": "ShareHub 常驻分享服务的管理台：全量路由管理、访问日志（持久化/查询/导出/删除）、服务配置、挂载目录与代理规则。跨工具管理任意工具创建的分享路由。",
+  "category": "系统能力",
+  "tags": ["分享", "局域网", "路由", "日志"],
+  "icon": "auto",
+  "entryRoute": "routes",
+  "enabled": true,
+  "visibility": "desktop",
+  "configLayout": "single",
+  "plugin": {
+    "source": "builtin",
+    "main": "",
+    "renderer": "src/renderer/ShareManagerPage.vue",
+    "channels": []
+  },
+  "dependsOn": [],
+  "configDeps": [],
+  "requiredGrant": "",
+  "menus": [
+    { "id": "routes", "label": "路由管理", "icon": "M3 7V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM3 7h18" },
+    { "id": "logs", "label": "访问日志", "icon": "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+    { "id": "service", "label": "服务配置", "icon": "M12 15V4M8 8l4-4 4 4M4 20h16" },
+    { "id": "mounts", "label": "挂载管理", "icon": "M4 4h16v12H4zM2 20h20" },
+    { "id": "proxies", "label": "代理管理", "icon": "M8 7l4-4 4 4M12 3v18M8 17l4 4 4-4" }
+  ],
+  "configGroups": [],
+  "defaults": {},
+  "package": {
+    "schemaVersion": 1,
+    "version": "1.0.0",
+    "requiresHost": { "api": "^1.0", "capabilities": [] },
+    "sandbox": "utility",
+    "ipcAllowlist": []
+  }
+}
