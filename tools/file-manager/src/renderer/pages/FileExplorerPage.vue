@@ -1345,9 +1345,10 @@ const lastMoveDir = ref('')
 function openMove(mode: 'copy' | 'move'): void {
   if (!selectedEntries.value.length) return
   moveMode.value = mode
-  // 优先回填上次选中的目标目录（与 cascader 显示一致）；首次才用当前目录
-  moveDirInput.value = lastMoveDir.value || path.value
+  // 默认回填根目录「/」（用户 2026-11-19：除打开时指定/非首次复用上传位置）；非首次才用 lastMoveDir
+  moveDirInput.value = lastMoveDir.value || '/'
   moveDestProfile.value = profileId.value
+  moveCascaderPicked.value = '/'
   moveOpen.value = true
 }
 
@@ -1859,6 +1860,8 @@ function openUnzip(entry: FsEntry): void {
   const base = entry.name.replace(/\.zip$/i, '')
   const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
   unzipDirInput.value = parent === '/' ? `/${base}` : `${parent}/${base}`
+  // 默认根目录回显（用户 2026-11-19）
+  unzipCascaderPicked.value = '/'
   unzipOpen.value = true
 }
 function onUnzipDirPicked(v: unknown): void {

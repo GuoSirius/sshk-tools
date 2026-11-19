@@ -5,6 +5,7 @@ import {
   toRef, toRefs, isRef, unref, triggerRef, customRef,
 } from 'vue'
 import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import 'virtual:uno.css'
@@ -35,6 +36,6 @@ import { router } from "./router"
 const { init } = useTheme()
 void init()
 
-const app = createApp(App).use(router).use(ElementPlus)
+const app = createApp(App).use(router).use(ElementPlus, { locale: zhCn })
 installFrontLog(app)
 app.mount('#app')

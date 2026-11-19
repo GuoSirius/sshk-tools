@@ -5,8 +5,8 @@
  * - 复制链接优先级：本行 B 票存活优先，否则回落 C 公用总链（与海报 copyPosterLink 同构，?ak= 口径）
  * - 危险操作（删除/批量删除/下线/撤回）一律 ConfirmDialog 二次确认
  */
-import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket } from '@sshk/ui-kit'
 import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
@@ -29,13 +29,52 @@ const routes = ref<ShareRouteInfo[]>([])
 
 const listSpec = { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' } satisfies HostApiSpec
 
-const STATUS_META: Record<ContentStatus, { label: string; type: 'info' | 'success' | 'warning' }> = {
+const STATUS_META: Record<ContentStatus, { label: string; type: 'info' | 'success' | 'warning' | 'primary' }> = {
   draft: { label: '草稿', type: 'info' },
   published: { label: '已发布', type: 'success' },
+  scheduled: { label: '定时发布', type: 'primary' },
   retracted: { label: '已下线', type: 'warning' },
 }
 
-const pagedRows = computed(() => rows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+// ── 列表筛选（2026-11-19 需求：搜索 + 时间范围 + 标签多选 + 分享状态 + 发布状态）──
+const kw = ref('')
+const dateRange = ref<[string, string] | null>(null)
+const tagFilter = ref<string[]>([])
+const shareFilter = ref<string>('all')
+const statusFilter = ref<string>('all')
+const statusOptions = [
+  { label: '草稿', value: 'draft' },
+  { label: '已发布', value: 'published' },
+  { label: '定时发布', value: 'scheduled' },
+  { label: '已下线', value: 'retracted' },
+]
+/** 全部标签集合（从现有数据聚合，供多选过滤） */
+const allTags = computed(() => {
+  const set = new Set<string>()
+  for (const r of rows.value) for (const t of r.tags ?? []) set.add(t)
+  return [...set]
+})
+/** 时间范围判定：按更新时间（ISO 字符串，比较到日即可） */
+function inDateRange(iso: string): boolean {
+  if (!dateRange.value || !dateRange.value[0] || !dateRange.value[1]) return true
+  const d = iso.slice(0, 10)
+  return d >= dateRange.value[0] && d <= dateRange.value[1]
+}
+const filteredRows = computed(() => {
+  const k = kw.value.trim().toLowerCase()
+  return rows.value.filter((row) => {
+    if (k && !(row.name.toLowerCase().includes(k) || (row.description ?? '').toLowerCase().includes(k))) return false
+    if (!inDateRange(row.updatedAt)) return false
+    if (tagFilter.value.length && !(row.tags ?? []).some((t) => tagFilter.value.includes(t))) return false
+    if (statusFilter.value !== 'all' && row.status !== statusFilter.value) return false
+    if (shareFilter.value !== 'all' && shareState(row).type !== shareFilter.value) return false
+    return true
+  })
+})
+watch(filteredRows, () => { currentPage.value = 1 })
+
+const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+function resetFilters(): void { kw.value = ''; dateRange.value = null; tagFilter.value = []; shareFilter.value = 'all'; statusFilter.value = 'all' }
 
 /** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。 */
 const pageMode = ref(false)
@@ -116,13 +155,41 @@ async function hostClipboard(text: string): Promise<void> {
 const editorOpen = ref(false)
 const editRecord = ref<ContentRecord | null>(null)
 const copySource = ref<ContentRecord | null>(null)
-function openCreate(): void { editRecord.value = null; copySource.value = null; editorOpen.value = true }
-function openEdit(row: ContentRecord): void { editRecord.value = row; copySource.value = null; editorOpen.value = true }
-function openCopy(row: ContentRecord): void { editRecord.value = null; copySource.value = row; editorOpen.value = true }
+/** 编辑弹框最小化态（task 9）：弹框最小化中若用户尝试其它编辑类操作，须二次确认 */
+const editorDialogRef = ref<InstanceType<typeof ContentEditorDialog> | null>(null)
+const editorMinimized = ref(false)
+/** 正在编辑的标题（用于提示），新建=「新内容」 */
+const editingLabel = computed(() => editRecord.value?.name ?? copySource.value?.name ?? '新内容')
+
+/** 若编辑弹框处于最小化态，先询问用户：继续编辑 / 执行本次操作（关弹框）/ 取消 */
+async function guardWhenMinimized(action: () => void): Promise<void> {
+  if (!editorOpen.value || !editorMinimized.value) { action(); return }
+  try {
+    await ElMessageBox.confirm(
+      `「${editingLabel.value}」正在编辑中（已最小化）。是继续编辑，还是执行本次操作？`,
+      '有内容正在编辑',
+      {
+        type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+        confirmButtonText: '执行本次操作', cancelButtonText: '继续编辑', distinguishCancelAndClose: true,
+      },
+    )
+    // 用户选择「执行本次操作」→ 执行本次操作（关闭最小化态弹框）
+    editorMinimized.value = false
+    action()
+  } catch {
+    // 用户选择「继续编辑」（cancel 分支）→ 复原最小化弹框，不执行
+    editorDialogRef.value?.restore()
+    editorMinimized.value = false
+  }
+}
+async function openCreate(): Promise<void> { await guardWhenMinimized(() => { editRecord.value = null; copySource.value = null; editorOpen.value = true }) }
+async function openEdit(row: ContentRecord): Promise<void> { await guardWhenMinimized(() => { editRecord.value = row; copySource.value = null; editorOpen.value = true }) }
+async function openCopy(row: ContentRecord): Promise<void> { await guardWhenMinimized(() => { editRecord.value = null; copySource.value = row; editorOpen.value = true }) }
 async function onSave(input: ContentSaveInput): Promise<void> {
   try {
     await host.content.save(input)
     editorOpen.value = false
+    editorMinimized.value = false
     await load()
     ElMessage.success('内容已保存')
   } catch (err) { ElMessage.error((err as Error).message) }
@@ -172,11 +239,11 @@ function batchRemove(): void {
   }, '批量删除')
 }
 
-// ── 状态流转（二次确认：下线/撤回令已发链接从 C 列表消失）──
+// ── 状态流转（二次确认：下线令已发链接从 C 列表消失）──
 function changeStatus(row: ContentRecord, status: ContentStatus): void {
   const verb = status === 'published' ? '发布' : '下线'
   askConfirm(`${verb}内容`, [row.name], async () => {
-    await host.content.save({ _id: row._id, name: row.name, html: row.html, summary: row.summary, tags: row.tags, status })
+    await host.content.save({ _id: row._id, name: row.name, html: row.html, summary: row.summary, description: row.description, tags: row.tags, status })
     await load()
     ElMessage.success(`已${verb}`)
   }, verb)
@@ -192,6 +259,7 @@ function doExport(kind: 'triple' | 'html' | 'md', rowsToExport: ContentRecord[])
 }
 function onRowCommand(cmd: string, row: ContentRecord): void {
   if (cmd === 'copy') openCopy(row)
+  else if (cmd === 'share') openShare(row)
   else if (cmd === 'triple') doExport('triple', [row])
   else if (cmd === 'html') doExport('html', [row])
   else if (cmd === 'md') doExport('md', [row])
@@ -226,51 +294,97 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       </el-dropdown>
     </div>
 
+    <div class="filter-bar">
+      <el-input v-model="kw" size="small" clearable placeholder="搜索标题 / 描述" style="width: 200px" />
+      <el-date-picker
+        v-model="dateRange"
+        size="small"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        value-format="YYYY-MM-DD"
+        style="width: 240px"
+      />
+      <el-select v-model="tagFilter" size="small" multiple clearable placeholder="标签" style="width: 200px" collapse-tags collapse-tags-tooltip>
+        <el-option v-for="t in allTags" :key="t" :label="t" :value="t" />
+      </el-select>
+      <el-select v-model="shareFilter" size="small" style="width: 130px">
+        <el-option label="全部分享状态" value="all" />
+        <el-option label="自己的" value="own" />
+        <el-option label="公用的" value="common" />
+        <el-option label="未分享" value="none" />
+      </el-select>
+      <el-select v-model="statusFilter" size="small" style="width: 130px">
+        <el-option label="全部发布状态" value="all" />
+        <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-button size="small" text :disabled="!kw && !dateRange && !tagFilter.length && shareFilter === 'all' && statusFilter === 'all'" @click="resetFilters">清空筛选</el-button>
+    </div>
+
     <div class="table-wrap" v-loading="loading">
       <el-table v-if="rows.length > 0" :data="pagedRows" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
         <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
         <el-table-column type="selection" width="38" reserve-selection />
-        <el-table-column prop="name" label="名称" min-width="180" show-overflow-tooltip />
-        <el-table-column label="标签" min-width="130">
+        <el-table-column prop="name" label="标题" min-width="200" show-overflow-tooltip />
+        <el-table-column label="标签" min-width="120">
           <template #default="{ row }">
-            <el-tag v-for="t in (row.tags ?? [])" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag>
-            <span v-if="!(row.tags ?? []).length" style="opacity:.5">—</span>
+            <div v-if="(row.tags ?? []).length" class="tags-cell">
+              <el-tag v-for="t in (row.tags ?? []).slice(0, 2)" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag>
+              <el-tag v-if="(row.tags ?? []).length > 2" size="small" type="info">+{{ (row.tags ?? []).length - 2 }}</el-tag>
+            </div>
+            <span v-else style="opacity:.5">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="wordCount" label="字数" width="80" align="center" />
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }"><el-tag size="small" :type="STATUS_META[row.status as ContentStatus].type">{{ STATUS_META[row.status as ContentStatus].label }}</el-tag></template>
+        <el-table-column label="状态" width="96" align="center">
+          <template #default="{ row }">
+            <el-tooltip :content="row.status === 'scheduled' && row.publishAt ? `定时发布于 ${row.publishAt}` : ''" :disabled="!(row.status === 'scheduled' && row.publishAt)">
+              <el-tag size="small" :type="STATUS_META[row.status as ContentStatus].type">{{ STATUS_META[row.status as ContentStatus].label }}</el-tag>
+            </el-tooltip>
+          </template>
         </el-table-column>
         <el-table-column label="创建时间" width="150"><template #default="{ row }"><TimeText :value="row.createdAt" /></template></el-table-column>
         <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
-        <el-table-column label="分享状态" width="170">
+        <!-- 分享状态（2026-11-19 重设计）：单 tag 显示类型，点击复制；未分享显示操作入口 -->
+        <el-table-column label="分享" width="130">
           <template #default="{ row }">
             <div class="share-cell">
               <template v-if="shareState(row).type !== 'none'">
-                <el-button size="small" type="success" plain @click="copyLink(row)">复制链接</el-button>
-                <el-tag size="small" :type="shareState(row).type === 'own' ? 'primary' : 'warning'">{{ shareState(row).type === 'own' ? '自己的' : '公用的' }}</el-tag>
-                <el-tag size="small" :type="shareState(row).alive ? 'success' : 'danger'">{{ shareState(row).alive ? '可访问' : '已失效' }}</el-tag>
+                <el-tooltip :content="shareState(row).type === 'own' ? '本行专属链接（点击复制）' : '公用总链接（点击复制）'">
+                  <el-tag
+                    size="small"
+                    :type="shareState(row).type === 'own' ? 'primary' : 'warning'"
+                    effect="plain"
+                    class="share-click"
+                    @click="copyLink(row)"
+                  >
+                    {{ shareState(row).type === 'own' ? '自己的' : '公用的' }}{{ shareState(row).alive ? '' : '·已失效' }}
+                  </el-tag>
+                </el-tooltip>
               </template>
-              <el-tag v-else size="small" type="info">未分享</el-tag>
+              <template v-else>
+                <el-button size="small" type="success" plain @click="openShare(row)">分享</el-button>
+              </template>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center" fixed="right">
+        <el-table-column label="操作" width="240" align="center" fixed="right">
           <template #default="{ row }">
             <div class="op-row">
               <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" type="success" plain @click="openShare(row)">分享</el-button>
+              <el-button size="small" type="success" plain @click="copyLink(row)">复制链接</el-button>
               <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
               <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                 <el-button size="small" plain>更多▾</el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item command="copy">复制（另存为）</el-dropdown-item>
-                    <el-dropdown-item command="triple">导出（三件套）</el-dropdown-item>
+                    <el-dropdown-item command="share" @click="openShare(row)">分享</el-dropdown-item>
+                    <el-dropdown-item command="triple" divided>导出（三件套）</el-dropdown-item>
                     <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
                     <el-dropdown-item command="md">导出 MD</el-dropdown-item>
-                    <el-dropdown-item v-if="row.status !== 'published'" command="publish" divided @click="changeStatus(row, 'published')">发布</el-dropdown-item>
-                    <el-dropdown-item v-else command="retract" @click="changeStatus(row, 'retracted')">下线</el-dropdown-item>
+                    <el-dropdown-item v-if="row.status !== 'published'" command="publish" @click="changeStatus(row, 'published')">发布</el-dropdown-item>
+                    <el-dropdown-item v-else-if="row.status !== 'scheduled'" command="retract" @click="changeStatus(row, 'retracted')">下线</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -282,10 +396,19 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
     </div>
 
     <div class="foot">
-      <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="rows.length" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" small />
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="filteredRows.length"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next, jumper"
+        small
+      >
+        <template #total="{ total }">共 {{ total }} 条</template>
+      </el-pagination>
     </div>
 
-    <ContentEditorDialog v-if="!pageMode" v-model="editorOpen" :record="editRecord" :copy-source="copySource" @save="onSave" />
+    <ContentEditorDialog v-if="!pageMode" ref="editorDialogRef" v-model="editorOpen" :record="editRecord" :copy-source="copySource" @save="onSave" @update:minimized="editorMinimized = $event" />
 
     <ShareDialog :open="shareOpen" :tool-id="TOOL_ID" :label="shareLabel" :default-root="CONTENT_ROOT" :default-entry="shareEntry" :content-id="shareContentId" route-kind="content" @update:open="shareOpen = $event" @changed="load" />
 
@@ -297,11 +420,14 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 <style scoped>
 /* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
 .contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
-.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; }
+.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+.filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; justify-content: flex-end; }
-.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; }
+.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .op-row .el-button + .el-button { margin-left: 0; }
-.share-cell { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-.share-cell .el-button + .el-tag { margin-left: 0; }
+.tags-cell { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+/* 分享状态列：单 tag 可点击复制；未分享=分享入口按钮 */
+.share-cell { display: flex; gap: 4px; align-items: center; }
+.share-click { cursor: pointer; }
 </style>

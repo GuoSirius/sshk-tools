@@ -11,9 +11,9 @@
  * 滚动口径（用户 2026-11-19）：滚动层 = .ce-body，头部/脚部不随内容滚；
  * 弹框自身 padding 归零，滚动条贴弹框最右缘，留白由 .ce-head/.ce-content 自身 padding 补偿。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useDraggable } from '@vueuse/core'
-import { Close, FullScreen, Minus, Rank } from '@element-plus/icons-vue'
+import { Close, Expand, FullScreen, Minus, Rank } from '@element-plus/icons-vue'
 // Close 仍用于最小化悬浮条关闭；标题栏关闭已移除（与 footer 取消重复）
 import type { ContentRecord, ContentSaveInput } from '@sshk/shared'
 import ContentEditorCore from './ContentEditorCore.vue'
@@ -23,7 +23,12 @@ const props = defineProps<{
   record: ContentRecord | null
   copySource?: ContentRecord | null
 }>()
-const emit = defineEmits<{ save: [input: ContentSaveInput] }>()
+/** minimize-state 变化：父组件据此在用户尝试其它编辑类操作时二次确认（task 9） */
+const emit = defineEmits<{
+  save: [input: ContentSaveInput]
+  /** minimized=true 时父组件须介入提示 */
+  'update:minimized': [minimized: boolean]
+}>()
 
 const visible = defineModel<boolean>('modelValue', { default: false })
 type WinMode = 'maximized' | 'normal' | 'fullscreen'
@@ -44,8 +49,14 @@ watch(visible, (open) => {
 
 function setMode(mode: WinMode): void { winMode.value = mode; minimized.value = false }
 function doMinimize(): void { minimized.value = true }
+/** 由父组件触发复原（用户选择「继续编辑」时） */
+function restore(): void { minimized.value = false; winMode.value = 'maximized' }
 function doClose(): void { minimized.value = false; visible.value = false }
 function submit(): void { coreRef.value?.submit() }
+defineExpose({ submit, canSave: () => Boolean(coreRef.value?.canSave), restore, isMinimized: () => minimized.value })
+
+// 向上同步最小化态，父组件据此在其它编辑操作触发时二次确认
+watch(minimized, (m) => { if (visible.value) emit('update:minimized', m) })
 
 const dialogVisible = computed({
   get: () => visible.value && !minimized.value,
@@ -53,7 +64,21 @@ const dialogVisible = computed({
 })
 
 const barRef = ref<HTMLElement | null>(null)
-const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preventDefault: true, stopPropagation: true })
+const { x, y } = useDraggable(barRef, {
+  initialValue: { x: 40, y: 90 },
+  preventDefault: true,
+  stopPropagation: true,
+  // 悬浮条 fixed 定位在视口左上（40,90），可拖拽；始终在可视区内
+})
+// 最小化悬浮条渲染后把 draggable 的 x/y 同步到初始位置（fixed 左上，可见且可拖）
+watch(minimized, async (m) => {
+  if (!m) return
+  await nextTick()
+  if (barRef.value) {
+    // 若 useDraggable 尚未拿到 ref，手动初始化
+    x.value = 40; y.value = 90
+  }
+})
 </script>
 
 <template>
@@ -74,7 +99,9 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
         <div class="ce-controls">
           <el-tooltip content="最小化" placement="bottom"><button class="ce-btn" aria-label="最小化" @click="doMinimize"><el-icon><Minus /></el-icon></button></el-tooltip>
           <el-tooltip :content="winMode === 'normal' ? '最大化' : '还原'" placement="bottom">
-            <button class="ce-btn" aria-label="最大化/还原" @click="setMode(winMode === 'normal' ? 'maximized' : 'normal')"><el-icon><Rank /></el-icon></button>
+            <button class="ce-btn" aria-label="最大化/还原" @click="setMode(winMode === 'normal' ? 'maximized' : 'normal')">
+              <el-icon><component :is="winMode === 'normal' ? Expand : Rank" /></el-icon>
+            </button>
           </el-tooltip>
           <el-tooltip :content="winMode === 'fullscreen' ? '退出全屏' : '全屏'" placement="bottom">
             <button class="ce-btn" aria-label="全屏" @click="setMode(winMode === 'fullscreen' ? 'maximized' : 'fullscreen')"><el-icon><FullScreen /></el-icon></button>
@@ -94,8 +121,8 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
     </el-dialog>
 
     <div v-if="minimized" ref="barRef" class="ce-mini-bar" :style="{ left: `${x}px`, top: `${y}px` }">
-      <span class="ce-mini-handle" aria-hidden="true">⠿</span>
-      <span class="ce-mini-title" @click="setMode('maximized')">{{ editTitle }}（已最小化 · 点击展开）</span>
+      <span class="ce-mini-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span>
+      <span class="ce-mini-title" @click="restore()"><el-icon class="mini-expand"><Expand /></el-icon>{{ editTitle }}（已最小化 · 点击展开）</span>
       <button class="ce-btn" aria-label="关闭" @click="doClose"><el-icon><Close /></el-icon></button>
     </div>
   </teleport>
@@ -113,9 +140,10 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
 .ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; }
 /* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
 .ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
-.ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; }
-.ce-mini-handle { cursor: move; color: var(--el-text-color-placeholder); }
-.ce-mini-title { cursor: pointer; font-size: 12px; }
+.ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 360px; }
+.ce-mini-handle { cursor: move; color: var(--el-text-color-placeholder); display: inline-flex; align-items: center; padding: 2px; }
+.ce-mini-title { cursor: pointer; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.mini-expand { flex: none; }
 </style>
 
 <!-- 非 scoped 全局块：el-dialog 节点 teleport 到 body，无本组件 data-v 属性，:deep() 打不进（项目已知坑） -->

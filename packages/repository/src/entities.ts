@@ -175,7 +175,11 @@ export interface ContentDoc extends BaseEntity {
   /** 摘要（阅读页/公用列表展示） */
   summary?: string
   tags?: string[]
+  /** 描述（列表「描述」列展示，区别于自动摘要 summary；可空） */
+  description?: string
   status: ContentStatus
+  /** 定时发布时刻（status==='scheduled' 时有效）：ISO 字符串；主进程到点翻 published 后写空串 '' 清空 */
+  publishAt?: string
   /** 保存时由 html 提纯文本后 countHtmlWords() 算好入库，列表直出不解析 HTML */
   wordCount: number
 }

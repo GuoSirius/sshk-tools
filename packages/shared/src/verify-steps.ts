@@ -222,6 +222,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'M12', group: 'M', title: '单篇活链接 ?ak= 可达 + 删除后 404', guide: '行分享→手机/另一设备访问链接（带 ?ak=）可读到最新正文；设置口令时无 ak 返回 403；删除文章后同链接 404 不悬空', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C11/C13/H2' },
   { id: 'M13', group: 'M', title: '图片库单一实现三处共用', guide: '内容管理 / EDM / 模板工具的图片库来源与上传行为一致（同一份 @sshk/file-picker 桥接），无工具内重复实现', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C14/S2' },
   { id: 'M14', group: 'M', title: 'editorMode 双容器 + dev 铁律', guide: 'app.content.editorMode=dialog 用弹框壳、=page 用整页壳，两壳共用 ContentEditorCore（切换只换容器）；dev 下两种模式代码路径全量可达，配置仅决定打包版默认', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 #8/S4' },
+  { id: 'M15', group: 'M', title: '定时发布 + 列表筛选 + 默认根目录（2026-11-19）', guide: '状态选「定时发布」仅当前以后可选时分秒；到点自动翻已发布；列表顶部搜索/时间/标签/分享/发布五重筛选；复制/移动/解压弹框默认根目录回显；分页信息中文展示', entry: { type: 'route', target: 'file-manager' }, relates: '2026-11-19 用户反馈 6 项' },
 ]
 
 /** 步骤总数（页脚展示用） */

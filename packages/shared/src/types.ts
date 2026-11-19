@@ -473,8 +473,8 @@ export interface ShareHubProxy {
 }
 
 /** 创建一条分享路由的入参 */
-/** 内容状态机（plans/11 §五）：草稿/已发布/已下线；删除走独立 archived 位 */
-export type ContentStatus = 'draft' | 'published' | 'retracted'
+/** 内容状态机（plans/11 §五 + 2026-11-19 新增定时发布）：草稿/已发布/已下线/定时发布；删除走独立 archived 位 */
+export type ContentStatus = 'draft' | 'published' | 'retracted' | 'scheduled'
 
 /** 文章内容记录（渲染层视图，plans/11） */
 export interface ContentRecord {
@@ -482,8 +482,11 @@ export interface ContentRecord {
   name: string
   html: string
   summary?: string
+  description?: string
   tags?: string[]
   status: ContentStatus
+  /** 定时发布时刻（status==='scheduled' 时有效）：北京时间 ISO 字符串；已发布/到期后由主进程清空，此处 undefined */
+  publishAt?: string
   wordCount: number
   createdAt: string
   updatedAt: string
@@ -496,8 +499,11 @@ export interface ContentSaveInput {
   name: string
   html: string
   summary?: string
+  description?: string
   tags?: string[]
   status?: ContentStatus
+  /** 定时发布时刻（status==='scheduled' 时必填）：北京时间 ISO 字符串 */
+  publishAt?: string
 }
 
 /** 分享路由种类（plans/11 方案 B）：file=静态文件（默认）；content=文章内容（resolver 动态渲染阅读页） */
@@ -510,6 +516,8 @@ export interface ShareContentResolverResult {
   html: string
   /** 摘要，可选 */
   summary?: string
+  /** 定时发布时刻（status==='scheduled' 时展示）：ISO 字符串 */
+  publishAt?: string
 }
 
 export interface ShareRouteInput {

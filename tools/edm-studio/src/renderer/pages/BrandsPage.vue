@@ -98,7 +98,9 @@ async function onRowCommand(cmd: string, row: BrandRow): Promise<void> {
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         small
-      />
+      >
+        <template #total="{ total }">共 {{ total }} 条</template>
+      </el-pagination>
     </div>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="brandOpen" :title="brandForm._id ? '编辑品牌' : '新增品牌'" width="400px">

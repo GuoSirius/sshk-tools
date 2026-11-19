@@ -6,6 +6,7 @@
  */
 import type { Repository, ContentDoc } from '@sshk/repository'
 import { countHtmlWords, htmlToPlainText, toDisplayHtml } from '@sshk/rich-text/pure'
+import { format, ISO_WITH_OFFSET } from '@sshk/shared'
 import type { ContentSaveInput, ContentRecord, ShareContentResolverResult } from '@sshk/shared'
 
 const SUMMARY_MAX = 120
@@ -16,8 +17,11 @@ function toRecord(doc: ContentDoc): ContentRecord {
     name: doc.name,
     html: doc.html,
     summary: doc.summary,
+    description: doc.description,
     tags: doc.tags,
     status: doc.status,
+    // 空串哨兵 = 无定时（定时到期翻 published 时主进程写 '' 清空），统一归一为 undefined
+    publishAt: doc.publishAt ? doc.publishAt : undefined,
     wordCount: doc.wordCount,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -41,25 +45,40 @@ export async function contentGet(repo: Repository, id: string): Promise<ContentR
   return doc && !doc.archived ? toRecord(doc) : null
 }
 
-/** 新建或更新：_id 存在且命中则更新，否则新建。字数/摘要强制重算，status 缺省 draft。 */
+/** 新建或更新：_id 存在且命中则更新，否则新建。字数/摘要强制重算，status 缺省 draft。
+ *  status==='scheduled' 时 publishAt 必填且须为未来时刻；到点由定时器自动翻 published（见 ensureScheduler）。 */
 export async function contentSave(repo: Repository, input: ContentSaveInput): Promise<ContentRecord> {
   const name = String(input?.name ?? '').trim()
   if (!name) throw new Error('内容名称不能为空')
   const html = String(input?.html ?? '')
+  const status = input.status ?? 'draft'
+  let publishAt: string | undefined
+  if (status === 'scheduled') {
+    const t = Number(input.publishAt)
+    if (!Number.isFinite(t) || t <= Date.now()) throw new Error('定时发布时间必须是晚于当前的时间')
+    // 入库 ISO 带 +08:00（项目铁律，禁 toISOString）
+    publishAt = format(t, ISO_WITH_OFFSET)
+  }
   const patch = {
     name,
     html,
     summary: makeSummary(html),
+    description: input.description?.trim() || undefined,
     tags: Array.isArray(input.tags) ? input.tags.map((t) => String(t)).filter(Boolean) : [],
-    status: input.status ?? 'draft',
+    status,
+    publishAt,
     wordCount: countHtmlWords(html),
   }
   const id = String(input?._id ?? '')
   if (id) {
     const updated = await repo.update<ContentDoc>('contents', id, patch)
-    if (updated) return toRecord(updated)
+    if (updated) {
+      if (status === 'scheduled') void ensureScheduler(repo)
+      return toRecord(updated)
+    }
   }
   const inserted = await repo.insert<ContentDoc>('contents', patch as Omit<ContentDoc, '_id' | 'createdAt' | 'updatedAt' | 'archived'>)
+  if (status === 'scheduled') void ensureScheduler(repo)
   return toRecord(inserted)
 }
 
@@ -84,8 +103,36 @@ export function makeContentResolver(repo: Repository): (contentId: string) => Pr
       title: doc.name,
       html: toDisplayHtml(doc.html),
       summary: doc.summary,
+      publishAt: doc.publishAt,
     }
   }
+}
+
+// ── 定时发布（plans/11 + 2026-11-19）：status==='scheduled' 的到点自动翻 published ──
+// 主进程内单例定时器，轮询扫描 scheduled 记录，命中即翻 published 并清 publishAt。
+let schedulerStarted = false
+async function ensureScheduler(repo: Repository): Promise<void> {
+  if (schedulerStarted) return
+  schedulerStarted = true
+  const tick = async () => {
+    try {
+      const now = Date.now()
+      const rows = await repo.list<ContentDoc>('contents', { archived: false, status: 'scheduled' })
+      const due = rows.filter((d) => {
+        const t = Number(d.publishAt)
+        return Number.isFinite(t) && t <= now
+      })
+      for (const doc of due) {
+        // 空串为「已清」哨兵（$set 不接受 undefined 清空）；toRecord 对 undefined/'' 统一视为无定时
+        await repo.update<ContentDoc>('contents', doc._id, { status: 'published', publishAt: '' })
+      }
+      if (due.length) console.log(`[content] 定时发布：${due.length} 条已到期翻为已发布`)
+    } catch (err) {
+      console.error('[content] 定时发布扫描失败', err)
+    }
+  }
+  void tick()
+  globalThis.setInterval(() => { void tick() }, 30_000)
 }
 
 /** HTML 转义（列表页标题/摘要防 XSS） */
