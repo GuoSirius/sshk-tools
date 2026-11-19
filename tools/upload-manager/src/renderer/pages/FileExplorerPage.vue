@@ -288,12 +288,20 @@ async function loadFavorites(): Promise<void> {
   try { favorites.value = await window.api.fs.favoriteList() } catch { favorites.value = [] }
 }
 function isFavorited(path: string): boolean { return favorites.value.some((f) => f.profileId === profileId.value && f.path === path) }
-/** 收藏跳转：跨通道先切通道（watch 会清路径重列），再消费 pendingNavPath 进入目标目录 */
+/** 收藏跳转：跨通道先切通道（watch 会清路径重列），再消费 pendingNavPath 进入目标目录；
+    文件条目进入其父目录（用户 2026-11-19：当目录进入会报错），到达后选中该文件便于定位 */
 let pendingNavPath: string | null = null
+let pendingNavSelect: string | null = null
 function gotoFavorite(f: FsFavorite): void {
-  pendingNavPath = f.path
+  if (f.kind === 'file') {
+    pendingNavPath = f.path.slice(0, Math.max(1, f.path.lastIndexOf('/'))) || '/'
+    pendingNavSelect = f.path
+  } else {
+    pendingNavPath = f.path
+    pendingNavSelect = null
+  }
   if (f.profileId !== profileId.value) profileId.value = f.profileId
-  else { path.value = f.path; void list() }
+  else { path.value = pendingNavPath; void list() }
   favDrawerOpen.value = false
 }
 
@@ -352,6 +360,18 @@ const filteredEntries = computed(() => {
 })
 const selectedEntries = computed(() => filteredEntries.value.filter((e) => selection.value.has(e.path)))
 const crumbs = computed(() => path.value === '/' ? [] : path.value.split('/').filter(Boolean))
+/** Windows 式路径折叠：层级 >3 时中间段收成「…」（title 显示被折叠的完整路径），始终保留末 2 段 */
+const CRUMB_TAIL = 2
+const crumbItems = computed(() => {
+  const all = crumbs.value
+  if (all.length <= CRUMB_TAIL + 1) return all.map((seg, i) => ({ seg, i }))
+  return all.slice(-CRUMB_TAIL).map((seg, j) => ({ seg, i: all.length - CRUMB_TAIL + j }))
+})
+const collapsedCrumbPath = computed(() => {
+  const all = crumbs.value
+  if (all.length <= CRUMB_TAIL + 1) return ''
+  return '/' + all.slice(0, all.length - CRUMB_TAIL).join('/')
+})
 const hasWritable = computed(() => activeChannel.value?.writable === true)
 
 function fmtTime(ts: number | undefined): string {
@@ -399,6 +419,12 @@ async function list(resetCursor = true): Promise<void> {
     const valid = new Set(page.entries.map((e) => e.path))
     usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
     if (resetCursor) { void loadAnnotations(); void loadShareRoutes() } // 备注/分享状态跟随目录重载
+    // 收藏文件跳转：进入父目录后选中该文件（未列到则忽略）
+    if (pendingNavSelect) {
+      const target = pendingNavSelect
+      pendingNavSelect = null
+      if (entries.value.some((e) => e.path === target)) selection.value = new Set([target])
+    }
   } catch (err) {
     if (seq !== listSeq) return
     entries.value = []
@@ -2039,9 +2065,13 @@ function onKeydown(event: KeyboardEvent): void {
       <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Refresh" title="刷新当前目录 (F5)" @click="refresh">刷新</el-button>
       <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
         <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
-        <template v-for="(seg, i) in crumbs" :key="i">
+        <template v-if="crumbs.length > crumbItems.length">
           <span class="fs-crumb-sep">/</span>
-          <span class="fs-crumb" @click="gotoCrumb(i)">{{ seg }}</span>
+          <span class="fs-crumb fs-crumb-ellipsis" :title="`展开：${collapsedCrumbPath}`" @click="gotoCrumb(crumbs.length - crumbItems.length - 1)">…</span>
+        </template>
+        <template v-for="c in crumbItems" :key="c.i">
+          <span class="fs-crumb-sep">/</span>
+          <span class="fs-crumb" :title="c.seg" @click="gotoCrumb(c.i)">{{ c.seg }}</span>
         </template>
       </div>
       <el-input clearable
@@ -2764,6 +2794,9 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-crumb:hover { background: var(--el-fill-color); }
 .fs-crumb-root { font-weight: 600; }
 .fs-crumb-sep { opacity: .4; margin: 0 2px; }
+/* Windows 式路径折叠：长路径中间段收成「…」，crumb 自身截断防超长段撑爆路径栏 */
+.fs-crumb { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.fs-crumb-ellipsis { opacity: .65; letter-spacing: 1px; }
 .fs-path-input { flex: 1; max-width: 560px; }
 .fs-filter { width: 200px; margin-left: auto; }
 .fs-view-toggle { margin-left: 4px; }
@@ -2841,7 +2874,7 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-cell-icon-wrap { position: relative; display: inline-flex; line-height: 1; }
 .fs-cell .fs-share-mark { position: absolute; top: -7px; right: -9px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); }
 /* 卡片视图收藏星标：类型图标左下角（用户 2026-11-19），未收藏 hover 才显、已收藏常显黄色实心星 */
-.fs-cell .fs-cell-fav { position: absolute; bottom: -7px; left: -9px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); color: var(--el-text-color-secondary); opacity: 0; transition: opacity .12s; cursor: pointer; }
+.fs-cell .fs-cell-fav { position: absolute; bottom: -2px; right: -6px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); color: var(--el-text-color-secondary); opacity: 0; transition: opacity .12s; cursor: pointer; }
 .fs-cell:hover .fs-cell-fav, .fs-cell-fav.is-fav { opacity: 1; }
 .fs-cell-fav.is-fav { color: var(--el-color-warning); }
 .fs-cell-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
