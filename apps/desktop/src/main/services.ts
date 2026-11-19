@@ -26,7 +26,7 @@ import {
   type ToolHostCapabilities,
 } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
-import { isProviderId, toolSecretId } from './secret-ids'
+import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
 import { logger } from './logger'
 import { recordUsage } from './usage'
 
@@ -37,6 +37,9 @@ export interface AppServices {
   dbDir: string
   /** 按 providerId 读取 apiKey（safeStorage 解密；永不下发渲染层） */
   getApiKey: (providerId: string) => string
+  /** 上传通道密钥（应用级 app:upload: 命名空间，2026-11-19 由工具账下提升） */
+  getUploadSecret: (profileId: string) => string
+  setUploadSecret: (profileId: string, value: string) => void
   /** 确保密钥缓存已从 safeStorage 解密预载（幂等） */
   ensureSecrets: () => Promise<void>
   setApiKey: (providerId: string, apiKey: string) => void
@@ -353,6 +356,18 @@ export function setupServices(): AppServices {
         }
         if (moved > 0 || legacyCfg) logger.info('upload', `工具改名迁移：${step.note}（本次密钥累计 ${moved} 条）`)
       }
+      // 密钥命名空间提升（2026-11-19 用户拍板）：工具账下 → 应用级 app:upload:<pid>。
+      // 通道 profile 数据已在应用级（app.upload），密钥留在工具命名空间会让工具改名/卸载
+      // 牵连 EDM 图片上传、模板工具图片库等消费方（改名历史已两跳迁移证实脆弱）。
+      // first-wins：app:upload:<pid> 已存在则以新为准；旧段一律清掉。幂等：提升后无残留。
+      for (const prefix of ['app:tool:upload-config:', 'app:tool:upload-manager:', `app:tool:${TOOL_IDS.fileManager}:`]) {
+        for (const key of Object.keys(secrets)) {
+          if (!key.startsWith(prefix)) continue
+          const nextKey = `app:upload:${key.slice(prefix.length)}`
+          if (!secrets[nextKey]) { secrets[nextKey] = secrets[key]!; moved++ }
+          delete secrets[key]
+        }
+      }
       if (moved > 0) void saveSecrets(secrets)
     } catch (err) {
       logger.error('upload', `工具改名迁移失败（不影响启动）：${(err as Error).message}`)
@@ -368,6 +383,14 @@ export function setupServices(): AppServices {
     dbDir,
     host,
     getApiKey: (providerId) => currentSecrets()[providerId] ?? '',
+    getUploadSecret: (profileId) => currentSecrets()[uploadSecretId(profileId)] ?? '',
+    setUploadSecret: (profileId, value) => {
+      const id = uploadSecretId(profileId)
+      const secrets = currentSecrets()
+      if (!value) delete secrets[id]
+      else secrets[id] = value
+      saveSecrets(secrets)
+    },
     ensureSecrets: async () => { await loadSecrets() },
     setApiKey: (providerId, apiKey) => {
       if (!isProviderId(providerId)) throw new Error(`非法 providerId: ${providerId}`)

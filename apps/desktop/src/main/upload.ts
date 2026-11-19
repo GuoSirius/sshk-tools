@@ -16,7 +16,6 @@ import type {
   UploadValidation,
 } from '@sshk/upload-core'
 import {
-  TOOL_IDS,
   listUploadProfiles,
   normalizeUploadConfig,
   pickCloudProfile,
@@ -38,7 +37,7 @@ import type { AppServices } from './services'
  * - 每次调用重建 Service/Provider（成本极低），保证改配置后无需重启即生效。
  * - 校验：全局默认传给 Service，工具级 ctx.validation 由 mergeValidation 收紧（不能放宽）。
  */
-const SECRET_TOOL_ID = TOOL_IDS.fileManager // 文件管理（2026-11-19 由 upload-manager 改名；密钥启动时自动迁移）
+// 密钥命名空间已提升为应用级 app:upload:<pid>（2026-11-19 用户拍板，见 services.ts migrateToolRenames）
 const DATA_URL_RE = /^data:[^;,]*;base64,([\s\S]+)$/
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
@@ -151,7 +150,7 @@ export class UploadRuntime {
     if (ctx.targetType === 'remote') {
       const p = pickRemoteProfile(global, ctx.profileId)
       if (!p) throw new Error('未找到远程上传 profile：请先在「文件管理」中添加并选择')
-      const password = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
+      const password = services.getUploadSecret(p.id)
       service.register(new RemoteUploadProvider({
         protocol: p.protocol,
         host: p.host,
@@ -167,7 +166,7 @@ export class UploadRuntime {
     if (ctx.targetType === 'cloud') {
       const p = pickCloudProfile(global, ctx.profileId)
       if (!p) throw new Error('未找到云上传 profile：请先在「文件管理」中添加并选择')
-      const accessKeySecret = services.host.getToolSecret(SECRET_TOOL_ID, p.id)
+      const accessKeySecret = services.getUploadSecret(p.id)
       service.register(new CloudUploadProvider({
         provider: p.provider,
         sdk: uploadVendorMeta(p.provider).sdk,
@@ -218,7 +217,7 @@ export class UploadRuntime {
         host: p.host,
         port: p.port,
         username: p.username,
-        password: this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id),
+        password: this.opts.services.getUploadSecret(p.id),
         remoteDir: p.remoteDir,
         passive: p.passive,
         baseUrl: p.baseUrl,
@@ -235,7 +234,7 @@ export class UploadRuntime {
         endpoint: p.endpoint,
         bucket: p.bucket,
         accessKeyId: p.accessKeyId,
-        accessKeySecret: this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id),
+        accessKeySecret: this.opts.services.getUploadSecret(p.id),
         baseUrl: p.baseUrl,
       }))
       ctx.profileId = p.id
@@ -282,7 +281,7 @@ export class UploadRuntime {
   setSecret(profileId: string, value: string): boolean {
     const id = String(profileId ?? '').trim()
     if (!PROFILE_ID_RE.test(id)) throw new Error(`非法上传 profile ID：${id}`)
-    this.opts.services.host.setToolSecret(SECRET_TOOL_ID, id, String(value ?? ''))
+    this.opts.services.setUploadSecret(id, String(value ?? ''))
     return true
   }
 
@@ -291,7 +290,7 @@ export class UploadRuntime {
     const cfg = this.globalConfig()
     const state: Record<string, boolean> = {}
     for (const p of [...cfg.remote.profiles, ...cfg.cloud.profiles]) {
-      state[p.id] = Boolean(this.opts.services.host.getToolSecret(SECRET_TOOL_ID, p.id))
+      state[p.id] = Boolean(this.opts.services.getUploadSecret(p.id))
     }
     return state
   }
@@ -300,7 +299,7 @@ export class UploadRuntime {
   getSecret(profileId: string): string {
     const id = String(profileId ?? '').trim()
     if (!PROFILE_ID_RE.test(id)) throw new Error(`非法上传 profile ID：${id}`)
-    return this.opts.services.host.getToolSecret(SECRET_TOOL_ID, id)
+    return this.opts.services.getUploadSecret(id)
   }
 
   /**
@@ -324,7 +323,7 @@ export class UploadRuntime {
     const id = String(obj['id'] ?? '').trim()
     const secret = typeof req?.secret === 'string' && req.secret
       ? req.secret
-      : (id ? this.opts.services.host.getToolSecret(SECRET_TOOL_ID, id) : '')
+      : (id ? this.opts.services.getUploadSecret(id) : '')
     // 复用归一化，既校验必填项，也把厂商 / 字段收敛到合法值
     const cfg = normalizeUploadConfig({
       remote: { profiles: type === 'remote' ? [obj] : [], defaultId: id },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isProviderId, toolSecretId } from './secret-ids'
+import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
 
 describe('工具密钥标识（回归：驼峰密钥名曾被误判非法）', () => {
   it('允许工具包名与驼峰 / 下划线 / 连字符密钥名', () => {
@@ -20,5 +20,18 @@ describe('工具密钥标识（回归：驼峰密钥名曾被误判非法）', (
     expect(isProviderId('prv_preview')).toBe(true)
     expect(isProviderId('prv_XYZ')).toBe(false)
     expect(isProviderId('app:tool:x:y')).toBe(false)
+  })
+})
+
+describe('uploadSecretId（应用级上传通道密钥命名空间）', () => {
+  it('profileId → app:upload:<pid>', () => {
+    expect(uploadSecretId('p_01abc')).toBe('app:upload:p_01abc')
+    expect(uploadSecretId('P_12')).toBe('app:upload:P_12')
+  })
+
+  it('拒绝空值与非法字符（同工具密钥校验口径）', () => {
+    for (const bad of ['', 'a:b', '../x', '中文', ' x']) {
+      expect(() => uploadSecretId(bad)).toThrow('非法上传密钥标识')
+    }
   })
 })
