@@ -280,6 +280,9 @@ defineExpose({
           <template v-if="failedCount"> · <span class="fs-tpanel-fail">失败{{ failedCount }}</span></template>
         </span>
         <span class="fs-spacer" />
+        <el-tooltip content="回到默认位置" placement="top">
+          <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
+        </el-tooltip>
         <el-button size="small" text type="primary" class="fs-tpanel-mini" @click.stop="expanded = true">展开</el-button>
         <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; emit('visible-change', false)">✕</el-button>
       </div>

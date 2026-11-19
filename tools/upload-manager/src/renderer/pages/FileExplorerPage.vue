@@ -706,26 +706,42 @@ function uploadStamp(): string {
   const p = (n: number): string => String(n).padStart(2, '0')
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }
-/** 扩展名前插入时间戳：a/b/favicon.ico → a/b/favicon20261119084512.ico；无扩展名直接尾部追加 */
+/** 扩展名前插入时间戳（下划线分隔）：a/b/favicon.ico → a/b/favicon_20261119084512.ico；无扩展名直接尾部追加 */
 function stampRelPath(relPath: string, stamp: string): string {
   const dot = relPath.lastIndexOf('.')
   const slash = relPath.lastIndexOf('/')
-  if (dot > slash && dot > 0) return `${relPath.slice(0, dot)}${stamp}${relPath.slice(dot)}`
-  return `${relPath}${stamp}`
+  if (dot > slash && dot > 0) return `${relPath.slice(0, dot)}_${stamp}${relPath.slice(dot)}`
+  return `${relPath}_${stamp}`
 }
-/** 扩展名前插入序号（同批重命名去重兜底）：favicon20261119084512.ico → favicon20261119084512-2.ico */
+/** 扩展名前插入序号（同批重命名去重兜底）：favicon_20261119084512.ico → favicon_20261119084512_2.ico */
 function seqRelPath(relPath: string, n: number): string {
   const dot = relPath.lastIndexOf('.')
   const slash = relPath.lastIndexOf('/')
   const stem = dot > slash && dot > 0 ? relPath.slice(0, dot) : relPath
   const ext = stem === relPath ? '' : relPath.slice(dot!)
-  return `${stem}-${n}${ext}`
+  return `${stem}_${n}${ext}`
 }
 
 type UploadAction = 'overwrite' | 'skip' | 'rename'
+/** 重名确认弹框状态：三选一（取消 / 保留重命名 / 全部覆盖）；文件名限高滚动，单次多选也不撑爆弹框 */
+const dupDialogOpen = ref(false)
+const dupList = ref<string[]>([])
+let dupResolve: ((action: UploadAction) => void) | null = null
+function askDupAction(names: string[]): Promise<UploadAction> {
+  dupList.value = names
+  dupDialogOpen.value = true
+  return new Promise((resolve) => { dupResolve = resolve })
+}
+/** 三按钮统一收口：关闭/取消 = skip（忽略重名，其余照传）；关闭时先 resolve 再置空，避免悬挂 */
+function resolveDupAction(action: UploadAction): void {
+  dupDialogOpen.value = false
+  dupResolve?.(action)
+  dupResolve = null
+}
+
 /** 同通道同目标目录的重名检测与处置：①本批内映射到同一目标路径（保留首个，后续计重名）；
  *  ②与目标目录已有条目重名（仅直传该目录的文件；带子目录结构的深层冲突仍由引擎运行时确认）。
- *  命中时统一询问：全部覆盖 / 保留（自动重命名 原名+YYYYMMDDHHmmss+原后缀，同批同一时间戳）/ 取消（忽略重名文件，其余照传）。 */
+ *  命中时弹框三选一：取消（忽略重名文件，其余照传）/ 保留（自动重命名 原名_YYYYMMDDHHmmss+原后缀，同批同一时间戳）/ 全部覆盖。 */
 async function resolveUploadDuplicates(
   files: { name: string; localPath: string; relPath: string; size: number }[],
 ): Promise<{ files: typeof files; overwritePaths: Set<string> }> {
@@ -751,22 +767,7 @@ async function resolveUploadDuplicates(
   if (!dupKeys.size) return { files, overwritePaths: new Set() }
 
   const dupNames = files.filter((f) => dupKeys.has(f.relPath.toLowerCase())).map((f) => f.relPath)
-  const preview = dupNames.slice(0, 8).join('、') + (dupNames.length > 8 ? ` …共 ${dupNames.length} 个` : '')
-  let action: UploadAction
-  try {
-    await ElMessageBox.confirm(
-      `检测到重名（含后缀）${dupNames.length} 个：${preview}。如何处理？\n覆盖=直接覆盖；保留=重命名为 原名+时间戳+原后缀（同批同一时间戳）；取消=忽略重名文件，其余照传。`,
-      '上传重名确认',
-      {
-        type: 'warning', distinguishCancelAndClose: true, showClose: true,
-        confirmButtonText: '全部覆盖', cancelButtonText: '保留（自动重命名）',
-        closeOnClickModal: false, closeOnPressEscape: false,
-      },
-    )
-    action = 'overwrite'
-  } catch (act) {
-    action = String(act) === 'cancel' ? 'rename' : 'skip' // ✕/关闭 = 取消：忽略重名文件
-  }
+  const action = await askDupAction(dupNames)
   if (action === 'skip') return { files: [], overwritePaths: new Set() }
 
   if (action === 'rename') {
@@ -2123,6 +2124,7 @@ function onKeydown(event: KeyboardEvent): void {
           :key="moveDestProfile || profileId || ''"
           class="fs-move-cascader"
           :props="moveDirProps"
+          :show-all-levels="false"
           size="small"
           placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
           clearable
@@ -2155,6 +2157,7 @@ function onKeydown(event: KeyboardEvent): void {
           :key="unzipDestProfile || profileId || ''"
           class="fs-move-cascader"
           :props="unzipDirProps"
+          :show-all-levels="false"
           size="small"
           placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
           clearable
@@ -2259,16 +2262,40 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
+    <!-- 上传重名确认：三选一（取消/保留重命名/全部覆盖）；文件名限高滚动，单次多选也不撑爆弹框 -->
+    <el-dialog
+      v-model="dupDialogOpen"
+      title="上传重名确认"
+      width="460px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      @closed="resolveDupAction('skip')"
+    >
+      <div class="hint" style="margin-bottom: 8px">检测到 {{ dupList.length }} 个重名（含后缀）文件，请选择处理方式：</div>
+      <ul class="fs-dup-list">
+        <li v-for="n in dupList" :key="n" :title="n">{{ n }}</li>
+      </ul>
+      <div class="hint" style="margin-top: 10px; line-height: 1.9">
+        · <b>保留</b>：重命名为 <code>原名_时间戳.后缀</code>（同批同一时间戳）<br />
+        · <b>全部覆盖</b>：直接覆盖同名文件<br />
+        · <b>取消</b>：忽略重名文件，其余照传
+      </div>
+      <template #footer>
+        <el-button @click="resolveDupAction('skip')">取消</el-button>
+        <el-button type="primary" @click="resolveDupAction('rename')">保留（自动重命名）</el-button>
+        <el-button type="danger" @click="resolveDupAction('overwrite')">全部覆盖</el-button>
+      </template>
+    </el-dialog>
+
     <!-- plans/10：传输队列悬浮面板（替代旧抽屉；无遮罩、可拖拽、收起态仍显摘要） -->
     <TransferPanel ref="transferPanelRef" v-model:expanded="panelExpanded" :tasks="taskList" />
 
     <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
     <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div class="fs-ziplimits">
+      <div class="fs-ziplimits fs-caps-form">
         <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
         <div class="fs-convert-row">
           <span class="fs-convert-label">大文件分片传输<el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip></span>
-          <span class="fs-spacer" />
           <el-switch v-model="transferCfgForm.enabled" data-autofocus />
         </div>
         <div class="fs-convert-row">
@@ -2631,12 +2658,17 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-props-k { flex: none; width: 72px; opacity: .6; }
 .fs-props-v { flex: 1; min-width: 0; word-break: break-all; }
 .fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-/* 数字上限类弹框（用户 2026-11-19）：三列 grid——label 同起点左对齐、输入框统一 150px 同列、单位同列 */
+/* 数字上限类弹框（用户 2026-11-19）：三列 grid——label 列等宽右对齐、输入框统一 150px 同列、单位/控件同列。
+   label 元素保持 width:auto+nowrap（铁律），等宽由 grid 轨道固定 118px 实现，不写死在 label 自身 */
 .fs-caps-form { display: flex; flex-direction: column; gap: 10px; }
-.fs-caps-form .fs-convert-row { display: grid; grid-template-columns: max-content 150px max-content; column-gap: 10px; align-items: center; margin-bottom: 0; }
+.fs-caps-form .fs-convert-row { display: grid; grid-template-columns: 118px 150px 1fr; column-gap: 10px; align-items: center; margin-bottom: 0; }
 .fs-caps-form .fs-convert-row .el-input-number { grid-column: 2; width: 150px; }
-/* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行） */
+/* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行）；caps 表单内右对齐 */
 .fs-convert-label { flex: none; width: auto; white-space: nowrap; font-size: 13px; opacity: .7; }
+.fs-caps-form .fs-convert-label { text-align: right; }
+/* 重名确认：文件名限高滚动（单次多选几十个也能看全，不撑爆弹框） */
+.fs-dup-list { max-height: 180px; overflow-y: auto; margin: 0; padding: 6px 10px 6px 24px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; font-size: 13px; line-height: 1.9; }
+.fs-dup-list li { word-break: break-all; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }
 .fs-ziplimits-unit { flex: none; font-size: 13px; opacity: .7; }
 .fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }
