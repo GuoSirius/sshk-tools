@@ -217,7 +217,7 @@ export class ShareHub {
       next.set(alias, {
         id: `mount:${m.id || alias}`, token: alias, toolId: 'share-hub-mount',
         label: alias, root: dir, entry: '', ttlHours: 0,
-        createdAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: '',
+        createdAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, password: String(m.password ?? ''),
         // 逐目录目录浏览开关（用户 2026-11-18 拆分）：默认允许，关 = 仅具体文件路径可达
         allowIndex: m.allowIndex !== false, hits: 0, mountId: m.id || alias,
       })
@@ -253,6 +253,21 @@ export class ShareHub {
     return skipped
   }
 
+  /** 密码继承（用户 2026-11-19）：同 root 下、entry 为当前祖先目录或整根（entry=''）且带口令的路由，
+   *  取 entry 最长（最近父级）者的口令。整根 entry='' 不再向上继承；挂载路由不参与（配置权威、另算）。 */
+  private inheritedPassword(root: string, entry: string): string {
+    if (!entry) return ''
+    const cur = entry.replace(/\/+$/, '')
+    let best: ShareRoute | undefined
+    for (const r of this.routes.values()) {
+      if (!r.password || r.root !== root) continue
+      const dir = r.entry.replace(/\/+$/, '')
+      if (dir && !cur.startsWith(dir + '/')) continue
+      if (!best || dir.length > best.entry.replace(/\/+$/, '').length) best = r
+    }
+    return best?.password ?? ''
+  }
+
   /** 创建一条分享路由。root 必须是存在的绝对路径（主进程校验），token 12B base64url。 */
   async create(input: ShareRouteInput): Promise<ShareRouteTicket> {
     const root = String(input?.root ?? '').trim()
@@ -265,6 +280,8 @@ export class ShareHub {
 
     const ttlHours = normalizeTtl(input.ttlHours)
     const now = Date.now()
+    // 密码每条路由独立；未设置（空）时继承同 root 下最近祖先路由的密码（用户 2026-11-19）
+    const password = String(input.password ?? '') || this.inheritedPassword(root, entry)
     const route: ShareRoute = {
       id: randomUUID(),
       token: randomBytes(12).toString('base64url'),
@@ -275,7 +292,7 @@ export class ShareHub {
       ttlHours,
       createdAt: now,
       expiresAt: expiresAtFor(ttlHours, now),
-      password: String(input.password ?? ''),
+      password,
       // 应用级默认（app.shareHub.allowIndex）由宿主在 IPC 层注入；share-core 未收到时保持允许（兼容旧调用方）
       allowIndex: input.allowIndex === undefined ? undefined : Boolean(input.allowIndex),
       hits: 0,
@@ -302,7 +319,7 @@ export class ShareHub {
    * ttlHours=null：不改有效期（仅应用 patch，供目录浏览开关等属性级修改，token/链接不变）；
    * patch.allowIndex：同时改写目录浏览开关（undefined = 不动）。
    */
-  async renew(idOrToken: string, ttlHours: number | null, mode: 'reset' | 'extend' = 'reset', patch?: { allowIndex?: boolean }): Promise<ShareRouteTicket> {
+  async renew(idOrToken: string, ttlHours: number | null, mode: 'reset' | 'extend' = 'reset', patch?: { allowIndex?: boolean; password?: string }): Promise<ShareRouteTicket> {
     const route = this.findBy(idOrToken)
     if (!route) throw new Error('分享路由不存在或已过期')
     if (ttlHours !== null) {
@@ -323,6 +340,7 @@ export class ShareHub {
       }
     }
     if (patch && patch.allowIndex !== undefined) route.allowIndex = Boolean(patch.allowIndex)
+    if (patch && patch.password !== undefined) route.password = String(patch.password ?? '')
     this.schedulePersist()
     return this.ticket(route)
   }
@@ -394,20 +412,21 @@ export class ShareHub {
   }
 
   private ticket(route: ShareRoute): ShareRouteTicket {
-    return { id: route.id, token: route.token, urls: this.urls(route.token), expiresAt: route.expiresAt }
+    return { id: route.id, token: route.token, urls: this.urls(route.token, route.password), expiresAt: route.expiresAt }
   }
 
-  /** 生成展示链接：展示 IP 排第一，其余有效候选兜底（去重）。 */
-  private urls(token: string): string[] {
+  /** 生成展示链接：展示 IP 排第一，其余有效候选兜底（去重）；带口令时补 ?ak=accessKey。 */
+  private urls(token: string, password?: string): string[] {
     if (!this.running || !this.port) return []
     const display = this.displayIp()
     const candidates = [display, ...this.listIps().map((x) => x.ip), '127.0.0.1']
+    const ak = password ? `?ak=${encodeURIComponent(password)}` : ''
     const urls: string[] = []
     const seen = new Set<string>()
     for (const ip of candidates) {
       if (!ip || seen.has(ip)) continue
       seen.add(ip)
-      urls.push(`http://${ip}:${this.port}/${token}/`)
+      urls.push(`http://${ip}:${this.port}/${token}/${ak}`)
     }
     return urls
   }
@@ -455,8 +474,8 @@ export class ShareHub {
       }
       routeId = route.id
 
-      // 口令校验：入口 ?key= 与资源 ?key= 都要带（链接本身携带 key）
-      if (route.password && url.searchParams.get('key') !== route.password) {
+      // 访问密钥校验：入口 ?ak= 与资源 ?ak= 都要带（链接本身携带 ak=accessKey）
+      if (route.password && url.searchParams.get('ak') !== route.password) {
         this.finish(res, 403, 'Forbidden: 需要访问口令')
         this.log(clientIp, routeId, rel, 403)
         return
@@ -593,13 +612,13 @@ export class ShareHub {
           const isDir = statSync(full).isDirectory()
           const relPath = relDir ? `${relDir}/${name}` : name
           const href = `/${route.token}/${relPath.split('/').map(encodeURIComponent).join('/')}` +
-            (route.password ? `?key=${encodeURIComponent(route.password)}` : '')
+            (route.password ? `?ak=${encodeURIComponent(route.password)}` : '')
           return `<li><a href="${esc(href)}">${esc(name)}${isDir ? '/' : ''}</a></li>`
         }).sort((a, b) => a.localeCompare(b))
       : []
     const title = esc(route.label || '分享')
     const parent = relDir
-      ? `<p><a href="/${route.token}/${relDir.split('/').slice(0, -1).map(encodeURIComponent).join('/')}${route.password ? `?key=${encodeURIComponent(route.password)}` : ''}">← 上级</a></p>`
+      ? `<p><a href="/${route.token}/${relDir.split('/').slice(0, -1).map(encodeURIComponent).join('/')}${route.password ? `?ak=${encodeURIComponent(route.password)}` : ''}">← 上级</a></p>`
       : ''
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:14px/1.6 system-ui,sans-serif;margin:32px;color:#c9d3ee;background:#0b0e1c}a{color:#5eb0ff;text-decoration:none}a:hover{text-decoration:underline}li{padding:2px 0}h1{font-size:18px}</style></head><body><h1>${title}</h1>${parent}<ul>${entries.join('')}</ul></body></html>`
   }

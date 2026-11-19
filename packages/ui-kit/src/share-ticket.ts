@@ -37,10 +37,19 @@ export function isTicketAlive(t: ShareRouteTicket | null | undefined): boolean {
  *  ShareHub 的 token 绑定 root，URL 子路径即相对 root 的路径；allowIndex=false 只封目录列表，
  *  文件直达仍可用（内核 handle：非目录分支不受 indexAllowed 限制）。 */
 export function shareFileDirectUrl(baseUrl: string, relPath: string): string {
-  const base = String(baseUrl ?? '').replace(/\/+$/, '')
   const rel = String(relPath ?? '').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '')
-  if (!base || !rel) return base
-  return `${base}/${rel.split('/').map(encodeURIComponent).join('/')}`
+  if (!baseUrl) return ''
+  // 用 URL API 在 pathname 上追相对路径，保留 base 自带的 ?ak= 查询串（密钥）——
+  // 裸字符串拼接会把路径塞进 query（...?ak=xxx/child），导致密钥与路径都失效。
+  try {
+    const u = new URL(baseUrl)
+    u.pathname = u.pathname.replace(/\/+$/, '') + (rel ? `/${rel.split('/').map(encodeURIComponent).join('/')}` : '')
+    return u.toString()
+  } catch {
+    // 非法 URL（理论上不会出现）：退回原拼接，至少不抛错
+    const base = String(baseUrl).replace(/\/+$/, '')
+    return rel ? `${base}/${rel.split('/').map(encodeURIComponent).join('/')}` : base
+  }
 }
 
 /** 按路由 id 反查凭证（遍历分享键匹配 ticket.id）。

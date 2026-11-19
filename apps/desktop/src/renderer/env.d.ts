@@ -309,7 +309,7 @@ interface Window {
       create(input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket>
       list(toolId?: string): Promise<import('@sshk/shared').ShareRouteInfo[]>
       revoke(id: string, toolId?: string): Promise<boolean>
-      renew(id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean }): Promise<import('@sshk/shared').ShareRouteTicket>
+      renew(id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }): Promise<import('@sshk/shared').ShareRouteTicket>
       status(): Promise<import('@sshk/shared').HubStatus>
     }
     shareHubControl: {

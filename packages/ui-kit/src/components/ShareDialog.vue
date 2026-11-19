@@ -58,6 +58,10 @@ const permanentSel = ref(false)
  *  生效值单独跟踪（allowIndexEffective）：ticket 类型不含 allowIndex，勾选态需与生效值比对判断变更与回滚 */
 const allowIndex = ref(false)
 const allowIndexEffective = ref(false)
+/** 访问密钥 accessKey（accessKey）：form 态用户填写（留空 = 继承父级/不设）；ready 态为当前生效值，变更需二次确认。
+ *  props.password 作为外部传入的初始值（工具页可预置），每次打开弹框时复位。 */
+const accessKey = ref('')
+const accessKeyEffective = ref('')
 /** TTL 暂存（用户 2026-11-18 定版）：三按钮只选择「要做什么」，点「应用更改」才 renew 生效 */
 const pendingTtl = ref<null | 'extend' | 'reset' | 'permanent'>(null)
 /** form 态补充提示（如「（当前链接已撤销）」） */
@@ -127,6 +131,7 @@ async function loadTicket(): Promise<void> {
     ttlHours.value = await resolveTtlHours()
     permanentSel.value = false
     allowIndex.value = await resolveAppAllowIndex()
+    accessKey.value = String(props.password ?? '')
     const saved = readTicket()
     const savedAlive = saved !== null && (saved.expiresAt === SHARE_PERMANENT_EXPIRES_AT || saved.expiresAt > Date.now())
     let hit: ShareRouteInfo | null = null
@@ -139,8 +144,12 @@ async function loadTicket(): Promise<void> {
     if (savedAlive && saved) {
       ticket.value = saved
       activeUrlIndex.value = 0
-      if (hit) allowIndex.value = hit.allowIndex !== false
+      if (hit) {
+        allowIndex.value = hit.allowIndex !== false
+        accessKey.value = String(hit.password ?? '')
+      }
       allowIndexEffective.value = allowIndex.value
+      accessKeyEffective.value = accessKey.value
       phase.value = 'ready'
       return
     }
@@ -180,7 +189,7 @@ async function createTicket(): Promise<void> {
       root: props.defaultRoot,
       entry: props.defaultEntry ?? '',
       ttlHours: permanentCreate ? 0 : ttlHours.value,
-      password: props.password,
+      password: accessKey.value,
       allowIndex: allowIndex.value,
     })
     ticket.value = t
@@ -188,6 +197,7 @@ async function createTicket(): Promise<void> {
     activeUrlIndex.value = 0
     formHint.value = ''
     allowIndexEffective.value = allowIndex.value
+    accessKeyEffective.value = accessKey.value
     phase.value = 'ready'
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success(permanentCreate ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
@@ -273,6 +283,37 @@ async function onAllowIndexChange(next: boolean): Promise<void> {
   } finally { busy.value = false }
 }
 
+/** 访问密钥变更（ready 态）：二次确认后 renew patch 只改密钥不改有效期/token；URL 会变（?ak= 更新），需重新复制 */
+async function applyAccessKey(): Promise<void> {
+  if (!ticket.value || busy.value) return
+  const next = String(accessKey.value ?? '')
+  if (next === accessKeyEffective.value) { ElMessage.warning('访问密钥未变更'); return }
+  const clearing = !next
+  try {
+    await ElMessageBox.confirm(
+      clearing
+        ? '清空访问密钥后，任何拿到链接的人都可访问（链接不再带 ?ak=）。确认清空吗？'
+        : '更新访问密钥后，链接里的 ?ak= 会同步更新。此前已复制的旧链接将立即失效，需重新复制。确认更新吗？',
+      '更改访问密钥',
+      {
+        confirmButtonText: '确认更改', cancelButtonText: '取消', type: clearing ? 'warning' : 'info',
+        closeOnClickModal: false, closeOnPressEscape: false,
+      },
+    )
+  } catch { return }
+  busy.value = true
+  try {
+    const t = await callHostApi<ShareRouteTicket>(SPEC.renew, ticket.value.id, null, props.toolId, 'reset', { password: next })
+    ticket.value = t
+    saveTicket(t)
+    accessKeyEffective.value = next
+    activeUrlIndex.value = 0
+    await copyUrl(t.urls[0])
+    ElMessage.success(clearing ? '已清空访问密钥，新链接已复制' : '访问密钥已更新，新链接已复制（旧链接已失效）')
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { busy.value = false }
+}
+
 /** 写剪贴板：成功 true / 失败 false（创建、重新生成的静默复制不弹反馈，按钮路径由 copyActive 提示） */
 async function copyUrl(url?: string): Promise<boolean> {
   const target = url ?? activeUrl.value
@@ -320,11 +361,12 @@ async function regenerate(): Promise<void> {
       root: props.defaultRoot,
       entry: props.defaultEntry ?? '',
       ttlHours: regenPermanent ? 0 : ttlHours.value,
-      password: props.password,
+      password: accessKey.value,
       allowIndex: allowIndex.value,
     })
     ticket.value = t
     saveTicket(t)
+    accessKeyEffective.value = accessKey.value
     activeUrlIndex.value = 0
     pendingTtl.value = null
     if (t.urls[0]) await copyUrl(t.urls[0])
@@ -423,6 +465,15 @@ watch(() => props.open, (open) => {
                 detail="勾选后本链接即目录树入口：访客可浏览目录，点进子目录/文件都复用这条链接（整棵子树通用），新增文件也立即可见；不勾选则仅该目录本身可访问。目录里的任意子项也可单独点「分享链接」生成独立链接（独立有效期、可单独撤销）。默认取应用设置，可自行勾选，创建后仍可更改。"
               >目录树链接说明</FormHint>
             </div>
+            <el-divider class="card-divider" />
+            <div class="form-row">
+              <span class="row-label">访问密钥</span>
+              <el-input v-model="accessKey" size="small" show-password clearable class="ak-input" placeholder="留空 = 继承父级" />
+              <FormHint
+                inline
+                detail="填写后链接形如 …/?ak=访问密钥，访客需链接带正确的 ak 才能访问；留空则继承同目录下最近父级分享的密钥（无父级则不设）。浏览目录、切换文件时密钥随链接一路透传，每一请求都会校验。"
+              >密钥说明</FormHint>
+            </div>
           </div>
         </div>
       </template>
@@ -453,11 +504,20 @@ watch(() => props.open, (open) => {
           >允许访问目录</el-checkbox>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyActive">复制</el-button>
         </div>
+        <div class="share-ak-row">
+          <span class="ak-label">访问密钥</span>
+          <el-input v-model="accessKey" size="small" show-password clearable class="ak-input" placeholder="未设置（链接不含 ak）" />
+          <el-button
+            type="warning" size="small" plain :loading="busy"
+            :disabled="accessKey === accessKeyEffective"
+            @click="applyAccessKey"
+          >更新密钥</el-button>
+        </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
           <div class="share-qr-tip">
             <p>手机扫码直达</p>
-            <p class="muted">链接含 96bit 随机 token{{ password ? ' 与访问口令' : '' }}，仅限可信局域网访问。</p>
+            <p class="muted">链接含 96bit 随机 token{{ accessKeyEffective ? ' 与访问密钥 ak' : '' }}，仅限可信局域网访问。</p>
           </div>
         </div>
         <div class="share-expire-row">
@@ -524,6 +584,7 @@ watch(() => props.open, (open) => {
 .form-row .row-check { flex: none; height: auto; }
 .form-row .row-check :deep(.el-checkbox__label) { font-size: 12px; }
 .form-row .sshk-form-hint { flex: 1; min-width: 0; }
+.form-row .ak-input { flex: 1; min-width: 0; }
 .card-divider { margin: 0; }
 
 /* ── 已有链接态 ── */
@@ -534,6 +595,10 @@ watch(() => props.open, (open) => {
 .share-link-head { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .share-link-head .el-select { flex: 1; min-width: 0; }
 .share-link-head .el-button { flex: none; margin-left: auto; }
+.share-ak-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.share-ak-row .ak-label { flex: none; width: 56px; font-size: 13px; opacity: 0.75; }
+.share-ak-row .ak-input { flex: 1; min-width: 0; }
+.share-ak-row .el-button { flex: none; margin-left: 0; }
 .share-ttl-row { display: flex; align-items: center; gap: 8px; }
 .share-ttl-row .ttl-input { flex: 1; min-width: 0; }
 .share-ttl-row .ttl-unit { flex: none; font-size: 12px; opacity: 0.7; }

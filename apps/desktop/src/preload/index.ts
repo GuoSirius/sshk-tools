@@ -400,7 +400,7 @@ const api = {
       invoke(IPC_CHANNELS.shareHubList, toolId),
     revoke: (id: string, toolId?: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.shareHubRevoke, id, toolId),
-    renew: (id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean }): Promise<import('@sshk/shared').ShareRouteTicket> =>
+    renew: (id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }): Promise<import('@sshk/shared').ShareRouteTicket> =>
       invoke(IPC_CHANNELS.shareHubRenew, id, ttlHours, toolId, mode, patch),
     status: (): Promise<import('@sshk/shared').HubStatus> => invoke(IPC_CHANNELS.shareHubStatus),
   },

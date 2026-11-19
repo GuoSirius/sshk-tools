@@ -453,6 +453,8 @@ export interface ShareHubMount {
   enabled: boolean
   /** 是否允许浏览目录列表（用户 2026-11-18 拆分：默认 true；关 = 具体文件路径可达、目录列表 404） */
   allowIndex?: boolean
+  /** 访问密钥（accessKey）：非空时访客链接需带 ?ak= 才能访问；留空 = 不设密钥 */
+  password?: string
 }
 
 /** ShareHub 代理规则（用户 2026-11-18 定版）：URL 命中路径前缀 → 全方法反向代理到目标地址。
@@ -484,7 +486,7 @@ export interface ShareRouteInput {
   ttlHours?: number
   /** 是否允许浏览目录列表（缺省由宿主注入应用级默认 app.shareHub.allowIndex，默认不允许）；直接文件路径不受影响 */
   allowIndex?: boolean
-  /** 可选访问口令（链接带 ?key= 轻量校验） */
+  /** 可选访问密钥 accessKey（链接带 ?ak= 轻量校验）；留空则继承同 root 最近祖先路由的密钥 */
   password?: string
 }
 
@@ -508,7 +510,7 @@ export interface ShareRouteInfo {
   createdAt: number
   /** 访问/下载命中计数 */
   hits: number
-  /** 访问口令（空串=无）；工具拼「前缀+路径」直达链接时需追加 ?key= 才能通过校验 */
+  /** 访问密钥 accessKey（空串=无）；工具拼「前缀+路径」直达链接时需保留链接自带的 ?ak= 才能通过校验 */
   password?: string
   /** 是否允许浏览目录列表（旧路由缺省视为允许） */
   allowIndex?: boolean

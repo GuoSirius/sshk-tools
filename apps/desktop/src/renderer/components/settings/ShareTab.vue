@@ -148,7 +148,7 @@ async function save(): Promise<void> {
 // ── 挂载目录（多目录分享，用户 2026-11-18 三行卡片版）──
 // 行1：目录显示+选择+允许访问目录复选框(allowIndex)；行2：挂载点+是否启用开关(enabled)；
 // 行3：地址+复制+删除；保存即生效，无需重启
-interface MountRow { id: string; dir: string; alias: string; enabled: boolean; allowIndex: boolean }
+interface MountRow { id: string; dir: string; alias: string; enabled: boolean; allowIndex: boolean; password: string }
 const mounts = ref<MountRow[]>([])
 const mountsSaving = ref(false)
 /** 别名规范化：与内核 normalizeMountAlias 同规则（渲染层不能 import node 依赖包，规则真相源在内核） */
@@ -161,7 +161,7 @@ function randomAlias(): string {
   return `dir-${Math.random().toString(36).slice(2, 8)}`
 }
 function addMount(): void {
-  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true, allowIndex: true })
+  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true, allowIndex: true, password: '' })
 }
 async function pickMountDir(row: MountRow): Promise<void> {
   try {
@@ -189,7 +189,8 @@ async function removeMount(index: number): Promise<void> {
 function mountLink(row: MountRow): string {
   const s = shareStatus.value
   if (!s?.running || !s.port || !row.alias) return ''
-  return `http://${s.displayIp}:${s.port}/${row.alias}/`
+  const ak = row.password ? `?ak=${encodeURIComponent(row.password)}` : ''
+  return `http://${s.displayIp}:${s.port}/${row.alias}/${ak}`
 }
 /** 复制访问地址到系统剪贴板 */
 async function copyMountLink(row: MountRow): Promise<void> {
@@ -210,7 +211,7 @@ async function saveMounts(): Promise<void> {
     if (seen.has(alias)) { ElMessage.error(`挂载点「${alias}」重复，请修改`); return }
     seen.add(alias)
     row.alias = alias
-    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true, allowIndex: row.allowIndex !== false })
+    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true, allowIndex: row.allowIndex !== false, password: String(row.password ?? '') })
   }
   mountsSaving.value = true
   try {
@@ -297,7 +298,7 @@ async function saveProxies(): Promise<void> {
 
 onMounted(() => {
   // 挂载目录编辑态：从已保存配置拷贝（保存成功前不影响权威配置）
-  mounts.value = appConfig.shareMounts.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled, allowIndex: m.allowIndex !== false }))
+  mounts.value = appConfig.shareMounts.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled, allowIndex: m.allowIndex !== false, password: String(m.password ?? '') }))
   proxyRows.value = appConfig.shareProxies.map((r) => ({ id: r.id, prefix: r.prefix, target: r.target, keepHost: r.keepHost !== false, enabled: r.enabled }))
   void refreshShare()
   // 组件仅在激活时挂载：定时器跟随生命周期，持续刷新路由状态/访问日志/倒计时
@@ -378,7 +379,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
     <section class="settings-card">
       <div class="card-title">挂载目录 <el-tag size="small" type="info" class="mini-tag">{{ mounts.length }} 个</el-tag></div>
       <div class="hint" style="margin-bottom: 10px">
-        每个目录一条固定链接（http://IP:端口/挂载点/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。挂载点留空保存时随机生成并记住。
+        每个目录一条固定链接（http://IP:端口/挂载点/），可放下载文件、预览文件或 HTML 页面；保存即生效，无需重启。挂载点留空保存时随机生成并记住。填写访问密钥后链接自动带 ?ak=，访客需带正确 ak 才能访问（目录浏览、切换文件全程校验）。
       </div>
       <div v-for="(row, i) in mounts" :key="row.id" class="mount-card">
         <!-- 行1：目录显示（仅查看）+ 选择目录 + 允许访问目录复选框（逐目录目录浏览开关） -->
@@ -387,10 +388,13 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
           <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择目录</el-button>
           <el-checkbox v-model="row.allowIndex" size="small">允许访问目录</el-checkbox>
         </div>
-        <!-- 行2：挂载点输入 + 是否启用开关（关 = 整目录 404） -->
+        <!-- 行2：挂载点输入 + 访问密钥（show-password 带眼睛）+ 是否启用开关（关 = 整目录 404） -->
         <div class="mount-line2">
           <el-input v-model="row.alias" size="small" placeholder="挂载点" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
             <template #prepend>/</template>
+          </el-input>
+          <el-input v-model="row.password" size="small" show-password clearable class="mount-ak" placeholder="访问密钥 ak（留空不设）">
+            <template #prepend>ak</template>
           </el-input>
           <span class="switch-inline-label">启用</span>
           <el-switch v-model="row.enabled" />
@@ -519,6 +523,7 @@ onUnmounted(() => { if (shareTimer) { clearInterval(shareTimer); shareTimer = nu
 .switch-inline-label { font-size: 12px; color: var(--el-text-color-secondary); white-space: nowrap; }
 .mount-dir { flex: 1; min-width: 160px; }
 .mount-alias { flex: 1; min-width: 140px; }
+.mount-ak { flex: 1; min-width: 150px; }
 .mount-link { flex: 1; min-width: 200px; }
 .mount-line2 :deep(.el-button + .el-button) { margin-left: 0; }
 .mount-line2 :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }

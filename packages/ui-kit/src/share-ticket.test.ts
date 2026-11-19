@@ -40,6 +40,14 @@ describe('分享凭证按 id 反查', () => {
     expect(shareFileDirectUrl('http://x/t/', '')).toBe('http://x/t')
   })
 
+  it('文件直达 URL：保留 base 的 ?ak= 访问密钥（不把路径塞进 query）', () => {
+    expect(shareFileDirectUrl('http://x:8787/tok/?ak=s3cret', '/photos/a b.txt'))
+      .toBe('http://x:8787/tok/photos/a%20b.txt?ak=s3cret')
+    expect(shareFileDirectUrl('http://x:8787/tok/?ak=abc%2Fdef', 'sub/x.txt'))
+      .toBe('http://x:8787/tok/sub/x.txt?ak=abc%2Fdef')
+    expect(shareFileDirectUrl('http://x:8787/tok/?ak=k', '')).toBe('http://x:8787/tok?ak=k')
+  })
+
   it('多条凭证中精确匹配目标 id，跳过损坏键', () => {
     const store = mockStorage()
     store.set('sshk:share-dialog:aaa', 'not-json')

@@ -185,7 +185,7 @@ export function registerShareHubIpc(host: ShareHubHost): void {
     return hub.revoke(id)
   })
 
-  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean }) => {
+  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }) => {
     const caller = resolveToolId(toolId)
     if (caller && caller !== '*') {
       const route = hub.listRoutes().find((r) => r.id === id)

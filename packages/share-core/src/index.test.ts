@@ -93,15 +93,38 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect(traversal.status).toBe(404)
   })
 
-  it('口令：设置 password 后无 key → 403，带 key → 200', async () => {
+  it('访问密钥 ak：设置 password 后无 ak → 403，带 ak → 200；ticket.urls 自动带 ?ak=', async () => {
     const { hub, root } = makeHub()
     const { port } = await hub.start(0)
     const t = await hub.create({ toolId: 't', label: 'x', root, entry: 'index.html', password: 'sekret' })
     const base = `http://127.0.0.1:${port}/${t.token}/`
     expect((await fetch(base)).status).toBe(403)
-    expect((await fetch(`${base}?key=sekret`)).status).toBe(200)
-    expect((await fetch(`${base}index.html?key=wrong`)).status).toBe(403)
-    expect((await fetch(`${base}index.html?key=sekret`)).status).toBe(200)
+    expect((await fetch(`${base}?ak=sekret`)).status).toBe(200)
+    expect((await fetch(`${base}index.html?ak=wrong`)).status).toBe(403)
+    expect((await fetch(`${base}index.html?ak=sekret`)).status).toBe(200)
+    // ticket 返回的链接自带 ?ak=（访客复制即可访问）
+    expect(t.urls[0]).toContain('?ak=sekret')
+  })
+
+  it('密码继承：子路由未设 password 时继承最近祖先路由的密钥', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const parent = await hub.create({ toolId: 't', label: '整根', root, password: 'root-key' })
+    const sub = await hub.create({ toolId: 't', label: '子项', root, entry: 'a/b/file.txt' })
+    expect(sub.urls[0]).toContain('?ak=root-key')
+    // 显式设置优先于继承
+    const own = await hub.create({ toolId: 't', label: '自有', root, entry: 'a/c.txt', password: 'own-key' })
+    expect(own.urls[0]).toContain('?ak=own-key')
+    expect(parent.urls[0]).toContain('?ak=root-key')
+  })
+
+  it('renew patch.password：改密钥后 ticket 链接带新 ak', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const t = await hub.create({ toolId: 't', label: 'x', root, password: 'old' })
+    const updated = await hub.renew(t.id, null, 'reset', { password: 'new' })
+    expect(updated.urls[0]).toContain('?ak=new')
+    expect(updated.urls[0]).not.toContain('?ak=old')
   })
 
   it('TTL 到期：命中时惰性校验 → 404 + 路由摘除', async () => {
@@ -242,5 +265,17 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     const off = await fetch(`http://127.0.0.1:${port}/off-dir/`)
     expect(on.status).toBe(200)
     expect(off.status).toBe(404)
+  })
+
+  it('setMounts：带 password 的挂载需 ?ak= 才能访问；删密钥后裸链可达', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    hub.setMounts([{ id: 'm', dir: root, alias: 'secured', enabled: true, password: 'mount-ak' }])
+    const port = hub.status().port
+    expect((await fetch(`http://127.0.0.1:${port}/secured/`)).status).toBe(403)
+    expect((await fetch(`http://127.0.0.1:${port}/secured/?ak=mount-ak`)).status).toBe(200)
+    // 重新 setMounts 覆盖为空密钥 → 裸链恢复可达
+    hub.setMounts([{ id: 'm', dir: root, alias: 'secured', enabled: true, password: '' }])
+    expect((await fetch(`http://127.0.0.1:${port}/secured/`)).status).toBe(200)
   })
 })
