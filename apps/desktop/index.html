@@ -9,8 +9,11 @@
          img-src 放行 blob:：图片库上传缩略图用 URL.createObjectURL(本地文件) 预览，
          不放行会被 CSP 拦截成浏览器裂图（2026-11-17 用户实测）；
          connect-src 放行 https:：与 img-src https: 对齐——snapdom 截图内联像素用 fetch 拉外链图片，
-         fetch 无显式 connect-src 时回退 default-src 'self' 被拦（2026-11-16 用户实测 OSS 图片截图报错） -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https: localres:; connect-src 'self' https: localres:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:" />
+         fetch 无显式 connect-src 时回退 default-src 'self' 被拦（2026-11-16 用户实测 OSS 图片截图报错）；
+         media-src 放行 localres:/http:/https:：音视频播放走 localres://（本地临时文件）与
+         直链（分享链接/域名直链），无 media-src 时回退 default-src 'self' 被拦——
+         表现为视频「一直加载中/加载失败」（2026-11-19 用户实测 CSP violation 日志定位） -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https: localres:; media-src 'self' blob: localres: http: https:; connect-src 'self' https: localres:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:" />
     <title>sshk-tools</title>
   </head>
   <body>

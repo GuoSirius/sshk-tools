@@ -78,8 +78,12 @@ export function isMediaStreaming(key: string): boolean {
 }
 
 /**
- * 等待至少 need 字节就绪（或下载进入终态/超时）。
+ * 等待至少 need 字节就绪（或下载进入终态）。
  * 供 localres handler 在 Range 落到未写入区域时调用，避免浏览器拿到空响应卡住。
+ *
+ * 超时语义（2026-11-19 改进）：timeoutMs 是「无进展停滞超时」——只要下载还在推进
+ * （uploaded 增长）就继续等，tail Range（mp4 moov 在尾部时浏览器必请求文件尾）
+ * 会一直等到该区间落盘或下载终态，而不是固定 30s 就 503 打断播放。
  * 返回最新会话状态；会话不存在返回 undefined。
  */
 export async function waitForMediaBytes(
@@ -90,13 +94,18 @@ export async function waitForMediaBytes(
   const timeoutMs = opts.timeoutMs ?? 30_000
   const intervalMs = opts.intervalMs ?? 40
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
-  const deadline = Date.now() + timeoutMs
+  let lastUploaded = -1
+  let lastProgressAt = Date.now()
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const st = downloads.get(key)
     if (!st) return undefined
     if (st.error || st.done || st.uploaded >= need) return st
-    if (Date.now() >= deadline) return st
+    if (st.uploaded !== lastUploaded) {
+      lastUploaded = st.uploaded
+      lastProgressAt = Date.now()
+    }
+    if (Date.now() - lastProgressAt >= timeoutMs) return st // 下载停滞（无进展）才超时
     await sleep(intervalMs)
   }
 }

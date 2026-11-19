@@ -65,7 +65,8 @@ export function installLocalResHandler(config: ConfigLike): void {
       const range = parseByteRange(rangeHeader, effectiveTotal)
       if (range) {
         const { start, end } = range
-        // 下载中：等 start+1 字节就绪（读到请求起点才有意义）；读到多少算多少，不空等整个区间
+        // 下载中：等 start+1 字节就绪（读到请求起点才有意义）；超时=下载停滞判定，
+        // 下载推进期间 tail Range（moov 在尾部）会持续等待直到区间落盘或终态
         if (streaming) {
           const st = await waitForMediaBytes(p, start + 1, { timeoutMs: 30_000 })
           if (!st || st.error || (st.uploaded <= start && st.done)) {

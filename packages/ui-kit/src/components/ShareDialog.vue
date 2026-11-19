@@ -32,7 +32,7 @@ const props = defineProps<{
   /** 可选访问口令 */
   password?: string
 }>()
-const emit = defineEmits<{ 'update:open': [boolean] }>()
+const emit = defineEmits<{ 'update:open': [boolean]; /** 创建/重新生成/撤销等路由变更后通知宿主刷新列表状态（无需等弹框关闭） */ 'changed': [] }>()
 
 const SPEC = {
   configGet: { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取应用配置' },
@@ -199,6 +199,7 @@ async function createTicket(): Promise<void> {
     allowIndexEffective.value = allowIndex.value
     accessKeyEffective.value = accessKey.value
     phase.value = 'ready'
+    emit('changed')
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success(permanentCreate ? '永久分享已创建，链接已复制' : '分享已创建，链接已复制')
   } catch (err) {
@@ -369,6 +370,7 @@ async function regenerate(): Promise<void> {
     accessKeyEffective.value = accessKey.value
     activeUrlIndex.value = 0
     pendingTtl.value = null
+    emit('changed')
     if (t.urls[0]) await copyUrl(t.urls[0])
     ElMessage.success('新分享已创建，链接已复制（旧链接已失效）')
   } catch (err) { ElMessage.error((err as Error).message) }
@@ -397,6 +399,7 @@ async function revoke(): Promise<void> {
     pendingTtl.value = null
     phase.value = 'form'
     formHint.value = '（当前链接已撤销）'
+    emit('changed')
     ElMessage.success('已撤销分享')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { busy.value = false }

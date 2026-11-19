@@ -41,15 +41,6 @@ const emit = defineEmits<{
       </el-form-item>
       <el-form-item label="用户名" required><el-input clearable v-model="profile.username" /></el-form-item>
       <el-form-item label="远端位置"><el-input clearable v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
-      <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
-      <el-form-item label="签名URL模板">
-        <el-input clearable v-model="profile.signUrlTemplate" placeholder="留空=裸链；如 https://cdn/sign?src={url}&token=..." />
-        <FormHint inline detail="视频/音频预览优先用「访问域名 + 文件路径」直链，免下载。若直链需签名鉴权，在此填模板，用 {url} 占位符代表拼好的原始直链（如 https://cdn/x?token=abc&src={url}）。留空则直接用裸链。签名过期导致播放失败时会自动回退为下载后播放。" />
-      </el-form-item>
-      <el-form-item label="被动模式">
-        <el-switch v-model="profile.passive" />
-        <span class="hint-inline">仅 FTP 生效</span>
-      </el-form-item>
       <el-form-item label="密码 / 口令">
         <div class="combo">
           <el-input
@@ -64,6 +55,15 @@ const emit = defineEmits<{
           </el-tooltip>
           <el-button :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', props.profile.id)">清除</el-button>
         </div>
+      </el-form-item>
+      <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
+      <el-form-item label="被动模式">
+        <el-switch v-model="profile.passive" />
+        <span class="hint-inline">仅 FTP 生效</span>
+      </el-form-item>
+      <el-form-item label="签名URL模板">
+        <el-input clearable v-model="profile.signUrlTemplate" placeholder="留空=裸链；如 https://cdn/sign?src={url}&token=..." />
+        <FormHint inline detail="视频/音频预览优先用「访问域名 + 文件路径」直链，免下载。若直链需签名鉴权，在此填模板，用 {url} 占位符代表拼好的原始直链（如 https://cdn/x?token=abc&src={url}）。留空则直接用裸链。签名过期导致播放失败时会自动回退为下载后播放。" />
       </el-form-item>
       <el-form-item label="连通性" class="full">
         <div class="combo">

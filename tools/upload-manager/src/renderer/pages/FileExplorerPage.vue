@@ -447,8 +447,7 @@ watch(profileId, () => {
   void list()
 })
 watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
-// 分享弹框关闭后刷新路由（创建/撤销/TTL 变更后同步名称列状态图标）
-watch(() => shareDialog.value.open, (v) => { if (!v) void loadShareRoutes() })
+// 分享路由变更（创建/撤销/重新生成）由 ShareDialog 的 changed 事件即时通知刷新（见模板 @changed）
 
 // ── 导航 ──
 function enterDir(entry: FsEntry): void {
@@ -2534,6 +2533,7 @@ function onKeydown(event: KeyboardEvent): void {
       :label="shareDialog.label"
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
+      @changed="void loadShareRoutes()"
     />
 
     <!-- §十一：设置备注（确认后生效；多选批量同备注） -->
@@ -2773,8 +2773,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-share-mark.is-inherited { color: var(--el-color-warning); }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
-/* 搜索结果嵌套文件的子目录灰字提示（searchDirHint） */
-.fs-name-sub { flex: none; font-size: 12px; opacity: .55; margin-left: 4px; }
+/* 搜索结果嵌套文件的子目录灰字提示（searchDirHint）：
+   必须 flex-shrink 可收缩+自身截断——flex:none 会让长路径不收缩，把文件名挤成
+   「01…」并溢出网格单元格叠到相邻列（2026-11-19 用户实测搜索结果名称错乱） */
+.fs-name-sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; opacity: .55; margin-left: 4px; }
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 /* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
