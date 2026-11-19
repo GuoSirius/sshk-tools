@@ -395,6 +395,14 @@ class FsTransferEngine {
         this.schedulePersist()
         return true
       }
+      /** 清除全部（用户 2026-11-19，二次确认在渲染层）：先全部停止，再移除所有非运行中任务；
+       *  running 任务会在引擎边界终止（stopAll 已置取消），届时再点一次即可清掉 */
+      case 'clearAll': {
+        this.stopAll()
+        this.remove([...this.tasks.keys()])
+        this.schedulePersist()
+        return true
+      }
       default: throw new Error(`未知传输控制动作：${String(req?.action)}`)
     }
   }

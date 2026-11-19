@@ -132,7 +132,7 @@ export type FsTransferStatus = 'queued' | 'running' | 'paused' | 'success' | 'fa
 /** 传输队列控制动作（plans/10：单一 fs:transfer:control 通道） */
 export type FsTransferControlAction =
   | 'start' | 'pause' | 'resume' | 'stop' | 'retry' | 'remove'
-  | 'startAll' | 'pauseAll' | 'stopAll' | 'retryFailed' | 'clearFinished'
+  | 'startAll' | 'pauseAll' | 'stopAll' | 'retryFailed' | 'clearFinished' | 'clearAll'
 
 export interface FsTransferControlRequest {
   action: FsTransferControlAction

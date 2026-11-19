@@ -65,10 +65,31 @@ const { x, y, isDragging } = useDraggable(panelRef, {
   initialValue: { x: init.x, y: init.y },
   preventDefault: true,
   stopPropagation: true,
-  restrictInView: true,
   onMove: () => { dragMoved = true },
   onEnd: () => { persist(); setTimeout(() => { dragMoved = false }, 0) },
 })
+
+/** 拖出视口防丢（用户 2026-11-19）：vueuse 的 restrictInView 只在传 containerElement 时生效
+ *  （面板 fixed 悬浮无容器，传了等于没传），拖出视口后就抓不回来了。
+ *  自行钳制：横向上左/右至少留 96px 可见，纵向顶边不高于视口顶、不沉到视口底 44px 以下——
+ *  头部拖拽条永远有一段留在视口内，任何时候都能抓回来。 */
+const MIN_VISIBLE_X = 96
+const MIN_TOP_VISIBLE_Y = 44
+function clampXY(nx: number, ny: number): { x: number; y: number } {
+  const el = panelRef.value
+  const w = el?.offsetWidth ?? 360
+  const vw = window.innerWidth ?? 1200
+  const vh = window.innerHeight ?? 800
+  return {
+    x: Math.min(Math.max(nx, MIN_VISIBLE_X - w), vw - MIN_VISIBLE_X),
+    y: Math.min(Math.max(ny, 0), vh - MIN_TOP_VISIBLE_Y),
+  }
+}
+watch([x, y], ([nx, ny]) => {
+  const c = clampXY(nx, ny)
+  if (c.x !== x.value) x.value = c.x
+  if (c.y !== y.value) y.value = c.y
+}, { flush: 'sync' })
 
 function persist(): void {
   localStorage.setItem(STORE_KEY, JSON.stringify({
@@ -78,7 +99,7 @@ function persist(): void {
 }
 watch([tab, filter, expanded], persist)
 
-/** 窗口 resize：clamp 回可视区，防拖出后找不到 */
+/** 窗口 resize：完整拉回可视区，防窗口缩放后面板在屏外 */
 function clampIntoView(): void {
   const el = panelRef.value
   if (!el) return
@@ -204,11 +225,11 @@ async function retryFailed(): Promise<void> {
   if (!failedCount.value) return
   await ctl('retryFailed')
 }
-async function clearFinished(): Promise<void> {
-  const finished = props.tasks.filter((t) => ['success', 'failed', 'canceled', 'conflict'].includes(t.status)).length
-  if (!finished) { ElMessage.info('没有可清理的任务'); return }
-  if (!(await confirmBox(`清理 ${finished} 个已完结任务记录？（不删除已传输的文件）`, '清理已完结'))) return
-  await ctl('clearFinished')
+/** 清除全部（用户 2026-11-19）：停止全部进行中任务并移除所有任务记录，二次确认 */
+async function clearAllTasks(): Promise<void> {
+  if (!props.tasks.length) return
+  if (!(await confirmBox(`清除全部 ${props.tasks.length} 个任务记录？进行中的任务会停止并一并移除（不删除已传输的文件）。`, '清除全部'))) return
+  await ctl('clearAll')
 }
 
 // ── 遗留分片（崩溃遗留 uploadId；面板展示 + 手动清理，二次确认）──
@@ -277,16 +298,21 @@ defineExpose({
         <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; emit('visible-change', false)">✕</el-button>
       </div>
 
-      <!-- 全局控制：开始/暂停/停止/失败重试/清理（语义配色） -->
+      <!-- 全局控制：开始/暂停/停止/失败重试（语义配色） -->
       <div class="fs-tpanel-tools">
         <el-button size="small" type="primary" plain :icon="VideoPlay" :disabled="!activeCount" @click="ctl('startAll')">全部开始</el-button>
         <el-button size="small" type="warning" plain :icon="VideoPause" :disabled="!activeCount" @click="ctl('pauseAll')">全部暂停</el-button>
         <el-button size="small" type="danger" plain :icon="CircleClose" :disabled="!activeCount" @click="stopAll">全部停止</el-button>
         <el-button size="small" type="warning" text :icon="RefreshRight" :disabled="!failedCount" @click="retryFailed">失败重试</el-button>
-        <el-button size="small" type="danger" text :icon="Delete" @click="clearFinished">清理已完结</el-button>
       </div>
 
-      <!-- 分栏 + 名称过滤 -->
+      <!-- 搜索 + 清除全部（用户 2026-11-19 布局：搜索行在上、tab 行在下） -->
+      <div class="fs-tpanel-filterrow">
+        <el-input v-model="filter" size="small" clearable placeholder="按名称过滤" class="fs-tpanel-filter" />
+        <el-button size="small" type="danger" plain :icon="Delete" :disabled="!tasks.length" @click="clearAllTasks">清除全部</el-button>
+      </div>
+
+      <!-- 分栏 -->
       <div class="fs-tpanel-tabs">
         <el-radio-group v-model="tab" size="small">
           <el-radio-button value="all">全部 {{ tasks.length }}</el-radio-button>
@@ -294,7 +320,6 @@ defineExpose({
           <el-radio-button value="download">下载 {{ downloadCount.done }}/{{ downloadCount.total }}</el-radio-button>
           <el-radio-button value="other">其它 {{ otherCount.done }}/{{ otherCount.total }}</el-radio-button>
         </el-radio-group>
-        <el-input v-model="filter" size="small" clearable placeholder="按名称过滤" class="fs-tpanel-filter" />
       </div>
 
       <!-- 遗留分片提示（plans/10 §5：崩溃遗留 uploadId 手动清理入口） -->
@@ -379,8 +404,11 @@ defineExpose({
 .fs-tpanel-tools .el-button + .el-button { margin-left: 0; }
 .fs-tpanel-tools .el-button.is-text { padding: 0 6px; }
 
+/* 搜索 + 清除全部一行（用户 2026-11-19）；输入框沾满剩余空间（项目约定） */
+.fs-tpanel-filterrow { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; }
+.fs-tpanel-filter { flex: 1; min-width: 0; }
+
 .fs-tpanel-tabs { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; flex-wrap: wrap; }
-.fs-tpanel-filter { width: 140px; flex: none; margin-left: auto; }
 
 .fs-tpanel-orphans { display: flex; align-items: center; gap: 8px; margin: 0 10px 8px; padding: 6px 10px; border-radius: 6px; background: var(--el-color-warning-light-9); font-size: 12px; color: var(--el-color-warning-dark-2, var(--el-color-warning)); }
 
