@@ -20,7 +20,8 @@ const emit = defineEmits<{ (e: 'visible-change', v: boolean): void }>()
 const STORE_KEY = 'sshk.fs.transferPanel.v2' // v2：默认位置改底部（用户 2026-11-19），旧记忆作废走新默认
 type TabKey = 'all' | 'upload' | 'download' | 'other'
 
-interface PanelState { x: number; y: number; expanded: boolean; tab: TabKey; filter: string }
+// 展开态不持久化（用户 2026-11-19）：进入文件系统一律收起，只有操作触发/手动点击才展开
+interface PanelState { x: number; y: number; tab: TabKey; filter: string }
 
 function defaultPosition(): { x: number; y: number } {
   // 用户 2026-11-19：默认贴底（收起条落在列表底部、状态条上方、右缘近「传输队列」按钮）
@@ -32,13 +33,12 @@ function defaultPosition(): { x: number; y: number } {
   }
 }
 function loadState(): PanelState {
-  const dft: PanelState = { ...defaultPosition(), expanded: false, tab: 'all', filter: '' }
+  const dft: PanelState = { ...defaultPosition(), tab: 'all', filter: '' }
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY) ?? '') as Partial<PanelState>
     return {
       x: Number.isFinite(raw.x) ? Number(raw.x) : dft.x,
       y: Number.isFinite(raw.y) ? Number(raw.y) : dft.y,
-      expanded: raw.expanded === true,
       tab: raw.tab === 'upload' || raw.tab === 'download' || raw.tab === 'other' ? raw.tab : 'all',
       filter: typeof raw.filter === 'string' ? raw.filter : '',
     }
@@ -48,8 +48,8 @@ function loadState(): PanelState {
 }
 
 const init = loadState()
-// 展开/收起态按上次记忆（首次进入默认收起；状态条摘要条有活动任务时由页面高亮）
-expanded.value = init.expanded
+// 展开态不记忆：每次进入文件系统都收起，只有操作触发 show() 或点状态栏按钮才展开
+expanded.value = false
 const tab = ref<TabKey>(init.tab)
 const filter = ref(init.filter)
 const panelRef = ref<HTMLElement | null>(null)
@@ -94,10 +94,10 @@ watch([x, y], ([nx, ny]) => {
 function persist(): void {
   localStorage.setItem(STORE_KEY, JSON.stringify({
     x: Math.round(x.value), y: Math.round(y.value),
-    expanded: expanded.value, tab: tab.value, filter: filter.value,
+    tab: tab.value, filter: filter.value,
   } satisfies PanelState))
 }
-watch([tab, filter, expanded], persist)
+watch([tab, filter], persist)
 
 /** 窗口 resize：完整拉回可视区，防窗口缩放后面板在屏外 */
 function clampIntoView(): void {

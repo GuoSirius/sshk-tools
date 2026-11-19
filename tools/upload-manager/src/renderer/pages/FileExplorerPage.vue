@@ -1201,9 +1201,15 @@ function dirLazyProps(getPid: () => string) {
 }
 const moveDirProps = dirLazyProps(() => moveDestProfile.value || profileId.value)
 const moveCascaderRef = ref<{ togglePopperVisible: (visible: boolean) => void } | null>(null)
+/** 级联自身选中值（仅 @change 驱动）：用于「只选根」回显 / 的 class 判断。
+ *  不能绑手输框值——用户手输改 / 时不该影响级联框的显示（用户 2026-11-19） */
+const moveCascaderPicked = ref('')
+// 通道切换 → 级联 :key 重建、内部选中态清空，镜像 ref 同步清空（不碰 lastMoveDir，手输回填不受影响）
+watch(moveDestProfile, () => { moveCascaderPicked.value = '' })
 /** 点单选圈：路径回填手输框并收起面板（checkStrictly 下 EP 不会自动收起） */
 function onMoveDirPicked(v: unknown): void {
   moveDirInput.value = String(v ?? '')
+  moveCascaderPicked.value = String(v ?? '')
   if (moveDirInput.value) lastMoveDir.value = moveDirInput.value
   moveCascaderRef.value?.togglePopperVisible(false)
 }
@@ -1666,6 +1672,8 @@ const unzipEntry = ref<FsEntry | null>(null)
 const unzipDestProfile = ref('')
 const unzipDirInput = ref('')
 const unzipCascaderRef = ref<{ togglePopperVisible: (v: boolean) => void } | null>(null)
+const unzipCascaderPicked = ref('') // 级联自身选中值，仅 @change 驱动（同 move，不绑手输框）
+watch(unzipDestProfile, () => { unzipCascaderPicked.value = '' })
 const unzipDirProps = dirLazyProps(() => unzipDestProfile.value)
 
 function openUnzip(entry: FsEntry): void {
@@ -1680,6 +1688,7 @@ function openUnzip(entry: FsEntry): void {
 }
 function onUnzipDirPicked(v: unknown): void {
   unzipDirInput.value = String(v ?? '')
+  unzipCascaderPicked.value = String(v ?? '')
   unzipCascaderRef.value?.togglePopperVisible(false)
 }
 async function submitUnzip(overwrite = false): Promise<void> {
@@ -2209,7 +2218,7 @@ function onKeydown(event: KeyboardEvent): void {
         <el-cascader
           ref="moveCascaderRef"
           :key="moveDestProfile || profileId || ''"
-          :class="['fs-move-cascader', { 'is-root-selected': moveDirInput === '/' }]"
+          :class="['fs-move-cascader', { 'is-root-selected': moveCascaderPicked === '/' }]"
           :props="moveDirProps"
           separator="/"
           popper-class="fs-dir-cascader-popper"
@@ -2243,7 +2252,7 @@ function onKeydown(event: KeyboardEvent): void {
         <el-cascader
           ref="unzipCascaderRef"
           :key="unzipDestProfile || profileId || ''"
-          :class="['fs-move-cascader', { 'is-root-selected': unzipDirInput === '/' }]"
+          :class="['fs-move-cascader', { 'is-root-selected': unzipCascaderPicked === '/' }]"
           :props="unzipDirProps"
           separator="/"
           popper-class="fs-dir-cascader-popper"
