@@ -139,7 +139,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'H6', group: 'H', title: '图片预览与新建文件', guide: '双击图片弹层预览（可缩放）；「新建文件」创建空白文本直接进编辑器，保存后远端可见', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-6' },
   { id: 'H7', group: 'H', title: '键盘与多选操作', guide: 'Ctrl/Shift 点选、全选、Delete 删除、F2 重命名、Ctrl+C/V/X 剪贴板跨目录粘贴、Backspace 上一级均生效', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/F-5' },
   { id: 'H8', group: 'H', title: '密钥未配置与错误态引导', guide: '未配置密钥的通道给出引导文案；断网/错密码时列表给分类错误（连接失败/认证失败）+ 重试按钮', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/§3.3' },
-  { id: 'H9', group: 'H', title: '音视频在线播放（二期）', guide: '双击 mp4/mp3 等媒体文件弹层播放（<video>/<audio> 原生控件）；超过 64MB 引导下载后本地播放；mkv/mov 等不保证可播的扩展无播放入口（只下载）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
+  { id: 'H9', group: 'H', title: '音视频在线播放（二期）', guide: '双击 mp4/mp3 等媒体文件弹层播放（<video>/<audio> 原生控件）；超过在线预览上限（可配，默认 100MB，0=不限，入口：更多▾→上限设置）引导下载后本地播放；mkv/mov 等不保证可播的扩展无播放入口（只下载）', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
   { id: 'H10', group: 'H', title: '跨通道互拷（二期）', guide: '「复制到…」选其它通道 → 目录自动递归展开入队（超 1500 文件截断提示）；剪贴板跨通道粘贴按复制执行（剪切跨通道降级为复制，源保留）；传输队列显示「源 → 目标」；同名冲突待确认可覆盖', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
   { id: 'H11', group: 'H', title: '递归搜索（二期）', guide: '搜索框回车触发递归搜索（当前路径前缀内，根=整个通道）；结果横幅显示数量与截断提示，「返回目录」还原；云侧扫描上限 5 万 key、远程限深 6 层', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },
   { id: 'H12', group: 'H', title: '目录容量统计（二期）', guide: '目录行「统计」或选中单个目录后工具栏「统计」：弹窗显示总大小与文件数；超大目录达扫描上限时明确标注「数值为已扫部分」', entry: { type: 'route', target: 'upload-manager' }, relates: 'X6/二期' },

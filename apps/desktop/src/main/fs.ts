@@ -48,6 +48,7 @@ import {
   type FsWriteRequest,
   type FsZipRequest,
   type FsZipResult,
+  FS_MEDIA_PLAY_LIMIT,
   fsMissingChunks,
   fsMultipartPlan,
   fsTransferCanPersist,
@@ -82,6 +83,9 @@ const FS_DOWNLOAD_CAP_DEFAULT = 0
 const FS_TRANSFER_FILE_CAP_MAX = 100_000
 /** 云递归搜索扫描页数上限配置（默认 500；0 = 不限） */
 const CFG_SEARCH_MAX_PAGES = 'app.fs.searchMaxPages'
+/** 音视频在线预览大小上限（MB）：0 = 不限；默认 100（用户 2026-11-19） */
+const CFG_MEDIA_LIMIT_MB = 'app.fs.mediaLimitMb'
+const FS_MEDIA_LIMIT_MB_MAX = 4096
 const FS_SEARCH_MAX_PAGES_DEFAULT = 500
 const FS_SEARCH_MAX_PAGES_MAX = 100_000
 /** 文本编码/换行符转换的文件大小上限（§十一 转换格式 A） */
@@ -184,6 +188,12 @@ function readSearchMaxPages(get: (key: string) => unknown): number {
   const raw = Number(get(CFG_SEARCH_MAX_PAGES))
   if (!Number.isFinite(raw) || raw < 0) return FS_SEARCH_MAX_PAGES_DEFAULT
   return Math.min(FS_SEARCH_MAX_PAGES_MAX, Math.floor(raw))
+}
+/** 音视频在线预览上限（MB）：0 = 不限；非法回落默认 100 */
+function readMediaLimitMb(get: (key: string) => unknown): number {
+  const raw = Number(get(CFG_MEDIA_LIMIT_MB))
+  if (!Number.isFinite(raw) || raw < 0) return FS_MEDIA_PLAY_LIMIT / (1024 * 1024)
+  return Math.min(FS_MEDIA_LIMIT_MB_MAX, Math.floor(raw))
 }
 
 /** 从配置读 zip 上限（缺省/非法回落默认值并钳制到合法区间） */
@@ -1550,7 +1560,11 @@ export class FsRuntime {
     if ((stat.size ?? 0) > bytesCap) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
     const { data } = await driver.readBuffer(zipPath)
     const entries = unzipSync(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
-    const destDir = zipPath.replace(/\.zip$/i, '')
+    // 目标目录名：用户可选（渲染层先弹目录名输入+冲突处理）；缺省 = zip 名去扩展名（原有行为）
+    const zipParent = zipPath.lastIndexOf('/') <= 0 ? '/' : zipPath.slice(0, zipPath.lastIndexOf('/'))
+    const destName = String(req?.destDirName ?? '').trim() || fsBasename(zipPath).replace(/\.zip$/i, '')
+    if (/[\\/]/.test(destName) || destName === '.' || destName === '..') throw new Error('解压目标目录名不能包含斜杠或路径段')
+    const destDir = zipParent === '/' ? `/${destName}` : `${zipParent}/${destName}`
     let files = 0
     let bytes = 0
     for (const [name, content] of Object.entries(entries)) {
@@ -1822,17 +1836,18 @@ export class FsRuntime {
     return { fileCap, bytesCapMb: Math.round(bytesCap / (1024 * 1024)) }
   }
 
-  /** 传输文件数上限（上传 / 下载分开；0 = 不限；默认上传 10000、下载 0 不限） */
-  transferCaps(): { uploadCap: number; downloadCap: number; searchMaxPages: number } {
+  /** 传输文件数上限（上传 / 下载分开；0 = 不限；默认上传 10000、下载 0 不限）+ 在线预览上限（MB，0=不限） */
+  transferCaps(): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number } {
     const get = (k: string): unknown => this.opts.services.config.get(k)
     return {
       uploadCap: readUploadCap(get),
       downloadCap: readDownloadCap(get),
       searchMaxPages: readSearchMaxPages(get),
+      mediaLimitMb: readMediaLimitMb(get),
     }
   }
 
-  setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number }): { uploadCap: number; downloadCap: number; searchMaxPages: number } {
+  setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number }): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number } {
     const setCap = (key: string, raw: number | undefined, max: number, label: string): void => {
       if (raw == null) return
       const v = Math.floor(Number(raw))
@@ -1842,6 +1857,7 @@ export class FsRuntime {
     setCap(CFG_UPLOAD_CAP, req?.uploadCap, FS_TRANSFER_FILE_CAP_MAX, '上传文件数上限')
     setCap(CFG_DOWNLOAD_CAP, req?.downloadCap, FS_TRANSFER_FILE_CAP_MAX, '下载文件数上限')
     setCap(CFG_SEARCH_MAX_PAGES, req?.searchMaxPages, FS_SEARCH_MAX_PAGES_MAX, '搜索扫描页数上限')
+    setCap(CFG_MEDIA_LIMIT_MB, req?.mediaLimitMb, FS_MEDIA_LIMIT_MB_MAX, '在线预览大小上限')
     return this.transferCaps()
   }
 

@@ -200,10 +200,10 @@ async function submitZipLimits(): Promise<void> {
   }
 }
 
-// ── 上限设置（上传 / 下载分开可配；0=不限；搜索扫描页数默认 500、0=不限）──
+// ── 上限设置（上传 / 下载分开可配；0=不限；搜索扫描页数默认 500、0=不限；在线预览 MB 默认 100、0=不限）──
 const transferCapsOpen = ref(false)
 // 默认（用户 2026-11-18 定版）：上传 10000、下载 0 不限制
-const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500 })
+const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500, mediaLimitMb: 100 })
 const transferCapsSaving = ref(false)
 async function openTransferCaps(): Promise<void> {
   try { transferCapsForm.value = await window.api.fs.transferCaps() } catch { /* 读取失败按缺省值 */ }
@@ -216,13 +216,25 @@ async function submitTransferCaps(): Promise<void> {
       uploadCap: transferCapsForm.value.uploadCap,
       downloadCap: transferCapsForm.value.downloadCap,
       searchMaxPages: transferCapsForm.value.searchMaxPages,
+      mediaLimitMb: transferCapsForm.value.mediaLimitMb,
     })
     transferCapsForm.value = r
+    mediaLimitBytes.value = r.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : r.mediaLimitMb * 1024 * 1024
     ElMessage.success('上限设置已更新')
     transferCapsOpen.value = false
   } catch (err) { ElMessage.error(friendlyError(err)) }
   finally { transferCapsSaving.value = false }
 }
+
+/** 音视频在线预览上限（字节，可配 app.fs.mediaLimitMb；Infinity=不限）——页面加载时拉一次 */
+const mediaLimitBytes = ref<number>(FS_MEDIA_PLAY_LIMIT)
+async function loadMediaLimit(): Promise<void> {
+  try {
+    const caps = await window.api.fs.transferCaps()
+    mediaLimitBytes.value = caps.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : caps.mediaLimitMb * 1024 * 1024
+  } catch { /* 失败用共享常量缺省 */ }
+}
+const mediaLimitText = computed(() => mediaLimitBytes.value === Number.POSITIVE_INFINITY ? '不限' : fsFormatSize(mediaLimitBytes.value))
 
 // ── §十一：目录备注（应用侧 fsAnnotations）──
 const annotations = ref(new Map<string, string>())
@@ -566,14 +578,14 @@ function fileIcon(entry: FsEntry): typeof Document {
   return Document
 }
 
-/** 音视频在线播放（二期）：超阈值引导下载后本地播放 */
+/** 音视频在线播放（二期）：超阈值引导下载后本地播放（阈值可配，0=不限） */
 function openPlayer(entry: FsEntry): void {
-  if ((entry.size ?? 0) > FS_MEDIA_PLAY_LIMIT) {
-    confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${fsFormatSize(FS_MEDIA_PLAY_LIMIT)}）`, '文件过大')
+  if ((entry.size ?? 0) > mediaLimitBytes.value) {
+    confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${mediaLimitText.value}）`, '文件过大')
     return
   }
   player.value = { open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true }
-  void window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_MEDIA_PLAY_LIMIT })
+  void window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: mediaLimitBytes.value === Number.POSITIVE_INFINITY ? Number.MAX_SAFE_INTEGER : mediaLimitBytes.value })
     .then((r) => {
       const mime = fsMediaMime(entry.name) || 'application/octet-stream'
       player.value.src = `data:${mime};base64,${r.contentBase64}`
@@ -1096,16 +1108,13 @@ const moveDirProps = {
   lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
     const pid = moveDestProfile.value || profileId.value
     if (!pid) { resolve([]); return }
-    // 首层首位放「根目录」可选中项（用户 2026-11-18：下拉必须能选根 /）；子目录平铺在其下，无需多下钻一层。
-    // 根节点钉 leaf=true：它的子目录已在首层平铺，不需要再展开重复列一遍
+    // 首层直接列一级目录（用户 2026-11-19：根目录不作为层级节点出现在级联里，
+    // 否则它和自己的子目录平铺在一列显得层级错乱）；选根走弹框里的「根目录 /」快捷 chip 或手输 /
     if (node.level === 0) {
       try {
         const page = await window.api.fs.list({ profileId: pid, path: '/' })
-        resolve([
-          { value: '/', label: '/（根目录）', leaf: true },
-          ...page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })),
-        ])
-      } catch { resolve([{ value: '/', label: '/（根目录）', leaf: true }]) }
+        resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
+      } catch { resolve([]) }
       return
     }
     const parent = String(node.value ?? '')
@@ -1578,18 +1587,48 @@ async function doZip(targets?: FsEntry[]): Promise<void> {
 async function doUnzip(entry: FsEntry): Promise<void> {
   if (!hasWritable.value || activeChannel.value?.type !== 'local') { ElMessage.warning('解压仅支持可写的本地目录通道'); return }
   if (!isFsZipName(entry.name)) { ElMessage.warning('仅支持 .zip 压缩包'); return }
-  try {
-    await ElMessageBox.confirm(
-      `将把「${entry.name}」解压到同级目录「${entry.name.replace(/\.zip$/i, '')}/」。确认解压吗？`,
-      '解压',
-      { confirmButtonText: '解压', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-    const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path })
-    ElMessage.success(`已解压 ${r.files} 个文件 → ${r.destDir}`)
-    void list(false)
-  } catch (err) {
-    if ((err as Error).message !== 'cancel' && err !== 'cancel') ElMessage.error(friendlyError(err))
+  const defaultName = entry.name.replace(/\.zip$/i, '')
+  let destName = defaultName
+  // 用户 2026-11-19：先选目标目录（默认 zip 同级同名目录），存在冲突再问 覆盖/重命名/取消（重命名循环）
+  while (true) {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        `把「${entry.name}」解压到当前目录下的新目录。输入目标目录名（默认 ${defaultName}）：`,
+        '解压到…',
+        {
+          inputValue: destName, confirmButtonText: '下一步', cancelButtonText: '取消',
+          inputPattern: /^[^\\/]+$/, inputErrorMessage: '目录名不能含斜杠',
+          closeOnClickModal: false, closeOnPressEscape: false,
+        },
+      )
+      destName = String(value ?? '').trim()
+      if (!destName) continue
+    } catch { return } // 取消：不解压
+    const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
+    const destPath = parent === '/' ? `/${destName}` : `${parent}/${destName}`
+    if (!(await destExists(destPath))) break // 目标不存在：无冲突，直接解压
+    let act: 'overwrite' | 'rename' | 'cancel'
+    try {
+      await ElMessageBox.confirm(
+        `目录「${destName}/」已存在。覆盖=解压覆盖其中同名文件；重命名=换一个目录名；取消=不解压。`,
+        '目录已存在',
+        {
+          type: 'warning', distinguishCancelAndClose: true, showClose: true,
+          confirmButtonText: '覆盖', cancelButtonText: '重命名',
+          closeOnClickModal: false, closeOnPressEscape: false,
+        },
+      )
+      act = 'overwrite'
+    } catch (e) {
+      act = String(e) === 'cancel' ? 'rename' : 'cancel' // ✕/关闭 = 取消
+    }
+    if (act === 'overwrite') break
+    if (act === 'cancel') return
+    // 重命名 → 回到输入框循环
   }
+  const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path, destDirName: destName })
+  ElMessage.success(`已解压 ${r.files} 个文件 → ${r.destDir}`)
+  void list(false)
 }
 async function newFile(): Promise<void> {
   try {
@@ -1725,6 +1764,7 @@ onMounted(() => {
   window.addEventListener('contextmenu', onWindowCtxMaybeClose)
   void loadChannels().then(() => { if (profileId.value) void list() })
   void loadFavorites() // §十一 收藏夹
+  void loadMediaLimit() // 在线预览上限（可配）
   // 队列已有历史任务（页面刷新恢复）
   void window.api.fs.transferList().then((list0) => {
     for (const t of list0) tasks.value.set(t.id, t)
@@ -2040,7 +2080,7 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 新建目录 -->
     <el-dialog v-model="mkdirOpen" title="新建文件夹" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input clearable v-model="mkdirName" placeholder="目录名（不含斜杠）" autofocus @keyup.enter="submitMkdir" />
+      <el-input clearable v-model="mkdirName" data-autofocus placeholder="目录名（不含斜杠）" @keyup.enter="submitMkdir" />
       <template #footer>
         <el-button @click="mkdirOpen = false">取消</el-button>
         <el-button type="primary" @click="submitMkdir">创建</el-button>
@@ -2049,7 +2089,7 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 重命名 -->
     <el-dialog v-model="renameOpen" title="重命名" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input clearable v-model="renameName" autofocus @keyup.enter="submitRename" />
+      <el-input clearable v-model="renameName" data-autofocus @keyup.enter="submitRename" />
       <template #footer>
         <el-button @click="renameOpen = false">取消</el-button>
         <el-button type="primary" @click="submitRename">确定</el-button>
@@ -2079,7 +2119,10 @@ function onKeydown(event: KeyboardEvent): void {
           style="width: 100%; margin-top: 8px"
           @change="onMoveDirPicked"
         />
-        <div class="fs-crumb" style="margin-top: 10px; display: inline-block" @click="moveDirInput = path">填当前目录：{{ path === '/' ? '/（根）' : path }}</div>
+        <div style="margin-top: 10px; display: flex; gap: 12px; align-items: center">
+          <div class="fs-crumb" @click="moveDirInput = '/'">根目录 /</div>
+          <div class="fs-crumb" @click="moveDirInput = path">填当前目录：{{ path === '/' ? '/（根）' : path }}</div>
+        </div>
       </div>
       <template #footer>
         <el-button @click="moveOpen = false">取消</el-button>
@@ -2169,7 +2212,7 @@ function onKeydown(event: KeyboardEvent): void {
         <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" />
       </div>
       <template #footer>
-        <span class="hint">在线播放上限 {{ fsFormatSize(FS_MEDIA_PLAY_LIMIT) }}；更大文件请下载后本地播放</span>
+        <span class="hint">在线播放上限 {{ mediaLimitText }}（可在「更多▾ → 上限设置」调整，0=不限）；更大文件请下载后本地播放</span>
         <el-button @click="player.open = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -2375,7 +2418,12 @@ function onKeydown(event: KeyboardEvent): void {
           <el-input-number v-model="transferCapsForm.searchMaxPages" size="small" :min="0" :max="100000" :step="100" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">页</span>
         </div>
-        <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。</div>
+        <div class="fs-convert-row">
+          <span class="fs-convert-label">在线预览大小上限</span>
+          <el-input-number v-model="transferCapsForm.mediaLimitMb" size="small" :min="0" :max="4096" :step="50" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">MB</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览（音视频播放）超过上限提示下载后查看，默认 100MB，0 = 不限。</div>
       </div>
       <template #footer>
         <el-button @click="transferCapsOpen = false">取消</el-button>
@@ -2532,7 +2580,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-perm-grid { display: grid; grid-template-columns: 64px repeat(3, 1fr); justify-items: center; gap: 6px 0; align-items: center; }
 .fs-perm-head { font-size: 12px; opacity: .6; }
 .fs-perm-label { font-size: 13px; justify-self: start; }
-.fs-perm-check { height: 22px; }
+/* EP .el-checkbox 默认 margin-right: 30px——居中时连 margin 一起算，勾选框整体偏左（2026-11-19 截图错位根因） */
+.fs-perm-check { height: 22px; margin-right: 0; }
 .fs-perm-octal { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
 .fs-perm-octal-input { width: 110px; }
 .fs-props { display: flex; flex-direction: column; gap: 8px; }

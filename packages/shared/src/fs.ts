@@ -308,10 +308,12 @@ export interface FsZipResult {
   size: number
 }
 
-/** 解压请求（仅本地通道）：解到 zip 同级目录 `<zip 名去扩展名>/` */
+/** 解压请求（仅本地通道）：解到 zip 同级目录；destDirName 缺省 = zip 名去扩展名 */
 export interface FsUnzipRequest {
   profileId: string
   path: string
+  /** 目标目录名（zip 同级；仅名称不含斜杠，防越界）；缺省 = zip 名去扩展名 */
+  destDirName?: string
 }
 
 export interface FsUnzipResult {
@@ -434,8 +436,8 @@ export const FS_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 
 /** 音视频（Chromium <video>/<audio> 原生可播的容器/编码；mkv/mov 等不保证可播，不给播放入口） */
 export const FS_MEDIA_EXTENSIONS = ['mp4', 'webm', 'm4v', 'ogv', 'mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] as const
 
-/** 音视频在线播放阈值（字节）：超过引导下载后本地播放（base64 过 IPC 的内存代价上限） */
-export const FS_MEDIA_PLAY_LIMIT = 64 * 1024 * 1024
+/** 音视频在线播放阈值缺省值（字节）：实际值可配（app.fs.mediaLimitMb，0=不限），超过引导下载后本地播放 */
+export const FS_MEDIA_PLAY_LIMIT = 100 * 1024 * 1024
 
 /** 文本编辑阈值（字节）：超过只读提示「文件过大，请下载编辑」 */
 export const FS_TEXT_EDIT_LIMIT = 256 * 1024

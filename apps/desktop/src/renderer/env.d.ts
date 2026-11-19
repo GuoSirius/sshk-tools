@@ -180,8 +180,8 @@ interface Window {
       zipLimits(): Promise<{ fileCap: number; bytesCapMb: number }>
       setZipLimits(req: { fileCap?: number; bytesCapMb?: number }): Promise<{ fileCap: number; bytesCapMb: number }>
       /** 传输上限：上传展平 / 下载目录递归展开分开可配（默认上传 10000、下载 0 不限；0=不限）；搜索扫描页数默认 500，0=不限 */
-      transferCaps(): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number }>
-      setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number }>
+      transferCaps(): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }>
+      setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }>
       /** 目录备注 / 收藏夹（§十一，应用侧集合） */
       annotationList(profileId: string): Promise<Record<string, string>>
       annotationSet(req: { profileId: string; path: string; note: string }): Promise<boolean>
