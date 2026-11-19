@@ -113,6 +113,8 @@ function resetPosition(): void {
   const d = defaultPosition()
   x.value = d.x
   y.value = d.y
+  // 默认位置按折叠条贴底算；展开态面板高 560，直接套用会冲出视区——按实际高度拉回
+  clampIntoView()
   persist()
 }
 onMounted(() => {
