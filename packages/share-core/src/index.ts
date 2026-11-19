@@ -204,6 +204,8 @@ export class ShareHub {
       const dir = String(m?.dir ?? '').trim()
       const alias = normalizeMountAlias(m?.alias)
       const shown = alias || String(m?.alias ?? '').trim() || dir || '(空行)'
+      // enabled=false 的挂载整目录不注册（注释契约 199 行 / 类型注释 / 文档 §10.2 一致；此前遗漏，与 setProxies 对齐）
+      if (m?.enabled === false) { skipped.push(`「${shown}」：已禁用`); continue }
       if (!dir) { skipped.push(`「${shown}」：目录为空`); continue }
       if (!alias) { skipped.push(`「${shown}」：别名非法（限小写字母/数字/连字符/下划线）`); continue }
       if (next.has(alias)) { skipped.push(`「${alias}」：别名重复`); continue }

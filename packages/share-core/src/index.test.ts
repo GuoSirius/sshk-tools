@@ -227,4 +227,20 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     const decimal = await hub.create({ toolId: 't', label: 'dec', root, ttlHours: 1.5 })
     expect(hub.listRoutes().find((r) => r.id === decimal.id)?.ttlHours).toBe(72)
   })
+
+  it('setMounts：enabled=false 的挂载不注册（与契约/文档一致）', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const skipped = hub.setMounts([
+      { id: 'on', dir: root, alias: 'on-dir', enabled: true },
+      { id: 'off', dir: root, alias: 'off-dir', enabled: false },
+    ])
+    expect(skipped.some((s) => s.includes('已禁用'))).toBe(true)
+    // 通过真实 HTTP 验证：启用的挂载可达（allowIndex 默认开，根列目录），禁用的挂载 404
+    const port = hub.status().port
+    const on = await fetch(`http://127.0.0.1:${port}/on-dir/`)
+    const off = await fetch(`http://127.0.0.1:${port}/off-dir/`)
+    expect(on.status).toBe(200)
+    expect(off.status).toBe(404)
+  })
 })
