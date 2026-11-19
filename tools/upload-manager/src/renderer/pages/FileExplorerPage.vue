@@ -2277,6 +2277,12 @@ function onKeydown(event: KeyboardEvent): void {
                   @click.stop="copyShareLink(entry)"
                 ><Connection /></el-icon>
               </el-tooltip>
+              <!-- 收藏星标（用户 2026-11-19）：卡片视图叠在类型图标左下角，hover 展示、已收藏常显 -->
+              <el-tooltip :content="isFavorited(entry.path) ? '取消收藏' : '收藏'" placement="top">
+                <el-icon class="fs-cell-fav" :class="{ 'is-fav': isFavorited(entry.path) }" @click.stop="toggleFav(entry)">
+                  <component :is="isFavorited(entry.path) ? StarFilled : Star" />
+                </el-icon>
+              </el-tooltip>
             </span>
             <span class="fs-cell-name">{{ entry.name }}</span>
             <el-tooltip v-if="searchDirHint(entry)" :content="searchDirHint(entry)" placement="top">
@@ -2834,6 +2840,10 @@ function onKeydown(event: KeyboardEvent): void {
 /* 卡片视图分享角标：叠在类型图标右上角（用户 2026-11-19），带底色圆片避免与大图标混色 */
 .fs-cell-icon-wrap { position: relative; display: inline-flex; line-height: 1; }
 .fs-cell .fs-share-mark { position: absolute; top: -7px; right: -9px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); }
+/* 卡片视图收藏星标：类型图标左下角（用户 2026-11-19），未收藏 hover 才显、已收藏常显黄色实心星 */
+.fs-cell .fs-cell-fav { position: absolute; bottom: -7px; left: -9px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); color: var(--el-text-color-secondary); opacity: 0; transition: opacity .12s; cursor: pointer; }
+.fs-cell:hover .fs-cell-fav, .fs-cell-fav.is-fav { opacity: 1; }
+.fs-cell-fav.is-fav { color: var(--el-color-warning); }
 .fs-cell-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 /* 搜索结果的目录提示单独一行（用户 2026-11-18：卡片式名称与目录分行显示） */
 .fs-cell-meta { font-size: 11px; opacity: .6; }
