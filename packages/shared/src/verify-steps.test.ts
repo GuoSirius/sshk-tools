@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { VERIFY_STEPS } from './verify-steps'
 
 /** 真实内建工具 id（tool.manifest.id = 目录名）；新增工具时同步这里 */
-const REAL_TOOL_IDS = new Set(['file-manager', 'edm-studio', 'badge-studio', 'model-console', 'template-tool'])
+const REAL_TOOL_IDS = new Set(['file-manager', 'edm-studio', 'badge-studio', 'model-console', 'template-tool', 'share-manager'])
 /** catalogState 判定器的特殊 spec（非工具 id） */
 const SPECIAL_CATALOG_SPECS = new Set(['grants'])
 /** 预加载层 api 上的宿主能力键（preload/index.ts 暴露的命名空间 / 单函数） */

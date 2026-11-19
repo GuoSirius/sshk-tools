@@ -4,7 +4,7 @@
  * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
  */
 
-export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M'
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M' | 'T'
 
 /** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
 export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
@@ -37,6 +37,7 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
   H: 'H · 文件系统（X6）',
   S: 'S · 常驻分享服务（ShareHub · plans/09）',
   M: 'M · 内容管理（plans/11）',
+  T: 'T · 分享管理工具化（plans/12）',
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
@@ -193,6 +194,18 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S20', group: 'S', title: '自动分配端口跨重启沿用', guide: '设置端口 0（自动）→ 启动后记录实际端口 → 重启应用端口不变（链接稳定）；被占回落新端口后 autoPort 自动更新；固定端口（默认 56789）直接生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§五' },
   { id: 'S21', group: 'S', title: '挂载目录三行卡片（2026-11-18）', guide: '设置 →「分享服务」→ 挂载目录：每项圆角卡片三行——行1 目录显示+选择目录+「允许访问目录」复选框（关=目录列表 404，具体文件路径仍可达）；行2 挂载点输入框（沾满剩余空间）+「启用」开关（关=整目录 404）；行3 地址+复制+删除；挂载点留空保存随机生成并记住；保存即生效无需重启', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/挂载目录' },
   { id: 'S22', group: 'S', title: '代理规则（2026-11-18）', guide: '「代理规则」区块：每项三行卡片——行1 目标地址（示例占位）+「保留原始 Host」复选框（默认保留，❓有场景解释）；行2 路径前缀+启用开关；行3 代理地址+复制+删除。访问 http://IP:端口/前缀/… 全方法（含 POST 请求体）转发到目标地址；转发带 X-Forwarded-For/Host/Proto（覆盖式防伪造）；目标不限网络；保存即生效', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/代理规则' },
+
+  // ── T 组：分享管理工具化与日志链路改造（plans/12 · 2026-11-19）──
+  { id: 'T1', group: 'T', title: '工具入口与五菜单页', guide: '工具列表出现「分享管理」→ 默认进路由管理；访问日志/服务配置/挂载管理/代理管理四个菜单页均可达（服务/挂载/代理以菜单页承载）', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §4.1' },
+  { id: 'T2', group: 'T', title: '跨工具全量路由可见可管', guide: 'badge/edm/file-manager 各建一条分享 → 分享管理路由管理页可见全部（工具过滤下拉含各 toolId）；可撤销/续期任意工具的路由（跨工具特权=不传 toolId 软约束）', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §六①' },
+  { id: 'T3', group: 'T', title: '路由表更新时间列', guide: '路由表含「更新时间」列；续期/改 TTL/切换允许索引/分享弹框重新生成后该列刷新；访问命中不刷新；创建时间不变', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §十一①' },
+  { id: 'T4', group: 'T', title: '访问日志持久化重启仍在', guide: '访问几条分享链接 → 访问日志页有记录 → 重启应用 → 历史仍在（NeDB shareLogs，随备份 zip 导出）', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §七' },
+  { id: 'T5', group: 'T', title: '时间范围快捷+自选', guide: '日志页时间范围：快捷（近1h/24h/7天/全部）与自选起止（EP daterange）都生效；自选按自然日闭区间，查询结果与筛选一致', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §8.2/§十二③' },
+  { id: 'T6', group: 'T', title: '导出 CSV 随筛选', guide: '带筛选条件点「导出 CSV」→ 文件名 share-logs-<时间戳>.csv，Excel 打开中文不乱码（BOM），7 列（时间/来源IP/路径/状态码/命中路由ID/归属工具/标签）；已撤销路由的工具/标签列留空', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §六④/§十一⑤' },
+  { id: 'T7', group: 'T', title: '单条/批量删除 + 仅清空', guide: '列操作「删除」/勾选「批量删除」/「仅清空访问日志」全部二次确认（禁遮罩禁 ESC）且生效；删除后记录消失且不因 flush 写回', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §十一⑥' },
+  { id: 'T8', group: 'T', title: '日志容量可设置', guide: '服务配置页日志容量卡片：条数（1~100000 默认 5000）/天数（1~365 默认 30），保存即时生效跨重启；非法输入回弹默认并提示', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §六③/§十二④' },
+  { id: 'T9', group: 'T', title: '应用设置瘦身为两卡片', guide: '设置→分享服务 tab 仅剩服务状态+基础设置两卡片（挂载/代理/路由/日志四段无残留）；按钮文案为「停止服务并清空全部路由」且确认框注明不影响访问日志', entry: { type: 'settings', target: 'share' }, relates: 'plans/12 §4.2/§十二⑤' },
+  { id: 'T10', group: 'T', title: '两处入口同键一致', guide: '服务配置页改端口/时长/IP/开关保存 → 应用设置 tab 刷新后同值；反向亦一致（同键 app.shareHub.* 天然一致）', entry: { type: 'route', target: 'share-manager' }, relates: 'plans/12 §4.2' },
 
   // ── M 组：内容管理（plans/11，C1-C14）──
   { id: 'M1', group: 'M', title: 'CRUD + 名称必填 + label 不换行', guide: '文件管理→内容管理：新建/编辑/复制另存/删除均正常；名称空时保存禁用；表单一行 label 自动右对齐不换行', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C1' },
