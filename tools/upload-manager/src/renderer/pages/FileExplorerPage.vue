@@ -927,9 +927,24 @@ async function rowLink(entry: FsEntry): Promise<void> {
 const shareDialog = ref({
   open: false, root: '', entry: '', label: '',
 })
+/** 是否允许分享/浏览目录（用户 2026-11-19）：读 app.shareHub.allowIndex 全局策略；
+ *  为 false 时目录条目不显示「分享链接」（ShareHub 目录列取会 404），文件不受影响。 */
+const shareAllowIndex = ref(false)
+async function loadShareAllowIndex(): Promise<void> {
+  try { shareAllowIndex.value = (await window.api.config.get('app.shareHub.allowIndex')) === true }
+  catch { shareAllowIndex.value = false }
+}
+/** 目录是否可显示 ShareHub 分享入口：本地通道 + 全局允许访问目录 */
+function canShareEntry(entry: FsEntry): boolean {
+  return activeChannel.value?.type === 'local' && (entry.kind === 'file' || shareAllowIndex.value)
+}
 function rowShare(entry: FsEntry): void {
   if (activeChannel.value?.type !== 'local') {
     ElMessage.warning('ShareHub 安全分享仅支持本地通道；远程/云通道请使用「链接」（裸外链）')
+    return
+  }
+  if (entry.kind === 'dir' && !shareAllowIndex.value) {
+    ElMessage.warning('当前未允许访问目录，目录无法生成分享链接；请到「应用设置 → 分享服务」开启「允许访问目录」')
     return
   }
   void loadConfigForShare(entry)
@@ -941,7 +956,7 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
   Object.assign(shareDialog.value, {
     root,
     entry: entry.path,
-    label: `文件：${entry.name}`,
+    label: `${entry.kind === 'dir' ? '目录' : '文件'}：${entry.name}`,
     open: true,
   })
 }
@@ -1119,7 +1134,9 @@ function dirLazyProps(getPid: () => string) {
     lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
       const pid = getPid()
       if (!pid) { resolve([]); return }
-      if (node.level === 0) { resolve([{ value: '/', label: '/' }]); return } // 根目录独立首级
+      // 根 label 置空 + 级联 separator="/" → 回显 /a/b/c（若根 label 为 '/' 会拼出 //a/b 双斜杠）；
+      // 面板首列根节点的 "/" 由 CSS 伪元素补显示
+      if (node.level === 0) { resolve([{ value: '/', label: '' }]); return } // 根目录独立首级
       const parent = String(node.value ?? '/')
       try {
         const page = await window.api.fs.list({ profileId: pid, path: parent })
@@ -1776,6 +1793,7 @@ onMounted(() => {
   void loadChannels().then(() => { if (profileId.value) void list() })
   void loadFavorites() // §十一 收藏夹
   void loadMediaLimit() // 在线预览上限（可配）
+  void loadShareAllowIndex() // 目录分享开关（app.shareHub.allowIndex）
   // 队列已有历史任务（页面刷新恢复）
   void window.api.fs.transferList().then((list0) => {
     for (const t of list0) tasks.value.set(t.id, t)
@@ -2014,6 +2032,8 @@ function onKeydown(event: KeyboardEvent): void {
             <!-- §11.4 顺序（用户 2026-11-18 改版：下载不区分文件/目录，统一放删除前）：
                  链接(文件)→粘贴(目录)→复制→移动→重命名→下载(全部)→删除→更多▾ -->
             <el-button v-if="entry.kind === 'file'" size="small" text type="primary" title="复制外链（baseUrl + 文件路径）" @click.stop="rowLink(entry)">链接</el-button>
+            <!-- ShareHub 分享链接：文件=裸链之外并存；目录=仅当允许访问目录时显示（两种链接并存，用户 2026-11-19） -->
+            <el-button v-if="canShareEntry(entry)" size="small" text type="primary" title="ShareHub 分享（带有效期、可撤销；目录可浏览）" @click.stop="rowShare(entry)">分享链接</el-button>
             <el-button v-if="entry.kind === 'dir' && clipboard && hasWritable" size="small" text type="success" title="把剪贴板内容粘贴进该目录" @click.stop="rowPaste(entry)">粘贴</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
@@ -2036,9 +2056,8 @@ function onKeydown(event: KeyboardEvent): void {
                     <el-dropdown-item v-if="isFsZipName(entry.name)" command="unzip" :icon="FolderOpened">解压到…</el-dropdown-item>
                   </template>
                   <el-dropdown-item v-if="entry.kind === 'file' && isFsTextName(entry.name)" command="convert" :icon="MagicStick" divided>转换编码 / 换行符…</el-dropdown-item>
-                  <!-- 权限组 -->
+                  <!-- 权限组（ShareHub 分享已外显为行操作「分享链接」，不再在更多菜单重复） -->
                   <el-dropdown-item v-if="hasMode" command="perm" :icon="Lock" divided :disabled="!entry.mode">编辑权限…</el-dropdown-item>
-                  <el-dropdown-item v-if="activeChannel?.type === 'local'" command="share" :icon="Star" divided>安全分享</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -2124,7 +2143,8 @@ function onKeydown(event: KeyboardEvent): void {
           :key="moveDestProfile || profileId || ''"
           class="fs-move-cascader"
           :props="moveDirProps"
-          :show-all-levels="false"
+          separator="/"
+          popper-class="fs-dir-cascader-popper"
           size="small"
           placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
           clearable
@@ -2157,7 +2177,8 @@ function onKeydown(event: KeyboardEvent): void {
           :key="unzipDestProfile || profileId || ''"
           class="fs-move-cascader"
           :props="unzipDirProps"
-          :show-all-levels="false"
+          separator="/"
+          popper-class="fs-dir-cascader-popper"
           size="small"
           placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
           clearable
@@ -2222,6 +2243,7 @@ function onKeydown(event: KeyboardEvent): void {
           <li data-command="open"><el-icon><FolderOpened /></el-icon>打开</li>
           <li v-if="ctxMenu.entry.kind === 'file'" data-command="download"><el-icon><Download /></el-icon>下载</li>
           <li v-if="ctxMenu.entry.kind === 'file'" data-command="link"><el-icon><Link /></el-icon>链接</li>
+          <li v-if="canShareEntry(ctxMenu.entry)" data-command="share"><el-icon><Link /></el-icon>分享链接</li>
           <li v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" data-command="paste"><el-icon><DocumentCopy /></el-icon>粘贴</li>
           <li v-if="hasWritable" data-command="copy" class="is-divided"><el-icon><CopyDocument /></el-icon>复制</li>
           <li v-if="hasWritable" data-command="move"><el-icon><Rank /></el-icon>移动</li>
@@ -2241,7 +2263,6 @@ function onKeydown(event: KeyboardEvent): void {
           <li v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" data-command="convert" class="is-divided"><el-icon><MagicStick /></el-icon>转换编码 / 换行符…</li>
           <!-- 权限组 -->
           <li v-if="hasMode" data-command="perm" class="is-divided" :class="{ 'is-disabled': !ctxMenu.entry.mode }"><el-icon><Lock /></el-icon>编辑权限…</li>
-          <li v-if="activeChannel?.type === 'local'" data-command="share" class="is-divided"><el-icon><Star /></el-icon>安全分享</li>
         </ul>
       </div>
     </Teleport>
@@ -2292,34 +2313,31 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
     <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div class="fs-ziplimits fs-caps-form">
+      <!-- label-width="auto"：EP 自动取所有 label 最宽者统一右对齐、输入框同列（用户 2026-11-19 纠正：用 form 的 auto，不用写死 px） -->
+      <el-form label-width="auto" size="small">
         <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">大文件分片传输<el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip></span>
+        <el-form-item label="大文件分片传输">
+          <el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
           <el-switch v-model="transferCfgForm.enabled" data-autofocus />
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label"><i class="fs-req">*</i>分片阈值</span>
-          <el-input-number v-model="transferCfgForm.thresholdMb" size="small" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="分片阈值" required>
+          <el-input-number v-model="transferCfgForm.thresholdMb" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">MB（超过该大小走分片）</span>
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label"><i class="fs-req">*</i>单片大小</span>
-          <el-input-number v-model="transferCfgForm.partSizeMb" size="small" :min="5" :max="100" :step="5" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="单片大小" required>
+          <el-input-number v-model="transferCfgForm.partSizeMb" :min="5" :max="100" :step="5" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">MB（5~100）</span>
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label"><i class="fs-req">*</i>分片并发</span>
-          <el-input-number v-model="transferCfgForm.partsConcurrency" size="small" :min="1" :max="8" :step="1" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="分片并发" required>
+          <el-input-number v-model="transferCfgForm.partsConcurrency" :min="1" :max="8" :step="1" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">个/任务（1~8）</span>
-        </div>
-        <div v-if="transferCfgOrphans > 0" class="fs-convert-row">
-          <span class="fs-convert-label">遗留分片</span>
+        </el-form-item>
+        <el-form-item v-if="transferCfgOrphans > 0" label="遗留分片">
           <span class="fs-ziplimits-unit">服务端残留 {{ transferCfgOrphans }} 个</span>
           <el-button size="small" type="danger" plain @click="cleanOrphansInCfg">清理…</el-button>
-        </div>
-        <div class="hint" style="margin-top: 8px">暂停为协作式：当前分片/块写完即停（最多一个分片延迟），服务端不留碎片、可无损续传；源文件变更后续传会自动废弃旧检查点重传。</div>
-      </div>
+        </el-form-item>
+      </el-form>
+      <div class="hint" style="margin-top: 8px">暂停为协作式：当前分片/块写完即停（最多一个分片延迟），服务端不留碎片、可无损续传；源文件变更后续传会自动废弃旧检查点重传。</div>
       <template #footer>
         <el-button @click="transferCfgOpen = false">取消</el-button>
         <el-button type="primary" :loading="transferCfgSaving" @click="submitTransferConfig">保存</el-button>
@@ -2450,19 +2468,17 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- §十一：压缩/解压上限设置（app.fs.zipFileCap / zipBytesCap） -->
     <el-dialog v-model="zipLimitsOpen" title="压缩上限设置" width="400px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div class="fs-ziplimits fs-caps-form">
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">文件数上限</span>
-          <el-input-number v-model="zipLimitsForm.fileCap" size="small" :min="10" :max="100000" :step="100" :controls="false" style="width: 150px" data-autofocus />
+      <el-form label-width="auto" size="small">
+        <el-form-item label="文件数上限">
+          <el-input-number v-model="zipLimitsForm.fileCap" :min="10" :max="100000" :step="100" :controls="false" style="width: 150px" data-autofocus />
           <span class="fs-ziplimits-unit">个</span>
-        </div>
-        <div class="fs-convert-row" style="margin-top: 10px">
-          <span class="fs-convert-label">容量上限</span>
-          <el-input-number v-model="zipLimitsForm.bytesCapMb" size="small" :min="1" :max="4096" :step="50" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="容量上限">
+          <el-input-number v-model="zipLimitsForm.bytesCapMb" :min="1" :max="4096" :step="50" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">MB</span>
-        </div>
-        <div class="hint" style="margin-top: 8px">单次压缩 / 解压共用；超出即中止，防大目录占满内存。</div>
-      </div>
+        </el-form-item>
+      </el-form>
+      <div class="hint" style="margin-top: 8px">单次压缩 / 解压共用；超出即中止，防大目录占满内存。</div>
       <template #footer>
         <el-button @click="zipLimitsOpen = false">取消</el-button>
         <el-button type="primary" :loading="zipLimitsSaving" @click="submitZipLimits">保存</el-button>
@@ -2471,29 +2487,25 @@ function onKeydown(event: KeyboardEvent): void {
 
     <!-- 上限设置（上传 / 下载分开、搜索扫描页数；0=不限） -->
     <el-dialog v-model="transferCapsOpen" title="上限设置" width="440px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div class="fs-ziplimits fs-caps-form">
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">上传文件数上限</span>
-          <el-input-number v-model="transferCapsForm.uploadCap" size="small" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
+      <el-form label-width="auto" size="small">
+        <el-form-item label="上传文件数上限">
+          <el-input-number v-model="transferCapsForm.uploadCap" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
           <span class="fs-ziplimits-unit">个</span>
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">下载文件数上限</span>
-          <el-input-number v-model="transferCapsForm.downloadCap" size="small" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="下载文件数上限">
+          <el-input-number v-model="transferCapsForm.downloadCap" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">个</span>
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">搜索扫描页数上限</span>
-          <el-input-number v-model="transferCapsForm.searchMaxPages" size="small" :min="0" :max="100000" :step="100" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="搜索扫描页数上限">
+          <el-input-number v-model="transferCapsForm.searchMaxPages" :min="0" :max="100000" :step="100" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">页</span>
-        </div>
-        <div class="fs-convert-row">
-          <span class="fs-convert-label">在线预览大小上限</span>
-          <el-input-number v-model="transferCapsForm.mediaLimitMb" size="small" :min="0" :max="4096" :step="50" :controls="false" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="在线预览大小上限">
+          <el-input-number v-model="transferCapsForm.mediaLimitMb" :min="0" :max="4096" :step="50" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">MB</span>
-        </div>
-        <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览（音视频播放）超过上限提示下载后查看，默认 100MB，0 = 不限。</div>
-      </div>
+        </el-form-item>
+      </el-form>
+      <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览（音视频播放）超过上限提示下载后查看，默认 100MB，0 = 不限。</div>
       <template #footer>
         <el-button @click="transferCapsOpen = false">取消</el-button>
         <el-button type="primary" :loading="transferCapsSaving" @click="submitTransferCaps">保存</el-button>
@@ -2658,14 +2670,9 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-props-k { flex: none; width: 72px; opacity: .6; }
 .fs-props-v { flex: 1; min-width: 0; word-break: break-all; }
 .fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-/* 数字上限类弹框（用户 2026-11-19）：三列 grid——label 列等宽右对齐、输入框统一 150px 同列、单位/控件同列。
-   label 元素保持 width:auto+nowrap（铁律），等宽由 grid 轨道固定 118px 实现，不写死在 label 自身 */
-.fs-caps-form { display: flex; flex-direction: column; gap: 10px; }
-.fs-caps-form .fs-convert-row { display: grid; grid-template-columns: 118px 150px 1fr; column-gap: 10px; align-items: center; margin-bottom: 0; }
-.fs-caps-form .fs-convert-row .el-input-number { grid-column: 2; width: 150px; }
-/* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行）；caps 表单内右对齐 */
+/* 数字上限类弹框改用 el-form label-width="auto"（用户 2026-11-19 纠正：EP form 的 auto 自动等宽右对齐，不写死 px） */
+/* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行） */
 .fs-convert-label { flex: none; width: auto; white-space: nowrap; font-size: 13px; opacity: .7; }
-.fs-caps-form .fs-convert-label { text-align: right; }
 /* 重名确认：文件名限高滚动（单次多选几十个也能看全，不撑爆弹框） */
 .fs-dup-list { max-height: 180px; overflow-y: auto; margin: 0; padding: 6px 10px 6px 24px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; font-size: 13px; line-height: 1.9; }
 .fs-dup-list li { word-break: break-all; }

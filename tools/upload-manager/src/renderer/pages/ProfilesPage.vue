@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { VueDraggable } from 'vue-draggable-plus'
 import {
   ArrowDown,
   Check,
   Connection,
+  CopyDocument,
   Delete,
   Edit,
   FolderOpened,
+  Link,
   Plus,
   Rank,
   Refresh,
@@ -28,6 +30,8 @@ import {
   IPC_CHANNELS,
   newProfileId,
   uploadVendorMeta,
+  type HubStatus,
+  type ShareHubMount,
   type UploadCloudProfile,
   type UploadGlobalConfig,
   type UploadRemoteProfile,
@@ -369,9 +373,109 @@ async function selfTest(): Promise<void> {
   }
 }
 
+// ── 本地分享挂载（用户 2026-11-19）：复用 app.shareHub.mounts 权威配置，与「应用设置→分享服务」同一份 ──
+// 用途：把本地通道的某个目录挂成固定链接 http://IP:端口/别名/，可放下载文件 / 预览 / HTML 页面。
+// 保存走通用 config.set（与 ShareTab 同款），主进程 onChanged('shareHub.mounts') 即时生效，无需重启。
+interface MountRow { id: string; dir: string; alias: string; enabled: boolean; allowIndex: boolean }
+const mounts = ref<MountRow[]>([])
+const mountsSaving = ref(false)
+const hubStatus = ref<HubStatus | null>(null)
+const appSavedMountIds = ref<Set<string>>(new Set())
+
+/** 别名规范化：与 share-core normalizeMountAlias 同规则（渲染层不能 import node 依赖包） */
+function normAlias(raw: string): string {
+  const s = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  return /^[a-z0-9][a-z0-9-_]{0,31}$/.test(s) ? s : ''
+}
+function randomAlias(): string {
+  return `dir-${Math.random().toString(36).slice(2, 8)}`
+}
+function addMount(): void {
+  mounts.value.push({ id: window.crypto.randomUUID(), dir: '', alias: randomAlias(), enabled: true, allowIndex: true })
+}
+async function pickMountDir(row: MountRow): Promise<void> {
+  try {
+    const dir = await window.api.os.pickDir(row.dir ? { defaultPath: row.dir } : undefined)
+    if (dir) row.dir = dir
+  } catch { /* 用户取消或选目录失败，保持原值 */ }
+}
+async function removeMount(index: number): Promise<void> {
+  const row = mounts.value[index]
+  if (!row) return
+  // 已保存过的行删除保存后链接即失效——按危险操作约定二次确认（禁遮罩禁 ESC）
+  const saved = appSavedMountIds.value.has(row.id)
+  if (saved) {
+    try {
+      await ElMessageBox.confirm(
+        `移除挂载「${row.alias || row.dir || '未命名'}」？保存后该目录的分享链接将立即失效。`,
+        '移除挂载目录',
+        { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留' },
+      )
+    } catch { return }
+  }
+  mounts.value.splice(index, 1)
+}
+/** 只读链接展示：服务运行中拼 displayIp+端口；未运行给空占位 */
+function mountLink(row: MountRow): string {
+  const s = hubStatus.value
+  if (!s?.running || !s.port || !row.alias) return ''
+  return `http://${s.displayIp}:${s.port}/${row.alias}/`
+}
+async function copyMountLink(row: MountRow): Promise<void> {
+  const url = mountLink(row)
+  if (!url) return
+  try {
+    await window.api.os.clipboardWrite(url)
+    ElMessage.success('访问地址已复制')
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
+async function loadMounts(): Promise<void> {
+  try {
+    const raw = await window.api.config.get('app.shareHub.mounts')
+    const saved = (Array.isArray(raw) ? raw : []) as ShareHubMount[]
+    appSavedMountIds.value = new Set(saved.map((m) => m.id))
+    mounts.value = saved.map((m) => ({ id: m.id, dir: m.dir, alias: m.alias, enabled: m.enabled, allowIndex: m.allowIndex !== false }))
+  } catch { /* 宿主能力未就绪：保持空 */ }
+  try { hubStatus.value = await window.api.shareHub.status() } catch { hubStatus.value = null }
+}
+async function saveMounts(): Promise<void> {
+  // 校验 + 规范化；空别名随机生成并写回（随机值持久化记住，不能每次变）
+  const seen = new Set<string>()
+  const rows: ShareHubMount[] = []
+  for (const row of mounts.value) {
+    if (!row.dir.trim()) { ElMessage.warning('存在未选择目录的挂载卡片，请补全或删除'); return }
+    const alias = normAlias(row.alias) || randomAlias()
+    if (seen.has(alias)) { ElMessage.error(`挂载点「${alias}」重复，请修改`); return }
+    seen.add(alias)
+    row.alias = alias
+    rows.push({ id: row.id, dir: row.dir.trim(), alias, enabled: row.enabled === true, allowIndex: row.allowIndex !== false })
+  }
+  mountsSaving.value = true
+  try {
+    await window.api.config.set('app.shareHub.mounts', rows)
+    appSavedMountIds.value = new Set(rows.map((r) => r.id))
+    hubStatus.value = await window.api.shareHub.status()
+    if (!hubStatus.value?.running) {
+      try {
+        await ElMessageBox.confirm('挂载已保存。分享服务当前未运行，是否立即启动使链接可访问？', '保存成功', {
+          type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+          confirmButtonText: '启动服务', cancelButtonText: '暂不启动',
+        })
+        await window.api.shareHubControl.start()
+        hubStatus.value = await window.api.shareHub.status()
+        ElMessage.success('挂载已保存，分享服务已启动')
+      } catch { ElMessage.success('挂载已保存（分享服务未启动，链接暂不可访问）') }
+    } else {
+      ElMessage.success('挂载已保存并即时生效')
+    }
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { mountsSaving.value = false }
+}
+
 onMounted(() => {
   checkCaps()
   void load()
+  void loadMounts()
   // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
   // eslint-disable-next-line no-restricted-syntax
   window.api.upload.onProgress((p) => {
@@ -415,6 +519,46 @@ onMounted(() => {
           <el-button size="small" :icon="FolderOpened" @click="pickLocalDir">选择目录</el-button>
         </div>
         <div class="hint">工具可在自己的「上传通道」配置里覆盖此目录；未覆盖时统一落到这里。</div>
+      </section>
+
+      <!-- 本地分享挂载（用户 2026-11-19）：把本地目录挂成固定链接，与「应用设置→分享服务→挂载目录」同一份配置 -->
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <el-icon><Link /></el-icon><span>本地分享挂载</span>
+          <el-tag size="small" type="info" class="mini-tag">{{ mounts.length }} 个</el-tag>
+        </div>
+        <div class="hint" style="margin-bottom: 12px">
+          每个目录一条固定链接（http://IP:端口/挂载点/），可放下载文件、预览文件或 HTML 页面；保存即生效无需重启。
+          与「应用设置 → 分享服务 → 挂载目录」共用同一份配置，任一处修改另一处同步生效。挂载点留空保存时随机生成并记住。
+          「允许访问目录」开启后访客可浏览目录列表（文件列表里目录条目是否显示分享链接也受此项控制）；关闭时目录列表 404，但具体文件仍可下载。
+        </div>
+        <div v-for="(row, i) in mounts" :key="row.id" class="mount-card">
+          <!-- 行1：目录 + 选择目录 + 允许访问目录（allowIndex：关=目录列表 404，具体文件仍可达） -->
+          <div class="mount-line1">
+            <el-input :model-value="row.dir" readonly size="small" placeholder="未选择目录" class="mount-dir" />
+            <el-button size="small" type="primary" plain @click="pickMountDir(row)">选择目录</el-button>
+            <el-checkbox v-model="row.allowIndex" size="small">允许访问目录</el-checkbox>
+          </div>
+          <!-- 行2：挂载点 + 启用开关 -->
+          <div class="mount-line2">
+            <el-input v-model="row.alias" size="small" placeholder="挂载点" class="mount-alias" @blur="row.alias = normAlias(row.alias) || row.alias">
+              <template #prepend>/</template>
+            </el-input>
+            <span class="switch-inline-label">启用</span>
+            <el-switch v-model="row.enabled" />
+          </div>
+          <!-- 行3：访问地址 + 复制 + 删除 -->
+          <div class="mount-line3">
+            <el-input :model-value="mountLink(row)" readonly size="small" class="mount-link" placeholder="（分享服务未运行）" />
+            <el-button size="small" text type="primary" :icon="CopyDocument" title="复制访问地址" :disabled="!mountLink(row)" @click="copyMountLink(row)">复制</el-button>
+            <el-button size="small" text type="danger" :icon="Delete" title="移除该挂载目录" @click="removeMount(i)">删除</el-button>
+          </div>
+        </div>
+        <div v-if="!mounts.length" class="hint">还没有挂载目录，点「添加目录」开始。</div>
+        <div class="card-actions">
+          <el-button size="small" type="success" plain :icon="Plus" @click="addMount">添加目录</el-button>
+          <el-button size="small" type="primary" :loading="mountsSaving" :icon="Check" @click="saveMounts">保存挂载</el-button>
+        </div>
       </section>
 
       <section class="panel">
@@ -600,4 +744,19 @@ onMounted(() => {
 .hint { display: block; margin-top: 6px; }
 /* 开关 / 输入后紧跟说明文字：统一留 12px 间距（全项目 UI 铁律） */
 .hint-inline { display: inline; margin-left: 12px; font-size: 12px; opacity: .6; }
+/* 本地分享挂载卡片（与 ShareTab 挂载卡片同款三行布局） */
+.mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
+.card-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.mount-card { border: 1px solid var(--el-border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.mount-line1 { display: flex; align-items: center; gap: 8px; }
+.mount-line2, .mount-line3 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.mount-line3 { gap: 6px; }
+.mount-line3 :deep(.el-button + .el-button) { margin-left: 0; }
+.mount-line3 :deep(.el-button) { padding: 3px 6px; }
+.mount-line2 :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }
+.switch-inline-label { font-size: 12px; color: var(--el-text-color-secondary); white-space: nowrap; }
+.mount-dir { flex: 1; min-width: 160px; }
+.mount-alias { flex: 1; min-width: 140px; }
+.mount-link { flex: 1; min-width: 200px; }
+.fs-cfg-help { margin-left: 3px; color: var(--el-text-color-placeholder); cursor: help; }
 </style>
