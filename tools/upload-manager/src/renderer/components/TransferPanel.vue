@@ -384,13 +384,14 @@ defineExpose({
 
 <style scoped>
 /* 悬浮面板：fixed + z-index 只高于列表（低于 el-overlay 弹框）；不参与 flex 布局。
-   尺寸（用户 2026-11-19：原 380/420 过挤错位）加宽加高一档 */
+   尺寸（用户 2026-11-19：原 380/420 过挤错位）加宽加高一档。
+   定高（用户 2026-11-19）：展开态固定高度，任务增减不再撑动面板；列表区 overflow:auto 超出滚动。 */
 .fs-tpanel {
   position: fixed;
   z-index: 1400;
   width: 460px;
   max-width: calc(100vw - 32px);
-  max-height: min(560px, calc(100vh - 90px));
+  height: min(560px, calc(100vh - 90px));
   display: flex;
   flex-direction: column;
   background: var(--el-bg-color-overlay);
@@ -400,7 +401,8 @@ defineExpose({
   overflow: hidden;
 }
 .fs-tpanel.is-dragging { box-shadow: var(--el-box-shadow); user-select: none; }
-.fs-tpanel.is-collapsed { width: 360px; max-height: none; }
+/* 折叠态回到内容高度（一行细条），不能被展开态的定高撑大 */
+.fs-tpanel.is-collapsed { width: 360px; height: auto; }
 .fs-tpanel-handle { color: var(--el-text-color-secondary); cursor: grab; flex: none; }
 .fs-tpanel.is-dragging .fs-tpanel-handle { cursor: grabbing; }
 
