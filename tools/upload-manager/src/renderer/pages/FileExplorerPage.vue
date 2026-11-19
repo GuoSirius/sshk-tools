@@ -2083,7 +2083,7 @@ function onKeydown(event: KeyboardEvent): void {
         粘贴{{ clipboard ? `（${clipboard.items.length} 项${clipboard.op === 'cut' ? ' · 剪切' : ''}${clipboard.profileId !== profileId ? ' · 跨通道' : ''}）` : '' }}
       </el-button>
       <!-- 用户 2026-11-19：复制后不想粘贴（误触）可一键清空剪贴板 -->
-      <el-button v-if="clipboard" size="small" type="danger" text title="清空剪贴板（不执行粘贴）" @click="clearClipboard">清空</el-button>
+      <el-button v-if="clipboard" size="small" type="danger" plain title="清空剪贴板（不执行粘贴）" @click="clearClipboard">清空</el-button>
       <el-button size="small" type="warning" plain :icon="Rank" :disabled="!selectedEntries.length || !hasWritable" @click="openMove('move')">移动</el-button>
       <el-button size="small" type="primary" plain :icon="EditPen" :disabled="selectedEntries.length !== 1 || !hasWritable" @click="openRename(selectedEntries[0]!)">重命名</el-button>
       <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedEntries.length || !hasWritable" @click="openDelete(selectedEntries)">删除</el-button>
