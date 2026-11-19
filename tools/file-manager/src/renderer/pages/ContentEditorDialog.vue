@@ -107,7 +107,7 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
 .ce-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--el-text-color-regular); cursor: pointer; border-radius: 4px; }
 .ce-btn:hover { background: var(--el-fill-color-light); }
 .ce-close:hover { color: var(--el-color-danger); }
-.ce-body { height: calc(100vh - 200px); min-height: 360px; overflow-y: auto; padding-right: 16px; }
+.ce-body { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; overflow-y: auto; padding-right: 16px; }
 .ce-full .ce-body { height: calc(100vh - 190px); }
 .ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; }
 /* 最大化铺满整个应用可视区：el-dialog 默认有 margin-top 15vh 与圆角，需清零（teleport 到 body，scoped 可用 :deep） */
