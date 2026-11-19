@@ -96,7 +96,6 @@ export async function waitForMediaBytes(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   let lastUploaded = -1
   let lastProgressAt = Date.now()
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const st = downloads.get(key)
     if (!st) return undefined
