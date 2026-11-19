@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDraggable } from '@vueuse/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Aim, CircleClose, Delete, Rank, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
@@ -248,7 +248,18 @@ async function cleanOrphans(): Promise<void> {
     ElMessage.error((err as Error).message ?? String(err))
   }
 }
-watch(expanded, (v) => { if (v) void loadMultipart() })
+/** 展开/收起时自动归位（用户 2026-11-19）：
+ *  折叠条贴底（y≈vh-73），展开后面板高 460~560 会冲出屏幕底——此前要手动拖。
+ *  展开：等 DOM 换成展开尺寸（nextTick）后把整个面板拉回可视区；
+ *  收起：回默认贴底位置，让摘要条落回原处。 */
+watch(expanded, (v) => {
+  if (v) {
+    void loadMultipart()
+    void nextTick(() => clampIntoView())
+  } else {
+    resetPosition()
+  }
+})
 onMounted(() => { if (expanded.value) void loadMultipart() })
 
 defineExpose({
@@ -280,10 +291,11 @@ defineExpose({
           <template v-if="failedCount"> · <span class="fs-tpanel-fail">失败{{ failedCount }}</span></template>
         </span>
         <span class="fs-spacer" />
+        <el-button size="small" text type="primary" class="fs-tpanel-mini" @click.stop="expanded = true">展开</el-button>
+        <!-- 定位紧挨关闭左边（用户 2026-11-19） -->
         <el-tooltip content="回到默认位置" placement="top">
           <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
         </el-tooltip>
-        <el-button size="small" text type="primary" class="fs-tpanel-mini" @click.stop="expanded = true">展开</el-button>
         <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; emit('visible-change', false)">✕</el-button>
       </div>
     </template>
@@ -392,7 +404,7 @@ defineExpose({
 .fs-tpanel-handle { color: var(--el-text-color-secondary); cursor: grab; flex: none; }
 .fs-tpanel.is-dragging .fs-tpanel-handle { cursor: grabbing; }
 
-.fs-tpanel-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; cursor: default; }
+.fs-tpanel-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 8px; cursor: default; }
 .fs-tpanel-bar-title { font-weight: 600; font-size: 13px; }
 .fs-tpanel-bar-title.is-active { color: var(--el-color-primary); }
 .fs-tpanel-bar-meta { font-size: 12px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
