@@ -51,3 +51,4 @@ desktop.ini
 
 # X5-A 构建裁剪名单（electron.vite.config.ts 构建期写入，electron-builder.config.cjs 读取）
 apps/desktop/.build-selection.json
+.git-commit-msg.txt
