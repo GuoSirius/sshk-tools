@@ -458,21 +458,21 @@ watch(() => props.open, (open) => {
             </div>
             <el-divider class="card-divider" />
             <div class="form-row">
-              <span class="row-label">目录访问</span>
-              <el-checkbox v-model="allowIndex" class="row-check">允许访问目录</el-checkbox>
-              <FormHint
-                inline
-                detail="勾选后本链接即目录树入口：访客可浏览目录，点进子目录/文件都复用这条链接（整棵子树通用），新增文件也立即可见；不勾选则仅该目录本身可访问。目录里的任意子项也可单独点「分享链接」生成独立链接（独立有效期、可单独撤销）。默认取应用设置，可自行勾选，创建后仍可更改。"
-              >目录树链接说明</FormHint>
-            </div>
-            <el-divider class="card-divider" />
-            <div class="form-row">
               <span class="row-label">访问密钥</span>
               <el-input v-model="accessKey" size="small" show-password clearable class="ak-input" placeholder="留空 = 继承父级" />
               <FormHint
                 inline
                 detail="填写后链接形如 …/?ak=访问密钥，访客需链接带正确的 ak 才能访问；留空则继承同目录下最近父级分享的密钥（无父级则不设）。浏览目录、切换文件时密钥随链接一路透传，每一请求都会校验。"
               >密钥说明</FormHint>
+            </div>
+            <el-divider class="card-divider" />
+            <div class="form-row">
+              <span class="row-label">目录访问</span>
+              <el-checkbox v-model="allowIndex" class="row-check">允许访问目录</el-checkbox>
+              <FormHint
+                inline
+                detail="勾选后本链接即目录树入口：访客可浏览目录，点进子目录/文件都复用这条链接（整棵子树通用），新增文件也立即可见；不勾选则仅该目录本身可访问。目录里的任意子项也可单独点「分享链接」生成独立链接（独立有效期、可单独撤销）。默认取应用设置，可自行勾选，创建后仍可更改。"
+              >目录树链接说明</FormHint>
             </div>
           </div>
         </div>
@@ -491,6 +491,15 @@ watch(() => props.open, (open) => {
         <div v-if="pendingTtl" class="pending-tip-row">
           <span class="dirty-tip">{{ pendingTtlText }}，点「应用更改」后生效（链接不变）。</span>
         </div>
+        <div class="share-ak-row">
+          <span class="ak-label">访问密钥</span>
+          <el-input v-model="accessKey" size="small" show-password clearable class="ak-input" placeholder="未设置（链接不含 ak）" />
+          <el-button
+            type="warning" size="small" plain :loading="busy"
+            :disabled="accessKey === accessKeyEffective"
+            @click="applyAccessKey"
+          >更新密钥</el-button>
+        </div>
         <div class="share-link-head">
           <el-select v-if="(ticket?.urls.length ?? 0) > 1" :model-value="activeUrlIndex" size="small" @change="(v: number) => activeUrlIndex = v">
             <el-option v-for="(u, i) in ticket?.urls ?? []" :key="u" :label="u" :value="i" />
@@ -503,15 +512,6 @@ watch(() => props.open, (open) => {
             @change="(v: unknown) => onAllowIndexChange(v === true)"
           >允许访问目录</el-checkbox>
           <el-button type="success" size="small" :disabled="!activeUrl" @click="copyActive">复制</el-button>
-        </div>
-        <div class="share-ak-row">
-          <span class="ak-label">访问密钥</span>
-          <el-input v-model="accessKey" size="small" show-password clearable class="ak-input" placeholder="未设置（链接不含 ak）" />
-          <el-button
-            type="warning" size="small" plain :loading="busy"
-            :disabled="accessKey === accessKeyEffective"
-            @click="applyAccessKey"
-          >更新密钥</el-button>
         </div>
         <div class="share-qr-block">
           <img v-if="qrDataUrl" class="share-qr" :src="qrDataUrl" alt="分享二维码" />
