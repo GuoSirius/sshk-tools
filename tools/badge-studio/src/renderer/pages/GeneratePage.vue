@@ -313,56 +313,56 @@ function askRemoveRecent(item: RecentHtml): void {
 
       <div class="panel">
         <div class="panel-title">识别配置（就地修改，保存为默认后重启沿用）</div>
-        <div class="cfg-row">
-          <span>识别方式</span>
-          <el-radio-group v-model="vision.provider" size="small">
-            <el-radio-button value="cloud">云端模型</el-radio-button>
-            <el-radio-button value="manual">仅人工校对</el-radio-button>
-          </el-radio-group>
-        </div>
+        <!-- label 等宽对齐 = el-form label-width="auto"（用户 2026-11-19 澄清的规范做法，勿用固定 px） -->
+        <el-form label-width="auto" class="vision-cfg">
+          <el-form-item label="识别方式">
+            <el-radio-group v-model="vision.provider" size="small">
+              <el-radio-button value="cloud">云端模型</el-radio-button>
+              <el-radio-button value="manual">仅人工校对</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
 
-        <template v-if="vision.provider === 'cloud'">
-          <div class="cfg-row">
-            <span>Provider</span>
-            <el-select v-model="visionProviderId" size="small" style="width: 220px" @change="onProviderChange">
-              <el-option
-                v-for="p in providers"
-                :key="p._id"
-                :label="`${p.name} · ${p.hasApiKey ? '已配置密钥' : '未配置密钥'}`"
-                :value="p._id"
-              />
-            </el-select>
-            <el-tag size="small" :type="activeProvider?.hasApiKey ? 'success' : 'info'">
-              {{ activeProvider?.hasApiKey ? '密钥已从模型控制台复用' : '请先到模型控制台填 API Key' }}
-            </el-tag>
+          <template v-if="vision.provider === 'cloud'">
+            <el-form-item label="Provider">
+              <el-select v-model="visionProviderId" size="small" style="width: 220px" @change="onProviderChange">
+                <el-option
+                  v-for="p in providers"
+                  :key="p._id"
+                  :label="`${p.name} · ${p.hasApiKey ? '已配置密钥' : '未配置密钥'}`"
+                  :value="p._id"
+                />
+              </el-select>
+              <el-tag size="small" :type="activeProvider?.hasApiKey ? 'success' : 'info'">
+                {{ activeProvider?.hasApiKey ? '密钥已从模型控制台复用' : '请先到模型控制台填 API Key' }}
+              </el-tag>
+            </el-form-item>
+            <el-form-item label="模型">
+              <el-select
+                v-model="visionModel"
+                size="small"
+                filterable
+                allow-create
+                default-first-option
+                :loading="modelsLoading"
+                placeholder="下拉选择或手动输入"
+                style="width: 240px"
+              >
+                <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+              </el-select>
+              <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
+              <span class="muted">端点与密钥来自「模型控制台」的同一份 Provider</span>
+            </el-form-item>
+          </template>
+
+          <div v-else class="hint">
+            仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
           </div>
-          <div class="cfg-row">
-            <span>模型</span>
-            <el-select
-              v-model="visionModel"
-              size="small"
-              filterable
-              allow-create
-              default-first-option
-              :loading="modelsLoading"
-              placeholder="下拉选择或手动输入"
-              style="width: 240px"
-            >
-              <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
-            </el-select>
-            <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
-            <span class="muted">端点与密钥来自「模型控制台」的同一份 Provider</span>
-          </div>
-        </template>
 
-        <div v-else class="hint">
-          仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
-        </div>
-
-        <div v-if="vision.provider !== 'manual'" class="cfg-row">
-          <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
-          <span class="muted">不保存则本次会话内有效</span>
-        </div>
+          <el-form-item v-if="vision.provider !== 'manual'">
+            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
+            <span class="muted">不保存则本次会话内有效</span>
+          </el-form-item>
+        </el-form>
 
         <details v-if="visionRaw" style="margin-top: 6px">
           <summary class="muted" style="cursor: pointer">查看识别原文</summary>
@@ -574,6 +574,10 @@ function askRemoveRecent(item: RecentHtml): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
+/* 识别配置表单：紧凑口径（12px 字号、8px 行距，与原 cfg-row 一致） */
+.vision-cfg .el-form-item { margin-bottom: 8px; }
+.vision-cfg .el-form-item__label { font-size: 12px; }
+.vision-cfg .el-form-item__content { font-size: 12px; }
 /* 编辑器工具行：说明文字占左，按钮组统一居右 */
 .editor-tool-row .muted { flex: 1; min-width: 0; }
 .editor-tool-btns { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
