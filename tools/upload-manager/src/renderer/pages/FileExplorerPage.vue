@@ -348,12 +348,18 @@ void window.api.config.get('app.themeMode').then((v) => { themeDark.value = Stri
 
 // ── 派生 ──
 const activeChannel = computed(() => channels.value.find((c) => c.id === profileId.value) ?? null)
-/** 类型/链接下拉过滤：'all' 不动；带链接=own/inherited 任一（仅本地通道有分享路由，其余通道恒为 none） */
+/** 带链接判定：本地=分享路由三态标记（own/inherited）；远程/云=有「链接」按钮的文件行（可复制 baseUrl 外链） */
+function hasLink(entry: FsEntry): boolean {
+  return activeChannel.value?.type === 'local'
+    ? shareMarkOf(entry).kind !== 'none'
+    : entry.kind === 'file'
+}
+/** 类型/链接下拉过滤：'all' 不动 */
 function applyDropdownFilters(list: FsEntry[]): FsEntry[] {
   let out = list
   if (kindFilter.value !== 'all') out = out.filter((e) => e.kind === kindFilter.value)
-  if (linkFilter.value === 'linked') out = out.filter((e) => shareMarkOf(e).kind !== 'none')
-  else if (linkFilter.value === 'unlinked') out = out.filter((e) => shareMarkOf(e).kind === 'none')
+  if (linkFilter.value === 'linked') out = out.filter(hasLink)
+  else if (linkFilter.value === 'unlinked') out = out.filter((e) => !hasLink(e))
   return out
 }
 const filteredEntries = computed(() => {
@@ -408,6 +414,8 @@ async function loadChannels(): Promise<void> {
 }
 
 let listSeq = 0 // 列表请求序号：切目录/切通道后丢弃过期响应（2026-11-19 用户实测本地慢目录与切换竞态）
+let lastListPath = '' // 上次列取的目录：目录变更时列表回到顶部（定位文件场景除外）
+const listEl = ref<HTMLElement | null>(null)
 
 async function list(resetCursor = true): Promise<void> {
   if (!profileId.value) return
@@ -431,13 +439,18 @@ async function list(resetCursor = true): Promise<void> {
     const valid = new Set(page.entries.map((e) => e.path))
     usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
     if (resetCursor) { void loadAnnotations(); void loadShareRoutes() } // 备注/分享状态跟随目录重载
+    // 目录切换：列表回到顶部（用户 2026-11-19：进目录不定位，仅收藏定位文件时滚动）
+    if (lastListPath !== path.value) {
+      lastListPath = path.value
+      listEl.value?.scrollTo({ top: 0 })
+    }
     // 收藏文件跳转：进入父目录后选中该文件（未列到则忽略）
     if (pendingNavSelect) {
       const target = pendingNavSelect
       pendingNavSelect = null
       if (entries.value.some((e) => e.path === target)) {
         selection.value = new Set([target])
-        // 长目录滚动定位（用户 2026-11-19：默认视口在顶部看不到选中项）
+        // 仅定位文件时滚动到视口居中（目录进入不滚动，见上）
         void nextTick(() => {
           document.querySelector(`[data-entry-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: 'center' })
         })
@@ -2076,58 +2089,7 @@ function onKeydown(event: KeyboardEvent): void {
       </span>
     </div>
 
-    <!-- 路径区 -->
-    <div class="fs-path-bar">
-      <!-- 导航：图标+文字（纯图标易被误读成历史后退/前进，实际只有「上一级」语义） -->
-      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Back" title="回到上一级目录 (Backspace)" @click="goUp">上一级</el-button>
-      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Refresh" title="刷新当前目录 (F5)" @click="refresh">刷新</el-button>
-      <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
-        <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
-        <template v-if="crumbs.length > crumbItems.length">
-          <span class="fs-crumb-sep">/</span>
-          <span class="fs-crumb fs-crumb-ellipsis" :title="`展开：${collapsedCrumbPath}`" @click="gotoCrumb(crumbs.length - crumbItems.length - 1)">…</span>
-        </template>
-        <template v-for="c in crumbItems" :key="c.i">
-          <span class="fs-crumb-sep">/</span>
-          <span class="fs-crumb" :title="c.seg" @click="gotoCrumb(c.i)">{{ c.seg }}</span>
-        </template>
-      </div>
-      <el-input clearable
-        v-else
-        v-model="pathInput"
-        size="small"
-        class="fs-path-input"
-        placeholder="输入路径回车直达（oss:// 风格可省前缀，'..' 会被拒绝）"
-        autofocus
-        @keyup.enter="submitPathInput"
-        @blur="pathEditing = false"
-      />
-      <el-select v-model="kindFilter" size="small" class="fs-dd-filter" title="按类型过滤">
-        <el-option label="全部" value="all" />
-        <el-option label="文件" value="file" />
-        <el-option label="文件夹" value="dir" />
-      </el-select>
-      <el-select v-model="linkFilter" size="small" class="fs-dd-filter" title="按分享链接过滤">
-        <el-option label="全部" value="all" />
-        <el-option label="带链接" value="linked" />
-        <el-option label="不带链接" value="unlinked" />
-      </el-select>
-      <el-input
-        v-model="filter"
-        size="small"
-        class="fs-filter"
-        :prefix-icon="Search"
-        placeholder="当前目录内搜索；回车 = 递归搜索"
-        clearable
-        @keyup.enter="runSearch"
-      />
-      <el-button-group class="fs-view-toggle">
-        <el-button size="small" :type="viewMode === 'list' ? 'primary' : 'default'" :icon="MenuIcon" title="列表视图" @click="viewMode = 'list'" />
-        <el-button size="small" :type="viewMode === 'grid' ? 'primary' : 'default'" :icon="Grid" title="网格视图" @click="viewMode = 'grid'" />
-      </el-button-group>
-    </div>
-
-    <!-- 工具栏（§3.1 并集：常用操作外置，仅次要项进「更多▾」） -->
+    <!-- 工具栏（§3.1 并集：常用操作外置，仅次要项进「更多▾」）；路径区紧随其下（用户 2026-11-19：路径单独一行，位于上传/下载下方） -->
     <div class="fs-toolbar">
       <el-dropdown @command="(c: unknown) => (String(c) === 'dir' ? uploadDirs() : String(c) === 'output' ? uploadFromOutput() : uploadFiles())">
         <el-button size="small" type="success" :icon="Upload" :disabled="!profileId">上传</el-button>
@@ -2183,6 +2145,57 @@ function onKeydown(event: KeyboardEvent): void {
       </el-dropdown>
     </div>
 
+    <!-- 路径区（独立一行，位于上传/下载工具栏下方）：导航 + 面包屑 + 过滤下拉 + 搜索 + 视图切换 -->
+    <div class="fs-path-bar">
+      <!-- 导航：图标+文字（纯图标易被误读成历史后退/前进，实际只有「上一级」语义） -->
+      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Back" title="回到上一级目录 (Backspace)" @click="goUp">上一级</el-button>
+      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Refresh" title="刷新当前目录 (F5)" @click="refresh">刷新</el-button>
+      <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
+        <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
+        <template v-if="crumbs.length > crumbItems.length">
+          <span class="fs-crumb-sep">/</span>
+          <span class="fs-crumb fs-crumb-ellipsis" :title="`展开：${collapsedCrumbPath}`" @click="gotoCrumb(crumbs.length - crumbItems.length - 1)">…</span>
+        </template>
+        <template v-for="c in crumbItems" :key="c.i">
+          <span class="fs-crumb-sep">/</span>
+          <span class="fs-crumb" :title="c.seg" @click="gotoCrumb(c.i)">{{ c.seg }}</span>
+        </template>
+      </div>
+      <el-input clearable
+        v-else
+        v-model="pathInput"
+        size="small"
+        class="fs-path-input"
+        placeholder="输入路径回车直达（oss:// 风格可省前缀，'..' 会被拒绝）"
+        autofocus
+        @keyup.enter="submitPathInput"
+        @blur="pathEditing = false"
+      />
+      <el-select v-model="kindFilter" size="small" class="fs-dd-filter" title="按类型过滤">
+        <el-option label="全部" value="all" />
+        <el-option label="文件" value="file" />
+        <el-option label="文件夹" value="dir" />
+      </el-select>
+      <el-select v-model="linkFilter" size="small" class="fs-dd-filter" title="按分享链接过滤">
+        <el-option label="全部" value="all" />
+        <el-option label="带链接" value="linked" />
+        <el-option label="不带链接" value="unlinked" />
+      </el-select>
+      <el-input
+        v-model="filter"
+        size="small"
+        class="fs-filter"
+        :prefix-icon="Search"
+        placeholder="当前目录内搜索；回车 = 递归搜索"
+        clearable
+        @keyup.enter="runSearch"
+      />
+      <el-button-group class="fs-view-toggle">
+        <el-button size="small" :type="viewMode === 'list' ? 'primary' : 'default'" :icon="MenuIcon" title="列表视图" @click="viewMode = 'list'" />
+        <el-button size="small" :type="viewMode === 'grid' ? 'primary' : 'default'" :icon="Grid" title="网格视图" @click="viewMode = 'grid'" />
+      </el-button-group>
+    </div>
+
     <!-- 文件列表 -->
     <el-alert
       v-if="elevated && !adminTipDismissed"
@@ -2191,7 +2204,7 @@ function onKeydown(event: KeyboardEvent): void {
       title="当前以管理员模式运行：Windows 系统会拦截资源管理器向本应用的拖放（UIPI 安全限制），请改用「上传文件」按钮选择，或以普通权限运行应用"
       @close="dismissAdminTip"
     />
-    <div class="fs-list" :class="{ 'is-drag': dragOver }">
+    <div ref="listEl" class="fs-list" :class="{ 'is-drag': dragOver }">
       <!-- 递归搜索结果横幅（二期） -->
       <div v-if="searchActive" class="fs-search-banner">
         <span class="fs-search-info">
