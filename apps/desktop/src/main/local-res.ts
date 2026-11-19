@@ -2,7 +2,7 @@ import path from 'node:path'
 import { closeSync, existsSync, openSync, readSync, readFileSync, statSync } from 'node:fs'
 import { protocol } from 'electron'
 import { collectResRoots, isAllowedResPath, parseByteRange, RES_MIME_BY_EXT } from './local-res-rules'
-import { getMediaDownload, isMediaStreaming, waitForMediaBytes } from './media-stream'
+import { getMediaDownload, isMediaStreaming } from './media-stream'
 
 /**
  * localres:// 预览协议（用户反馈 2026-11-16：本地上传 profile 回填 file:// URL，
@@ -42,21 +42,33 @@ function readRange(p: string, start: number, end: number): { buf: Buffer; filled
   return { buf, filled }
 }
 
-/** 等待流式落盘的文件出现（云 SDK 首包前 destFile 可能尚未创建，2026-11-19 用户实测 404）：
- *  文件出现 / 会话终态 / 停滞超时即返回当前存在性；有进展就续期（同 waitForMediaBytes 语义） */
-async function waitForMediaFileStart(p: string, stallTimeoutMs = 15_000): Promise<boolean> {
-  let lastUploaded = -1
+/**
+ * 等待磁盘文件写入到至少 needBytes 字节（2026-11-19 云播放 code=4 根因修复）。
+ *
+ * 就绪判定必须以【磁盘 size】为准，不能用会话 uploaded（网络侧 onProgress）：
+ * OSS/云 SDK 的进度回调先于数据落盘，按 uploaded 放行后 statSync clamp 会得到
+ * realEnd < start → 503，而 custom protocol 的 503 媒体栈不重试 → 直接 code=4。
+ * 本地文件非流式不走此分支，所以此前只有云播放挂、本地一直正常。
+ *
+ * 进展续期信号 = max(uploaded, 磁盘 size)——任一在涨都不算停滞；
+ * 停滞超时 / 会话终态即返回当前磁盘 size（文件不存在为 0），由调用方裁决。
+ */
+async function waitForMediaFileBytes(p: string, needBytes: number, stallTimeoutMs = 30_000): Promise<number> {
+  let lastSig = -1
   let lastProgressAt = Date.now()
   while (true) {
-    if (existsSync(p)) return true
+    let size = 0
+    try { size = statSync(p).size } catch { /* 文件尚未创建：按 0 继续等 */ }
+    if (size >= needBytes) return size
     const st = getMediaDownload(p)
-    if (!st || st.done || st.error) return existsSync(p)
-    if (st.uploaded !== lastUploaded) {
-      lastUploaded = st.uploaded
+    if (!st || st.done || st.error) return size // 终态：按磁盘现状交调用方裁决
+    const sig = Math.max(st.uploaded, size)
+    if (sig !== lastSig) {
+      lastSig = sig
       lastProgressAt = Date.now()
     }
-    if (Date.now() - lastProgressAt >= stallTimeoutMs) return existsSync(p)
-    await new Promise<void>((r) => setTimeout(r, 50))
+    if (Date.now() - lastProgressAt >= stallTimeoutMs) return size
+    await new Promise<void>((r) => setTimeout(r, 40))
   }
 }
 
@@ -74,7 +86,7 @@ export function installLocalResHandler(config: ConfigLike): void {
       // 边下边播会话已注册但文件还没落盘：等首包写盘（云 SDK download 首包前 destFile 不存在），
       // 直接 404 会让 <video> 立刻 error；等待无果（下载失败/停滞）才回 404
       if (!existsSync(p) && isMediaStreaming(p)) {
-        if (!(await waitForMediaFileStart(p))) {
+        if ((await waitForMediaFileBytes(p, 1)) === 0) {
           return new Response('媒体数据未就绪（下载未开始或已失败）', { status: 404 })
         }
       }
@@ -90,21 +102,14 @@ export function installLocalResHandler(config: ConfigLike): void {
       const range = parseByteRange(rangeHeader, effectiveTotal)
       if (range) {
         const { start, end } = range
-        // 下载中：等 start+1 字节就绪（读到请求起点才有意义）；超时=下载停滞判定，
-        // 下载推进期间 tail Range（moov 在尾部）会持续等待直到区间落盘或终态
-        if (streaming) {
-          const st = await waitForMediaBytes(p, start + 1, { timeoutMs: 30_000 })
-          if (!st || st.error || (st.uploaded <= start && st.done)) {
-            // 下载失败 / 文件结束仍不足 → 让播放器 onerror 回退下载
-            return new Response('媒体数据未就绪', { status: 503 })
-          }
-        }
         let realEnd = end
         if (streaming) {
+          // 等磁盘写到请求起点（就绪以磁盘 size 为准，见 waitForMediaFileBytes 注释）：
+          // tail Range（moov 在尾部）会一直等到区间落盘或下载终态；只有停滞/终态不足才 503
+          const cur = await waitForMediaFileBytes(p, start + 1)
+          if (cur <= start) return new Response('媒体数据未就绪', { status: 503 })
           // 只返回已写入的部分（clamp 到当前 size-1）；浏览器收到短区间会自动续请求
-          const cur = statSync(p).size
           realEnd = Math.min(end, cur - 1)
-          if (realEnd < start) return new Response('媒体数据未就绪', { status: 503 })
         }
         const { buf, filled } = readRange(p, start, realEnd)
         return new Response(new Uint8Array(buf.subarray(0, filled)), {
