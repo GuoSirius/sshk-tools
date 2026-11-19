@@ -324,7 +324,7 @@ function askRemoveRecent(item: RecentHtml): void {
 
           <template v-if="vision.provider === 'cloud'">
             <el-form-item label="Provider">
-              <el-select v-model="visionProviderId" size="small" style="width: 220px" @change="onProviderChange">
+              <el-select v-model="visionProviderId" size="small" class="vision-cfg-select" @change="onProviderChange">
                 <el-option
                   v-for="p in providers"
                   :key="p._id"
@@ -345,7 +345,7 @@ function askRemoveRecent(item: RecentHtml): void {
                 default-first-option
                 :loading="modelsLoading"
                 placeholder="下拉选择或手动输入"
-                style="width: 240px"
+                class="vision-cfg-select"
               >
                 <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
               </el-select>
@@ -574,10 +574,12 @@ function askRemoveRecent(item: RecentHtml): void {
   font-size: 12px;
   flex-wrap: wrap;
 }
-/* 识别配置表单：紧凑口径（12px 字号、8px 行距，与原 cfg-row 一致） */
-.vision-cfg .el-form-item { margin-bottom: 8px; }
+/* 识别配置表单：紧凑口径（12px 字号，与原 cfg-row 一致）；行距 12px、行内控件间 8px，
+   Provider/模型下拉统一宽度右缘对齐（用户 2026-11-19） */
+.vision-cfg .el-form-item { margin-bottom: 12px; }
+.vision-cfg .el-form-item__content { gap: 8px; font-size: 12px; }
 .vision-cfg .el-form-item__label { font-size: 12px; }
-.vision-cfg .el-form-item__content { font-size: 12px; }
+.vision-cfg-select { width: 240px; }
 /* 编辑器工具行：说明文字占左，按钮组统一居右 */
 .editor-tool-row .muted { flex: 1; min-width: 0; }
 .editor-tool-btns { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
