@@ -61,6 +61,8 @@ export type {
   ShareHubProxy,
   ShareIpInfo,
   ShareAccessLog,
+  ShareLogsQuery,
+  ShareLogsResult,
   HubStatus,
 } from './types'
 

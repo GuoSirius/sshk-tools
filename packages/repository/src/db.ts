@@ -19,6 +19,7 @@ const ID_PREFIX: Record<StorageCollection, string> = {
   mails: 'mail',
   posters: 'pst',
   contents: 'cnt',
+  shareLogs: 'shlog',
   usage: 'use',
   fsAnnotations: 'fsa',
   fsFavorites: 'fsv',

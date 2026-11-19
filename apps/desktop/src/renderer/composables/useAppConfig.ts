@@ -29,6 +29,9 @@ export const appConfig = reactive({
   shareMounts: [] as ShareHubMount[],
   /** 代理规则（用户 2026-11-18）：app.shareHub.proxies 数组 */
   shareProxies: [] as ShareHubProxy[],
+  /** 日志容量（plans/12）：条数 1~100000 默认 5000 / 保留天数 1~365 默认 30；仅「分享管理」工具 service 页配置 */
+  shareLogMaxCount: 5000,
+  shareLogRetentionDays: 30,
 })
 
 async function str(key: string, fallback: string): Promise<string> {
@@ -62,6 +65,10 @@ export async function loadAppConfig(): Promise<void> {
   appConfig.shareAllowIndex = await bool('app.shareHub.allowIndex', false)
   appConfig.shareMounts = (await arr<ShareHubMount>('app.shareHub.mounts')) ?? []
   appConfig.shareProxies = (await arr<ShareHubProxy>('app.shareHub.proxies')) ?? []
+  const logMaxCount = await num('app.shareHub.logMaxCount', 5000)
+  appConfig.shareLogMaxCount = Number.isInteger(logMaxCount) && logMaxCount > 0 ? Math.min(logMaxCount, 100000) : 5000
+  const logDays = await num('app.shareHub.logRetentionDays', 30)
+  appConfig.shareLogRetentionDays = Number.isInteger(logDays) && logDays > 0 ? Math.min(logDays, 365) : 30
   appConfig.autoUpdate = await bool('app.autoUpdate', true)
   appConfig.autoInstallOnAppQuit = await bool('app.autoInstallOnAppQuit', false)
   appConfig.developerMode = await bool('app.developerMode', false)

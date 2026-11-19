@@ -17,8 +17,10 @@ import {
   type ShareHubProxy,
   type HubStatus,
   type ShareContentResolverResult,
+  type ShareLogsQuery,
+  type ShareAccessLog,
 } from '@sshk/shared'
-import type { ConfigService } from '@sshk/repository'
+import type { ConfigService, Repository, ShareLogDoc } from '@sshk/repository'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
 
@@ -71,12 +73,57 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   contentResolver?: (contentId: string) => ShareContentResolverResult | null | Promise<ShareContentResolverResult | null>
   /** 内容列表页 resolver（plans/11 方案 C）：宿主构造已发布文章列表页 HTML */
   contentListResolver?: (accessKey: string) => string | null | Promise<string | null>
+  /** 数据层（plans/12）：访问日志持久化 NeDB shareLogs 集合；未传则日志不落库 */
+  repository?: Repository
 }): ShareHubHost {
   const stateFile = join(opts.userDataDir, 'hub-state.json')
   migrateShareStateToolId(stateFile)
   const hub = new ShareHub(stateFile)
   if (opts.contentResolver) hub.registerContentResolver(opts.contentResolver)
   if (opts.contentListResolver) hub.registerContentListResolver(opts.contentListResolver)
+
+  // ── 访问日志持久化（plans/12）：内核批量 flush → NeDB shareLogs；容量清理随写入顺带做 ──
+  /** 容量 clamp：条数 1~100000（默认 5000），天数 1~365（默认 30）；非法回默认（plans/12 §十二④） */
+  function clampLogCapacity(): { maxCount: number; days: number } {
+    const rawCount = Number(cfg.get('app.shareHub.logMaxCount'))
+    const rawDays = Number(cfg.get('app.shareHub.logRetentionDays'))
+    const maxCount = Number.isInteger(rawCount) && rawCount > 0 ? Math.min(rawCount, 100_000) : 5000
+    const days = Number.isInteger(rawDays) && rawDays > 0 ? Math.min(rawDays, 365) : 30
+    return { maxCount, days }
+  }
+  if (opts.repository) {
+    const repo = opts.repository
+    let cleaning = false
+    hub.setLogSink(async (rows: ShareAccessLog[]) => {
+      for (const row of rows) {
+        await repo.insert<ShareLogDoc>('shareLogs', { id: row.id, at: row.at, ip: row.ip, path: row.path, status: row.status, routeId: row.routeId })
+      }
+      // 滚动清理：30 天前删除 + 超 N 条删最旧（无提示，与清空/批量删除边界独立）
+      if (cleaning) return
+      cleaning = true
+      void (async () => {
+        try {
+          const { maxCount, days } = clampLogCapacity()
+          const cutoff = Date.now() - days * 86_400_000
+          await repo.removeWhere('shareLogs', { at: { $lt: cutoff } })
+          const total = await repo.count('shareLogs')
+          if (total > maxCount) {
+            const stale = await repo.list<ShareLogDoc>('shareLogs', {}, { at: 1 })
+            const excess = stale.slice(0, total - maxCount).map((d) => d.id)
+            if (excess.length) await repo.removeWhere('shareLogs', { id: { $in: excess } })
+          }
+        } catch (err) {
+          logger.warn('shareHub', `访问日志清理失败（不影响写入）：${(err as Error).message}`)
+        } finally {
+          cleaning = false
+        }
+      })()
+    })
+  }
+  function applyLogCapacity(): void {
+    const { maxCount, days } = clampLogCapacity()
+    hub.setLogCapacity(maxCount, days)
+  }
 
   // 固定端口被占回落 → 日志 +（dev）终端告警；ElMessage 由渲染层 status 轮询感知端口变化后提示
   hub.setPortFallbackHandler((requested, actual) => {
@@ -158,6 +205,7 @@ export function createShareHubHost(cfg: ConfigService, opts: {
     applyPreferredIp()
     applyMounts()
     applyProxies()
+    applyLogCapacity()
     if (cfg.get('app.shareHub.autoStart') !== false) {
       try { await startHub() } catch (err) {
         logger.error('shareHub', `自动启动失败：${(err as Error).message}`)
@@ -170,6 +218,8 @@ export function createShareHubHost(cfg: ConfigService, opts: {
       // 挂载目录/代理规则变更即时生效（保存即生效，无需重启——用户 2026-11-18 定版）
       if (key === 'shareHub.mounts') { applyMounts(); return }
       if (key === 'shareHub.proxies') { applyProxies(); return }
+      // 日志容量变更即时生效（plans/12：clamp 后注入内核）
+      if (key === 'shareHub.logMaxCount' || key === 'shareHub.logRetentionDays') { applyLogCapacity(); return }
       if (key === 'shareHub.autoStart') {
         const on = cfg.get('app.shareHub.autoStart') !== false
         if (on && !hub.running) void startHub()
@@ -201,10 +251,11 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   }
 }
 
-/** 注册 ShareHub 的 6 条 IPC（6 通道 → create/list/revoke/renew/status/control）。
- *  全部经 handleOk，遵守 check:ipc 门禁。 */
-export function registerShareHubIpc(host: ShareHubHost): void {
+/** 注册 ShareHub 的 IPC（create/list/revoke/renew/status/control + logs/exportLogs/deleteLogs/clearLogs）。
+ *  全部经 handleOk，遵守 check:ipc 门禁。repository 为日志持久化数据层（plans/12，可选）。 */
+export function registerShareHubIpc(host: ShareHubHost, repository?: Repository): void {
   const hub = host.hub
+  const hostRepository = repository
 
   handleOk(IPC_CHANNELS.shareHubCreate, (_e, input: ShareRouteInput) =>
     // 应用级默认（app.shareHub.allowIndex，默认不允许）：弹框未显式指定时在此注入（弹框值优先）
@@ -233,6 +284,83 @@ export function registerShareHubIpc(host: ShareHubHost): void {
   })
 
   handleOk(IPC_CHANNELS.shareHubStatus, (): HubStatus => hub.status())
+
+  // ── 访问日志独立通道（plans/12）：读取链路彻底改造，不走 status；NeDB shareLogs ──
+  /** 查询条件 → NeDB query（时间毫秒/IP·路径模糊/状态码分组/工具·路由反查）；routeId→toolId 反查在 handler 内做 */
+  function buildLogQuery(q: ShareLogsQuery | undefined, routeIds?: string[]): Record<string, unknown> {
+    const query: Record<string, unknown> = {}
+    if (q?.from !== undefined || q?.to !== undefined) {
+      query.at = { ...(q?.from !== undefined ? { $gte: q.from } : {}), ...(q?.to !== undefined ? { $lte: q.to } : {}) }
+    }
+    if (q?.ip?.trim()) query.ip = { $regex: new RegExp(escapeRegExp(q.ip.trim()), 'i') }
+    if (q?.path?.trim()) query.path = { $regex: new RegExp(escapeRegExp(q.path.trim()), 'i') }
+    if (q?.statusGroup) {
+      const base = Number(q.statusGroup[0]) * 100
+      query.status = { $gte: base, $lt: base + 100 }
+    }
+    if (routeIds) query.routeId = { $in: routeIds }
+    return query
+  }
+  function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+  /** 归属工具/标签反查不在日志行存储：toolId 过滤时先从路由表查出该工具全部 routeId */
+  function routeIdsOf(toolId: string): string[] {
+    return hub.listRoutes().filter((r) => r.toolId === toolId).map((r) => r.id)
+  }
+
+  handleOk(IPC_CHANNELS.shareHubLogs, async (_e, q?: ShareLogsQuery) => {
+    const repo = hostRepository
+    if (!repo) throw new Error('数据层未就绪，无法读取访问日志')
+    const routeIds = q?.toolId?.trim() ? routeIdsOf(q.toolId.trim()) : undefined
+    // 工具过滤下无匹配路由 → 直接空结果（避免 $in 空数组语义歧义）
+    if (routeIds && routeIds.length === 0) return { rows: [], total: 0 }
+    const query = buildLogQuery(q, routeIds)
+    const total = await repo.count('shareLogs', query)
+    const limit = Math.min(Math.max(Number(q?.limit) || 200, 1), 1000)
+    const offset = Math.max(Number(q?.offset) || 0, 0)
+    const docs = await repo.list<ShareLogDoc>('shareLogs', query, { at: -1 })
+    const rows: ShareAccessLog[] = docs.slice(offset, offset + limit).map((d) => ({ id: d.id, at: d.at, ip: d.ip, path: d.path, status: d.status, routeId: d.routeId }))
+    return { rows, total }
+  })
+
+  handleOk(IPC_CHANNELS.shareHubExportLogs, async (_e, q?: ShareLogsQuery) => {
+    const repo = hostRepository
+    if (!repo) throw new Error('数据层未就绪，无法导出访问日志')
+    const routeIds = q?.toolId?.trim() ? routeIdsOf(q.toolId.trim()) : undefined
+    if (routeIds && routeIds.length === 0) return ''
+    const query = buildLogQuery(q, routeIds)
+    const docs = await repo.list<ShareLogDoc>('shareLogs', query, { at: -1 })
+    // 路由 id → 标签/归属 映射（撤销后的路由不在表内，留空）
+    const routeMap = new Map(hub.listRoutes().map((r) => [r.id, r]))
+    const csvRows = [['时间(北京)', '来源IP', '路径', '状态码', '命中路由ID', '归属工具', '标签']]
+    for (const d of docs) {
+      const r = routeMap.get(d.routeId)
+      csvRows.push([
+        new Date(d.at).toLocaleString('zh-CN', { hour12: false }),
+        d.ip, d.path, String(d.status), d.routeId, r?.toolId ?? '', r?.label ?? '',
+      ])
+    }
+    // UTF-8 BOM 防 Excel 中文乱码；字段引号包裹防逗号/换行注入
+    const csv = '\ufeff' + csvRows.map((cells) => cells.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(',')).join('\r\n')
+    return csv
+  })
+
+  handleOk(IPC_CHANNELS.shareHubDeleteLogs, async (_e, ids: string[]) => {
+    const repo = hostRepository
+    if (!repo) throw new Error('数据层未就绪，无法删除访问日志')
+    const list = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string' && x) : []
+    if (!list.length) return 0
+    // 尚未落库的队列记录同步移除，防止删除后又被 flush 写回
+    hub.removeQueuedLogs(list)
+    return repo.removeWhere('shareLogs', { id: { $in: list } })
+  })
+
+  handleOk(IPC_CHANNELS.shareHubClearLogs, async () => {
+    const repo = hostRepository
+    if (!repo) throw new Error('数据层未就绪，无法清空访问日志')
+    return repo.removeWhere('shareLogs', {})
+  })
 
   // 生命周期控制：宿主「分享服务」tab 使用（action 白名单，防误用）
   handleOk(IPC_CHANNELS.shareHubControl, async (_e, action: 'start' | 'restart' | 'stop' | 'clear') => {

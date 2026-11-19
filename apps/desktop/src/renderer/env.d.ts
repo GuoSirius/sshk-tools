@@ -320,6 +320,11 @@ interface Window {
       revoke(id: string, toolId?: string): Promise<boolean>
       renew(id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }): Promise<import('@sshk/shared').ShareRouteTicket>
       status(): Promise<import('@sshk/shared').HubStatus>
+      /** 访问日志（plans/12）：NeDB shareLogs 分页查询/CSV 导出/删除/清空，不走 status */
+      logs(query?: import('@sshk/shared').ShareLogsQuery): Promise<import('@sshk/shared').ShareLogsResult>
+      exportLogs(query?: import('@sshk/shared').ShareLogsQuery): Promise<string>
+      deleteLogs(ids: string[]): Promise<number>
+      clearLogs(): Promise<number>
     }
     shareHubControl: {
       start(): Promise<{ port: number }>

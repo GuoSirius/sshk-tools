@@ -153,7 +153,7 @@ export const DEFAULT_SETTINGS: Settings = {
      *  port 固定端口（默认 56789），0=自动分配；preferredIp ''=按 §4.3 自动优选，可手输。
      *  autoPort：自动分配模式下实际拿到的端口（主进程持久化，重启沿用，链接不变）；
      *  被占用回落新随机端口后自动更新。用户手输固定端口（port>0）时忽略 autoPort。 */
-    shareHub: { autoStart: true, port: 56789, autoPort: 0, preferredIp: '', defaultTtlHours: 72 },
+    shareHub: { autoStart: true, port: 56789, autoPort: 0, preferredIp: '', defaultTtlHours: 72, logMaxCount: 5000, logRetentionDays: 30 },
     launchOnBoot: false,
     tray: true,
     window: { width: 1440, height: 900, maximized: false },

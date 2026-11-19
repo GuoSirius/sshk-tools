@@ -180,6 +180,16 @@ export interface ContentDoc extends BaseEntity {
   wordCount: number
 }
 
+/** 分享访问日志（plans/12）：内核批量写入，id=内核生成的 UUID（删除稳定键），路由归属走 routeId 反查不冗余存 */
+export interface ShareLogDoc extends BaseEntity {
+  id: string
+  at: number
+  ip: string
+  path: string
+  status: number
+  routeId: string
+}
+
 /** zip 包内 data/ 目录与实体的对应关系（@sshk/backup 使用） */
 export const BACKUP_COLLECTIONS = [
   'brands',
@@ -190,6 +200,7 @@ export const BACKUP_COLLECTIONS = [
   'mails',
   'posters',
   'contents',
+  'shareLogs',
 ] as const
 
 export type CollectionName = (typeof BACKUP_COLLECTIONS)[number]

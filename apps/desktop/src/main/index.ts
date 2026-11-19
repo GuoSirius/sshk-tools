@@ -367,8 +367,8 @@ async function registerIpc(): Promise<void> {
   const themeMode = cfg.get('app.themeMode')
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
 
-  // ── ShareHub 常驻分享服务（plans/09）：6 通道，单例由 whenReady 初始化 ──
-  if (shareHubHost) registerShareHubIpc(shareHubHost)
+  // ── ShareHub 常驻分享服务（plans/09；plans/12 日志持久化）：通道注册，单例由 whenReady 初始化 ──
+  if (shareHubHost) registerShareHubIpc(shareHubHost, services?.repository)
 
   handleOk(IPC_CHANNELS.appVersion, () => app.getVersion())
   // 关于页运行环境信息（__APP_COMMIT__ 由 electron-vite define 注入，打包/dev 一致）

@@ -416,6 +416,13 @@ const api = {
     renew: (id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }): Promise<import('@sshk/shared').ShareRouteTicket> =>
       invoke(IPC_CHANNELS.shareHubRenew, id, ttlHours, toolId, mode, patch),
     status: (): Promise<import('@sshk/shared').HubStatus> => invoke(IPC_CHANNELS.shareHubStatus),
+    /** 访问日志（plans/12）：NeDB shareLogs 分页查询/CSV 导出/删除/清空，不走 status */
+    logs: (query?: import('@sshk/shared').ShareLogsQuery): Promise<import('@sshk/shared').ShareLogsResult> =>
+      invoke(IPC_CHANNELS.shareHubLogs, query),
+    exportLogs: (query?: import('@sshk/shared').ShareLogsQuery): Promise<string> =>
+      invoke(IPC_CHANNELS.shareHubExportLogs, query),
+    deleteLogs: (ids: string[]): Promise<number> => invoke(IPC_CHANNELS.shareHubDeleteLogs, ids),
+    clearLogs: (): Promise<number> => invoke(IPC_CHANNELS.shareHubClearLogs),
   },
   /** 生命周期控制：仅宿主「分享服务」tab 可用 */
   shareHubControl: {
