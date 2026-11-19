@@ -997,13 +997,11 @@ function shareMarkTip(entry: FsEntry): string {
     return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击复制自己的链接`
   }
   if (m.kind === 'inherited') {
-    return entry.kind === 'file'
-      ? `无自己的分享，随父目录「${m.parent!.label}」的分享可直达下载 · 点击复制文件链接`
-      : `无自己的分享，随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
+    return `无自己的分享，随父目录「${m.parent!.label}」的分享可访问 · 点击复制本项链接（父级链接 + 本项路径）`
   }
   return '未分享 · 点行操作「分享链接」创建'
 }
-/** 点击分享图标：own=自己的链接；inherited 文件=拼文件直达链接（父目录即使未开浏览也能下载）；inherited 目录=父级树链接。均按 route.id 反查 ticket。 */
+/** 点击分享图标：own=自己的链接；inherited=父级 token 链接 + 本项相对 root 路径（直达本项，文件/目录统一）。均按 route.id 反查 ticket。 */
 async function copyShareLink(entry: FsEntry): Promise<void> {
   const m = shareMarkOf(entry)
   const route = m.kind === 'own' ? m.route : m.parent
@@ -1011,11 +1009,10 @@ async function copyShareLink(entry: FsEntry): Promise<void> {
   const ticket = findShareTicketById(route.id)
   const base = ticket?.urls?.[0]
   if (!base) { ElMessage.warning('分享凭证读取失败，请重新打开分享弹框刷新链接'); return }
-  const url = m.kind === 'inherited' && entry.kind === 'file'
-    ? shareFileDirectUrl(base, entry.path) // 文件直达：base(含 token) + 相对 root 路径
-    : base
+  // 继承项统一：base(父级 token 链接) + 本项相对 root 路径 → 直达本项（内层文件/子目录）
+  const url = m.kind === 'inherited' ? shareFileDirectUrl(base, entry.path) : base
   await window.api.os.clipboardWrite(url)
-  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : (entry.kind === 'file' ? '已复制文件直达链接' : '已复制父级分享链接'))
+  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : '已复制本项分享链接（父级链接+本项路径）')
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
