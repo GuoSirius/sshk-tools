@@ -83,7 +83,8 @@ defineExpose({ submit, canSave })
 .ce-meta { flex: none; }
 /* 名称/标签两列、状态换行（用户 2026-11-19 拍板：名称标签可两列） */
 .ce-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sshk-gap-lg); }
-/* 默认编辑区域再加一倍（用户 2026-11-19）：min-height 260 → 520；
-   负 margin 延伸到 ce-body 右缘让滚动条贴弹框边（父级 padding-right:16 由自身 padding 补偿留白不变） */
-.ce-editor { flex: 1; min-height: 520px; overflow: auto; margin-right: -16px; padding-right: 16px; }
+/* 默认编辑区域再加一倍（用户 2026-11-19）：min-height 260 → 520。
+   滚动统一由外层壳负责（dialog=.ce-body / page=.cep-body），核心内不自滚、不玩负 margin */
+.ce-editor { flex: 1; min-height: 520px; display: flex; flex-direction: column; }
+.ce-editor > :deep(.rich) { flex: 1; min-height: 0; }
 </style>

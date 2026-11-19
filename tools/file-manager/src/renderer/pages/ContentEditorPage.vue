@@ -35,6 +35,6 @@ const title = props.copySource ? `复制内容：${props.copySource.name}` : pro
 .content-editor-page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .cep-head { flex: none; display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--el-border-color); }
 .cep-title { font-weight: 600; }
-.cep-body { flex: 1; min-height: 0; padding-top: 10px; }
+.cep-body { flex: 1; min-height: 0; padding-top: 10px; overflow-y: auto; }
 .cep-foot { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid var(--el-border-color); }
 </style>

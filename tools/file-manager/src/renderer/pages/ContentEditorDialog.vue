@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
- * 内容编辑弹框壳（plans/11 §3-5 / #8）：四态控件（最小化/最大化/全屏/关闭），打开默认最大化。
+ * 内容编辑弹框壳（plans/11 §3-5 / #8）：四态控件（最小化/最大化/全屏），打开默认最大化。
  * 编辑核心在 ContentEditorCore（dialog/page 两壳共用）。
  * - 最小化：弹框隐藏，收为可拖拽悬浮条（复用 TransferPanel useDraggable 范式），点击标题栏复原
- * - 最大化：el-dialog 宽高撑满工作区；全屏：el-dialog fullscreen（浏览器层）
- * - 富文本 fullScreen() 是 @sshk/rich-text 内部 Teleport 到 body + z-index 满级，天然盖住本弹框；
- *   二者状态互不改写，各 exit 只清各自 class
+ * - 最大化：铺满整个应用可视区（100vw×100vh、margin 0）
+ * - 富文本 fullScreen() 是 @sshk/rich-text 内部 Teleport 到 body + z-index 满级，天然盖住本弹框
+ *
+ * ⚠️ 弹框节点样式必须放非 scoped 全局块（项目已知坑：teleport 到 body 的节点上没有本组件
+ *   的 data-v 属性，:deep() 打不进去）；本模板自绘元素（.ce-head/.ce-body 等）可走 scoped。
+ * 滚动口径（用户 2026-11-19）：滚动层 = .ce-body，头部/脚部不随内容滚；
+ * 弹框自身 padding 归零，滚动条贴弹框最右缘，留白由 .ce-head/.ce-content 自身 padding 补偿。
  */
 import { computed, ref, watch } from 'vue'
 import { useDraggable } from '@vueuse/core'
@@ -63,7 +67,7 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       class="content-editor-dialog"
-      :class="{ 'ce-full': winMode !== 'normal', 'ce-max': winMode === 'maximized' }"
+      :class="{ 'ce-fullmode': winMode !== 'normal' }"
     >
       <div class="ce-head">
         <span class="ce-title">{{ editTitle }}</span>
@@ -78,8 +82,10 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
           <!-- 关闭在页内 footer「取消」已提供；弹框标题栏不再重复放关闭按钮 -->
         </div>
       </div>
-      <div class="ce-body">
-        <ContentEditorCore ref="coreRef" :record="record" :copy-source="copySource" @save="emit('save', $event)" />
+      <div class="ce-body" :class="{ 'ce-body-normal': winMode === 'normal' }">
+        <div class="ce-content">
+          <ContentEditorCore ref="coreRef" :record="record" :copy-source="copySource" @save="emit('save', $event)" />
+        </div>
       </div>
       <template #footer>
         <el-button size="small" @click="doClose">取消</el-button>
@@ -96,25 +102,31 @@ const { x, y } = useDraggable(barRef, { initialValue: { x: 120, y: 120 }, preven
 </template>
 
 <style scoped>
-/* 头部固定 + 滚动条贴弹框最右缘（用户 2026-11-19）：
-   滚动层从 el-dialog__body 下移到 ce-body——头部天然不滚；dialog 右侧内缩归零让滚动条贴缘，
-   16px 右留白由 ce-head/ce-core 自身 padding 补偿，视觉留白不变 */
-:deep(.content-editor-dialog) { padding-right: 0; }
-:deep(.content-editor-dialog .el-dialog__body) { overflow: visible; display: flex; flex-direction: column; }
-.ce-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--el-border-color); padding-bottom: 8px; margin-bottom: 10px; padding-right: 16px; }
+/* 本模板自绘元素（带 data-v）走 scoped；.el-dialog 节点覆盖见下方全局块 */
+.ce-head { flex: none; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--el-border-color); padding: 12px 16px 10px; }
 .ce-title { font-weight: 600; font-size: 14px; }
 .ce-controls { display: inline-flex; gap: 2px; }
 .ce-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--el-text-color-regular); cursor: pointer; border-radius: 4px; }
 .ce-btn:hover { background: var(--el-fill-color-light); }
-.ce-close:hover { color: var(--el-color-danger); }
-.ce-body { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; overflow-y: auto; padding-right: 16px; }
-.ce-full .ce-body { height: calc(100vh - 190px); }
+/* 唯一滚动层：滚动条贴弹框最右缘（弹框 padding 已在全局块归零）；头部/脚部在此层之外，不随内容滚 */
+.ce-body { flex: 1; min-height: 0; overflow-y: auto; }
+.ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; }
+/* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
+.ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
 .ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; }
-/* 最大化铺满整个应用可视区：el-dialog 默认有 margin-top 15vh 与圆角，需清零（teleport 到 body，scoped 可用 :deep） */
-:deep(.content-editor-dialog.ce-max) { margin: 0 !important; height: 100vh !important; max-height: 100vh !important; border-radius: 0 !important; }
-:deep(.content-editor-dialog.ce-max .el-dialog__body) { padding-top: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-:deep(.content-editor-dialog.ce-max .ce-body) { flex: 1; min-height: 0; height: auto; }
-:deep(.content-editor-dialog.ce-max .ce-core) { height: 100%; }
 .ce-mini-handle { cursor: move; color: var(--el-text-color-placeholder); }
 .ce-mini-title { cursor: pointer; font-size: 12px; }
+</style>
+
+<!-- 非 scoped 全局块：el-dialog 节点 teleport 到 body，无本组件 data-v 属性，:deep() 打不进（项目已知坑） -->
+<style>
+/* 弹框自身 padding 归零 → 滚动条贴弹框边缘；留白由 .ce-head/.ce-content 自身 padding 提供 */
+.content-editor-dialog { padding: 0 !important; }
+.content-editor-dialog .el-dialog__header { display: none; }
+/* 最大化/全屏：铺满整个应用可视区（用户 2026-11-19），弹框成 flex 列，body 弹性滚动、header/footer 固定 */
+.content-editor-dialog.ce-fullmode { display: flex; flex-direction: column; margin: 0 !important; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0 !important; overflow: hidden; }
+.content-editor-dialog.ce-fullmode .el-dialog__body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 0; }
+.content-editor-dialog.ce-fullmode .el-dialog__footer { flex: none; padding: 12px 16px 16px; border-top: 1px solid var(--el-border-color); }
+/* normal 态：footer 统一内缩口径 */
+.content-editor-dialog .el-dialog__footer { padding: 12px 16px 16px; }
 </style>
