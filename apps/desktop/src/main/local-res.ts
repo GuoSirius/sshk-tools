@@ -13,9 +13,9 @@ import { getMediaDownload, isMediaStreaming } from './media-stream'
  * 白名单判定纯逻辑在 local-res-rules.ts（可单测）。
  *
  * 边下边播（2026-11-19）：媒体临时文件若仍在下载（media-stream 表标记为 streaming），
- * Range 请求的区间未写入时不立即返回空，而是短轮询等字节到达；content-range 分母用
- * 预期 total（非当前 size），保证浏览器进度条/拖拽正确。下载失败/超时回错误响应 →
- * 渲染层 <video onerror> 自动回退到「下载到本地」路径。
+ * Range 请求按「渐进下载」语义处理——206 承诺完整区间，body 用 ReadableStream 随磁盘
+ * 落盘推进供数（与真实 HTTP 渐进下载服务器同构，播放器像面对慢网络一样等待）；分母用
+ * 预期 total 保证进度条/拖拽正确。停滞超时/下载失败 → 流报错 → 播放器 onerror 回退。
  */
 
 interface ConfigLike {
@@ -42,34 +42,72 @@ function readRange(p: string, start: number, end: number): { buf: Buffer; filled
   return { buf, filled }
 }
 
+/** 单次读取 [pos, pos+maxLen) 内已落盘字节；文件未创建/尚未写到 pos/实际读到 0 字节返回 null */
+function readChunk(p: string, pos: number, maxLen: number): Uint8Array | null {
+  let size = 0
+  try { size = statSync(p).size } catch { return null }
+  if (size <= pos) return null
+  const len = Math.min(maxLen, size - pos)
+  const buf = Buffer.allocUnsafe(len)
+  let filled = 0
+  const fd = openSync(p, 'r')
+  try { filled = readSync(fd, buf, 0, len, pos) } finally { closeSync(fd) }
+  return filled > 0 ? new Uint8Array(buf.subarray(0, filled)) : null
+}
+
 /**
- * 等待磁盘文件写入到至少 needBytes 字节（2026-11-19 云播放 code=4 根因修复）。
+ * 渐进下载流（2026-11-19 云播放 code=4 最终修复）：完整承诺请求的 Range 区间，
+ * 响应体按磁盘落盘速度供数——与真实 HTTP 渐进下载服务器同构。
  *
- * 就绪判定必须以【磁盘 size】为准，不能用会话 uploaded（网络侧 onProgress）：
- * OSS/云 SDK 的进度回调先于数据落盘，按 uploaded 放行后 statSync clamp 会得到
- * realEnd < start → 503，而 custom protocol 的 503 媒体栈不重试 → 直接 code=4。
- * 本地文件非流式不走此分支，所以此前只有云播放挂、本地一直正常。
+ * 此前「只回当前已写部分 + 短区间 206」的形态是错的：本地文件复制瞬时完成、首次请求
+ * 到达时文件已全部落盘（等于永远回完整文件）所以侥幸能播；云下载持续数分钟，短区间
+ * 206 在 Chromium 媒体栈 + custom protocol 组合下不被接受 → code=4。
  *
- * 进展续期信号 = max(uploaded, 磁盘 size)——任一在涨都不算停滞；
- * 停滞超时 / 会话终态即返回当前磁盘 size（文件不存在为 0），由调用方裁决。
+ * stall 超时：uploaded 与磁盘 size 均不动超过 stallTimeoutMs → 流报错断开
+ * （→ 播放器 onerror 回退）；任一在涨即续期（下载慢但健康不算停滞）。
  */
-async function waitForMediaFileBytes(p: string, needBytes: number, stallTimeoutMs = 30_000): Promise<number> {
+function createMediaStream(p: string, start: number, end: number, stallTimeoutMs = 30_000): ReadableStream<Uint8Array> {
+  let pos = start
   let lastSig = -1
   let lastProgressAt = Date.now()
-  while (true) {
-    let size = 0
-    try { size = statSync(p).size } catch { /* 文件尚未创建：按 0 继续等 */ }
-    if (size >= needBytes) return size
-    const st = getMediaDownload(p)
-    if (!st || st.done || st.error) return size // 终态：按磁盘现状交调用方裁决
-    const sig = Math.max(st.uploaded, size)
-    if (sig !== lastSig) {
-      lastSig = sig
-      lastProgressAt = Date.now()
-    }
-    if (Date.now() - lastProgressAt >= stallTimeoutMs) return size
-    await new Promise<void>((r) => setTimeout(r, 40))
-  }
+  let cancelled = false
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        while (pos <= end) {
+          if (cancelled) return // 播放器 abort/重发请求：立刻停止供数
+          const chunk = readChunk(p, pos, 512 * 1024)
+          if (chunk) {
+            pos += chunk.byteLength
+            lastProgressAt = Date.now()
+            controller.enqueue(chunk)
+            return // 让出控制权等下一次 pull（背压）
+          }
+          const st = getMediaDownload(p)
+          if (!st || st.done || st.error) {
+            if (st?.error) throw new Error(`媒体下载失败：${st.error}`)
+            controller.close() // 已终态：磁盘有的都给完（正常完成时 pos 应已达 end）
+            return
+          }
+          let size = 0
+          try { size = statSync(p).size } catch { /* 文件未创建 */ }
+          const sig = Math.max(st.uploaded, size)
+          if (sig !== lastSig) {
+            lastSig = sig
+            lastProgressAt = Date.now()
+          } else if (Date.now() - lastProgressAt >= stallTimeoutMs) {
+            throw new Error('媒体下载停滞超时')
+          }
+          await sleep(50)
+        }
+        controller.close()
+      } catch (err) {
+        controller.error(err instanceof Error ? err : new Error(String(err)))
+      }
+    },
+    cancel() { cancelled = true },
+  })
 }
 
 /** localres:///D:/xxx.png → 主进程按白名单读文件回响应（图片 + 音视频，含 Range/边下边播） */
@@ -83,47 +121,57 @@ export function installLocalResHandler(config: ConfigLike): void {
       if (!isAllowedResPath(p, collectResRoots(config))) {
         return new Response('路径不在允许的上传目录内', { status: 403 })
       }
-      // 边下边播会话已注册但文件还没落盘：等首包写盘（云 SDK download 首包前 destFile 不存在），
-      // 直接 404 会让 <video> 立刻 error；等待无果（下载失败/停滞）才回 404
-      if (!existsSync(p) && isMediaStreaming(p)) {
-        if ((await waitForMediaFileBytes(p, 1)) === 0) {
-          return new Response('媒体数据未就绪（下载未开始或已失败）', { status: 404 })
-        }
-      }
-      if (!existsSync(p)) return new Response('文件不存在', { status: 404 })
-
-      // 边下边播：文件仍在下载 → 以预期 total 为分母，等所需字节就绪
+      // 会话在途但文件未创建：交给渐进下载流等待首包（直接 404 会立刻打断 <video>）；
+      // 无会话且无文件才真 404
       const streaming = isMediaStreaming(p)
-      const effectiveTotal = streaming
-        ? (getMediaDownload(p)?.total ?? statSync(p).size)
-        : statSync(p).size
+      if (!existsSync(p) && !streaming) return new Response('文件不存在', { status: 404 })
+
+      // 分母：流式用会话预期 total（拖进度条正确），完整文件用实际 size
+      const total = streaming ? (getMediaDownload(p)?.total ?? 0) : statSync(p).size
 
       const rangeHeader = request.headers.get('range')
-      const range = parseByteRange(rangeHeader, effectiveTotal)
+      const range = parseByteRange(rangeHeader, total)
       if (range) {
         const { start, end } = range
-        let realEnd = end
         if (streaming) {
-          // 等磁盘写到请求起点（就绪以磁盘 size 为准，见 waitForMediaFileBytes 注释）：
-          // tail Range（moov 在尾部）会一直等到区间落盘或下载终态；只有停滞/终态不足才 503
-          const cur = await waitForMediaFileBytes(p, start + 1)
-          if (cur <= start) return new Response('媒体数据未就绪', { status: 503 })
-          // 只返回已写入的部分（clamp 到当前 size-1）；浏览器收到短区间会自动续请求
-          realEnd = Math.min(end, cur - 1)
+          if (total <= 0) return new Response('媒体总大小未知', { status: 503 })
+          // 渐进下载语义：206 承诺完整区间，body 按落盘速度供数（含等待 moov 在尾部的场景，
+          // 播放器像面对慢网络一样耐心等待）；停滞超时/下载失败流报错 → onerror 回退
+          return new Response(createMediaStream(p, start, end), {
+            status: 206,
+            headers: {
+              'content-type': mime,
+              'content-range': `bytes ${start}-${end}/${total}`,
+              'content-length': String(end - start + 1),
+              'accept-ranges': 'bytes',
+              'cache-control': 'no-store',
+            },
+          })
         }
-        const { buf, filled } = readRange(p, start, realEnd)
+        const { buf, filled } = readRange(p, start, end)
         return new Response(new Uint8Array(buf.subarray(0, filled)), {
           status: 206,
           headers: {
             'content-type': mime,
-            'content-range': `bytes ${start}-${start + filled - 1}/${effectiveTotal}`,
+            'content-range': `bytes ${start}-${start + filled - 1}/${total}`,
             'accept-ranges': 'bytes',
             'cache-control': 'no-store',
           },
         })
       }
-      // 无 Range：下载中则回 503 让播放器改用 Range（浏览器请求媒体通常都会带 Range）
-      if (streaming) return new Response('请使用 Range 请求', { status: 503 })
+      // 无 Range：流式回 200 全量流；完整文件直接读
+      if (streaming) {
+        if (total <= 0) return new Response('媒体总大小未知', { status: 503 })
+        return new Response(createMediaStream(p, 0, total - 1), {
+          status: 200,
+          headers: {
+            'content-type': mime,
+            'content-length': String(total),
+            'accept-ranges': 'bytes',
+            'cache-control': 'no-store',
+          },
+        })
+      }
       return new Response(new Uint8Array(readFileSync(p)), {
         headers: { 'content-type': mime, 'accept-ranges': 'bytes' },
       })
