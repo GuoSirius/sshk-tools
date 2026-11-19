@@ -2764,8 +2764,11 @@ function onKeydown(event: KeyboardEvent): void {
 /* 面板首列（根列）首节点补 /：根列是第一个 .el-cascader-menu 且只含根节点；
    子级 menu 非 first-child 不受影响（不用 :empty——空文本节点会让它匹配失败） */
 .fs-dir-cascader-popper .el-cascader-menu:first-child .el-cascader-node:first-child .el-cascader-node__label::before { content: '/'; }
-/* 只选根时（手输框值为 /），级联输入框在占位层补 / 并隐藏空值，视觉等同正常回显 */
-.fs-move-cascader.is-root-selected .el-input__inner { color: transparent; }
+/* 只选根时（手输框值为 /），级联输入框在占位层补 / 并隐藏空值+占位文字，视觉等同正常回显。
+   注意 placeholder 由 ::placeholder 伪元素渲染，独立于此时的 input color，必须单独透明化，
+   否则「/」会和「或从目录树选择…」叠在一起（用户 2026-11-19 反馈） */
+.fs-move-cascader.is-root-selected .el-input__inner,
+.fs-move-cascader.is-root-selected .el-input__inner::placeholder { color: transparent; }
 .fs-move-cascader.is-root-selected .el-input__wrapper { position: relative; }
 .fs-move-cascader.is-root-selected .el-input__wrapper::after {
   content: '/';
