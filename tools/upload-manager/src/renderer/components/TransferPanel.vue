@@ -17,14 +17,19 @@ const props = defineProps<{ tasks: FsTransferTask[] }>()
 const expanded = defineModel<boolean>('expanded', { default: false })
 const emit = defineEmits<{ (e: 'visible-change', v: boolean): void }>()
 
-const STORE_KEY = 'sshk.fs.transferPanel'
+const STORE_KEY = 'sshk.fs.transferPanel.v2' // v2：默认位置改底部（用户 2026-11-19），旧记忆作废走新默认
 type TabKey = 'all' | 'upload' | 'download' | 'other'
 
 interface PanelState { x: number; y: number; expanded: boolean; tab: TabKey; filter: string }
 
 function defaultPosition(): { x: number; y: number } {
-  // 默认右下角、避让状态条
-  return { x: Math.max(8, (window.innerWidth ?? 1200) - 400), y: Math.max(8, (window.innerHeight ?? 800) - 380) }
+  // 用户 2026-11-19：默认贴底（收起条落在列表底部、状态条上方、右缘近「传输队列」按钮）
+  const barH = 36
+  const statusH = 28
+  return {
+    x: Math.max(8, (window.innerWidth ?? 1200) - 372),
+    y: Math.max(8, (window.innerHeight ?? 800) - barH - statusH - 16),
+  }
 }
 function loadState(): PanelState {
   const dft: PanelState = { ...defaultPosition(), expanded: false, tab: 'all', filter: '' }
@@ -49,15 +54,17 @@ const tab = ref<TabKey>(init.tab)
 const filter = ref(init.filter)
 const panelRef = ref<HTMLElement | null>(null)
 const handleRef = ref<HTMLElement | null>(null)
-const x = ref(init.x)
-const y = ref(init.y)
 const hidden = ref(false)
 /** 拖拽守卫：onMove 移动过才算拖拽，pointerup 后的 click 不再触发展开/收起 */
 let dragMoved = false
-const { isDragging } = useDraggable(panelRef, {
+// 修复（用户 2026-11-19「拖拽无效」根因）：vueuse 的 useDraggable 只更新内部 position
+// refs、不写 DOM——此前组件用本地 x/y 且从未同步，拖动时 position 变了面板纹丝不动。
+// 现在直接解构其 x/y（可写 ref）作为位置唯一来源，clamp/复位/持久化全部写同一对 ref。
+const { x, y, isDragging } = useDraggable(panelRef, {
   handle: handleRef,
   initialValue: { x: init.x, y: init.y },
   preventDefault: true,
+  stopPropagation: true,
   restrictInView: true,
   onMove: () => { dragMoved = true },
   onEnd: () => { persist(); setTimeout(() => { dragMoved = false }, 0) },
@@ -336,13 +343,14 @@ defineExpose({
 </template>
 
 <style scoped>
-/* 悬浮面板：fixed + z-index 只高于列表（低于 el-overlay 弹框）；不参与 flex 布局 */
+/* 悬浮面板：fixed + z-index 只高于列表（低于 el-overlay 弹框）；不参与 flex 布局。
+   尺寸（用户 2026-11-19：原 380/420 过挤错位）加宽加高一档 */
 .fs-tpanel {
   position: fixed;
   z-index: 1400;
-  width: 380px;
+  width: 460px;
   max-width: calc(100vw - 32px);
-  max-height: min(420px, calc(100vh - 90px));
+  max-height: min(560px, calc(100vh - 90px));
   display: flex;
   flex-direction: column;
   background: var(--el-bg-color-overlay);
@@ -352,7 +360,7 @@ defineExpose({
   overflow: hidden;
 }
 .fs-tpanel.is-dragging { box-shadow: var(--el-box-shadow); user-select: none; }
-.fs-tpanel.is-collapsed { width: 320px; max-height: none; }
+.fs-tpanel.is-collapsed { width: 360px; max-height: none; }
 .fs-tpanel-handle { color: var(--el-text-color-secondary); cursor: grab; flex: none; }
 .fs-tpanel.is-dragging .fs-tpanel-handle { cursor: grabbing; }
 
@@ -367,12 +375,12 @@ defineExpose({
 .fs-tpanel.is-dragging .fs-tpanel-head { cursor: grabbing; }
 .fs-tpanel-title { font-weight: 600; font-size: 13px; }
 
-.fs-tpanel-tools { display: flex; align-items: center; gap: 4px; padding: 0 10px 6px; flex-wrap: wrap; }
+.fs-tpanel-tools { display: flex; align-items: center; gap: 6px; padding: 0 10px 6px; flex-wrap: wrap; }
 .fs-tpanel-tools .el-button + .el-button { margin-left: 0; }
 .fs-tpanel-tools .el-button.is-text { padding: 0 6px; }
 
-.fs-tpanel-tabs { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; }
-.fs-tpanel-filter { width: 110px; flex: none; margin-left: auto; }
+.fs-tpanel-tabs { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; flex-wrap: wrap; }
+.fs-tpanel-filter { width: 140px; flex: none; margin-left: auto; }
 
 .fs-tpanel-orphans { display: flex; align-items: center; gap: 8px; margin: 0 10px 8px; padding: 6px 10px; border-radius: 6px; background: var(--el-color-warning-light-9); font-size: 12px; color: var(--el-color-warning-dark-2, var(--el-color-warning)); }
 

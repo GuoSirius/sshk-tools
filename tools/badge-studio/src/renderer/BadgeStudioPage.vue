@@ -7,7 +7,7 @@ import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'
 import {
   toolId, loadConfigAndRecent, loadPosters,
-  hasHtml, generating, currentPosterId, capturing, downloading,
+  hasHtml, generating, currentPosterId, currentGenerated, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, shareDialog, openShare,
   backToListConfirm, startNewPosterConfirm,
@@ -76,13 +76,14 @@ onMounted(() => {
           生成海报
         </el-button>
         <el-button size="small" @click="savePosterMeta">保存修改</el-button>
-        <el-button size="small" :loading="capturing" :disabled="!currentPosterId" @click="capturePoster">截图保存 PNG</el-button>
-        <el-button type="success" size="small" :loading="downloading" :disabled="!currentPosterId" @click="downloadPoster">下载图片</el-button>
-        <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentPosterId" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
+        <el-button size="small" :loading="capturing" :disabled="!currentGenerated" @click="capturePoster">截图保存 PNG</el-button>
+        <el-button type="success" size="small" :loading="downloading" :disabled="!currentGenerated" @click="downloadPoster">下载图片</el-button>
+        <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentGenerated" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
           分享
         </el-button>
-        <!-- 按钮按工作流排序（用户 2026-11-18 定版）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
-             生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿） -->
+        <!-- 按钮按工作流排序（用户 2026-11-18 定版；门控 2026-11-19）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
+             补属性/生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿）；
+             截图/下载/分享要求已生成（存在 badge 副本），仅保存草稿不解锁 -->
         <el-button size="small" plain @click="backToList">返回列表</el-button>
       </template>
       <template v-else>

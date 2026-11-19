@@ -84,7 +84,7 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
             <el-tag v-else size="small" type="info" effect="plain">未分享</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" align="center" fixed="right">
+        <el-table-column label="操作" width="220" align="right" fixed="right">
           <template #default="{ row }">
             <!-- 操作列条件化（用户 2026-11-18 定版，顺序 2026-11-18：复制链接在编辑前）；编辑/删除恒可用；复制链接有可用票才显示；
                  导出/复制代码/分享依赖 badged 产物、下载图片依赖截图产物、重新打标依赖源更新——全部条件显示 -->
@@ -133,9 +133,9 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
 .op-row {
   display: flex;
   gap: 6px;
-  justify-content: center;
+  justify-content: flex-end; /* 用户 2026-11-19：操作列右对齐 */
   align-items: center;
-  padding: 0 10px; /* 用户 2026-11-18：操作两侧留白，按钮不贴单元格边缘 */
+  padding: 0 10px; /* 操作两侧留白，按钮不贴单元格边缘 */
 }
 .op-row .el-button + .el-button { margin-left: 0; }
 </style>

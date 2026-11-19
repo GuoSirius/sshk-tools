@@ -107,6 +107,13 @@ export function onPageChange(): void { selectedPosters.value = selectedPosters.v
 
 export const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
 export const hasStats = computed(() => statRows.value.length > 0)
+/** 用户 2026-11-19 流程门控：当前工作区海报是否「已生成」（存在 badge 副本产物）。
+ *  只填海报名点保存创建的草稿记录没有 outputs.badged → 截图/下载/分享保持禁用；
+ *  生成成功（或编辑已生成海报回显）后置真。 */
+export const currentGenerated = computed(() => {
+  const row = posters.value.find((p) => p._id === currentPosterId.value)
+  return Boolean(row?.outputs?.badged)
+})
 /** 列定义 + 实际数据里的自定义列并集，保证空表格也能先建列 */
 export const customMetricKeys = computed(() => Array.from(new Set([
   ...definedMetrics.value,
@@ -725,10 +732,11 @@ async function captureDataUrl(): Promise<string> {
   return dataUrl
 }
 
-/** 截图并覆盖写 poster.png（产物目录；海报列表「图片」列读取） */
+/** 截图并覆盖写 poster.png（产物目录；海报列表「图片」列读取）。
+ *  门控（用户 2026-11-19）：生成后才可截图——草稿（只保存过名称）没有 badge 副本不可截。 */
 export async function capturePoster(): Promise<void> {
-  if (!currentPosterId.value) {
-    ElMessage.warning('请先生成海报')
+  if (!currentGenerated.value) {
+    ElMessage.warning('请先生成海报（有 badge 副本后才能截图）')
     return
   }
   capturing.value = true
@@ -761,12 +769,13 @@ export async function downloadTemplate(fmt: 'xlsx' | 'csv' | 'json' = 'xlsx'): P
   }
 }
 
-/** 下载 = 截图 + 下载；未生成时先生成再截图，落盘位置由用户保存对话框决定 */
+/** 下载 = 截图 + 下载；落盘位置由用户保存对话框决定。
+ *  门控（用户 2026-11-19）：生成后才可下载——不再自动触发生成。 */
 export const downloading = ref(false)
 export async function downloadPoster(): Promise<void> {
-  if (!currentPosterId.value) {
-    await generate()
-    if (!currentPosterId.value) return // generate 失败已自带报错
+  if (!currentGenerated.value) {
+    ElMessage.warning('请先生成海报（下载 = 截图 + 下载，需先有 badge 副本）')
+    return
   }
   downloading.value = true
   try {
@@ -803,8 +812,13 @@ export const shareDialog = reactive({
   loading: false,
 })
 
-/** 打开分享对话框：先经 badge main 把 posterId 解析为产物绝对路径（工具最清楚 outputRoot 布局）。 */
+/** 打开分享对话框：先经 badge main 把 posterId 解析为产物绝对路径（工具最清楚 outputRoot 布局）。
+ *  门控（用户 2026-11-19）：生成后才可分享。 */
 export async function openShare(poster: Pick<PosterRecord, '_id' | 'name'>): Promise<void> {
+  if (!currentGenerated.value) {
+    ElMessage.warning('请先生成海报（分享的是 badge 副本产物）')
+    return
+  }
   shareDialog.loading = true
   try {
     const resolved = await host.badge.shareResolve({ posterId: poster._id }) as { root: string; entry: string; label: string }

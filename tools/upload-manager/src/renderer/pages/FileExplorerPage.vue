@@ -681,10 +681,102 @@ async function uploadFromOutput(): Promise<void> {
   await flattenAndEnqueue(paths, '上传')
 }
 
-/** 本地展平结果 → 传输队列上传任务（relPath 保留目录结构） */
+// ── 上传重名预检（用户 2026-11-19）──
+/** 时间戳（同批共用同一值）：YYYYMMDDHHmmss */
+function uploadStamp(): string {
+  const d = new Date()
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+}
+/** 扩展名前插入时间戳：a/b/favicon.ico → a/b/favicon20261119084512.ico；无扩展名直接尾部追加 */
+function stampRelPath(relPath: string, stamp: string): string {
+  const dot = relPath.lastIndexOf('.')
+  const slash = relPath.lastIndexOf('/')
+  if (dot > slash && dot > 0) return `${relPath.slice(0, dot)}${stamp}${relPath.slice(dot)}`
+  return `${relPath}${stamp}`
+}
+/** 扩展名前插入序号（同批重命名去重兜底）：favicon20261119084512.ico → favicon20261119084512-2.ico */
+function seqRelPath(relPath: string, n: number): string {
+  const dot = relPath.lastIndexOf('.')
+  const slash = relPath.lastIndexOf('/')
+  const stem = dot > slash && dot > 0 ? relPath.slice(0, dot) : relPath
+  const ext = stem === relPath ? '' : relPath.slice(dot!)
+  return `${stem}-${n}${ext}`
+}
+
+type UploadAction = 'overwrite' | 'skip' | 'rename'
+/** 同通道同目标目录的重名检测与处置：①本批内映射到同一目标路径（保留首个，后续计重名）；
+ *  ②与目标目录已有条目重名（仅直传该目录的文件；带子目录结构的深层冲突仍由引擎运行时确认）。
+ *  命中时统一询问：全部覆盖 / 保留（自动重命名 原名+YYYYMMDDHHmmss+原后缀，同批同一时间戳）/ 取消（忽略重名文件，其余照传）。 */
+async function resolveUploadDuplicates(
+  files: { name: string; localPath: string; relPath: string; size: number }[],
+): Promise<{ files: typeof files; overwritePaths: Set<string> }> {
+  // ① 本批内重复：同一 relPath 第二次及以后出现计入重名（首个正常上传）
+  const seen = new Set<string>()
+  const dupKeys = new Set<string>()
+  for (const f of files) {
+    const key = f.relPath.toLowerCase()
+    if (seen.has(key)) dupKeys.add(key)
+    else seen.add(key)
+  }
+  // ② 与目标目录已有条目重名（含后缀）
+  const direct = files.filter((f) => !f.relPath.includes('/'))
+  if (direct.length) {
+    try {
+      const page = await window.api.fs.list({ profileId: profileId.value, path: path.value || '/' })
+      const remoteNames = new Set(page.entries.map((e) => e.name.toLowerCase()))
+      for (const f of direct) {
+        if (remoteNames.has(f.name.toLowerCase())) dupKeys.add(f.relPath.toLowerCase())
+      }
+    } catch { /* 目标目录列取失败：不阻断上传，退化为引擎运行时冲突确认 */ }
+  }
+  if (!dupKeys.size) return { files, overwritePaths: new Set() }
+
+  const dupNames = files.filter((f) => dupKeys.has(f.relPath.toLowerCase())).map((f) => f.relPath)
+  const preview = dupNames.slice(0, 8).join('、') + (dupNames.length > 8 ? ` …共 ${dupNames.length} 个` : '')
+  let action: UploadAction
+  try {
+    await ElMessageBox.confirm(
+      `检测到重名（含后缀）${dupNames.length} 个：${preview}。如何处理？\n覆盖=直接覆盖；保留=重命名为 原名+时间戳+原后缀（同批同一时间戳）；取消=忽略重名文件，其余照传。`,
+      '上传重名确认',
+      {
+        type: 'warning', distinguishCancelAndClose: true, showClose: true,
+        confirmButtonText: '全部覆盖', cancelButtonText: '保留（自动重命名）',
+        closeOnClickModal: false, closeOnPressEscape: false,
+      },
+    )
+    action = 'overwrite'
+  } catch (act) {
+    action = String(act) === 'cancel' ? 'rename' : 'skip' // ✕/关闭 = 取消：忽略重名文件
+  }
+  if (action === 'skip') return { files: [], overwritePaths: new Set() }
+
+  if (action === 'rename') {
+    const stamp = uploadStamp()
+    // 已占用名 = 本批全部目标名（重命名结果不得与本批任何文件/已改出的名字相撞）
+    const used = new Set(files.map((f) => f.relPath.toLowerCase()))
+    for (const f of files) {
+      if (!dupKeys.has(f.relPath.toLowerCase())) continue
+      let rel = stampRelPath(f.relPath, stamp)
+      let n = 2
+      while (used.has(rel.toLowerCase())) rel = seqRelPath(rel, n++)
+      used.add(rel.toLowerCase())
+      f.relPath = rel
+      f.name = rel.split('/').pop() || rel
+    }
+    return { files, overwritePaths: new Set() }
+  }
+  // 覆盖：仅对检出的重名项预授权（入队即覆盖，不再逐个挂起确认）；深层结构冲突仍走运行时确认
+  return { files, overwritePaths: new Set(dupNames.map((p) => p.toLowerCase())) }
+}
+
+/** 本地展平结果 → 传输队列上传任务（relPath 保留目录结构；入队前做重名预检） */
 async function enqueueUploads(files: { name: string; localPath: string; relPath: string; size: number }[]): Promise<void> {
   if (!files.length) { ElMessage.warning('没有可上传的文件（目录为空或文件无效）'); return }
   if (!profileId.value) { ElMessage.warning('请先选择上传通道'); return }
+  const resolved = await resolveUploadDuplicates(files)
+  files = resolved.files
+  if (!files.length) { ElMessage.info('重名文件已全部忽略，没有需要上传的文件'); return }
   const inputs = files.map((f) => ({
     kind: 'upload' as const,
     profileId: profileId.value,
@@ -692,6 +784,7 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
     remotePath: path.value ? `${path.value}/${f.relPath}` : f.relPath,
     localPath: f.localPath,
     size: f.size,
+    overwrite: resolved.overwritePaths.has(f.relPath.toLowerCase()) ? true : undefined,
   }))
   const { taskIds } = await window.api.fs.transferStart(inputs)
   if (taskIds.length) {
@@ -1162,20 +1255,48 @@ async function pasteInto(destDir: string): Promise<void> {
     return
   }
   try {
+    // 用户 2026-11-19：顶部粘贴与弹框/行级同流程——单源且「同源同目录」（复制后原地粘贴，
+    // mv/cp 会因 dest===src 报错）或粘进自身子目录时，弹重命名循环；无冲突保持原行为。
+    // 多源保持原行为（主进程逐项校验）。重命名取消=整个粘贴终止，剪贴板保留。
+    let renameTo: string | undefined
+    if (clip.items.length === 1) {
+      const src = clip.items[0]!.path
+      const name = src.split('/').pop() || src
+      const srcParent = src.lastIndexOf('/') <= 0 ? '/' : src.slice(0, src.lastIndexOf('/'))
+      const dest = destDir === '/' ? `/${name}` : `${destDir}/${name}`
+      if (srcParent === destDir || dest.startsWith(`${src}/`)) {
+        const renamed = await askRenameForConflict({ name } as FsEntry, destDir)
+        if (renamed === null) return // 用户取消：终止粘贴，剪贴板保留
+        renameTo = renamed
+      }
+    }
     if (clip.op === 'cut') {
-      await window.api.fs.mv({ profileId: profileId.value, sources: clip.items, destDir })
+      await window.api.fs.mv({ profileId: profileId.value, sources: clip.items, destDir, renameTo })
       clipboard.value = null
       ElMessage.success('已粘贴（移动）')
     } else {
-      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir })
+      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir, renameTo })
       if (taskIds.length) { openTransferPanel(); ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
-      else ElMessage.success('已粘贴（复制）')
+      else ElMessage.success(renameTo ? `已粘贴为 ${renameTo}` : '已粘贴（复制）')
       await askClipboardAfterPaste()
     }
     void list(false)
   } catch (err) {
     ElMessage.error(friendlyError(err))
   }
+}
+
+/** 用户 2026-11-19：清空剪贴板（误触复制后取消，不必粘贴）；「清空」属主动放弃操作，二次确认 */
+async function clearClipboard(): Promise<void> {
+  const n = clipboard.value?.items.length ?? 0
+  try {
+    await ElMessageBox.confirm(`清空剪贴板中的 ${n} 项？清空后需重新复制才能粘贴。`, '清空剪贴板', {
+      type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+      confirmButtonText: '清空', cancelButtonText: '保留',
+    })
+  } catch { return }
+  clipboard.value = null
+  ElMessage.success('剪贴板已清空')
 }
 
 // ── 新建文件 ──
@@ -1723,6 +1844,8 @@ function onKeydown(event: KeyboardEvent): void {
       <el-button size="small" type="success" plain :icon="Plus" title="粘贴 (Ctrl+V)；跨通道粘贴按复制执行" :disabled="!clipboard || !hasWritable" @click="paste">
         粘贴{{ clipboard ? `（${clipboard.items.length} 项${clipboard.op === 'cut' ? ' · 剪切' : ''}${clipboard.profileId !== profileId ? ' · 跨通道' : ''}）` : '' }}
       </el-button>
+      <!-- 用户 2026-11-19：复制后不想粘贴（误触）可一键清空剪贴板 -->
+      <el-button v-if="clipboard" size="small" type="danger" text title="清空剪贴板（不执行粘贴）" @click="clearClipboard">清空</el-button>
       <el-button size="small" type="warning" plain :icon="Rank" :disabled="!selectedEntries.length || !hasWritable" @click="openMove('move')">移动</el-button>
       <el-button size="small" type="primary" plain :icon="EditPen" :disabled="selectedEntries.length !== 1 || !hasWritable" @click="openRename(selectedEntries[0]!)">重命名</el-button>
       <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedEntries.length || !hasWritable" @click="openDelete(selectedEntries)">删除</el-button>

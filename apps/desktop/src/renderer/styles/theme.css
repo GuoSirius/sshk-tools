@@ -710,6 +710,36 @@ body {
   flex-direction: column;
 }
 
+/* ── 表格内控件紧凑化（用户 2026-11-19 全项目规范）：──
+   表格（.el-table）里的操作按钮 / tag / 输入框 / 选择器：尺寸、内边距、相互间距
+   整体调小一档；表格以外的控件保持 --sshk-control-size（28px）口径不变。
+   新表格无需任何额外样式，进表格自动生效。 */
+.el-table .el-button {
+  --el-button-size: 22px;
+  height: 22px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+.el-table .el-button + .el-button { margin-left: 4px; }
+.el-table .el-button.is-text,
+.el-table .el-button.is-link { padding: 2px 6px; }
+.el-table .el-tag {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  --el-icon-size: 11px;
+}
+.el-table .el-input { font-size: 12px; }
+.el-table .el-input__wrapper { padding: 1px 6px; }
+.el-table .el-input__inner { height: 22px; line-height: 22px; }
+.el-table .el-select .el-select__wrapper {
+  min-height: 22px;
+  padding: 1px 6px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
 /* ── 全局滚动条定制：细、圆角、跟随主题色（亮/暗自动适配） ── */
 ::-webkit-scrollbar {
   width: 8px;

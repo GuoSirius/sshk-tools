@@ -665,7 +665,7 @@ class FsTransferEngine {
     // 冲突：远端已有同名文件 → 挂起等确认
     const stat = await driver.stat(String(t.remotePath ?? ''))
     if (stat.exists && !stat.isDir && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: '远端已存在同名文件' })
+      this.setStatus(t, 'conflict', { error: '目标目录已有同名文件：任务已暂停、尚未上传。点「覆盖」=覆盖远端同名文件继续上传；点「停止」=跳过此文件' })
       return
     }
     this.overwrite.delete(t.id)
@@ -850,7 +850,7 @@ class FsTransferEngine {
     if (!stat.exists || stat.isDir) throw new Error('远端文件不存在或为目录')
     t.size = stat.size ?? 0
     if (existsSync(destPath) && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: '本地已存在同名文件' })
+      this.setStatus(t, 'conflict', { error: '本地已有同名文件：任务已暂停、尚未写入。点「覆盖」=覆盖本地文件；点「停止」=跳过此文件' })
       return
     }
     this.overwrite.delete(t.id)
@@ -982,7 +982,7 @@ class FsTransferEngine {
     // 冲突：目标通道已有同名文件 → 挂起等确认
     const destStat = await destDriver.stat(dest)
     if (destStat.exists && !destStat.isDir && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: `目标通道已存在同名文件` })
+      this.setStatus(t, 'conflict', { error: '目标通道已有同名文件：任务已暂停、尚未复制。点「覆盖」=覆盖目标同名文件；点「停止」=跳过此文件' })
       return
     }
     this.overwrite.delete(t.id)
@@ -1358,7 +1358,7 @@ export class FsRuntime {
     const inputs: FsTransferInput[] = []
     let truncated = false
 
-    const expand = async (path: string, kind: 'dir' | 'file'): Promise<void> => {
+    const expand = async (path: string, kind: 'dir' | 'file', destBase: string): Promise<void> => {
       if (inputs.length >= CROSS_TASK_CAP) { truncated = true; return }
       if (kind === 'file') {
         const stat = await srcDriver.stat(path)
@@ -1368,8 +1368,9 @@ export class FsRuntime {
           destProfileId: destChannel.id,
           name: fsBasename(path),
           remotePath: path,
-          // path 为内部规范路径（如 /a/b/c.png）；目标 = 目标目录 + 去掉前导 / 的源路径
-          destRemotePath: destDir === '/' ? path : `${destDir}${path}`,
+          // 用户 2026-11-19 定版：只搬运被复制项本身，不搬层级——destBase 逐层由「被复制项名」起算，
+          // 复制 /a/b 粘贴到目标根得到 /b（而不是源根的 /a/b 整条链）
+          destRemotePath: destBase,
           moveSource: Boolean(req?.move),
           size: stat.size ?? 0,
         })
@@ -1378,7 +1379,7 @@ export class FsRuntime {
       const page = await srcDriver.list(path, { pageSize: 2000 })
       for (const e of page.entries) {
         if (inputs.length >= CROSS_TASK_CAP) { truncated = true; return }
-        await expand(e.path, e.kind)
+        await expand(e.path, e.kind, destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`)
       }
       if (page.nextCursor) truncated = true
     }
@@ -1387,7 +1388,8 @@ export class FsRuntime {
       const src = this.assertPath(item.path)
       if (src === '/') throw new Error('根目录不可复制')
       if (src === destDir || destDir.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
-      await expand(src, item.kind === 'dir' ? 'dir' : 'file')
+      // 顶层落点 = 目标目录 / 被复制项名（子内容相对该项展开）
+      await expand(src, item.kind === 'dir' ? 'dir' : 'file', fsDestPath(destDir, src))
     }
     if (!inputs.length) return { taskIds: [], files: 0, truncated }
     const taskIds = this.engine.add(inputs, (id) => this.resolve(id))
