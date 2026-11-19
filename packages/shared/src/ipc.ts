@@ -80,6 +80,7 @@ export const IPC_CHANNELS = {
   fsSearchEvent: 'fs:search:event',
   fsUsage: 'fs:usage',
   fsRead: 'fs:read',
+  fsReadMedia: 'fs:readMedia',
   fsWrite: 'fs:write',
   fsTransferStart: 'fs:transfer:start',
   fsTransferList: 'fs:transfer:list',

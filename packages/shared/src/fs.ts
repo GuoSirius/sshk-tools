@@ -86,6 +86,13 @@ export interface FsReadResult {
   etag?: string
 }
 
+/** 音视频在线播放（2026-11-19）：流式下载到应用临时文件返回 file:// URL。
+ *  base64 data URI 大文件（百 MB 级）无法解码播放且占数倍内存，已废弃 */
+export interface FsReadMediaResult {
+  fileUrl: string
+  size: number
+}
+
 /** 写请求：expect 非空时先 stat 比对，不一致抛冲突错误（force=true 覆盖） */
 export interface FsWriteRequest {
   profileId: string
@@ -308,12 +315,18 @@ export interface FsZipResult {
   size: number
 }
 
-/** 解压请求（仅本地通道）：解到 zip 同级目录；destDirName 缺省 = zip 名去扩展名 */
+/** 解压请求：目标通道可选（跨源解压，zip 读入内存后写入目标）；目标目录不存在自动创建 */
 export interface FsUnzipRequest {
   profileId: string
   path: string
-  /** 目标目录名（zip 同级；仅名称不含斜杠，防越界）；缺省 = zip 名去扩展名 */
+  /** 目标目录名（zip 同级新建；仅名称不含斜杠，防越界）；缺省 = zip 名去扩展名。destDir 存在时忽略 */
   destDirName?: string
+  /** 目标通道（跨源解压）；缺省 = 源通道 */
+  destProfileId?: string
+  /** 目标目录（通道相对根路径 /a/b，不能为根）；缺省 = zip 同级 + destDirName */
+  destDir?: string
+  /** 目标目录已有同名条目时直接覆盖（渲染层覆盖确认后置 true） */
+  overwrite?: boolean
 }
 
 export interface FsUnzipResult {

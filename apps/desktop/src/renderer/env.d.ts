@@ -152,6 +152,7 @@ interface Window {
       /** 目录容量统计 */
       usage(req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsUsageResult>
       read(req: { profileId: string; path: string; maxBytes?: number }): Promise<import('@sshk/shared').FsReadResult>
+      readMedia(req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsReadMediaResult>
       write(req: import('@sshk/shared').FsWriteRequest): Promise<boolean>
       transferStart(inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }>
       transferList(): Promise<import('@sshk/shared').FsTransferTask[]>

@@ -331,6 +331,8 @@ const api = {
       invoke(IPC_CHANNELS.fsUsage, req),
     read: (req: { profileId: string; path: string; maxBytes?: number }): Promise<import('@sshk/shared').FsReadResult> =>
       invoke(IPC_CHANNELS.fsRead, req),
+    readMedia: (req: { profileId: string; path: string }): Promise<import('@sshk/shared').FsReadMediaResult> =>
+      invoke(IPC_CHANNELS.fsReadMedia, req),
     write: (req: import('@sshk/shared').FsWriteRequest): Promise<boolean> => invoke(IPC_CHANNELS.fsWrite, req),
     transferStart: (inputs: import('@sshk/shared').FsTransferInput[]): Promise<{ taskIds: string[] }> =>
       invoke(IPC_CHANNELS.fsTransferStart, inputs),

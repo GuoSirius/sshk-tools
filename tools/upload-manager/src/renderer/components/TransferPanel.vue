@@ -27,8 +27,8 @@ function defaultPosition(): { x: number; y: number } {
   const barH = 36
   const statusH = 28
   return {
-    x: Math.max(8, (window.innerWidth ?? 1200) - 372),
-    y: Math.max(8, (window.innerHeight ?? 800) - barH - statusH - 16),
+    x: Math.max(8, (window.innerWidth ?? 1200) - 472),
+    y: Math.max(8, (window.innerHeight ?? 800) - barH - statusH - 9),
   }
 }
 function loadState(): PanelState {
@@ -71,10 +71,10 @@ const { x, y, isDragging } = useDraggable(panelRef, {
 
 /** 拖出视口防丢（用户 2026-11-19）：vueuse 的 restrictInView 只在传 containerElement 时生效
  *  （面板 fixed 悬浮无容器，传了等于没传），拖出视口后就抓不回来了。
- *  自行钳制：横向上左/右至少留 96px 可见，纵向顶边不高于视口顶、不沉到视口底 44px 以下——
+ *  自行钳制：横向上左/右至少留 108px 可见，纵向顶边不高于视口顶、不沉到视口底 48px 以下——
  *  头部拖拽条永远有一段留在视口内，任何时候都能抓回来。 */
-const MIN_VISIBLE_X = 96
-const MIN_TOP_VISIBLE_Y = 44
+const MIN_VISIBLE_X = 108
+const MIN_TOP_VISIBLE_Y = 48
 function clampXY(nx: number, ny: number): { x: number; y: number } {
   const el = panelRef.value
   const w = el?.offsetWidth ?? 360

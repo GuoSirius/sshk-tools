@@ -37,16 +37,20 @@ export function setupDialogAutofocus(): void {
   }
 
   const tryFocus = (dlg: HTMLElement): void => {
-    if (document.activeElement && dlg.contains(document.activeElement)) return // 焦点已在弹框内：不抢
+    // 只有焦点已落在弹框内的「输入框」上才算成功（用户 2026-11-19：EP focus-trap 会把焦点
+    // 放到弹框容器/关闭按钮等非输入元素上，此前「焦点在弹框内即跳过」导致输入框始终不聚焦）
+    if (document.activeElement && dlg.contains(document.activeElement)
+      && (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) return
     focusTargetIn(dlg)
   }
 
   const scheduleFocus = (dlg: HTMLElement): void => {
-    // 重试链：EP focus-trap / MessageBox 默认焦点可能晚于首次尝试，落点不对再补两次
-    for (const delay of [60, 180, 350]) {
+    // 重试链：EP focus-trap / MessageBox 默认焦点可能晚于首次尝试，落点不对再补（最长兜底 1.2s）
+    for (const delay of [50, 150, 350, 700, 1200]) {
       window.setTimeout(() => {
         if (!shown.has(dlg) || dlg.offsetParent === null) return // 已关闭
-        if (document.activeElement && dlg.contains(document.activeElement)) return // 已聚焦成功
+        if (document.activeElement && dlg.contains(document.activeElement)
+          && (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) return // 输入框已聚焦成功
         focusTargetIn(dlg)
       }, delay)
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
@@ -41,7 +41,6 @@ import {
   FS_PDF_PREVIEW_LIMIT,
   FS_TEXT_EDIT_LIMIT,
   fsFormatSize,
-  fsMediaMime,
   fsModeToRwx,
   isFsImageName,
   isFsMediaName,
@@ -92,9 +91,13 @@ const filter = ref('')
 // ── 弹框 ──
 const mkdirOpen = ref(false)
 const mkdirName = ref('')
+const mkdirInputRef = ref<{ focus: () => void } | null>(null)
+// 打开即聚焦（页面级兜底，与全局机制双保险）
+watch(mkdirOpen, (v) => { if (v) void nextTick(() => mkdirInputRef.value?.focus()) })
 const renameOpen = ref(false)
 const renameTarget = ref<FsEntry | null>(null)
 const renameName = ref('')
+const renameInputRef = ref<{ focus: () => void; select: () => void } | null>(null)
 const moveOpen = ref(false)
 const moveMode = ref<'copy' | 'move'>('copy')
 const moveDirInput = ref('')
@@ -286,7 +289,7 @@ const selSingleDir = computed(() => (selSingle.value?.kind === 'dir' ? selSingle
 /** 编辑权限可用：单选 + 本地/SFTP 通道 + 有当前权限值（无值 = 列表没给，无从改起） */
 const canPerm = computed(() => selSingle.value != null && hasMode.value && Boolean(selSingle.value.mode))
 const canZip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selectedEntries.value.length > 0)
-const canUnzip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
+const canUnzip = computed(() => hasWritable.value && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
 const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
 
 // ── 传输队列（plans/10：悬浮面板替代旧抽屉，无遮罩、可拖拽、收起态仍显摘要）──
@@ -578,18 +581,16 @@ function fileIcon(entry: FsEntry): typeof Document {
   return Document
 }
 
-/** 音视频在线播放（二期）：超阈值引导下载后本地播放（阈值可配，0=不限） */
+/** 音视频在线播放（二期）：主进程流式下载到临时文件返回 file:// URL。
+ *  2026-11-19：base64 data URI 方式大文件（百 MB 级）无法解码播放且占数倍内存，废弃。 */
 function openPlayer(entry: FsEntry): void {
   if ((entry.size ?? 0) > mediaLimitBytes.value) {
     confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${mediaLimitText.value}）`, '文件过大')
     return
   }
   player.value = { open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true }
-  void window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: mediaLimitBytes.value === Number.POSITIVE_INFINITY ? Number.MAX_SAFE_INTEGER : mediaLimitBytes.value })
-    .then((r) => {
-      const mime = fsMediaMime(entry.name) || 'application/octet-stream'
-      player.value.src = `data:${mime};base64,${r.contentBase64}`
-    })
+  void window.api.fs.readMedia({ profileId: profileId.value, path: entry.path })
+    .then((r) => { player.value.src = r.fileUrl })
     .catch((err) => {
       player.value.open = false
       const msg = (err as Error).message ?? ''
@@ -597,6 +598,11 @@ function openPlayer(entry: FsEntry): void {
       else ElMessage.warning(friendlyError(err))
     })
     .finally(() => { player.value.loading = false })
+}
+/** 媒体加载失败（编码不支持/临时文件损坏等）：留在弹框给出引导 */
+function onMediaError(): void {
+  player.value.loading = false
+  ElMessage.warning('视频加载失败（可能是不支持的编码格式），请下载后本地播放')
 }
 
 /** 引导下载确认框（打开/预览失败、文件过大等场景统一入口，用户决定是否下载） */
@@ -1020,6 +1026,8 @@ function openRename(entry: FsEntry): void {
   renameTarget.value = entry
   renameName.value = entry.name
   renameOpen.value = true
+  // 页面级兜底聚焦（用户 2026-11-19：全局机制对部分弹框时序不稳）；重命名全选便于直接输入新名
+  void nextTick(() => { renameInputRef.value?.focus(); renameInputRef.value?.select() })
 }
 async function submitRename(): Promise<void> {
   const target = renameTarget.value
@@ -1098,34 +1106,28 @@ function openMove(mode: 'copy' | 'move'): void {
   moveOpen.value = true
 }
 
-/** 目标目录级联（移动/复制/复制到共用）：逐级懒加载只列目录，点圈选中回填手输框。
- *  props 用单例对象：每次渲染重建会触发 cascader 根节点重拉；通道切换靠模板 :key 重挂载刷新。
- *  坑（同 file-picker）：不写 leaf 字段——EP 对「已加载且无子」自动推断叶子，显式 leaf 会钉死非叶子 */
-const moveDirProps = {
-  lazy: true,
-  checkStrictly: true,
-  emitPath: false,
-  lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
-    const pid = moveDestProfile.value || profileId.value
-    if (!pid) { resolve([]); return }
-    // 首层直接列一级目录（用户 2026-11-19：根目录不作为层级节点出现在级联里，
-    // 否则它和自己的子目录平铺在一列显得层级错乱）；选根走弹框里的「根目录 /」快捷 chip 或手输 /
-    if (node.level === 0) {
+/** 目标目录级联（移动/复制/解压共用）：逐级懒加载只列目录，点圈选中回填手输框。
+ *  props 用工厂生成（各弹框目标通道来源不同）；通道切换靠模板 :key 重挂载刷新。
+ *  坑（同 file-picker）：不写 leaf 字段——EP 对「已加载且无子」自动推断叶子，显式 leaf 会钉死非叶子。
+ *  层级（用户 2026-11-19 定版）：首列 = 根目录「/」独立节点（点圈直接选根），展开子级列一级目录。 */
+function dirLazyProps(getPid: () => string) {
+  return {
+    lazy: true,
+    checkStrictly: true,
+    emitPath: false,
+    lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
+      const pid = getPid()
+      if (!pid) { resolve([]); return }
+      if (node.level === 0) { resolve([{ value: '/', label: '/' }]); return } // 根目录独立首级
+      const parent = String(node.value ?? '/')
       try {
-        const page = await window.api.fs.list({ profileId: pid, path: '/' })
+        const page = await window.api.fs.list({ profileId: pid, path: parent })
         resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
       } catch { resolve([]) }
-      return
-    }
-    const parent = String(node.value ?? '')
-    try {
-      const page = await window.api.fs.list({ profileId: pid, path: parent })
-      resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
-    } catch {
-      resolve([])
-    }
-  },
+    },
+  }
 }
+const moveDirProps = dirLazyProps(() => moveDestProfile.value || profileId.value)
 const moveCascaderRef = ref<{ togglePopperVisible: (visible: boolean) => void } | null>(null)
 /** 点单选圈：路径回填手输框并收起面板（checkStrictly 下 EP 不会自动收起） */
 function onMoveDirPicked(v: unknown): void {
@@ -1327,7 +1329,7 @@ function moreCommand(cmd: unknown): void {
     case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
     case 'copypath': void copySelectedPaths(); return
     case 'zip': void doZip(); return
-    case 'unzip': if (canUnzip.value) void doUnzip(selSingleFile.value!); return
+    case 'unzip': if (canUnzip.value) openUnzip(selSingleFile.value!); return
     case 'convert': openConvert(); return
     case 'perm': openPerm(); return
     case 'props': openProps(); return
@@ -1350,7 +1352,7 @@ function rowMoreCommand(cmd: string, entry: FsEntry): void {
     case 'favorite': if (isFavorited(entry.path)) void removeFavorite(entry); else void addFavorites([entry]); return
     case 'copypath': void window.api.os.clipboardWrite(entry.path).then(() => ElMessage.success('路径已复制')); return
     case 'zip': void doZip([entry]); return
-    case 'unzip': void doUnzip(entry); return
+    case 'unzip': openUnzip(entry); return
     case 'convert': selection.value = new Set([entry.path]); openConvert(); return
     case 'perm': selection.value = new Set([entry.path]); openPerm(); return
     case 'props': void openPropsFor(entry); return
@@ -1584,51 +1586,59 @@ async function doZip(targets?: FsEntry[]): Promise<void> {
     if ((err as Error).message !== 'cancel' && err !== 'cancel') ElMessage.error(friendlyError(err))
   } finally { zipSaving.value = false }
 }
-async function doUnzip(entry: FsEntry): Promise<void> {
-  if (!hasWritable.value || activeChannel.value?.type !== 'local') { ElMessage.warning('解压仅支持可写的本地目录通道'); return }
+// ── 解压到…（用户 2026-11-19 定版）：目标通道可选（跨源解压）+ 目录手输/级联
+//    （不存在自动创建）+ 目标已有同名条目时覆盖确认。zip 从源通道读入内存后写入目标通道。 ──
+const unzipOpen = ref(false)
+const unzipSaving = ref(false)
+const unzipEntry = ref<FsEntry | null>(null)
+const unzipDestProfile = ref('')
+const unzipDirInput = ref('')
+const unzipCascaderRef = ref<{ togglePopperVisible: (v: boolean) => void } | null>(null)
+const unzipDirProps = dirLazyProps(() => unzipDestProfile.value)
+
+function openUnzip(entry: FsEntry): void {
+  if (!hasWritable.value) { ElMessage.warning('当前没有可写的目标通道，无法解压'); return }
   if (!isFsZipName(entry.name)) { ElMessage.warning('仅支持 .zip 压缩包'); return }
-  const defaultName = entry.name.replace(/\.zip$/i, '')
-  let destName = defaultName
-  // 用户 2026-11-19：先选目标目录（默认 zip 同级同名目录），存在冲突再问 覆盖/重命名/取消（重命名循环）
-  while (true) {
-    try {
-      const { value } = await ElMessageBox.prompt(
-        `把「${entry.name}」解压到当前目录下的新目录。输入目标目录名（默认 ${defaultName}）：`,
-        '解压到…',
-        {
-          inputValue: destName, confirmButtonText: '下一步', cancelButtonText: '取消',
-          inputPattern: /^[^\\/]+$/, inputErrorMessage: '目录名不能含斜杠',
+  unzipEntry.value = entry
+  unzipDestProfile.value = profileId.value
+  const base = entry.name.replace(/\.zip$/i, '')
+  const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
+  unzipDirInput.value = parent === '/' ? `/${base}` : `${parent}/${base}`
+  unzipOpen.value = true
+}
+function onUnzipDirPicked(v: unknown): void {
+  unzipDirInput.value = String(v ?? '')
+  unzipCascaderRef.value?.togglePopperVisible(false)
+}
+async function submitUnzip(overwrite = false): Promise<void> {
+  const entry = unzipEntry.value
+  if (!entry || unzipSaving.value) return
+  const destDir = normalizeDestInput(unzipDirInput.value)
+  if (destDir === null) { ElMessage.warning('目录路径非法（不能含 . / .. 段）'); return }
+  if (!destDir || destDir === '/') { ElMessage.warning('目标目录不能为根目录，请填写具体目录（不存在会自动创建）'); return }
+  unzipSaving.value = true
+  try {
+    const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path, destProfileId: unzipDestProfile.value, destDir, overwrite })
+    unzipOpen.value = false
+    ElMessage.success(`已解压 ${r.files} 个文件 → ${unzipDestProfile.value === profileId.value ? r.destDir : `${unzipDestProfile.value}:${r.destDir}`}`)
+    if (unzipDestProfile.value === profileId.value) void list(false)
+  } catch (err) {
+    const msg = (err as Error).message ?? ''
+    if (msg.startsWith('__UNZIP_CONFLICT__:')) {
+      // 目标目录已有同名条目：覆盖确认（用户拍板三选收敛为 覆盖/取消，改目录回弹框改）
+      try {
+        await ElMessageBox.confirm(`目标目录已存在同名条目：${msg.slice('__UNZIP_CONFLICT__:'.length)}。覆盖解压（同名文件将被覆盖）？`, '目标已有同名条目', {
+          type: 'warning', confirmButtonText: '覆盖解压', cancelButtonText: '取消',
           closeOnClickModal: false, closeOnPressEscape: false,
-        },
-      )
-      destName = String(value ?? '').trim()
-      if (!destName) continue
-    } catch { return } // 取消：不解压
-    const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
-    const destPath = parent === '/' ? `/${destName}` : `${parent}/${destName}`
-    if (!(await destExists(destPath))) break // 目标不存在：无冲突，直接解压
-    let act: 'overwrite' | 'rename' | 'cancel'
-    try {
-      await ElMessageBox.confirm(
-        `目录「${destName}/」已存在。覆盖=解压覆盖其中同名文件；重命名=换一个目录名；取消=不解压。`,
-        '目录已存在',
-        {
-          type: 'warning', distinguishCancelAndClose: true, showClose: true,
-          confirmButtonText: '覆盖', cancelButtonText: '重命名',
-          closeOnClickModal: false, closeOnPressEscape: false,
-        },
-      )
-      act = 'overwrite'
-    } catch (e) {
-      act = String(e) === 'cancel' ? 'rename' : 'cancel' // ✕/关闭 = 取消
+        })
+        // 递归重试前放行保存守卫（本次调用尚未走出 catch，finally 尚未复位）
+        unzipSaving.value = false
+        await submitUnzip(true)
+      } catch { /* 取消：留在弹框可改目录 */ }
+    } else {
+      ElMessage.error(friendlyError(err))
     }
-    if (act === 'overwrite') break
-    if (act === 'cancel') return
-    // 重命名 → 回到输入框循环
-  }
-  const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path, destDirName: destName })
-  ElMessage.success(`已解压 ${r.files} 个文件 → ${r.destDir}`)
-  void list(false)
+  } finally { unzipSaving.value = false }
 }
 async function newFile(): Promise<void> {
   try {
@@ -1901,7 +1911,7 @@ function onKeydown(event: KeyboardEvent): void {
             <el-dropdown-item command="favorites" :icon="Star">收藏夹…</el-dropdown-item>
             <el-dropdown-item command="copypath" :icon="CopyDocument" :disabled="!selectedEntries.length">复制路径</el-dropdown-item>
             <el-dropdown-item command="zip" :icon="Box" :disabled="!canZip">压缩为 zip…</el-dropdown-item>
-            <el-dropdown-item command="unzip" :icon="FolderOpened" :disabled="!canUnzip">解压到新目录</el-dropdown-item>
+            <el-dropdown-item command="unzip" :icon="FolderOpened" :disabled="!canUnzip">解压到…</el-dropdown-item>
             <el-dropdown-item command="convert" :icon="MagicStick" :disabled="!canConvert">转换文本编码 / 换行符…</el-dropdown-item>
             <!-- 权限与信息组 -->
             <el-dropdown-item command="perm" :icon="Lock" divided :disabled="!canPerm">编辑权限…</el-dropdown-item>
@@ -2022,7 +2032,7 @@ function onKeydown(event: KeyboardEvent): void {
                   <!-- 工具组（按通道与文件类型实时显隐：压缩/解压仅本地，文本转换仅文本扩展） -->
                   <template v-if="activeChannel?.type === 'local'">
                     <el-dropdown-item command="zip" :icon="Box" divided>压缩为 zip…</el-dropdown-item>
-                    <el-dropdown-item v-if="isFsZipName(entry.name)" command="unzip" :icon="FolderOpened">解压到新目录</el-dropdown-item>
+                    <el-dropdown-item v-if="isFsZipName(entry.name)" command="unzip" :icon="FolderOpened">解压到…</el-dropdown-item>
                   </template>
                   <el-dropdown-item v-if="entry.kind === 'file' && isFsTextName(entry.name)" command="convert" :icon="MagicStick" divided>转换编码 / 换行符…</el-dropdown-item>
                   <!-- 权限组 -->
@@ -2079,8 +2089,8 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <!-- 新建目录 -->
-    <el-dialog v-model="mkdirOpen" title="新建文件夹" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input clearable v-model="mkdirName" data-autofocus placeholder="目录名（不含斜杠）" @keyup.enter="submitMkdir" />
+    <el-dialog v-model="mkdirOpen" title="新建文件夹" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-input ref="mkdirInputRef" clearable v-model="mkdirName" data-autofocus placeholder="目录名（不含斜杠）" @keyup.enter="submitMkdir" />
       <template #footer>
         <el-button @click="mkdirOpen = false">取消</el-button>
         <el-button type="primary" @click="submitMkdir">创建</el-button>
@@ -2088,8 +2098,8 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 重命名 -->
-    <el-dialog v-model="renameOpen" title="重命名" width="420px" close-on-click-modal="false" close-on-press-escape="false">
-      <el-input clearable v-model="renameName" data-autofocus @keyup.enter="submitRename" />
+    <el-dialog v-model="renameOpen" title="重命名" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-input ref="renameInputRef" clearable v-model="renameName" data-autofocus @keyup.enter="submitRename" />
       <template #footer>
         <el-button @click="renameOpen = false">取消</el-button>
         <el-button type="primary" @click="submitRename">确定</el-button>
@@ -2097,7 +2107,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 复制到 / 移动到 -->
-    <el-dialog v-model="moveOpen" :title="moveMode === 'move' ? '移动到…' : '复制到…'" width="480px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="moveOpen" :title="moveMode === 'move' ? '移动到…' : '复制到…'" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div class="fs-move-body">
         <!-- 项20：复制/移动都可选目标通道；跨通道走传输队列，移动=复制成功删源 -->
         <template v-if="moveMode === 'copy' || moveMode === 'move'">
@@ -2130,8 +2140,37 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
+    <!-- 解压到…（目标通道可选=跨源解压；目录手输/级联，不存在自动创建；同名条目覆盖确认） -->
+    <el-dialog v-model="unzipOpen" title="解压到…" width="500px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <template v-if="unzipEntry">
+        <div class="hint" style="margin-bottom: 8px">把「{{ unzipEntry.name }}」解压到目标目录（目录不存在将自动创建）：</div>
+        <div class="hint" style="margin-bottom: 6px">目标通道（选择其它通道即跨源解压：zip 读入内存后写入目标通道，受压缩上限约束）：</div>
+        <el-select v-model="unzipDestProfile" size="small" style="width: 100%; margin-bottom: 12px" filterable>
+          <el-option v-for="c in channels" :key="c.id" :value="c.id" :label="`${c.name}（${c.detail}）`" :disabled="!c.hasSecret" />
+        </el-select>
+        <div class="hint" style="margin-bottom: 8px">目标目录（如 /docs/output；留空或 / 不可用，须为具体目录路径）：</div>
+        <el-input clearable v-model="unzipDirInput" placeholder="/a/b，也可从下方目录树选择" data-autofocus @keyup.enter="submitUnzip()" />
+        <el-cascader
+          ref="unzipCascaderRef"
+          :key="unzipDestProfile || profileId || ''"
+          class="fs-move-cascader"
+          :props="unzipDirProps"
+          size="small"
+          placeholder="或从目录树选择目标目录（逐级下钻，点圈选中）"
+          clearable
+          style="width: 100%; margin-top: 8px"
+          @change="onUnzipDirPicked"
+        />
+        <div class="hint" style="margin-top: 10px">默认 = zip 所在目录下以 zip 名新建目录。目标目录中已有同名条目时会先询问是否覆盖。</div>
+      </template>
+      <template #footer>
+        <el-button @click="unzipOpen = false">取消</el-button>
+        <el-button type="primary" :loading="unzipSaving" @click="submitUnzip()">解压</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 删除确认（纯文件，无目录时） -->
-    <el-dialog v-model="deleteOpen" title="删除确认" width="460px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="deleteOpen" title="删除确认" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
       <p>确定删除以下 {{ deleteTargets.length }} 项吗？此操作不可恢复。</p>
       <p class="fs-delete-list">{{ deleteTargets.map((e) => e.name).join('、') }}</p>
       <template #footer>
@@ -2141,7 +2180,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 图片预览 -->
-    <el-dialog v-model="preview.open" :title="preview.name" width="720px" close-on-click-modal="false" close-on-press-escape="false" class="fs-preview-dialog" @close="onPreviewClose">
+    <el-dialog v-model="preview.open" :title="preview.name" width="720px" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-preview-dialog" @close="onPreviewClose">
       <div class="fs-preview-body">
         <iframe v-if="preview.pdfUrl" :src="preview.pdfUrl" class="fs-preview-pdf" title="PDF 预览" />
         <img v-else :src="preview.src" :style="{ transform: `scale(${preview.scale})` }" alt="preview" />
@@ -2157,7 +2196,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 文本编辑器（文件名 · 大小 统计信息置顶，用户 2026-11-18） -->
-    <el-dialog v-model="editor.open" width="900px" top="4vh" close-on-click-modal="false" close-on-press-escape="false" class="fs-editor-dialog">
+    <el-dialog v-model="editor.open" width="900px" top="4vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-editor-dialog">
       <template #header>
         <span class="fs-editor-title">{{ editor.name }}<span class="fs-editor-meta">{{ fsFormatSize(editor.size) }}</span></span>
       </template>
@@ -2194,7 +2233,7 @@ function onKeydown(event: KeyboardEvent): void {
           <!-- 工具组（按通道与文件类型实时显隐） -->
           <template v-if="activeChannel?.type === 'local'">
             <li data-command="zip" class="is-divided"><el-icon><Box /></el-icon>压缩为 zip…</li>
-            <li v-if="isFsZipName(ctxMenu.entry.name)" data-command="unzip"><el-icon><FolderOpened /></el-icon>解压到新目录</li>
+            <li v-if="isFsZipName(ctxMenu.entry.name)" data-command="unzip"><el-icon><FolderOpened /></el-icon>解压到…</li>
           </template>
           <li v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" data-command="convert" class="is-divided"><el-icon><MagicStick /></el-icon>转换编码 / 换行符…</li>
           <!-- 权限组 -->
@@ -2204,16 +2243,19 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
     </Teleport>
 
-    <!-- 音视频播放（二期） -->
-    <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" close-on-click-modal="false" close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''">
+    <!-- 音视频播放（二期）：src 为主进程临时文件的 file:// URL（流式落盘，不用 data URI） -->
+    <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''">
       <div class="fs-player-body">
         <span v-if="player.loading && !player.src" class="hint">加载中…</span>
-        <video v-else-if="player.video && player.src" :src="player.src" controls autoplay style="max-width: 100%; max-height: 58vh" />
-        <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" />
+        <video v-else-if="player.video && player.src" :src="player.src" controls autoplay style="max-width: 100%; max-height: 58vh" @error="onMediaError" />
+        <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" @error="onMediaError" />
       </div>
+      <!-- 描述与按钮分两行（用户 2026-11-19） -->
       <template #footer>
-        <span class="hint">在线播放上限 {{ mediaLimitText }}（可在「更多▾ → 上限设置」调整，0=不限）；更大文件请下载后本地播放</span>
-        <el-button @click="player.open = false">关闭</el-button>
+        <div class="hint">在线播放上限 {{ mediaLimitText }}（可在「更多▾ → 上限设置」调整，0=不限）；更大文件请下载后本地播放</div>
+        <div style="margin-top: 10px; text-align: right">
+          <el-button @click="player.open = false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -2221,7 +2263,7 @@ function onKeydown(event: KeyboardEvent): void {
     <TransferPanel ref="transferPanelRef" v-model:expanded="panelExpanded" :tasks="taskList" />
 
     <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
-    <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div class="fs-ziplimits">
         <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
         <div class="fs-convert-row">
@@ -2267,7 +2309,7 @@ function onKeydown(event: KeyboardEvent): void {
     />
 
     <!-- §十一：设置备注（确认后生效；多选批量同备注） -->
-    <el-dialog v-model="noteOpen" :title="`设置备注${noteTargets.length > 1 ? `（${noteTargets.length} 项）` : ''}`" width="440px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="noteOpen" :title="`设置备注${noteTargets.length > 1 ? `（${noteTargets.length} 项）` : ''}`" width="440px" :close-on-click-modal="false" :close-on-press-escape="false">
       <el-input clearable v-model="noteInput" data-autofocus maxlength="200" placeholder="备注（留空清除；最多 200 字）" @keyup.enter="submitNote" />
       <div class="hint" style="margin-top: 8px">备注保存在本机应用数据，跨通道可用；重命名/移动后自动跟随。</div>
       <template #footer>
@@ -2277,7 +2319,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：编辑权限（本地 / SFTP；rwx 勾选 ↔ 八进制双向联动，确认后生效） -->
-    <el-dialog v-model="permOpen" title="编辑权限" width="480px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="permOpen" title="编辑权限" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
       <template v-if="permTarget">
         <div class="hint" style="margin-bottom: 10px">{{ permTarget.name }} · 当前 {{ permTarget.mode }}（{{ fsModeToRwx(permTarget.mode) }}）</div>
         <div class="fs-perm-grid">
@@ -2309,7 +2351,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：属性（只读展示 + 编辑入口） -->
-    <el-dialog v-model="propsOpen" title="属性" width="520px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="propsOpen" title="属性" width="520px" :close-on-click-modal="false" :close-on-press-escape="false">
       <template v-if="propsEntry">
         <div class="fs-props">
           <div class="fs-props-row"><span class="fs-props-k">名称</span><span class="fs-props-v">{{ propsEntry.name }}</span></div>
@@ -2331,7 +2373,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：转换文本编码 / 换行符（转换格式 A，全通道，确认后生效） -->
-    <el-dialog v-model="convertOpen" title="转换文本编码 / 换行符" width="480px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="convertOpen" title="转换文本编码 / 换行符" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
       <template v-if="convertTarget">
         <div class="hint" style="margin-bottom: 10px">{{ convertTarget.name }} · {{ fsFormatSize(convertTarget.size) }}</div>
         <div class="fs-convert-row">
@@ -2367,7 +2409,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：列设置（显隐记忆 localStorage；通道不具备数据的列禁用） -->
-    <el-dialog v-model="colsOpen" title="列设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-dialog v-model="colsOpen" title="列设置" width="400px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div class="fs-cols">
         <el-checkbox v-model="colsVisible.note">备注（全通道可用）</el-checkbox>
         <el-checkbox v-model="colsVisible.createdAt" :disabled="!hasCreated" title="仅本地目录通道提供创建时间">创建时间{{ hasCreated ? '' : '（当前通道无数据）' }}</el-checkbox>
@@ -2380,8 +2422,8 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：压缩/解压上限设置（app.fs.zipFileCap / zipBytesCap） -->
-    <el-dialog v-model="zipLimitsOpen" title="压缩上限设置" width="400px" close-on-click-modal="false" close-on-press-escape="false">
-      <div class="fs-ziplimits">
+    <el-dialog v-model="zipLimitsOpen" title="压缩上限设置" width="400px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <div class="fs-ziplimits fs-caps-form">
         <div class="fs-convert-row">
           <span class="fs-convert-label">文件数上限</span>
           <el-input-number v-model="zipLimitsForm.fileCap" size="small" :min="10" :max="100000" :step="100" :controls="false" style="width: 150px" data-autofocus />
@@ -2401,8 +2443,8 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- 上限设置（上传 / 下载分开、搜索扫描页数；0=不限） -->
-    <el-dialog v-model="transferCapsOpen" title="上限设置" width="440px" close-on-click-modal="false" close-on-press-escape="false">
-      <div class="fs-ziplimits">
+    <el-dialog v-model="transferCapsOpen" title="上限设置" width="440px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <div class="fs-ziplimits fs-caps-form">
         <div class="fs-convert-row">
           <span class="fs-convert-label">上传文件数上限</span>
           <el-input-number v-model="transferCapsForm.uploadCap" size="small" :min="0" :max="100000" :step="1000" :controls="false" style="width: 150px" data-autofocus />
@@ -2432,7 +2474,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：收藏夹（跨通道直达） -->
-    <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" close-on-click-modal="false" close-on-press-escape="false">
+    <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div v-if="!favorites.length" class="fs-empty"><p>还没有收藏</p><p class="fs-empty-hint">选中文件/目录后在「更多 ▾」里添加收藏</p></div>
       <div v-else class="fs-fav-list">
         <div v-for="f in favorites" :key="f._id" class="fs-fav-item">
@@ -2589,6 +2631,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-props-k { flex: none; width: 72px; opacity: .6; }
 .fs-props-v { flex: 1; min-width: 0; word-break: break-all; }
 .fs-convert-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+/* 数字上限类弹框（用户 2026-11-19）：三列 grid——label 同起点左对齐、输入框统一 150px 同列、单位同列 */
+.fs-caps-form { display: flex; flex-direction: column; gap: 10px; }
+.fs-caps-form .fs-convert-row { display: grid; grid-template-columns: max-content 150px max-content; column-gap: 10px; align-items: center; margin-bottom: 0; }
+.fs-caps-form .fs-convert-row .el-input-number { grid-column: 2; width: 150px; }
 /* 表单 label 宽度 auto + 不换行（用户铁律 2026-11-18：label 不允许固定宽度截断换行） */
 .fs-convert-label { flex: none; width: auto; white-space: nowrap; font-size: 13px; opacity: .7; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }

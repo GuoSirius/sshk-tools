@@ -1,6 +1,8 @@
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import fsPromises from 'node:fs/promises'
+import os from 'node:os'
 import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { BrowserWindow, app, dialog } from 'electron'
 import { zipSync, unzipSync } from 'fflate'
 import iconv from 'iconv-lite'
@@ -35,6 +37,7 @@ import {
   type FsMvRequest,
   type FsProfilesPayload,
   type FsReadResult,
+  type FsReadMediaResult,
   type FsRmRequest,
   type FsSearchRequest,
   type FsSearchResult,
@@ -1045,6 +1048,37 @@ export class FsRuntime {
     })
     // plans/10 §7：启动恢复持久化任务（一律 paused，不自动续跑）
     this.engine.restore()
+    // 音视频临时播放文件：启动清理 24h 前残留
+    this.cleanMediaTemp()
+  }
+
+  // ── 音视频在线播放（2026-11-19）：流式落临时文件返回 file:// URL ──
+  /** 临时目录：系统 temp 下 sshk-media（播放器直接 file:// 播放，关闭后不即删，启动清理） */
+  private cleanMediaTemp(): void {
+    try {
+      const dir = join(os.tmpdir(), 'sshk-media')
+      if (!existsSync(dir)) return
+      const cutoff = Date.now() - 24 * 3600 * 1000
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name)
+        try { if (statSync(p).mtimeMs < cutoff) rmSync(p, { force: true }) } catch { /* 单个失败忽略 */ }
+      }
+    } catch { /* 清理失败不影响功能 */ }
+  }
+
+  async readMedia(req: { profileId: string; path: string }): Promise<FsReadMediaResult> {
+    const { driver, channel } = this.resolve(req?.profileId)
+    const p = this.assertPath(req?.path)
+    if (p === '/') throw new Error('目录没有可读内容')
+    const stat = await driver.stat(p)
+    if (!stat.exists || stat.isDir) throw new Error('文件不存在（可能已被删除）')
+    const safeName = fsBasename(p).replace(/[\\/:*?"<>|]+/g, '_')
+    const dir = join(os.tmpdir(), 'sshk-media')
+    mkdirSync(dir, { recursive: true })
+    const destFile = join(dir, `${Date.now().toString(36)}-${safeName}`)
+    await driver.download(p, destFile)
+    logger.info('upload', `fs 在线播放：${channel.id}/${p} → 临时文件（${fsFormatSize(stat.size ?? 0)}）`)
+    return { fileUrl: pathToFileURL(destFile).href, size: stat.size ?? 0 }
   }
 
   private globalConfig() {
@@ -1558,39 +1592,67 @@ export class FsRuntime {
 
   /** 解压 zip（仅本地通道）：解到 zip 同级 `<zip 名去扩展名>/`，防路径穿越 */
   async unzip(req: FsUnzipRequest): Promise<FsUnzipResult> {
-    const { driver, channel } = this.resolve(req?.profileId)
-    if (channel.type !== 'local') throw new Error('解压仅支持本地目录通道')
+    const { driver: srcDriver } = this.resolve(req?.profileId)
     const zipPath = this.assertPath(req?.path)
     if (!isFsZipName(zipPath)) throw new Error('仅支持 .zip 压缩包')
-    const stat = await driver.stat(zipPath)
+    const stat = await srcDriver.stat(zipPath)
     if (!stat.exists || stat.isDir) throw new Error('压缩包不存在')
     const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
     if ((stat.size ?? 0) > bytesCap) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
-    const { data } = await driver.readBuffer(zipPath)
+    const { data } = await srcDriver.readBuffer(zipPath)
     const entries = unzipSync(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
-    // 目标目录名：用户可选（渲染层先弹目录名输入+冲突处理）；缺省 = zip 名去扩展名（原有行为）
-    const zipParent = zipPath.lastIndexOf('/') <= 0 ? '/' : zipPath.slice(0, zipPath.lastIndexOf('/'))
-    const destName = String(req?.destDirName ?? '').trim() || fsBasename(zipPath).replace(/\.zip$/i, '')
-    if (/[\\/]/.test(destName) || destName === '.' || destName === '..') throw new Error('解压目标目录名不能包含斜杠或路径段')
-    const destDir = zipParent === '/' ? `/${destName}` : `${zipParent}/${destName}`
-    let files = 0
-    let bytes = 0
-    for (const [name, content] of Object.entries(entries)) {
-      // 防路径穿越：拒绝绝对路径 / .. 段 / 反斜杠
+    // 安全检查前置：防路径穿越（任何非法条目直接中止，未解出任何文件）
+    for (const name of Object.keys(entries)) {
       if (/^[\\/]/.test(name) || name.includes('..') || name.includes('\\')) {
         throw new Error(`压缩包含非法路径条目：${name}（已中止，未解出任何文件）`)
       }
+    }
+    // 目标通道：可选跨源（用户 2026-11-19）；目标目录不存在自动创建
+    const dest = this.resolve(req?.destProfileId || req?.profileId)
+    if (!dest.driver.writable) throw new Error(`通道「${dest.channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持写）`)
+    const zipParent = zipPath.lastIndexOf('/') <= 0 ? '/' : zipPath.slice(0, zipPath.lastIndexOf('/'))
+    const destDirRaw = String(req?.destDir ?? '').trim()
+    let destDir: string
+    if (destDirRaw) {
+      destDir = this.assertPath(destDirRaw)
+    } else {
+      const destName = String(req?.destDirName ?? '').trim() || fsBasename(zipPath).replace(/\.zip$/i, '')
+      if (/[\\/]/.test(destName) || destName === '.' || destName === '..') throw new Error('解压目标目录名不能包含斜杠或路径段')
+      destDir = zipParent === '/' ? `/${destName}` : `${zipParent}/${destName}`
+    }
+    if (destDir === '/') throw new Error('目标目录不能为根目录')
+    const dst = await dest.driver.stat(destDir)
+    if (dst.exists && !dst.isDir) throw new Error('目标路径已存在且不是目录')
+    if (dst.exists && !req?.overwrite) {
+      // 冲突预检（用户 2026-11-19）：顶层条目与目标目录已有条目同名 → 抛标记错误，渲染层覆盖确认后重试
+      const topNames = new Set(Object.keys(entries).map((n) => n.replace(/\/+$/, '').split('/')[0] ?? ''))
+      try {
+        const page = await dest.driver.list(destDir, { pageSize: 1000 })
+        const conflicts = [...topNames].filter((n) => page.entries.some((e) => e.name === n))
+        if (conflicts.length) {
+          throw new Error(`__UNZIP_CONFLICT__:${conflicts.slice(0, 8).join('、')}${conflicts.length > 8 ? ` …共 ${conflicts.length} 个` : ''}`)
+        }
+      } catch (e) {
+        if (String((e as Error).message).startsWith('__UNZIP_CONFLICT__')) throw e
+        // 目标目录列取失败：不阻断，退化为直接覆盖写
+      }
+    } else if (!dst.exists) {
+      await dest.driver.mkdir(destDir) // 自动创建（用户 2026-11-19）
+    }
+    let files = 0
+    let bytes = 0
+    for (const [name, content] of Object.entries(entries)) {
       if (bytes + content.length > bytesCap) throw new Error(`解压内容超过 ${fsFormatSize(bytesCap)} 上限，已中止`)
       if (files >= fileCap) throw new Error(`解压内容超过 ${fileCap} 个文件上限，已中止`)
       if (name.endsWith('/')) {
-        await driver.mkdir(`${destDir}/${name.replace(/\/+$/, '')}`)
+        await dest.driver.mkdir(`${destDir}/${name.replace(/\/+$/, '')}`)
         continue
       }
-      await driver.write(`${destDir}/${name}`, Buffer.from(content.buffer, content.byteOffset, content.byteLength))
+      await dest.driver.write(`${destDir}/${name}`, Buffer.from(content.buffer, content.byteOffset, content.byteLength))
       files++
       bytes += content.length
     }
-    logger.info('upload', `fs 解压：${channel.id}/${zipPath} → ${destDir}（${files} 个文件 / ${fsFormatSize(bytes)}）`)
+    logger.info('upload', `fs 解压：${zipPath} → ${dest.channel.id}/${destDir}（${files} 个文件 / ${fsFormatSize(bytes)}）`)
     return { destDir, files }
   }
 

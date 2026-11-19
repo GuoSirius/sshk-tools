@@ -762,6 +762,7 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.fsUsage, (_event, req: Parameters<FsRuntime['usage']>[0]) => fsRuntime.usage(req))
   handleOk(IPC_CHANNELS.fsRead, (_event, req: { profileId: string; path: string; maxBytes?: number }) =>
     fsRuntime.read(req))
+  handleOk(IPC_CHANNELS.fsReadMedia, (_event, req: { profileId: string; path: string }) => fsRuntime.readMedia(req))
   handleOk(IPC_CHANNELS.fsWrite, (_event, req: Parameters<FsRuntime['write']>[0]) => fsRuntime.write(req))
   handleOk(IPC_CHANNELS.fsTransferStart, (_event, inputs: Parameters<FsRuntime['transferStart']>[0]) =>
     fsRuntime.transferStart(inputs))
