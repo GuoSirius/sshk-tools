@@ -358,9 +358,9 @@ function askRemoveRecent(item: RecentHtml): void {
             仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
           </div>
 
-          <el-form-item v-if="vision.provider !== 'manual'">
-            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
+          <el-form-item v-if="vision.provider !== 'manual'" class="vision-cfg-save">
             <span class="muted">不保存则本次会话内有效</span>
+            <el-button size="small" @click="saveVisionConfig">保存为默认配置</el-button>
           </el-form-item>
         </el-form>
 
@@ -581,6 +581,8 @@ function askRemoveRecent(item: RecentHtml): void {
 .vision-cfg :deep(.el-form-item__content) { gap: 8px; font-size: 12px; }
 .vision-cfg :deep(.el-form-item__label) { font-size: 12px; }
 .vision-cfg-select { width: 240px; }
+/* 保存行：描述紧贴按钮左侧、整体居右（用户 2026-11-19） */
+.vision-cfg-save :deep(.el-form-item__content) { justify-content: flex-end; }
 /* 编辑器工具行：说明文字占左，按钮组统一居右 */
 .editor-tool-row .muted { flex: 1; min-width: 0; }
 .editor-tool-btns { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
