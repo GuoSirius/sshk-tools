@@ -375,8 +375,11 @@ async function loadChannels(): Promise<void> {
   }
 }
 
+let listSeq = 0 // 列表请求序号：切目录/切通道后丢弃过期响应（2026-11-19 用户实测本地慢目录与切换竞态）
+
 async function list(resetCursor = true): Promise<void> {
   if (!profileId.value) return
+  const seq = ++listSeq
   if (resetCursor) { cursor.value = null; entries.value = [] }
   activeSearchId = '' // 在途搜索会话作废（切换目录/刷新时丢弃晚到的流式批次）
   searchActive.value = false
@@ -388,6 +391,7 @@ async function list(resetCursor = true): Promise<void> {
   shiftAnchor.value = -1
   try {
     const page: FsListPage = await window.api.fs.list({ profileId: profileId.value, path: path.value })
+    if (seq !== listSeq) return // 期间用户已切目录/切通道：过期响应直接丢弃
     entries.value = page.entries
     cursor.value = page.nextCursor ?? null
     pathInput.value = path.value
@@ -396,23 +400,26 @@ async function list(resetCursor = true): Promise<void> {
     usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
     if (resetCursor) { void loadAnnotations(); void loadShareRoutes() } // 备注/分享状态跟随目录重载
   } catch (err) {
+    if (seq !== listSeq) return
     entries.value = []
     cursor.value = null
     pageError.value = friendlyError(err)
   } finally {
-    loading.value = false
+    if (seq === listSeq) loading.value = false
   }
 }
 
 async function loadMore(): Promise<void> {
   if (!cursor.value || loadingMore.value || !profileId.value) return
+  const seq = listSeq
   loadingMore.value = true
   try {
     const page = await window.api.fs.list({ profileId: profileId.value, path: path.value, cursor: cursor.value })
+    if (seq !== listSeq) return // 期间已切目录/切通道：过期分页不追加
     entries.value = [...entries.value, ...page.entries]
     cursor.value = page.nextCursor ?? null
   } catch (err) {
-    ElMessage.error('加载更多失败：' + friendlyError(err))
+    if (seq === listSeq) ElMessage.error('加载更多失败：' + friendlyError(err))
   } finally {
     loadingMore.value = false
   }

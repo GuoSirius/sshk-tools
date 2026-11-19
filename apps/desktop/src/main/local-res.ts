@@ -42,6 +42,24 @@ function readRange(p: string, start: number, end: number): { buf: Buffer; filled
   return { buf, filled }
 }
 
+/** 等待流式落盘的文件出现（云 SDK 首包前 destFile 可能尚未创建，2026-11-19 用户实测 404）：
+ *  文件出现 / 会话终态 / 停滞超时即返回当前存在性；有进展就续期（同 waitForMediaBytes 语义） */
+async function waitForMediaFileStart(p: string, stallTimeoutMs = 15_000): Promise<boolean> {
+  let lastUploaded = -1
+  let lastProgressAt = Date.now()
+  while (true) {
+    if (existsSync(p)) return true
+    const st = getMediaDownload(p)
+    if (!st || st.done || st.error) return existsSync(p)
+    if (st.uploaded !== lastUploaded) {
+      lastUploaded = st.uploaded
+      lastProgressAt = Date.now()
+    }
+    if (Date.now() - lastProgressAt >= stallTimeoutMs) return existsSync(p)
+    await new Promise<void>((r) => setTimeout(r, 50))
+  }
+}
+
 /** localres:///D:/xxx.png → 主进程按白名单读文件回响应（图片 + 音视频，含 Range/边下边播） */
 export function installLocalResHandler(config: ConfigLike): void {
   protocol.handle(SCHEME, async (request) => {
@@ -52,6 +70,13 @@ export function installLocalResHandler(config: ConfigLike): void {
       if (!mime) return new Response('仅支持图片/音视频资源预览', { status: 403 })
       if (!isAllowedResPath(p, collectResRoots(config))) {
         return new Response('路径不在允许的上传目录内', { status: 403 })
+      }
+      // 边下边播会话已注册但文件还没落盘：等首包写盘（云 SDK download 首包前 destFile 不存在），
+      // 直接 404 会让 <video> 立刻 error；等待无果（下载失败/停滞）才回 404
+      if (!existsSync(p) && isMediaStreaming(p)) {
+        if (!(await waitForMediaFileStart(p))) {
+          return new Response('媒体数据未就绪（下载未开始或已失败）', { status: 404 })
+        }
       }
       if (!existsSync(p)) return new Response('文件不存在', { status: 404 })
 

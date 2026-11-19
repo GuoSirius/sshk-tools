@@ -96,6 +96,22 @@ export function withScheme(host: string): string {
   return /^https?:\/\//i.test(h) ? h : `https://${h}`
 }
 
+/** 云 SDK 请求超时兜底（2026-11-19 用户实测：本地切云偶发列目录永久挂起——SDK 请求无超时，
+ *  连接僵死时永不 resolve，界面永远转圈且刷新也挂）。超时后 reject，刷新会新建客户端重连。 */
+export async function withCloudTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, rej) => {
+        timer = setTimeout(() => rej(new Error(`${label}：请求超过 ${Math.round(ms / 1000)}s 无响应，请刷新重试`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * 各云 SDK 返回结构差异极大（Contents/contents/items/objects、大小写不一、
  * OBS 还多包一层 InterfaceResult），这里做深度兜底解析：浅层常见字段优先，

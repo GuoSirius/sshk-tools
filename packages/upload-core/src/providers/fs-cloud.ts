@@ -6,7 +6,7 @@ import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { sortFsEntries, type FsSearchBatchFn } from '../fs-driver'
-import { collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withScheme, type CloudProfile } from './cloud-sdk'
+import { collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withCloudTimeout, withScheme, type CloudProfile } from './cloud-sdk'
 
 /**
  * F-3：云（对象存储）文件系统驱动。
@@ -155,13 +155,13 @@ export class CloudFsDriver implements FsDriver {
   async list(path: string, opts?: { pageSize?: number; cursor?: string | null }): Promise<FsListPage> {
     const mod = await loadSdk(specOf(this.profile))
     const base = sdkPrefix(path)
-    const page = await listCloudPage(this.profile, mod, {
+    const page = await withCloudTimeout(listCloudPage(this.profile, mod, {
       bucket: this.bucketOf(),
       prefix: base,
       pageSize: Math.max(1, Math.min(1000, Math.floor(opts?.pageSize ?? 500))),
       cursor: opts?.cursor ?? null,
       delimiter: true,
-    })
+    }), 20_000, '云列目录失败')
     const dirs: FsEntry[] = []
     for (const raw of collectPrefixes(page.raw)) {
       const rel = toRelUnder(base, raw)
