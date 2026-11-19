@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { findShareTicketById, readShareTicket, shareDialogStorageKey, shareFileDirectUrl } from './share-ticket'
+import { buildDirectUrl, findShareTicketById, readShareTicket, shareDialogStorageKey, shareFileDirectUrl } from './share-ticket'
 
 /** 简易 localStorage mock（Node 环境无 DOM） */
 function mockStorage(): Map<string, string> {
@@ -38,6 +38,15 @@ describe('分享凭证按 id 反查', () => {
       .toBe('http://192.168.1.5:8787/abc/photos/%E5%AD%90%E7%9B%AE%E5%BD%95/a%20b.jpg')
     expect(shareFileDirectUrl('http://x/t/', 'a/b.txt')).toBe('http://x/t/a/b.txt')
     expect(shareFileDirectUrl('http://x/t/', '')).toBe('http://x/t')
+  })
+
+  it('媒体直链：baseUrl + 编码路径，签名模板 {url} 占位符替换', () => {
+    expect(buildDirectUrl('https://cdn.example.com/', '/photos/a b.mp4', ''))
+      .toBe('https://cdn.example.com/photos/a%20b.mp4')
+    expect(buildDirectUrl('https://cdn.example.com', '/a/b.mp4', 'https://cdn/sign?token=xyz&src={url}'))
+      .toBe('https://cdn/sign?token=xyz&src=https://cdn.example.com/a/b.mp4')
+    expect(buildDirectUrl('', '/a.mp4', 'x{url}')).toBe('') // 无域名 = 无直链
+    expect(buildDirectUrl('https://x', '/a.mp4', 'no-placeholder')).toBe('https://x/a.mp4') // 模板无效回裸链
   })
 
   it('文件直达 URL：保留 base 的 ?ak= 访问密钥（不把路径塞进 query）', () => {

@@ -164,6 +164,8 @@ interface Window {
       /** 遗留分片手动清理（调用方先做二次确认） */
       cleanOrphanUploads(): Promise<number>
       onTransferEvent(callback: (task: import('@sshk/shared').FsTransferTask) => void): void
+      /** 媒体边下边播进度推送；返回取消监听函数 */
+      onMediaEvent(callback: (e: import('@sshk/shared').FsMediaEvent) => void): () => void
       /** 递归搜索流式批次推送；返回取消监听函数 */
       onSearchEvent(callback: (e: import('@sshk/shared').FsSearchEvent) => void): () => void
       pickUpload(opts?: { type?: 'file' | 'dir' | 'any' }): Promise<string[]>
@@ -181,8 +183,8 @@ interface Window {
       zipLimits(): Promise<{ fileCap: number; bytesCapMb: number }>
       setZipLimits(req: { fileCap?: number; bytesCapMb?: number }): Promise<{ fileCap: number; bytesCapMb: number }>
       /** 传输上限：上传展平 / 下载目录递归展开分开可配（默认上传 10000、下载 0 不限；0=不限）；搜索扫描页数默认 500，0=不限 */
-      transferCaps(): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }>
-      setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }>
+      transferCaps(): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean }>
+      setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number; previewDirectLink?: boolean }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean }>
       /** 目录备注 / 收藏夹（§十一，应用侧集合） */
       annotationList(profileId: string): Promise<Record<string, string>>
       annotationSet(req: { profileId: string; path: string; note: string }): Promise<boolean>

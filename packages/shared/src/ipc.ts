@@ -81,6 +81,8 @@ export const IPC_CHANNELS = {
   fsUsage: 'fs:usage',
   fsRead: 'fs:read',
   fsReadMedia: 'fs:readMedia',
+  /** 主进程 → 渲染层：媒体边下边播下载进度（边下边写，供播放器进度条） */
+  fsMediaEvent: 'fs:media:event',
   fsWrite: 'fs:write',
   fsTransferStart: 'fs:transfer:start',
   fsTransferList: 'fs:transfer:list',

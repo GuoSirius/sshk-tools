@@ -350,6 +350,12 @@ const api = {
     onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, (_event, task) => callback(task))
     },
+    /** 主进程推送媒体边下边播进度；返回退订函数 */
+    onMediaEvent: (callback: (e: import('@sshk/shared').FsMediaEvent) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, e: import('@sshk/shared').FsMediaEvent) => callback(e)
+      ipcRenderer.on(IPC_CHANNELS.fsMediaEvent, listener)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.fsMediaEvent, listener)
+    },
     /** 主进程推送递归搜索流式批次；返回取消监听函数（旧会话及时退订） */
     onSearchEvent: (callback: (e: import('@sshk/shared').FsSearchEvent) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, e: import('@sshk/shared').FsSearchEvent) => callback(e)
@@ -381,9 +387,9 @@ const api = {
     zipLimits: (): Promise<{ fileCap: number; bytesCapMb: number }> => invoke(IPC_CHANNELS.fsZipLimits),
     setZipLimits: (req: { fileCap?: number; bytesCapMb?: number }): Promise<{ fileCap: number; bytesCapMb: number }> =>
       invoke(IPC_CHANNELS.fsZipLimitsSet, req),
-    /** 传输文件数上限（上传展平 / 下载目录递归展开共用，默认 10000） */
-    transferCaps: (): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }> => invoke(IPC_CHANNELS.fsTransferCaps),
-    setTransferCaps: (req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number }> => invoke(IPC_CHANNELS.fsTransferCapsSet, req),
+    /** 传输文件数上限（上传展平 / 下载目录递归展开共用，默认 10000）+ 预览直链开关 */
+    transferCaps: (): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean }> => invoke(IPC_CHANNELS.fsTransferCaps),
+    setTransferCaps: (req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number; previewDirectLink?: boolean }): Promise<{ uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean }> => invoke(IPC_CHANNELS.fsTransferCapsSet, req),
     /** 目录备注 / 收藏夹（§十一，应用侧集合） */
     annotationList: (profileId: string): Promise<Record<string, string>> => invoke(IPC_CHANNELS.fsAnnotationList, profileId),
     annotationSet: (req: { profileId: string; path: string; note: string }): Promise<boolean> => invoke(IPC_CHANNELS.fsAnnotationSet, req),

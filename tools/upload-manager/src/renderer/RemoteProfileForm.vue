@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Connection, Delete, View } from '@element-plus/icons-vue'
-import { FormGrid } from '@sshk/ui-kit'
+import { FormHint, FormGrid } from '@sshk/ui-kit'
 import type { UploadRemoteProfile } from '@sshk/shared'
 
 /** 远程 profile 编辑表单：profile 是响应式数组内的对象，直接改属性即可回写父级 */
@@ -42,6 +42,10 @@ const emit = defineEmits<{
       <el-form-item label="用户名" required><el-input clearable v-model="profile.username" /></el-form-item>
       <el-form-item label="远端位置"><el-input clearable v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
       <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
+      <el-form-item label="签名URL模板">
+        <el-input clearable v-model="profile.signUrlTemplate" placeholder="留空=裸链；如 https://cdn/sign?src={url}&token=..." />
+        <FormHint inline detail="视频/音频预览优先用「访问域名 + 文件路径」直链，免下载。若直链需签名鉴权，在此填模板，用 {url} 占位符代表拼好的原始直链（如 https://cdn/x?token=abc&src={url}）。留空则直接用裸链。签名过期导致播放失败时会自动回退为下载后播放。" />
+      </el-form-item>
       <el-form-item label="被动模式">
         <el-switch v-model="profile.passive" />
         <span class="hint-inline">仅 FTP 生效</span>

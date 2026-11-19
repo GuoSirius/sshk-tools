@@ -735,6 +735,7 @@ async function registerIpc(): Promise<void> {
   const fsRuntime = new FsRuntime({
     services: services!,
     onEvent: (task) => mainWindow?.webContents.send(IPC_CHANNELS.fsTransferEvent, task),
+    onMediaEvent: (e) => mainWindow?.webContents.send(IPC_CHANNELS.fsMediaEvent, e),
   })
   fsRuntimeRef = fsRuntime
   handleOk(IPC_CHANNELS.fsProfiles, () => fsRuntime.profilesPayload())

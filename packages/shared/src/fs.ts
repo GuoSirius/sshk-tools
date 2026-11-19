@@ -93,6 +93,18 @@ export interface FsReadResult {
 export interface FsReadMediaResult {
   fileUrl: string
   size: number
+  /** 临时文件绝对路径：渲染层据此订阅媒体下载进度事件（边下边播） */
+  mediaKey: string
+}
+
+/** 媒体边下边播进度事件（主进程 → 渲染层播放器） */
+export interface FsMediaEvent {
+  /** 与 FsReadMediaResult.mediaKey 一致（临时文件绝对路径） */
+  key: string
+  uploaded: number
+  total: number
+  done: boolean
+  error?: string
 }
 
 /** 写请求：expect 非空时先 stat 比对，不一致抛冲突错误（force=true 覆盖） */

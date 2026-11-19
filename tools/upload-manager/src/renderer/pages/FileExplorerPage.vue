@@ -57,7 +57,7 @@ import {
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
-import { ShareDialog, findShareTicketById, shareFileDirectUrl } from '@sshk/ui-kit'
+import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, shareFileDirectUrl } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
@@ -121,7 +121,30 @@ const editor = ref({
   open: false, path: '', name: '', content: '', readonly: false, saving: false,
   etag: '', modified: 0, size: 0, conflict: false,
 })
-const player = ref({ open: false, name: '', src: '', video: false, loading: false })
+/** 音视频播放器：source=direct 走直链（服务端 Range，无下载进度）；=stream 走主进程边下边播。
+ *  dlUploaded/dlTotal/dlDone 仅 stream 模式有意义，来自主进程 fs:media:event。 */
+const player = ref({
+  open: false, name: '', src: '', video: false, loading: false,
+  source: 'stream' as 'direct' | 'stream',
+  entry: null as FsEntry | null,
+  mediaKey: '',
+  dlUploaded: 0, dlTotal: 0, dlDone: false,
+})
+/** 订阅媒体下载进度：只更新当前正在播放的 mediaKey，避免多播放器串台 */
+let unsubMediaEvent: (() => void) | null = null
+function initMediaProgress(): void {
+  if (unsubMediaEvent) return
+  unsubMediaEvent = window.api.fs.onMediaEvent((e) => {
+    if (!player.value.open || e.key !== player.value.mediaKey) return
+    player.value.dlUploaded = e.uploaded
+    player.value.dlTotal = e.total
+    player.value.dlDone = e.done
+  })
+}
+const dlPercent = computed(() => {
+  if (!player.value.dlTotal) return 0
+  return Math.min(100, Math.round((player.value.dlUploaded / player.value.dlTotal) * 100))
+})
 
 // ── 递归搜索（二期）──
 const searchActive = ref(false)
@@ -208,7 +231,7 @@ async function submitZipLimits(): Promise<void> {
 // ── 上限设置（上传 / 下载分开可配；0=不限；搜索扫描页数默认 500、0=不限；在线预览 MB 默认 100、0=不限）──
 const transferCapsOpen = ref(false)
 // 默认（用户 2026-11-18 定版）：上传 10000、下载 0 不限制
-const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500, mediaLimitMb: 100 })
+const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500, mediaLimitMb: 100, previewDirectLink: true })
 const transferCapsSaving = ref(false)
 async function openTransferCaps(): Promise<void> {
   try { transferCapsForm.value = await window.api.fs.transferCaps() } catch { /* 读取失败按缺省值 */ }
@@ -222,9 +245,11 @@ async function submitTransferCaps(): Promise<void> {
       downloadCap: transferCapsForm.value.downloadCap,
       searchMaxPages: transferCapsForm.value.searchMaxPages,
       mediaLimitMb: transferCapsForm.value.mediaLimitMb,
+      previewDirectLink: transferCapsForm.value.previewDirectLink,
     })
     transferCapsForm.value = r
     mediaLimitBytes.value = r.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : r.mediaLimitMb * 1024 * 1024
+    previewDirectLink.value = r.previewDirectLink !== false
     ElMessage.success('上限设置已更新')
     transferCapsOpen.value = false
   } catch (err) { ElMessage.error(friendlyError(err)) }
@@ -233,10 +258,13 @@ async function submitTransferCaps(): Promise<void> {
 
 /** 音视频在线预览上限（字节，可配 app.fs.mediaLimitMb；Infinity=不限）——页面加载时拉一次 */
 const mediaLimitBytes = ref<number>(FS_MEDIA_PLAY_LIMIT)
+/** 预览优先用直链（默认开）：从 transferCaps 读取，与上限设置弹框同一开关 */
+const previewDirectLink = ref(true)
 async function loadMediaLimit(): Promise<void> {
   try {
     const caps = await window.api.fs.transferCaps()
     mediaLimitBytes.value = caps.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : caps.mediaLimitMb * 1024 * 1024
+    previewDirectLink.value = caps.previewDirectLink !== false
   } catch { /* 失败用共享常量缺省 */ }
 }
 const mediaLimitText = computed(() => mediaLimitBytes.value === Number.POSITIVE_INFINITY ? '不限' : fsFormatSize(mediaLimitBytes.value))
@@ -585,29 +613,72 @@ function fileIcon(entry: FsEntry): typeof Document {
   return Document
 }
 
-/** 音视频在线播放（二期）：主进程流式下载到临时文件返回 localres:// URL。
- *  2026-11-19：file:// 在 app:///http:// 渲染层被 Chromium 拦截（一直加载中），改走 localres；
- *  base64 data URI 方式大文件（百 MB 级）无法解码播放且占数倍内存，废弃。 */
+/** 音视频播放（2026-11-19 重构）：
+ *  直链优先（开关默认开）：有域名/分享直链则 <video src=直链>，服务端 Range、零下载；
+ *  直链播放失败（签名过期/403/编码问题）→ onMediaError 自动回退到「主进程边下边播」；
+ *  无直链或开关关 → 直接边下边播：readMedia 立即返回 localres URL，后台边下边写，进度可查。 */
 function openPlayer(entry: FsEntry): void {
+  player.value = {
+    open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true,
+    source: 'stream', entry, mediaKey: '', dlUploaded: 0, dlTotal: 0, dlDone: false,
+  }
+  if (previewDirectLink.value) {
+    void mediaDirectUrl(entry).then((url) => {
+      // 弹框可能已被关闭 / 用户切了别的条目
+      if (!player.value.open || player.value.entry !== entry) return
+      if (url) startDirectPlay(url)
+      else startStreamPlay(entry)
+    }).catch(() => { if (player.value.open && player.value.entry === entry) startStreamPlay(entry) })
+    return
+  }
+  startStreamPlay(entry)
+}
+
+/** 直链播放：不动本地下载上限（不落盘）；失败由 onMediaError 回退 */
+function startDirectPlay(url: string): void {
+  player.value.source = 'direct'
+  player.value.src = url
+  player.value.loading = false
+}
+
+/** 边下边播：超限仍走「下载后本地播放」确认；否则 readMedia 立即拿 URL，进度走事件 */
+function startStreamPlay(entry: FsEntry): void {
   if ((entry.size ?? 0) > mediaLimitBytes.value) {
+    player.value.open = false
     confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${mediaLimitText.value}）`, '文件过大')
     return
   }
-  player.value = { open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true }
+  player.value.source = 'stream'
+  player.value.src = '' // 清掉可能残留的坏直链 src，避免 <video> 对旧源重复 error 误报
+  player.value.loading = true
+  player.value.dlUploaded = 0
+  player.value.dlTotal = entry.size ?? 0
+  player.value.dlDone = false
   void window.api.fs.readMedia({ profileId: profileId.value, path: entry.path })
-    .then((r) => { player.value.src = r.fileUrl })
+    .then((r) => {
+      if (!player.value.open || player.value.entry !== entry) return
+      player.value.mediaKey = r.mediaKey
+      player.value.dlTotal = r.size || player.value.dlTotal
+      player.value.src = r.fileUrl
+    })
     .catch((err) => {
       player.value.open = false
       const msg = (err as Error).message ?? ''
       if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
       else ElMessage.warning(friendlyError(err))
     })
-    .finally(() => { player.value.loading = false })
+    .finally(() => { if (player.value.entry === entry) player.value.loading = false })
 }
-/** 媒体加载失败（编码不支持/临时文件损坏等）：留在弹框给出引导 */
+
+/** 媒体加载失败：直链失败 → 自动回退边下边播；边下边播失败 → 引导下载 */
 function onMediaError(): void {
+  const entry = player.value.entry
+  if (player.value.source === 'direct' && entry) {
+    startStreamPlay(entry) // 签名过期/403 等：静默回退，不打扰用户
+    return
+  }
   player.value.loading = false
-  ElMessage.warning('视频加载失败（可能是不支持的编码格式），请下载后本地播放')
+  ElMessage.warning('视频加载失败（可能是不支持的编码格式或下载中断），请下载后本地播放')
 }
 
 /** 引导下载确认框（打开/预览失败、文件过大等场景统一入口，用户决定是否下载） */
@@ -1014,6 +1085,30 @@ async function copyShareLink(entry: FsEntry): Promise<void> {
   const url = m.kind === 'inherited' ? shareFileDirectUrl(base, entry.path) : base
   await window.api.os.clipboardWrite(url)
   ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : '已复制本项分享链接（父级链接+本项路径）')
+}
+
+/** 媒体预览直链（用户 2026-11-19）：
+ *  本地 = 有效分享 ticket（own 直用 base / inherited 拼本项路径）；
+ *  远端/云 = baseUrl + 文件路径，若配了签名模板则用 {url} 占位符套签名。
+ *  返回空串表示无可用直链 → openPlayer 回退到边下边播。 */
+async function mediaDirectUrl(entry: FsEntry): Promise<string> {
+  const chType = activeChannel.value?.type
+  if (chType === 'local') {
+    const m = shareMarkOf(entry)
+    const route = m.kind === 'own' ? m.route : m.parent
+    if (!route) return ''
+    const ticket = findShareTicketById(route.id)
+    if (!isTicketAlive(ticket)) return ''
+    const base = ticket?.urls?.[0]
+    if (!base) return ''
+    return m.kind === 'inherited' ? shareFileDirectUrl(base, entry.path) : base
+  }
+  // 远端 / 云：读 profile 的 baseUrl + 签名模板
+  try {
+    const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
+    const p = [...cfg.remote.profiles, ...cfg.cloud.profiles].find((x) => x.id === profileId.value)
+    return buildDirectUrl(p?.baseUrl ?? '', entry.path, p?.signUrlTemplate)
+  } catch { return '' }
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
@@ -1857,6 +1952,7 @@ onMounted(() => {
   void loadChannels().then(() => { if (profileId.value) void list() })
   void loadFavorites() // §十一 收藏夹
   void loadMediaLimit() // 在线预览上限（可配）
+  initMediaProgress() // 媒体边下边播进度订阅
   // 队列已有历史任务（页面刷新恢复）
   void window.api.fs.transferList().then((list0) => {
     for (const t of list0) tasks.value.set(t.id, t)
@@ -1869,6 +1965,8 @@ onMounted(() => {
   window.addEventListener('drop', onWindowDrop, { capture: true })
 })
 onBeforeUnmount(() => {
+  unsubMediaEvent?.()
+  unsubMediaEvent = null
   window.removeEventListener('click', onWindowCtxMaybeClose)
   window.removeEventListener('contextmenu', onWindowCtxMaybeClose)
   if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
@@ -2345,16 +2443,26 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
     </Teleport>
 
-    <!-- 音视频播放（二期）：src 为主进程临时文件的 localres:// URL（file:// 被 app:///http:// 拦截） -->
-    <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''">
+    <!-- 音视频播放：直链(src=域名/分享链接) 或边下边播(src=localres://)；右上 × 关闭 -->
+    <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''; player.mediaKey = ''; player.entry = null">
       <div class="fs-player-body">
         <span v-if="player.loading && !player.src" class="hint">加载中…</span>
         <video v-else-if="player.video && player.src" :src="player.src" controls autoplay style="max-width: 100%; max-height: 58vh" @error="onMediaError" />
         <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" @error="onMediaError" />
       </div>
-      <!-- 只留上限提示，不放关闭按钮：右上角 × 即可关闭（用户 2026-11-19） -->
+      <!-- 播放来源 + 边下边播下载进度（直链无下载进度，服务端 Range） -->
+      <div class="fs-player-status">
+        <el-tag size="small" :type="player.source === 'direct' ? 'success' : 'primary'" effect="plain">
+          {{ player.source === 'direct' ? '直链播放（免下载）' : '边下边播' }}
+        </el-tag>
+        <template v-if="player.source === 'stream' && player.dlTotal > 0">
+          <el-progress :percentage="dlPercent" :stroke-width="6" style="flex: 1" :status="player.dlDone ? 'success' : undefined" />
+          <span class="hint">{{ fsFormatSize(player.dlUploaded) }} / {{ fsFormatSize(player.dlTotal) }}</span>
+        </template>
+        <span v-else class="hint">{{ player.source === 'direct' ? '使用访问域名 / 分享链接，拖动进度条走服务端' : '正在准备下载…' }}</span>
+      </div>
       <template #footer>
-        <div class="hint">在线播放上限 {{ mediaLimitText }}（可在「更多▾ → 上限设置」调整，0=不限）；更大文件请下载后本地播放</div>
+        <div class="hint">在线播放上限 {{ mediaLimitText }}（仅本地下载模式生效；可在「更多▾ → 上限设置」调整并切换「预览优先直链」，0=不限）</div>
       </template>
     </el-dialog>
 
@@ -2579,8 +2687,12 @@ function onKeydown(event: KeyboardEvent): void {
           <el-input-number v-model="transferCapsForm.mediaLimitMb" :min="0" :max="4096" :step="50" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">MB</span>
         </el-form-item>
+        <el-form-item label="预览优先直链">
+          <el-switch v-model="transferCapsForm.previewDirectLink" />
+          <FormHint inline detail="默认开：音视频预览优先用访问域名/分享链接直链（服务端 Range，免下载、秒开）。直链需签名时在通道配置填「签名URL模板」。直链失效或签名过期会自动回退为边下边播。关闭则一律边下边播。" />
+        </el-form-item>
       </el-form>
-      <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览（音视频播放）超过上限提示下载后查看，默认 100MB，0 = 不限。</div>
+      <div class="hint" style="margin-top: 8px">上传目录展平 / 下载目录递归展开分别限制（默认：上传 10000、下载 0 不限制）；设为 0 表示不限制。云搜索扫描页数默认 500，0 = 不限。在线预览大小上限仅对「边下边播」生效，默认 100MB，0 = 不限。</div>
       <template #footer>
         <el-button @click="transferCapsOpen = false">取消</el-button>
         <el-button type="primary" :loading="transferCapsSaving" @click="submitTransferCaps">保存</el-button>
@@ -2687,6 +2799,8 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-search-spin { color: var(--el-color-primary); animation: fs-search-rotate 1s linear infinite; }
 @keyframes fs-search-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .fs-player-body { display: flex; align-items: center; justify-content: center; min-height: 260px; background: var(--el-fill-color-dark); border-radius: 8px; padding: 12px; }
+.fs-player-status { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 24px; }
+.fs-player-status .el-progress { min-width: 120px; }
 .fs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; }
 .fs-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 8px; cursor: default; border: 1px solid transparent; }
 .fs-cell:hover { background: var(--el-fill-color-light); }

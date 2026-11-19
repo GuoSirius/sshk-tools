@@ -52,6 +52,21 @@ export function shareFileDirectUrl(baseUrl: string, relPath: string): string {
   }
 }
 
+/** 由访问域名 + 通道相对路径拼媒体直链，并套可选的签名 URL 模板。
+ *  - base：访问域名（baseUrl），去尾斜杠；空则返回空串。
+ *  - relPath：通道相对路径（带前导 / 亦可），逐段编码。
+ *  - signTemplate：用 {url} 占位符代表裸直链；无占位符/为空则忽略模板回裸链。
+ *  用于远端/云通道的视频/音频预览：直链免下载、服务端 Range；失败再由调用方回退下载。 */
+export function buildDirectUrl(baseUrl: string, relPath: string, signTemplate?: string): string {
+  const base = String(baseUrl ?? '').trim().replace(/\/+$/, '')
+  if (!base) return ''
+  const rel = String(relPath ?? '').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '')
+  const raw = `${base}/${rel.split('/').filter(Boolean).map(encodeURIComponent).join('/')}`
+  const tpl = String(signTemplate ?? '').trim()
+  if (!tpl || !tpl.includes('{url}')) return raw
+  return tpl.split('{url}').join(raw)
+}
+
 /** 按路由 id 反查凭证（遍历分享键匹配 ticket.id）。
  *  键是四元组哈希、且内核 route.entry 会 strip 前导 /，用 entry 反推键会对不上——
  *  列表「复制分享链接」按 id 匹配最稳，与 label/root/entry 格式无关。 */

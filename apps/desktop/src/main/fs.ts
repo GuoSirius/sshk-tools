@@ -14,6 +14,7 @@ import {
   fsDestPath,
   normalizeRootRel,
 } from '@sshk/upload-core'
+import { beginMediaDownload, finishMediaDownload, updateMediaDownload } from './media-stream'
 import type { FsDriver, FsSearchBatchFn } from '@sshk/upload-core'
 import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
 import {
@@ -38,6 +39,7 @@ import {
   type FsProfilesPayload,
   type FsReadResult,
   type FsReadMediaResult,
+  type FsMediaEvent,
   type FsRmRequest,
   type FsSearchRequest,
   type FsSearchResult,
@@ -88,6 +90,8 @@ const FS_TRANSFER_FILE_CAP_MAX = 100_000
 const CFG_SEARCH_MAX_PAGES = 'app.fs.searchMaxPages'
 /** 音视频在线预览大小上限（MB）：0 = 不限；默认 100（用户 2026-11-19） */
 const CFG_MEDIA_LIMIT_MB = 'app.fs.mediaLimitMb'
+/** 预览优先用直链（域名/分享链接）开关：默认开，显式 false 才关（用户 2026-11-19） */
+const CFG_PREVIEW_DIRECT = 'app.fs.previewDirectLink'
 const FS_MEDIA_LIMIT_MB_MAX = 4096
 const FS_SEARCH_MAX_PAGES_DEFAULT = 500
 const FS_SEARCH_MAX_PAGES_MAX = 100_000
@@ -222,6 +226,8 @@ export interface FsRuntimeOptions {
   services: AppServices
   /** 传输任务变化推送（main/index.ts 转发给渲染层） */
   onEvent: (task: FsTransferTask) => void
+  /** 媒体边下边播进度推送（main/index.ts 转发给渲染层播放器） */
+  onMediaEvent: (e: FsMediaEvent) => void
 }
 
 /** 持久化队列条目（plans/10 §7：task 快照去运行时字段；schema 带 version，checkpoint 判别式见各文件） */
@@ -1072,15 +1078,40 @@ export class FsRuntime {
     if (p === '/') throw new Error('目录没有可读内容')
     const stat = await driver.stat(p)
     if (!stat.exists || stat.isDir) throw new Error('文件不存在（可能已被删除）')
+    const total = stat.size ?? 0
     const safeName = fsBasename(p).replace(/[\\/:*?"<>|]+/g, '_')
     const dir = join(os.tmpdir(), 'sshk-media')
     mkdirSync(dir, { recursive: true })
     const destFile = join(dir, `${Date.now().toString(36)}-${safeName}`)
-    await driver.download(p, destFile)
-    logger.info('upload', `fs 在线播放：${channel.id}/${p} → 临时文件（${fsFormatSize(stat.size ?? 0)}）`)
-    // 用户 2026-11-19：file:// 被 app:///http:// 渲染层拦截致视频一直加载中；
-    // 改用 localres:// 协议（图片预览已用同款），主进程白名单放行媒体临时目录 + Range 回放。
-    return { fileUrl: pathToFileURL(destFile).href.replace(/^file:\/\//i, 'localres://'), size: stat.size ?? 0 }
+
+    // 边下边播（用户 2026-11-19）：注册会话后立即返回 localres URL，后台边下边写；
+    // localres handler 见会话 streaming 时等字节就绪，浏览器收到首段即可开播，无需等全量。
+    beginMediaDownload(destFile, total)
+    let lastEmit = 0
+    void driver.download(p, destFile, (uploaded) => {
+      updateMediaDownload(destFile, uploaded)
+      // 进度事件节流（100ms），避免高频推送
+      const now = Date.now()
+      if (now - lastEmit >= 100) {
+        lastEmit = now
+        this.opts.onMediaEvent?.({ key: destFile, uploaded, total, done: false })
+      }
+    }).then(() => {
+      finishMediaDownload(destFile)
+      this.opts.onMediaEvent?.({ key: destFile, uploaded: total, total, done: true })
+      logger.info('upload', `fs 在线播放下载完成：${channel.id}/${p} → 临时文件（${fsFormatSize(total)}）`)
+    }).catch((err: Error) => {
+      finishMediaDownload(destFile, err.message)
+      this.opts.onMediaEvent?.({ key: destFile, uploaded: 0, total, done: true, error: err.message })
+      logger.warn('upload', `fs 在线播放下载失败：${channel.id}/${p} - ${err.message}`)
+    })
+
+    // file:// 被 app:///http:// 渲染层拦截，改走 localres://（白名单 + Range + 边下边播）
+    return {
+      fileUrl: pathToFileURL(destFile).href.replace(/^file:\/\//i, 'localres://'),
+      size: total,
+      mediaKey: destFile,
+    }
   }
 
   private globalConfig() {
@@ -1908,18 +1939,20 @@ export class FsRuntime {
     return { fileCap, bytesCapMb: Math.round(bytesCap / (1024 * 1024)) }
   }
 
-  /** 传输文件数上限（上传 / 下载分开；0 = 不限；默认上传 10000、下载 0 不限）+ 在线预览上限（MB，0=不限） */
-  transferCaps(): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number } {
+  /** 传输文件数上限（上传 / 下载分开；0 = 不限；默认上传 10000、下载 0 不限）+ 在线预览上限（MB，0=不限）
+   *  + 预览优先直链开关（用户 2026-11-19：默认开，键不存在/true 均为开，显式 false 才关） */
+  transferCaps(): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean } {
     const get = (k: string): unknown => this.opts.services.config.get(k)
     return {
       uploadCap: readUploadCap(get),
       downloadCap: readDownloadCap(get),
       searchMaxPages: readSearchMaxPages(get),
       mediaLimitMb: readMediaLimitMb(get),
+      previewDirectLink: get(CFG_PREVIEW_DIRECT) !== false,
     }
   }
 
-  setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number }): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number } {
+  setTransferCaps(req: { uploadCap?: number; downloadCap?: number; searchMaxPages?: number; mediaLimitMb?: number; previewDirectLink?: boolean }): { uploadCap: number; downloadCap: number; searchMaxPages: number; mediaLimitMb: number; previewDirectLink: boolean } {
     const setCap = (key: string, raw: number | undefined, max: number, label: string): void => {
       if (raw == null) return
       const v = Math.floor(Number(raw))
@@ -1930,6 +1963,9 @@ export class FsRuntime {
     setCap(CFG_DOWNLOAD_CAP, req?.downloadCap, FS_TRANSFER_FILE_CAP_MAX, '下载文件数上限')
     setCap(CFG_SEARCH_MAX_PAGES, req?.searchMaxPages, FS_SEARCH_MAX_PAGES_MAX, '搜索扫描页数上限')
     setCap(CFG_MEDIA_LIMIT_MB, req?.mediaLimitMb, FS_MEDIA_LIMIT_MB_MAX, '在线预览大小上限')
+    if (req?.previewDirectLink != null) {
+      this.opts.services.config.set(CFG_PREVIEW_DIRECT, Boolean(req.previewDirectLink))
+    }
     return this.transferCaps()
   }
 

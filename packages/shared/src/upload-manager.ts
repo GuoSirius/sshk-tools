@@ -20,6 +20,8 @@ export interface UploadRemoteProfile {
   remoteDir?: string
   passive?: boolean
   baseUrl?: string
+  /** 签名 URL 模板：直链预览时用 {url} 占位符套签名（如 https://cdn/x?token=...&src={url}）；空=裸链 */
+  signUrlTemplate?: string
 }
 
 /** 云 profile：可同云多账号、不同云混排；厂商清单唯一事实源见 upload-vendors.ts */
@@ -32,6 +34,8 @@ export interface UploadCloudProfile {
   bucket: string
   accessKeyId: string
   baseUrl?: string
+  /** 签名 URL 模板：直链预览时用 {url} 占位符套签名；空=裸链 */
+  signUrlTemplate?: string
 }
 
 export interface UploadValidationConfig {
@@ -103,6 +107,7 @@ export function normalizeUploadConfig(raw: unknown): UploadGlobalConfig {
       remoteDir: str(p['remoteDir']),
       passive: p['passive'] !== false,
       baseUrl: str(p['baseUrl']),
+      signUrlTemplate: str(p['signUrlTemplate']),
     }]
   })
   const cloudProfiles: UploadCloudProfile[] = arr(cloud['profiles']).flatMap((p) => {
@@ -117,6 +122,7 @@ export function normalizeUploadConfig(raw: unknown): UploadGlobalConfig {
       bucket: str(p['bucket']),
       accessKeyId: str(p['accessKeyId']),
       baseUrl: str(p['baseUrl']),
+      signUrlTemplate: str(p['signUrlTemplate']),
     }]
   })
 

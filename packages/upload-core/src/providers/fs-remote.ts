@@ -404,7 +404,15 @@ export class RemoteFsDriver implements FsDriver {
     const target = this.abs(path)
     const counter = countingStream(onProgress)
     if (this.isFtp) {
-      await withFtp(this.profile, (client) => client.downloadTo(counter, target))
+      // 修复：downloadTo 写入 counter(Transform) 后必须 pipe 到目标文件，否则数据被丢弃、destFile 为空
+      await withFtp(this.profile, (client) => new Promise<void>((res, rej) => {
+        const out = createWriteStream(destFile)
+        counter.on('error', (e: Error) => { out.destroy(); rej(e) })
+        out.on('error', (e: Error) => rej(e))
+        out.on('close', () => res())
+        counter.pipe(out)
+        client.downloadTo(counter, target).then(() => counter.end()).catch((e: Error) => { out.destroy(); rej(e) })
+      }))
     } else {
       await withSftp(this.profile, (sftp) => new Promise<void>((res, rej) => {
         const rs = sftp.createReadStream(target)

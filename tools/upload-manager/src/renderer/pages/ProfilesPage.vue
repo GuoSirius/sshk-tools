@@ -233,7 +233,7 @@ function addRemote(): void {
   const id = newProfileId('remote')
   const profile: UploadRemoteProfile = {
     id, name: '新远程配置', protocol: 'ftp', host: '', port: 21,
-    username: '', remoteDir: '/', passive: true, baseUrl: '',
+    username: '', remoteDir: '/', passive: true, baseUrl: '', signUrlTemplate: '',
   }
   cfg.value.remote.profiles.push(profile)
   if (!cfg.value.remote.defaultId) cfg.value.remote.defaultId = id
@@ -245,7 +245,7 @@ function addCloud(): void {
   const id = newProfileId('cloud')
   const profile: UploadCloudProfile = {
     id, name: '新云配置', provider: 'aliyun-oss', region: '', endpoint: '',
-    bucket: '', accessKeyId: '', baseUrl: '',
+    bucket: '', accessKeyId: '', baseUrl: '', signUrlTemplate: '',
   }
   cfg.value.cloud.profiles.push(profile)
   if (!cfg.value.cloud.defaultId) cfg.value.cloud.defaultId = id
