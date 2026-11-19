@@ -57,7 +57,7 @@ import {
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
-import { ShareDialog, readShareTicket } from '@sshk/ui-kit'
+import { ShareDialog, findShareTicketById } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
@@ -987,30 +987,27 @@ function shareMarkOf(entry: FsEntry): ShareMarkInfo {
   }
   return best ? { kind: 'inherited', parent: best } : { kind: 'none' }
 }
-/** 悬浮说明文案 */
+/** 悬浮说明文案（图标统一 Connection，靠文案区分三态来源） */
 function shareMarkTip(entry: FsEntry): string {
   const m = shareMarkOf(entry)
   if (m.kind === 'own') {
     const r = m.route!
     const life = r.expiresAt <= 0 || r.expiresAt > 8e15 ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
-    return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击管理`
+    return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击复制自己的链接`
   }
-  if (m.kind === 'inherited') return `随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
+  if (m.kind === 'inherited') return `无自己的分享，随父目录「${m.parent!.label}」的树链接可访问 · 点击复制父级链接`
   return '未分享 · 点行操作「分享链接」创建'
 }
-/** 继承项点击：复制父目录链接（从 localStorage 的 ticket 取 urls[0]） */
-async function copyParentShareLink(entry: FsEntry): Promise<void> {
+/** 点击分享图标：优先复制自己的链接（own），否则复制父级树链接（inherited）；按 route.id 反查 ticket 取 url */
+async function copyShareLink(entry: FsEntry): Promise<void> {
   const m = shareMarkOf(entry)
-  if (m.kind !== 'inherited' || !m.parent) return
-  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
-  const root = cfg.local.defaultDir?.trim()
-  if (!root) { ElMessage.warning('未配置本地默认目录'); return }
-  const parent = m.parent
-  const ticket = readShareTicket('upload-manager', parent.label, root, parent.entry)
+  const route = m.kind === 'own' ? m.route : m.parent
+  if (!route) return
+  const ticket = findShareTicketById(route.id)
   const url = ticket?.urls?.[0]
-  if (!url) { ElMessage.warning('父级链接凭证已失效，请重新分享父目录'); return }
+  if (!url) { ElMessage.warning('分享凭证读取失败，请重新打开分享弹框刷新链接'); return }
   await window.api.os.clipboardWrite(url)
-  ElMessage.success('已复制父级分享链接')
+  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : '已复制父级分享链接')
 }
 
 /** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
@@ -2062,13 +2059,13 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-name">
             <el-icon class="fs-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
             <span class="fs-name" :class="{ 'is-dir': entry.kind === 'dir' }" :title="entry.path">{{ entry.name }}</span>
-            <!-- 分享状态标记（用户 2026-11-19）：绿=自己的分享、橙=随父级树链接、无=未分享 -->
+            <!-- 分享状态标记（用户 2026-11-19）：统一 Connection 图标，绿=自己的分享、橙=随父级；点击优先复制自己、否则父级 -->
             <el-tooltip v-if="shareMarkOf(entry).kind !== 'none'" :content="shareMarkTip(entry)" placement="top">
               <el-icon
                 class="fs-share-mark"
                 :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
-                @click.stop="shareMarkOf(entry).kind === 'inherited' ? copyParentShareLink(entry) : rowShare(entry)"
-              ><component :is="shareMarkOf(entry).kind === 'own' ? (entry.kind === 'dir' ? FolderOpened : Link) : Connection" /></el-icon>
+                @click.stop="copyShareLink(entry)"
+              ><Connection /></el-icon>
             </el-tooltip>
             <span v-if="searchDirHint(entry)" class="fs-name-sub" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
@@ -2147,8 +2144,8 @@ function onKeydown(event: KeyboardEvent): void {
               <el-icon
                 class="fs-share-mark"
                 :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
-                @click.stop="shareMarkOf(entry).kind === 'inherited' ? copyParentShareLink(entry) : rowShare(entry)"
-              ><component :is="shareMarkOf(entry).kind === 'own' ? (entry.kind === 'dir' ? FolderOpened : Link) : Connection" /></el-icon>
+                @click.stop="copyShareLink(entry)"
+              ><Connection /></el-icon>
             </el-tooltip>
             <span v-if="searchDirHint(entry)" class="fs-cell-dir" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
