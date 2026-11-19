@@ -306,7 +306,7 @@ function savePlacementData(): void {
     </template>
   </el-dialog>
 
-  <el-dialog v-model="placementData.open" title="片段数据" width="560px" append-to-body close-on-click-modal="false" close-on-press-escape="false">
+  <el-dialog v-model="placementData.open" title="片段数据" width="560px" append-to-body :close-on-click-modal="false" :close-on-press-escape="false">
     <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
     <CodeEditor v-else :model-value="placementData.yamlText" language="json" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
     <template #footer>

@@ -212,7 +212,7 @@ watch(visible, (v) => {
     v-model="visible"
     title="验证引导（开发者自检）"
     fullscreen
-    close-on-press-escape="false"
+    :close-on-press-escape="false"
     :close-on-click-modal="false"
     class="verify-dialog"
   >
