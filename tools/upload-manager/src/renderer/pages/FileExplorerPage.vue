@@ -911,7 +911,7 @@ async function onWindowDrop(e: DragEvent): Promise<void> {
 
 // ── 下载 ──
 /** 行内复制外链：baseUrl + 编码后的文件路径（与 EDM 上传回填同一拼接规则）；
- *  未配置 baseUrl 的通道给出引导（远程/云 profile 均可配） */
+ *  仅远程/云通道可用（本地通道改用 ShareHub「分享链接」）。未配 baseUrl 给出引导。 */
 async function rowLink(entry: FsEntry): Promise<void> {
   const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
   const p = [...cfg.remote.profiles, ...cfg.cloud.profiles].find((x) => x.id === profileId.value)
@@ -922,29 +922,20 @@ async function rowLink(entry: FsEntry): Promise<void> {
   ElMessage.success(`链接已复制：${url}`)
 }
 
-// ── ShareHub 安全分享（plans/09 S15）：裸外链之外并存的一种「有 TTL、可撤销」分享 ──
-// 仅本地通道可用（文件真实落在本地目录，ShareHub 才能 serve）；远程/云通道请继续用上面的裸外链。
+// ── ShareHub 安全分享（plans/09 S15）：本地通道文件/目录统一走此入口（有 TTL、可撤销）──
+// 仅本地通道可用（文件真实落在本地目录，ShareHub 才能 serve）；远程/云通道走上面的 baseUrl「链接」。
+// 方案 C（用户 2026-11-19 定版）：每个条目各自生成独立分享（独立 TTL/撤销）；分享目录时
+// ShareDialog 内可勾选「允许访问目录」，勾选后该目录即树 token，访客进入后子目录/文件复用父 token 路径浏览。
 const shareDialog = ref({
   open: false, root: '', entry: '', label: '',
 })
-/** 是否允许分享/浏览目录（用户 2026-11-19）：读 app.shareHub.allowIndex 全局策略；
- *  为 false 时目录条目不显示「分享链接」（ShareHub 目录列取会 404），文件不受影响。 */
-const shareAllowIndex = ref(false)
-async function loadShareAllowIndex(): Promise<void> {
-  try { shareAllowIndex.value = (await window.api.config.get('app.shareHub.allowIndex')) === true }
-  catch { shareAllowIndex.value = false }
-}
-/** 目录是否可显示 ShareHub 分享入口：本地通道 + 全局允许访问目录 */
-function canShareEntry(entry: FsEntry): boolean {
-  return activeChannel.value?.type === 'local' && (entry.kind === 'file' || shareAllowIndex.value)
+/** 本地通道的文件/目录都可分享（allowIndex 由 ShareDialog 内勾选，不再全局门控） */
+function canShareEntry(): boolean {
+  return activeChannel.value?.type === 'local'
 }
 function rowShare(entry: FsEntry): void {
   if (activeChannel.value?.type !== 'local') {
     ElMessage.warning('ShareHub 安全分享仅支持本地通道；远程/云通道请使用「链接」（裸外链）')
-    return
-  }
-  if (entry.kind === 'dir' && !shareAllowIndex.value) {
-    ElMessage.warning('当前未允许访问目录，目录无法生成分享链接；请到「应用设置 → 分享服务」开启「允许访问目录」')
     return
   }
   void loadConfigForShare(entry)
@@ -1793,7 +1784,6 @@ onMounted(() => {
   void loadChannels().then(() => { if (profileId.value) void list() })
   void loadFavorites() // §十一 收藏夹
   void loadMediaLimit() // 在线预览上限（可配）
-  void loadShareAllowIndex() // 目录分享开关（app.shareHub.allowIndex）
   // 队列已有历史任务（页面刷新恢复）
   void window.api.fs.transferList().then((list0) => {
     for (const t of list0) tasks.value.set(t.id, t)
@@ -2031,9 +2021,9 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-col-op">
             <!-- §11.4 顺序（用户 2026-11-18 改版：下载不区分文件/目录，统一放删除前）：
                  链接(文件)→粘贴(目录)→复制→移动→重命名→下载(全部)→删除→更多▾ -->
-            <el-button v-if="entry.kind === 'file'" size="small" text type="primary" title="复制外链（baseUrl + 文件路径）" @click.stop="rowLink(entry)">链接</el-button>
-            <!-- ShareHub 分享链接：文件=裸链之外并存；目录=仅当允许访问目录时显示（两种链接并存，用户 2026-11-19） -->
-            <el-button v-if="canShareEntry(entry)" size="small" text type="primary" title="ShareHub 分享（带有效期、可撤销；目录可浏览）" @click.stop="rowShare(entry)">分享链接</el-button>
+            <!-- 远程/云通道：baseUrl 裸链；本地通道：ShareHub 分享链接（用户 2026-11-19 定版，二者互斥按通道） -->
+            <el-button v-if="entry.kind === 'file' && activeChannel?.type !== 'local'" size="small" text type="primary" title="复制外链（baseUrl + 文件路径）" @click.stop="rowLink(entry)">链接</el-button>
+            <el-button v-if="canShareEntry()" size="small" text type="success" :title="entry.kind === 'dir' ? '分享目录（可勾选允许浏览整棵子树；带有效期、可撤销）' : '分享该文件（带有效期、可撤销）'" @click.stop="rowShare(entry)">分享链接</el-button>
             <el-button v-if="entry.kind === 'dir' && clipboard && hasWritable" size="small" text type="success" title="把剪贴板内容粘贴进该目录" @click.stop="rowPaste(entry)">粘贴</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowCopy(entry)">复制</el-button>
             <el-button v-if="hasWritable" size="small" text type="warning" @click.stop="rowMove(entry)">移动</el-button>
@@ -2242,8 +2232,8 @@ function onKeydown(event: KeyboardEvent): void {
         <ul class="fs-ctx-menu">
           <li data-command="open"><el-icon><FolderOpened /></el-icon>打开</li>
           <li v-if="ctxMenu.entry.kind === 'file'" data-command="download"><el-icon><Download /></el-icon>下载</li>
-          <li v-if="ctxMenu.entry.kind === 'file'" data-command="link"><el-icon><Link /></el-icon>链接</li>
-          <li v-if="canShareEntry(ctxMenu.entry)" data-command="share"><el-icon><Link /></el-icon>分享链接</li>
+          <li v-if="ctxMenu.entry.kind === 'file' && activeChannel?.type !== 'local'" data-command="link"><el-icon><Link /></el-icon>链接</li>
+          <li v-if="canShareEntry()" data-command="share"><el-icon><Link /></el-icon>分享链接</li>
           <li v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" data-command="paste"><el-icon><DocumentCopy /></el-icon>粘贴</li>
           <li v-if="hasWritable" data-command="copy" class="is-divided"><el-icon><CopyDocument /></el-icon>复制</li>
           <li v-if="hasWritable" data-command="move"><el-icon><Rank /></el-icon>移动</li>
@@ -2677,7 +2667,7 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-dup-list { max-height: 180px; overflow-y: auto; margin: 0; padding: 6px 10px 6px 24px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; font-size: 13px; line-height: 1.9; }
 .fs-dup-list li { word-break: break-all; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }
-.fs-ziplimits-unit { flex: none; font-size: 13px; opacity: .7; }
+.fs-ziplimits-unit { flex: none; margin-left: 10px; font-size: 13px; opacity: .7; }
 .fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }
 .fs-fav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
 .fs-fav-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }

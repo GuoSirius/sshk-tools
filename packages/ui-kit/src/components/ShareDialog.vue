@@ -420,8 +420,8 @@ watch(() => props.open, (open) => {
               <el-checkbox v-model="allowIndex" class="row-check">允许访问目录</el-checkbox>
               <FormHint
                 inline
-                detail="开启后访客可通过裸链接/目录路径浏览文件列表；关闭时仅具体文件链接可访问。创建后仍可随时更改。"
-              >跟随应用设置</FormHint>
+                detail="勾选后本链接即目录树入口：访客可浏览目录，点进子目录/文件都复用这条链接（整棵子树通用），新增文件也立即可见；不勾选则仅该目录本身可访问。目录里的任意子项也可单独点「分享链接」生成独立链接（独立有效期、可单独撤销）。默认取应用设置，可自行勾选，创建后仍可更改。"
+              >目录树链接说明</FormHint>
             </div>
           </div>
         </div>
