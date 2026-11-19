@@ -575,10 +575,11 @@ function askRemoveRecent(item: RecentHtml): void {
   flex-wrap: wrap;
 }
 /* 识别配置表单：紧凑口径（12px 字号，与原 cfg-row 一致）；行距 12px、行内控件间 8px，
-   Provider/模型下拉统一宽度右缘对齐（用户 2026-11-19） */
+   Provider/模型下拉统一宽度右缘对齐（用户 2026-11-19）。
+   __content/__label 是 el-form-item 内部元素，scoped 必须 :deep() 穿透（裸选择器不匹配=间距丢失） */
 .vision-cfg .el-form-item { margin-bottom: 12px; }
-.vision-cfg .el-form-item__content { gap: 8px; font-size: 12px; }
-.vision-cfg .el-form-item__label { font-size: 12px; }
+.vision-cfg :deep(.el-form-item__content) { gap: 8px; font-size: 12px; }
+.vision-cfg :deep(.el-form-item__label) { font-size: 12px; }
 .vision-cfg-select { width: 240px; }
 /* 编辑器工具行：说明文字占左，按钮组统一居右 */
 .editor-tool-row .muted { flex: 1; min-width: 0; }
