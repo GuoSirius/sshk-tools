@@ -562,11 +562,17 @@ function sizeCell(entry: FsEntry): string {
   return `目录 · ${fsFormatSize(u.size)} / ${u.files} 文件${u.truncated ? ' ∗' : ''}`
 }
 
-/** 搜索结果态的子目录提示（云通道递归搜索可命中子目录文件，灰字标注所在目录便于分辨同名文件） */
+/** 搜索结果态命中子目录文件时的所在目录（用户 2026-11-19：不再内联灰字，改为名称后 icon——hover 查看完整目录、点击复制目录） */
 function searchDirHint(entry: FsEntry): string {
   if (!searchActive.value || entry.kind !== 'file') return ''
-  const dir = entry.path.slice(0, entry.path.lastIndexOf('/'))
-  return dir ? `（${dir}）` : ''
+  return entry.path.slice(0, entry.path.lastIndexOf('/'))
+}
+
+/** 复制搜索命中文件的完整路径（含文件名，用户 2026-11-19） */
+async function copyEntryDir(entry: FsEntry): Promise<void> {
+  if (!searchDirHint(entry)) return
+  await window.api.os.clipboardWrite(entry.path)
+  ElMessage.success('路径已复制')
 }
 
 // ── 选择 ──
@@ -669,15 +675,18 @@ function startStreamPlay(entry: FsEntry): void {
     .finally(() => { if (player.value.entry === entry) player.value.loading = false })
 }
 
-/** 媒体加载失败：直链失败 → 自动回退边下边播；边下边播失败 → 引导下载 */
-function onMediaError(): void {
+/** 媒体加载失败：直链失败 → 自动回退边下边播；边下边播失败 → 引导下载。
+ *  MediaError code 便于定位：1=中断 2=网络（localres 403/503 等） 3=解码 4=源不支持（多为 CSP/URL 无效） */
+function onMediaError(e?: Event): void {
+  const code = (e?.target as HTMLVideoElement | null)?.error?.code
+  console.warn('[fs-player] media error code =', code, 'src =', player.value.src)
   const entry = player.value.entry
   if (player.value.source === 'direct' && entry) {
     startStreamPlay(entry) // 签名过期/403 等：静默回退，不打扰用户
     return
   }
   player.value.loading = false
-  ElMessage.warning('视频加载失败（可能是不支持的编码格式或下载中断），请下载后本地播放')
+  ElMessage.warning(`视频加载失败（code=${code ?? '?'}，可能是不支持的编码格式或下载中断），请下载后本地播放`)
 }
 
 /** 引导下载确认框（打开/预览失败、文件过大等场景统一入口，用户决定是否下载） */
@@ -2179,7 +2188,9 @@ function onKeydown(event: KeyboardEvent): void {
                 @click.stop="copyShareLink(entry)"
               ><Connection /></el-icon>
             </el-tooltip>
-            <span v-if="searchDirHint(entry)" class="fs-name-sub" :title="entry.path">{{ searchDirHint(entry) }}</span>
+            <el-tooltip v-if="searchDirHint(entry)" :content="searchDirHint(entry)" placement="top">
+              <el-icon class="fs-dir-hint" @click.stop="copyEntryDir(entry)"><FolderOpened /></el-icon>
+            </el-tooltip>
             <el-icon v-if="entry.kind === 'dir' && isUsageLoading(entry.path)" class="fs-usage-spin is-loading" title="正在统计…"><Loading /></el-icon>
             <el-button
               size="small" text
@@ -2250,16 +2261,21 @@ function onKeydown(event: KeyboardEvent): void {
             @dblclick="rowOpen(entry)"
             @contextmenu.prevent="openCtxMenu(entry, $event)"
           >
-            <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
+            <!-- 分享标记（用户 2026-11-19）：卡片视图叠在文件类型图标右上角作角标，不占行高 -->
+            <span class="fs-cell-icon-wrap">
+              <el-icon class="fs-cell-icon" :class="{ 'is-dir': entry.kind === 'dir' }"><component :is="fileIcon(entry)" /></el-icon>
+              <el-tooltip v-if="shareMarkOf(entry).kind !== 'none'" :content="shareMarkTip(entry)" placement="top">
+                <el-icon
+                  class="fs-share-mark"
+                  :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
+                  @click.stop="copyShareLink(entry)"
+                ><Connection /></el-icon>
+              </el-tooltip>
+            </span>
             <span class="fs-cell-name">{{ entry.name }}</span>
-            <el-tooltip v-if="shareMarkOf(entry).kind !== 'none'" :content="shareMarkTip(entry)" placement="top">
-              <el-icon
-                class="fs-share-mark"
-                :class="shareMarkOf(entry).kind === 'own' ? 'is-own' : 'is-inherited'"
-                @click.stop="copyShareLink(entry)"
-              ><Connection /></el-icon>
+            <el-tooltip v-if="searchDirHint(entry)" :content="searchDirHint(entry)" placement="top">
+              <el-icon class="fs-dir-hint" @click.stop="copyEntryDir(entry)"><FolderOpened /></el-icon>
             </el-tooltip>
-            <span v-if="searchDirHint(entry)" class="fs-cell-dir" :title="entry.path">{{ searchDirHint(entry) }}</span>
             <span class="fs-cell-meta">{{ sizeCell(entry) }}</span>
           </div>
         </div>
@@ -2773,10 +2789,10 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-share-mark.is-inherited { color: var(--el-color-warning); }
 .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-name.is-dir { color: var(--el-color-primary); font-weight: 500; }
-/* 搜索结果嵌套文件的子目录灰字提示（searchDirHint）：
-   必须 flex-shrink 可收缩+自身截断——flex:none 会让长路径不收缩，把文件名挤成
-   「01…」并溢出网格单元格叠到相邻列（2026-11-19 用户实测搜索结果名称错乱） */
-.fs-name-sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; opacity: .55; margin-left: 4px; }
+/* 搜索结果所在目录 icon（searchDirHint，用户 2026-11-19）：文件名优先显示，目录改为名称后的
+   小图标——hover tooltip 查看完整目录、点击复制目录；不再内联长路径灰字（会把文件名挤成省略号） */
+.fs-dir-hint { flex: none; font-size: 13px; margin-left: 4px; color: var(--el-text-color-secondary); cursor: pointer; transition: color .12s, transform .12s; }
+.fs-dir-hint:hover { color: var(--el-color-primary); transform: scale(1.15); }
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
 /* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
@@ -2809,9 +2825,11 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-cell.selected { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-5); }
 .fs-cell-icon { font-size: 40px; color: var(--el-text-color-secondary); }
 .fs-cell-icon.is-dir { color: var(--el-color-warning); }
+/* 卡片视图分享角标：叠在类型图标右上角（用户 2026-11-19），带底色圆片避免与大图标混色 */
+.fs-cell-icon-wrap { position: relative; display: inline-flex; line-height: 1; }
+.fs-cell .fs-share-mark { position: absolute; top: -7px; right: -9px; font-size: 15px; padding: 2px; background: var(--el-bg-color); border-radius: 50%; box-shadow: 0 0 0 1px var(--el-border-color-lighter); }
 .fs-cell-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 /* 搜索结果的目录提示单独一行（用户 2026-11-18：卡片式名称与目录分行显示） */
-.fs-cell-dir { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; opacity: .55; margin-top: -2px; }
 .fs-cell-meta { font-size: 11px; opacity: .6; }
 
 .fs-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 60px 20px; text-align: center; }

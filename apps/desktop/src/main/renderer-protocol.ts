@@ -20,7 +20,9 @@ export const APP_RENDERER_URL = `${APP_SCHEME}://${APP_HOST}/index.html`
 export function registerPrivilegedSchemes(): void {
   protocol.registerSchemesAsPrivileged([
     // localres：预览协议（见 local-res.ts），图片 + 音视频扩展名白名单（Range 回放靠 Response 206）
-    { scheme: 'localres', privileges: { secure: true, supportFetchAPI: true } },
+    // stream: true 是 <video>/<audio> 能播放的命门（2026-11-19 用户实测「下载完依然不能看」定位）：
+    // 媒体栈要求协议按流式处理响应体，缺了它即使 Range/206 全对也无法播放；图片不受影响
+    { scheme: 'localres', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // app：标准协议（origin 解析 / 相对路径 / fetch / CORS 全按 http 语义）
     { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   ])
