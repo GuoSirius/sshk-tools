@@ -86,8 +86,10 @@ export interface FsReadResult {
   etag?: string
 }
 
-/** 音视频在线播放（2026-11-19）：流式下载到应用临时文件返回 file:// URL。
- *  base64 data URI 大文件（百 MB 级）无法解码播放且占数倍内存，已废弃 */
+/** 音视频在线播放（2026-11-19）：流式下载到应用临时文件，返回 localres:// URL。
+ *  file:// 在 app:///http:// 渲染层被 Chromium 拦截（一直加载中），改走 localres 白名单协议；
+ *  base64 data URI 大文件（百 MB 级）无法解码播放且占数倍内存，已废弃。
+ *  字段名保留 fileUrl（IPC 契约不变），值为 localres:/// 形态。 */
 export interface FsReadMediaResult {
   fileUrl: string
   size: number

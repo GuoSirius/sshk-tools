@@ -19,7 +19,7 @@ export const APP_RENDERER_URL = `${APP_SCHEME}://${APP_HOST}/index.html`
 /** 必须在 app ready 之前调用（Electron 对自定义 protocol 的时序要求） */
 export function registerPrivilegedSchemes(): void {
   protocol.registerSchemesAsPrivileged([
-    // localres：预览协议（见 local-res.ts），仅图片扩展名白名单
+    // localres：预览协议（见 local-res.ts），图片 + 音视频扩展名白名单（Range 回放靠 Response 206）
     { scheme: 'localres', privileges: { secure: true, supportFetchAPI: true } },
     // app：标准协议（origin 解析 / 相对路径 / fetch / CORS 全按 http 语义）
     { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },

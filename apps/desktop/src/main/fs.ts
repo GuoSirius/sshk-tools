@@ -1053,7 +1053,7 @@ export class FsRuntime {
   }
 
   // ── 音视频在线播放（2026-11-19）：流式落临时文件返回 file:// URL ──
-  /** 临时目录：系统 temp 下 sshk-media（播放器直接 file:// 播放，关闭后不即删，启动清理） */
+  /** 临时目录：系统 temp 下 sshk-media（播放器经 localres:// 回放，关闭后不即删，启动清理） */
   private cleanMediaTemp(): void {
     try {
       const dir = join(os.tmpdir(), 'sshk-media')
@@ -1078,7 +1078,9 @@ export class FsRuntime {
     const destFile = join(dir, `${Date.now().toString(36)}-${safeName}`)
     await driver.download(p, destFile)
     logger.info('upload', `fs 在线播放：${channel.id}/${p} → 临时文件（${fsFormatSize(stat.size ?? 0)}）`)
-    return { fileUrl: pathToFileURL(destFile).href, size: stat.size ?? 0 }
+    // 用户 2026-11-19：file:// 被 app:///http:// 渲染层拦截致视频一直加载中；
+    // 改用 localres:// 协议（图片预览已用同款），主进程白名单放行媒体临时目录 + Range 回放。
+    return { fileUrl: pathToFileURL(destFile).href.replace(/^file:\/\//i, 'localres://'), size: stat.size ?? 0 }
   }
 
   private globalConfig() {

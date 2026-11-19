@@ -1,7 +1,7 @@
 import path from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { protocol } from 'electron'
-import { collectResRoots, isAllowedResPath, RES_MIME_BY_EXT } from './local-res-rules'
+import { collectResRoots, isAllowedResPath, parseByteRange, RES_MIME_BY_EXT } from './local-res-rules'
 
 /**
  * localres:// 预览协议（用户反馈 2026-11-16：本地上传 profile 回填 file:// URL，
@@ -35,7 +35,35 @@ export function installLocalResHandler(config: ConfigLike): void {
       }
       if (!existsSync(p)) return new Response('文件不存在', { status: 404 })
       const mime = RES_MIME_BY_EXT[path.extname(p).toLowerCase()] ?? 'application/octet-stream'
-      return new Response(new Uint8Array(readFileSync(p)), { headers: { 'content-type': mime } })
+      // 音视频 Range（用户 2026-11-19：视频拖进度条必须 206 分段；无 Range 回 200 全量）
+      // 只读请求区间，不把整文件读进内存（百 MB 视频关键信息）
+      const size = statSync(p).size
+      const range = parseByteRange(request.headers.get('range'), size)
+      if (range) {
+        const { start, end } = range
+        const len = end - start + 1
+        const buf = Buffer.allocUnsafe(len)
+        let filled = 0
+        const fd = openSync(p, 'r')
+        try {
+          while (filled < len) {
+            const n = readSync(fd, buf, filled, len - filled, start + filled)
+            if (n <= 0) break
+            filled += n
+          }
+        } finally {
+          closeSync(fd)
+        }
+        return new Response(new Uint8Array(buf.subarray(0, filled)), {
+          status: 206,
+          headers: {
+            'content-type': mime,
+            'content-range': `bytes ${start}-${end}/${size}`,
+            'accept-ranges': 'bytes',
+          },
+        })
+      }
+      return new Response(new Uint8Array(readFileSync(p)), { headers: { 'content-type': mime, 'accept-ranges': 'bytes' } })
     } catch (err) {
       return new Response((err as Error).message || 'bad request', { status: 400 })
     }

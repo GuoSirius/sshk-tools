@@ -585,8 +585,9 @@ function fileIcon(entry: FsEntry): typeof Document {
   return Document
 }
 
-/** 音视频在线播放（二期）：主进程流式下载到临时文件返回 file:// URL。
- *  2026-11-19：base64 data URI 方式大文件（百 MB 级）无法解码播放且占数倍内存，废弃。 */
+/** 音视频在线播放（二期）：主进程流式下载到临时文件返回 localres:// URL。
+ *  2026-11-19：file:// 在 app:///http:// 渲染层被 Chromium 拦截（一直加载中），改走 localres；
+ *  base64 data URI 方式大文件（百 MB 级）无法解码播放且占数倍内存，废弃。 */
 function openPlayer(entry: FsEntry): void {
   if ((entry.size ?? 0) > mediaLimitBytes.value) {
     confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${mediaLimitText.value}）`, '文件过大')
@@ -2344,19 +2345,16 @@ function onKeydown(event: KeyboardEvent): void {
       </div>
     </Teleport>
 
-    <!-- 音视频播放（二期）：src 为主进程临时文件的 file:// URL（流式落盘，不用 data URI） -->
+    <!-- 音视频播放（二期）：src 为主进程临时文件的 localres:// URL（file:// 被 app:///http:// 拦截） -->
     <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''">
       <div class="fs-player-body">
         <span v-if="player.loading && !player.src" class="hint">加载中…</span>
         <video v-else-if="player.video && player.src" :src="player.src" controls autoplay style="max-width: 100%; max-height: 58vh" @error="onMediaError" />
         <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" @error="onMediaError" />
       </div>
-      <!-- 描述与按钮分两行（用户 2026-11-19） -->
+      <!-- 只留上限提示，不放关闭按钮：右上角 × 即可关闭（用户 2026-11-19） -->
       <template #footer>
         <div class="hint">在线播放上限 {{ mediaLimitText }}（可在「更多▾ → 上限设置」调整，0=不限）；更大文件请下载后本地播放</div>
-        <div style="margin-top: 10px; text-align: right">
-          <el-button @click="player.open = false">关闭</el-button>
-        </div>
       </template>
     </el-dialog>
 
