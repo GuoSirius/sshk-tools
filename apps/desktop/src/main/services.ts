@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -117,7 +118,9 @@ export function setupServices(): AppServices {
     if (!(await safeStorage.isAsyncEncryptionAvailable())) {
       throw new Error('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
     }
-    writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
+    // encryptString 已弃用（Electron 45+ 警告）：改用 encryptStringAsync + 异步写盘
+    const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(secrets))
+    await writeFile(secretsPath, encrypted)
     secretsCache = secrets
   }
 
