@@ -7,6 +7,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Delete, Download } from '@element-plus/icons-vue'
+import { EmptyState } from '@sshk/ui-kit'
 import type { ShareAccessLog, ShareLogsQuery } from '@sshk/shared'
 import { toMs } from '@sshk/shared'
 import { host } from '../host'
@@ -196,68 +197,75 @@ onMounted(() => { void refresh() })
 
     <!-- 操作栏：筛选栏下方，单独一行居右 -->
     <div class="toolbar">
-      <el-button size="small" type="success" :icon="Download" @click="exportCsv">导出 CSV</el-button>
+      <el-button size="small" type="success" plain :icon="Download" @click="exportCsv">导出 CSV</el-button>
       <el-divider direction="vertical" />
-      <el-button size="small" type="danger" :icon="Delete" :disabled="!selected.length" @click="removeSelected">批量删除</el-button>
+      <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length" @click="removeSelected">批量删除</el-button>
       <el-button size="small" type="danger" plain @click="clearLogs">仅清空访问日志</el-button>
       <el-divider direction="vertical" />
-      <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
+      <el-button size="small" plain :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       <span class="muted">共 {{ total }} 条</span>
     </div>
-    <el-table :data="rows" size="small" v-loading="loading" empty-text="暂无访问记录" style="width: 100%" @selection-change="(v: ShareAccessLog[]) => selected = v">
-      <el-table-column type="selection" width="40" fixed="left" />
-      <el-table-column type="index" :index="(i: number) => (page - 1) * pageSize + i + 1" label="序号" width="60" align="center" fixed="left" />
-      <el-table-column label="时间" width="160">
-        <template #default="{ row }">{{ fmtDateTime(row.at) }}</template>
-      </el-table-column>
-      <el-table-column prop="ip" label="来源 IP" width="140" show-overflow-tooltip />
-      <el-table-column prop="path" label="路径" min-width="160" show-overflow-tooltip />
-      <el-table-column label="状态码" width="76" align="center">
-        <template #default="{ row }"><span :style="{ color: statusColor(row.status) }">{{ row.status }}</span></template>
-      </el-table-column>
-      <el-table-column label="命中路由" min-width="130" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span v-if="routeMap.get(row.routeId)">{{ routeMap.get(row.routeId)!.label }}</span>
-          <el-tag v-else size="small" type="info" effect="plain" class="mini-tag">已撤销</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="归属工具" width="110" show-overflow-tooltip>
-        <template #default="{ row }">{{ routeMap.get(row.routeId)?.toolId ?? '' }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="170" align="center" fixed="right">
-        <template #default="{ row }">
-          <div class="op-row">
-            <el-button size="small" text type="primary" @click="filterByIp(row.ip)">按IP过滤</el-button>
-            <el-button size="small" text type="primary" @click="filterByRoute(row.routeId)">按路由</el-button>
-            <el-button size="small" text type="danger" @click="removeOne(row)">删除</el-button>
-          </div>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      v-model:current-page="page" v-model:page-size="pageSize" :total="total"
-      :page-sizes="[20, 50, 100, 200]" layout="total, sizes, prev, pager, next" size="small"
-      class="pager" @current-change="refresh" @size-change="doSearch"
-    />
+    <div class="table-wrap" v-loading="loading">
+      <el-table v-if="rows.length > 0" :data="rows" size="small" height="100%" @selection-change="(v: ShareAccessLog[]) => selected = v">
+        <el-table-column type="selection" width="40" fixed="left" />
+        <el-table-column type="index" :index="(i: number) => (page - 1) * pageSize + i + 1" label="序号" width="60" align="center" fixed="left" />
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ fmtDateTime(row.at) }}</template>
+        </el-table-column>
+        <el-table-column prop="ip" label="来源 IP" width="140" show-overflow-tooltip />
+        <el-table-column prop="path" label="路径" min-width="160" show-overflow-tooltip />
+        <el-table-column label="状态码" width="76" align="center">
+          <template #default="{ row }"><span :style="{ color: statusColor(row.status) }">{{ row.status }}</span></template>
+        </el-table-column>
+        <el-table-column label="命中路由" min-width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="routeMap.get(row.routeId)">{{ routeMap.get(row.routeId)!.label }}</span>
+            <el-tag v-else size="small" type="info" effect="plain" class="mini-tag">已撤销</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="归属工具" width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ routeMap.get(row.routeId)?.toolId ?? '' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" align="center" fixed="right">
+          <template #default="{ row }">
+            <div class="op-row">
+              <el-button size="small" type="primary" plain @click="filterByIp(row.ip)">按IP过滤</el-button>
+              <el-button size="small" type="primary" plain @click="filterByRoute(row.routeId)">按路由</el-button>
+              <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+      <EmptyState v-else description="暂无访问记录；调整筛选条件或稍后再试" />
+    </div>
+    <div class="foot">
+      <el-pagination
+        v-model:current-page="page" v-model:page-size="pageSize" :total="total"
+        :page-sizes="[20, 50, 100, 200]" layout="total, sizes, prev, pager, next, jumper" small
+        @current-change="refresh" @size-change="doSearch"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-sm); }
+/* 三段式布局与内容管理列表对齐：根容器高度链 + 区块间距 token，表格区独占剩余高度 */
+.page-wrap { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
 /* 筛选栏/操作栏（2026-11-20 列表页规范）：筛选在上 label+控件包 .f-item 整体换行不错开，操作单独一行居右 */
-.filter-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+.filter-bar { flex: none; display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
 /* #128：查询/重置互相间距与控件一致（归零 EP 兄弟 margin 走 gap），查询与控件之间加大间隔 */
 .filter-bar .el-button + .el-button { margin-left: 0; }
 .filter-bar > .el-button:first-of-type { margin-left: 16px; }
 .f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 /* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */
-.toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.toolbar { flex: none; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .toolbar .el-button + .el-button, .toolbar .el-button + .el-dropdown, .toolbar .el-dropdown + .el-button { margin-left: 0; }
 .toolbar .el-button { padding-left: 8px; padding-right: 8px; }
+.table-wrap { flex: 1; min-height: 0; }
+.foot { flex: none; display: flex; justify-content: flex-end; }
 .muted { font-size: 12px; color: var(--el-text-color-secondary); }
 .mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
-.op-row { display: inline-flex; align-items: center; gap: 2px; }
-.op-row :deep(.el-button) { padding: 3px 5px; font-size: 12px; margin-left: 0; }
-.pager { margin-top: 10px; justify-content: flex-end; }
+.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.op-row .el-button + .el-button { margin-left: 0; }
 </style>
