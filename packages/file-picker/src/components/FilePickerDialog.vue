@@ -13,7 +13,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
-import { Close, Delete, Document, Link, Picture } from '@element-plus/icons-vue'
+import { Close, Delete, Document, Link, Picture, UploadFilled } from '@element-plus/icons-vue'
 import type {
   FilePickerConflict,
   FilePickerItem,
@@ -462,11 +462,17 @@ function resolveSrcOf(url: string): string {
   return props.resolveSrc ? props.resolveSrc(url) : url
 }
 
-/** 上传区主提示（模式推导；模板表达式里不写嵌套模板字符串） */
+/** 拖拽上传卡片主文案：与文件卡片同尺寸，只放短词；完整规则走 title 悬浮（2026-11-20 合并布局） */
 const uploadHint = computed<string>(() => {
   if (uploading.value) return '上传中…'
-  return `点击或拖拽${kindLabel.value}到此处${uploadMultiple.value ? '（可多选）' : ''}`
+  return `点击或拖拽${kindLabel.value}`
 })
+/** 拖拽上传卡片悬浮说明：长说明不进卡片（行内只一两个词，长说明走悬浮提示） */
+const uploadDropTip = computed<string>(() =>
+  `点击或拖拽${kindLabel.value}到此处${uploadMultiple.value ? '（可多选）' : ''}；上传后先预览、可删除/点开查看，切到列表页可继续挑选，最后一并确认`,
+)
+/** 网格内是否有内容卡（upload 页签恒渲染添加卡，此值只供 gallery/selected 空态判断） */
+const hasCards = computed(() => visible.value.length > 0 || (tab.value === 'upload' && activeUploadTasks.value.length > 0))
 
 /** 空态文案：按页签与模式推导（模板表达式里不写嵌套模板字符串，vue-tsc 解析不稳） */
 const emptyStateText = computed<string>(() => {
@@ -1061,19 +1067,22 @@ function onPaneScroll(e: Event): void {
     />
 
     <div class="lib-pane" @scroll="onPaneScroll">
-      <div
-        v-if="tab === 'upload'"
-        class="drop-hint"
-        :class="{ busy: uploading, active: dropActive }"
-        @click="pickFiles"
-        @dragover.prevent="dropActive = true"
-        @dragleave.prevent="dropActive = false"
-        @drop.prevent="onDrop"
-      >
-        <div class="drop-main">{{ uploadHint }}</div>
-        <div class="drop-sub">上传后先预览、可删除/点开查看；切到列表页可继续挑选，最后一并确认</div>
-      </div>
-      <div v-if="visible.length || (tab === 'upload' && activeUploadTasks.length)" class="thumb-grid">
+      <div v-if="tab === 'upload' || hasCards" class="thumb-grid">
+        <!-- 拖拽上传卡并入网格：空态即一张「添加」卡，有文件后与文件卡同排连成片（2026-11-20 用户反馈） -->
+        <div
+          v-if="tab === 'upload'"
+          class="drop-cell"
+          :class="{ busy: uploading, active: dropActive }"
+          :title="uploadDropTip"
+          @click="pickFiles"
+          @dragover.prevent="dropActive = true"
+          @dragleave.prevent="dropActive = false"
+          @drop.prevent="onDrop"
+        >
+          <el-icon class="drop-cell-icon" :size="28"><UploadFilled /></el-icon>
+          <span class="drop-cell-main">{{ uploadHint }}</span>
+          <span class="drop-cell-sub">{{ uploadMultiple ? '可多选' : '单个' }}</span>
+        </div>
         <!-- 上传中/失败任务：卡片上叠进度/状态，卡片底部放重试与删除 -->
         <div
           v-for="task in tab === 'upload' ? activeUploadTasks : []"
@@ -1233,18 +1242,22 @@ function onPaneScroll(e: Event): void {
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }
 .lib-count { font-size: 12px; opacity: 0.75; margin-right: 2px; }
-.drop-hint {
+/* 拖拽上传卡并入网格：与文件卡同尺寸，空态即一张「添加」卡（2026-11-20 用户反馈） */
+.drop-cell {
+  min-height: 118px;
   border: 1px dashed rgba(128, 128, 128, 0.45);
-  border-radius: 8px;
-  padding: 16px 14px;
-  text-align: center;
-  cursor: pointer;
+  border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 6px; text-align: center; cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
-  margin-bottom: 10px;
+  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.04) 0 6px, transparent 6px 12px);
 }
-.drop-hint:hover, .drop-hint.active { border-color: var(--el-color-primary); }
-.drop-hint.active { background: rgba(64, 158, 255, 0.08); }
-.drop-hint.busy { opacity: 0.6; cursor: wait; }
+.drop-cell:hover, .drop-cell.active { border-color: var(--el-color-primary); }
+.drop-cell.active { background: rgba(64, 158, 255, 0.1); }
+.drop-cell.busy { opacity: 0.6; cursor: wait; }
+.drop-cell-icon { color: var(--el-color-primary); opacity: 0.75; }
+.drop-cell-main { font-size: 12px; line-height: 1.3; }
+.drop-cell-sub { font-size: 10px; opacity: 0.6; }
 /* 上传总体进度条 */
 .upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-top: 10px; margin-bottom: 0; }
 .up-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
@@ -1265,8 +1278,6 @@ function onPaneScroll(e: Event): void {
 .task-status.st-failed { color: var(--el-color-danger); }
 .task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
 .task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
-.drop-main { font-size: 14px; }
-.drop-sub { font-size: 12px; opacity: 0.6; margin-top: 5px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .thumb-cell {
   position: relative;
