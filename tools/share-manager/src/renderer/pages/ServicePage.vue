@@ -137,14 +137,19 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
       <div class="card-title">服务状态</div>
       <div class="status-bar">
         <el-tag :type="statusType()" effect="dark" size="small">{{ statusText() }}</el-tag>
-        <span class="muted">展示 IP：{{ ipSummary() }}</span>
+        <span class="ip-text">展示 IP：<strong>{{ ipSummary() }}</strong></span>
         <el-tag v-if="status && !status.running" type="warning" size="small" effect="plain" class="mini-tag">已停止时路由保留，重启即恢复</el-tag>
       </div>
       <div class="actions">
-        <el-button type="success" size="small" :loading="busy" @click="control('start')">启动</el-button>
-        <el-button type="primary" size="small" :loading="busy" @click="control('restart')">重启</el-button>
-        <el-button type="warning" size="small" :loading="busy" :disabled="!status?.running" @click="control('stop')">停止</el-button>
-        <el-button type="danger" size="small" :loading="busy" @click="control('clear')">停止服务并清空全部路由</el-button>
+        <el-button type="success" size="small" plain :loading="busy" :disabled="status?.running" @click="control('start')">启动</el-button>
+        <el-button type="primary" size="small" plain :loading="busy" @click="control('restart')">重启</el-button>
+        <el-button type="warning" size="small" plain :loading="busy" :disabled="!status?.running" @click="control('stop')">停止</el-button>
+        <el-divider direction="vertical" />
+        <el-button
+          type="danger" size="small" plain :loading="busy"
+          title="停止服务并删除状态文件，所有已发链接将永久失效（不影响访问日志）"
+          @click="control('clear')"
+        >停止并清空路由</el-button>
         <el-button size="small" :icon="Refresh" circle @click="refresh" />
       </div>
     </section>
@@ -218,11 +223,13 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
 </template>
 
 <style scoped>
-.page-wrap { padding: 12px 16px; }
-.settings-card { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
-.card-title { font-weight: 600; font-size: 13px; margin-bottom: 10px; }
-.status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-md); }
+.settings-card { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 12px 16px; }
+.card-title { font-weight: 600; font-size: 13px; margin-bottom: var(--sshk-gap-sm); }
+.status-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+.actions { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; margin-top: var(--sshk-gap-md); }
+.ip-text { font-size: 13px; color: var(--el-text-color-secondary); }
+.ip-text strong { color: var(--el-text-color-primary); font-weight: 600; }
 .switch-row { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; }
 .switch-label { font-size: 12px; color: var(--el-text-color-secondary); }
 .ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }
