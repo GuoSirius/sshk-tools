@@ -213,8 +213,8 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
    富文本固定高度自带内滚），头部/脚部固定；侧向留白由 .ce-meta/.ce-editor 自身 padding/margin 提供 */
 .ce-body { flex: 1; min-height: 0; overflow: hidden; }
 .ce-content { padding: 12px 0 0; min-height: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
-/* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
-.ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
+/* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层（预算=100vh-220：header+footer+6vh top 后仍留余量，杜绝外层滚动）；max/full 由全局块的 flex:1 撑满 */
+.ce-body-normal { height: min(calc(100vh - 220px), calc(86vh - 80px)); min-height: 340px; }
 .ce-mini-bar { position: fixed; z-index: 4000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
 .ce-mini-handle { cursor: grab; color: var(--el-text-color-placeholder); display: inline-flex; align-items: center; padding: 2px; flex: none; }
 .ce-mini-title { cursor: pointer; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
@@ -224,8 +224,9 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
 
 <!-- 非 scoped 全局块：el-dialog 节点 teleport 到 body，无本组件 data-v 属性，:deep() 打不进（项目已知坑） -->
 <style>
-/* 弹框自身 padding 归零 → 滚动条贴弹框边缘；留白由 .ce-head/.ce-content 自身 padding 提供 */
-.content-editor-dialog { padding: 0 !important; }
+/* #129 头部固定实锤：normal 态 EP dialog 默认 margin 底部 50px → 弹框总高超出视口，外层
+   .el-overlay-dialog(overflow:auto) 滚动连带头部滚走。margin 归零 + 自身 overflow hidden 根治 */
+.content-editor-dialog { padding: 0 !important; margin: 0 auto !important; overflow: hidden !important; }
 .content-editor-dialog .el-dialog__header { display: none; }
 /* 最大化/全屏：铺满整个应用可视区（用户 2026-11-19），弹框成 flex 列，body 弹性滚动、header/footer 固定 */
 .content-editor-dialog.ce-fullmode { display: flex; flex-direction: column; margin: 0 !important; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0 !important; overflow: hidden; }
