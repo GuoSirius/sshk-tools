@@ -10,9 +10,7 @@ import {
   hasHtml, generating, currentPosterId, currentGenerated, capturing, downloading,
   pickHtml, pickStats, downloadTemplate, markBeforeGenerate, generate, savePosterMeta, capturePoster, downloadPoster,
   posterName, shareDialog, openShare,
-  backToListConfirm, startNewPosterConfirm,
-  selectedPosters, batchExportHtml, batchDeletePosters, openListShare,
-  currentPage, pageSize, posters, onPageChange,
+  backToListConfirm,
   deleteOpen, deleteTarget, confirmDelete,
 } from './state'
 
@@ -20,6 +18,8 @@ import {
  * Badge Studio 渲染层——页面壳：
  * 只负责接收宿主 menu/toolId 并分发到 pages/ 下各页面，业务在子页面与 state。
  * 「工具配置」菜单由宿主 ToolSettingsPage 接管，不会进入本组件（pages 表无需 config）。
+ * 2026-11-20 列表页规范：海报列表的批量按钮/分页已下沉到 PostersPage 自身，
+ * 壳 actions 只保留生成页按钮，footer 只保留生成页说明。
  */
 const props = defineProps<{ menu?: string; toolId?: string }>()
 // toolId 单一来源 = manifest.id，经宿主目录裁决后以 prop 注入；源码不兜底硬编码
@@ -37,10 +37,6 @@ const route = useRoute()
 async function backToList(): Promise<void> {
   if (await backToListConfirm()) void router.push('/tool/' + String(props.toolId ?? route.params.toolId) + '/posters')
 }
-/** 新建海报（2026-11-18 列表页入口）：工作区有内容时二次确认丢弃，清空后跳回生成页 */
-async function startNewPoster(): Promise<void> {
-  if (await startNewPosterConfirm()) void router.push('/tool/' + String(props.toolId ?? route.params.toolId) + '/generate')
-}
 
 onMounted(() => {
   void loadConfigAndRecent()
@@ -55,62 +51,43 @@ onMounted(() => {
   >
     <template #actions>
       <template v-if="!isPosters">
-        <el-button size="small" @click="pickHtml">选择 HTML</el-button>
-        <el-button size="small" @click="pickStats">选择数据源</el-button>
-        <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
-        <el-dropdown trigger="click" @command="(cmd: string) => void downloadTemplate(cmd as 'xlsx' | 'csv' | 'json')">
-          <el-button-group>
-            <el-button size="small" type="success" plain @click="void downloadTemplate('xlsx')">模板下载</el-button>
-            <el-button size="small" type="success" plain><el-icon><ArrowDown /></el-icon></el-button>
-          </el-button-group>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="xlsx">Excel 模板（.xlsx · 默认）</el-dropdown-item>
-              <el-dropdown-item command="csv">CSV 模板（.csv）</el-dropdown-item>
-              <el-dropdown-item command="json">JSON 模板（.json）</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button size="small" :disabled="!hasHtml" @click="markBeforeGenerate">批量补属性</el-button>
-        <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml" @click="generate">
-          生成海报
-        </el-button>
-        <el-button size="small" @click="savePosterMeta">保存修改</el-button>
-        <el-button size="small" :loading="capturing" :disabled="!currentGenerated" @click="capturePoster">截图保存 PNG</el-button>
-        <el-button type="success" size="small" :loading="downloading" :disabled="!currentGenerated" @click="downloadPoster">下载图片</el-button>
-        <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentGenerated" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
-          分享
-        </el-button>
-        <!-- 按钮按工作流排序（用户 2026-11-18 定版；门控 2026-11-19）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
-             补属性/生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿）；
-             截图/下载/分享要求已生成（存在 badge 副本），仅保存草稿不解锁 -->
-        <el-button size="small" plain @click="backToList">返回列表</el-button>
-      </template>
-      <template v-else>
-        <!-- 列表页按钮合并一行（用户 2026-11-18）：新建（primary）+ 批量导出/删除 + 分享列表，均右对齐 -->
-        <el-button size="small" :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出（{{ selectedPosters.length }}）</el-button>
-        <el-button size="small" type="danger" :disabled="selectedPosters.length === 0" @click="batchDeletePosters">批量删除（{{ selectedPosters.length }}）</el-button>
-        <el-button size="small" type="warning" plain @click="openListShare">分享列表</el-button>
-        <el-button type="primary" size="small" @click="startNewPoster">新建海报</el-button>
+      <el-button size="small" @click="pickHtml">选择 HTML</el-button>
+      <el-button size="small" @click="pickStats">选择数据源</el-button>
+      <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
+      <el-dropdown trigger="click" @command="(cmd: string) => void downloadTemplate(cmd as 'xlsx' | 'csv' | 'json')">
+        <el-button-group>
+          <el-button size="small" type="success" plain @click="void downloadTemplate('xlsx')">模板下载</el-button>
+          <el-button size="small" type="success" plain><el-icon><ArrowDown /></el-icon></el-button>
+        </el-button-group>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="xlsx">Excel 模板（.xlsx · 默认）</el-dropdown-item>
+            <el-dropdown-item command="csv">CSV 模板（.csv）</el-dropdown-item>
+            <el-dropdown-item command="json">JSON 模板（.json）</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <el-button size="small" :disabled="!hasHtml" @click="markBeforeGenerate">批量补属性</el-button>
+      <el-button type="primary" size="small" :loading="generating" :disabled="!hasHtml" @click="generate">
+        生成海报
+      </el-button>
+      <el-button size="small" @click="savePosterMeta">保存修改</el-button>
+      <el-button size="small" :loading="capturing" :disabled="!currentGenerated" @click="capturePoster">截图保存 PNG</el-button>
+      <el-button type="success" size="small" :loading="downloading" :disabled="!currentGenerated" @click="downloadPoster">下载图片</el-button>
+      <el-button size="small" type="warning" plain :loading="shareDialog.loading" :disabled="!currentGenerated" @click="openShare({ _id: currentPosterId, name: posterName || '海报' })">
+        分享
+      </el-button>
+      <!-- 按钮按工作流排序（用户 2026-11-18 定版；门控 2026-11-19）：返回列表 → 选源（HTML/数据源/模板/补属性）→ 生成 → 保存 → 截图/下载/分享。
+           补属性/生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿）；
+           截图/下载/分享要求已生成（存在 badge 副本），仅保存草稿不解锁 -->
+      <el-button size="small" plain @click="backToList">返回列表</el-button>
       </template>
     </template>
 
     <component :is="active" :menu="menu" />
 
     <template #footer>
-      <template v-if="isPosters">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :total="posters.length"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          small
-          background
-          @current-change="onPageChange"
-        />
-      </template>
-      <span v-else class="muted">共 {{ posters.length }} 个海报 · 原 HTML 全程只读 · 产物覆盖式生成</span>
+      <span v-if="!isPosters" class="muted">原 HTML 全程只读 · 产物覆盖式生成</span>
     </template>
 
     <ConfirmDialog

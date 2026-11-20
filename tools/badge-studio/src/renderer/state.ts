@@ -102,7 +102,7 @@ export const listLoading = ref(false)
 // 表格布局三段式：顶部操作 / 中间表格撑满滚动 / 底部分页；跨页勾选由 reserve-selection 保留
 export const currentPage = ref(1)
 export const pageSize = ref(10)
-export const pagedPosters = computed(() => posters.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+/** 分页后的数据由 PostersPage 本地计算（筛选后才能正确分页），state 只持有分页游标与跨页勾选清理 */
 export function onPageChange(): void { selectedPosters.value = selectedPosters.value.filter((s) => posters.value.some((p) => p._id === s._id)) }
 
 export const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
