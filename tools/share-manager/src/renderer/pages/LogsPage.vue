@@ -158,28 +158,38 @@ onMounted(() => { void refresh() })
 
 <template>
   <div class="page-wrap">
-    <!-- 筛选栏（2026-11-20 规范：label+控件；宽度 180/时间 360；末尾统一 查询+重置） -->
+    <!-- 筛选栏（2026-11-20 四轮规范：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置） -->
     <div class="filter-bar">
-      <span class="f-label">来源 IP</span>
-      <el-input v-model="searchIp" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
-      <span class="f-label">路径</span>
-      <el-input v-model="searchPath" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
-      <span class="f-label">时间</span>
-      <el-date-picker
-        v-model="dateRange" type="datetimerange" size="small" unlink-panels
-        value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间"
-        range-separator="至" :shortcuts="shortcuts" style="width: 360px" @change="doSearch" />
-      <span class="f-label">状态码</span>
-      <el-select v-model="statusGroup" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
-        <el-option label="2xx 成功" value="2xx" />
-        <el-option label="3xx 跳转" value="3xx" />
-        <el-option label="4xx 失败" value="4xx" />
-        <el-option label="5xx 服务错" value="5xx" />
-      </el-select>
-      <span class="f-label">工具</span>
-      <el-select v-model="toolFilter" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
-        <el-option v-for="r in routes" :key="r.id" :label="r.toolId" :value="r.toolId" />
-      </el-select>
+      <div class="f-item">
+        <span class="f-label">来源 IP</span>
+        <el-input v-model="searchIp" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
+      </div>
+      <div class="f-item">
+        <span class="f-label">路径</span>
+        <el-input v-model="searchPath" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
+      </div>
+      <div class="f-item">
+        <span class="f-label">时间</span>
+        <el-date-picker
+          v-model="dateRange" type="datetimerange" size="small" unlink-panels
+          value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间"
+          range-separator="至" :shortcuts="shortcuts" style="width: 360px" @change="doSearch" />
+      </div>
+      <div class="f-item">
+        <span class="f-label">状态码</span>
+        <el-select v-model="statusGroup" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
+          <el-option label="2xx 成功" value="2xx" />
+          <el-option label="3xx 跳转" value="3xx" />
+          <el-option label="4xx 失败" value="4xx" />
+          <el-option label="5xx 服务错" value="5xx" />
+        </el-select>
+      </div>
+      <div class="f-item">
+        <span class="f-label">工具</span>
+        <el-select v-model="toolFilter" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
+          <el-option v-for="r in routes" :key="r.id" :label="r.toolId" :value="r.toolId" />
+        </el-select>
+      </div>
       <el-button size="small" type="primary" @click="doSearch">查询</el-button>
       <el-button size="small" @click="resetFilters">重置</el-button>
     </div>
@@ -234,10 +244,14 @@ onMounted(() => { void refresh() })
 
 <style scoped>
 .page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-sm); }
-/* 筛选栏/操作栏（2026-11-20 列表页规范）：筛选在上 label+控件，操作单独一行居右 */
+/* 筛选栏/操作栏（2026-11-20 列表页规范）：筛选在上 label+控件包 .f-item 整体换行不错开，操作单独一行居右 */
 .filter-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
-.toolbar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; justify-content: flex-end; }
+/* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */
+.toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.toolbar .el-button + .el-button, .toolbar .el-button + .el-dropdown, .toolbar .el-dropdown + .el-button { margin-left: 0; }
+.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
 .muted { font-size: 12px; color: var(--el-text-color-secondary); }
 .mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
 .op-row { display: inline-flex; align-items: center; gap: 2px; }

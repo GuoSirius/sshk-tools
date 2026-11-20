@@ -192,12 +192,12 @@ async function guardWhenMinimized(action: () => void): Promise<void> {
         confirmButtonText: '执行本次操作', cancelButtonText: '继续编辑', distinguishCancelAndClose: true,
       },
     )
-    // 用户选择「执行本次操作」→ 先把最小化弹框复原（否则新内容落到仍隐藏的弹框里），再执行
-    editorDialogRef.value?.restore()
+    // 用户选择「执行本次操作」→ 先复原最小化弹框（外部触发重开默认最大化，用户 2026-11-20 口径），再执行
+    editorDialogRef.value?.restoreMaximized()
     action()
   } catch {
-    // 用户选择「继续编辑」（cancel 分支）→ 复原最小化弹框，不执行
-    editorDialogRef.value?.restore()
+    // 用户选择「继续编辑」（cancel 分支）→ 同样默认最大化复原，不执行
+    editorDialogRef.value?.restoreMaximized()
   }
 }
 async function openCreate(): Promise<void> { await guardWhenMinimized(() => { editRecord.value = null; copySource.value = null; editorOpen.value = true }) }
@@ -311,38 +311,48 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       @cancel="editorOpen = false"
     />
     <template v-else>
-    <!-- 筛选栏（2026-11-20 三轮定版：label+控件、宽度 180/时间 360、末尾统一 查询+重置 两按钮） -->
+    <!-- 筛选栏（2026-11-20 四轮定版：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置） -->
     <div class="filter-bar">
-      <span class="f-label">搜索</span>
-      <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" @keyup.enter="doSearch" />
-      <span class="f-label">时间</span>
-      <el-date-picker
-        v-model="dateRange"
-        size="small"
-        type="datetimerange"
-        range-separator="至"
-        start-placeholder="开始时间"
-        end-placeholder="结束时间"
-        value-format="YYYY-MM-DD HH:mm:ss"
-        :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
-        style="width: 360px"
-      />
-      <span class="f-label">标签</span>
-      <el-select v-model="tagFilter" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
-        <el-option v-for="t in allTags" :key="t" :label="t" :value="t" />
-      </el-select>
-      <span class="f-label">分享状态</span>
-      <el-select v-model="shareFilter" size="small" style="width: 180px">
-        <el-option label="全部" value="all" />
-        <el-option label="私有" value="own" />
-        <el-option label="共用" value="common" />
-        <el-option label="未分享" value="none" />
-      </el-select>
-      <span class="f-label">发布状态</span>
-      <el-select v-model="statusFilter" size="small" style="width: 180px">
-        <el-option label="全部" value="all" />
-        <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
-      </el-select>
+      <div class="f-item">
+        <span class="f-label">搜索</span>
+        <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" @keyup.enter="doSearch" />
+      </div>
+      <div class="f-item">
+        <span class="f-label">时间</span>
+        <el-date-picker
+          v-model="dateRange"
+          size="small"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
+          style="width: 360px"
+        />
+      </div>
+      <div class="f-item">
+        <span class="f-label">标签</span>
+        <el-select v-model="tagFilter" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
+          <el-option v-for="t in allTags" :key="t" :label="t" :value="t" />
+        </el-select>
+      </div>
+      <div class="f-item">
+        <span class="f-label">分享状态</span>
+        <el-select v-model="shareFilter" size="small" style="width: 180px">
+          <el-option label="全部" value="all" />
+          <el-option label="私有" value="own" />
+          <el-option label="共用" value="common" />
+          <el-option label="未分享" value="none" />
+        </el-select>
+      </div>
+      <div class="f-item">
+        <span class="f-label">发布状态</span>
+        <el-select v-model="statusFilter" size="small" style="width: 180px">
+          <el-option label="全部" value="all" />
+          <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+      </div>
       <el-button size="small" type="primary" @click="doSearch">查询</el-button>
       <el-button size="small" @click="resetFilters">重置</el-button>
     </div>
@@ -463,8 +473,13 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 <style scoped>
 /* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
 .contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
-.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+/* label+控件包一体（2026-11-20 用户反馈：换行时不错开），.f-item 内不允许折行 */
+.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
+/* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */
+.toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.toolbar .el-button + .el-button, .toolbar .el-button + .el-dropdown, .toolbar .el-dropdown + .el-button { margin-left: 0; }
+.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
 /* 筛选栏 label（2026-11-20 列表页规范：label+控件形式，明确搜索对象） */
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 .table-wrap { flex: 1; min-height: 0; }

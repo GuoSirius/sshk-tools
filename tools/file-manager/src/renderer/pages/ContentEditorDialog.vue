@@ -35,6 +35,8 @@ type WinMode = 'maximized' | 'normal' | 'fullscreen'
 const winMode = ref<WinMode>('maximized')
 /** 进入全屏前的窗口模式：退出全屏还原到它（用户 2026-11-20：全屏可还原，不强制回最大化） */
 const preFullscreenMode = ref<WinMode>('maximized')
+/** 最小化前的窗口模式：点悬浮条复原时还原到它（2026-11-20 四轮定版） */
+const preMinimizeMode = ref<WinMode>('maximized')
 const minimized = ref(false)
 const coreRef = ref<InstanceType<typeof ContentEditorCore> | null>(null)
 
@@ -56,21 +58,23 @@ function setMode(mode: WinMode): void {
   else winMode.value = mode
   minimized.value = false
 }
-/** 最小化：贴底右侧停靠（用户 2026-11-20：参考传输面板收起条——位置确定可找、手柄显示标题、点击复原） */
+/** 最小化：统一停靠左下角（用户 2026-11-20：位置固定可找），手柄可拖拽走 */
 function doMinimize(): void {
+  preMinimizeMode.value = winMode.value
   minimized.value = true
   void nextTick(() => {
-    const w = barRef.value?.offsetWidth ?? 280
     const h = barRef.value?.offsetHeight ?? 40
-    x.value = Math.max(8, (window.innerWidth ?? 1200) - w - 16)
+    x.value = 8
     y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
   })
 }
-/** 由父组件触发复原（用户选择「继续编辑」时） */
-function restore(): void { minimized.value = false; winMode.value = 'maximized' }
+/** 点悬浮条复原：还原到最小化之前的窗口状态 */
+function restore(): void { minimized.value = false; winMode.value = preMinimizeMode.value }
+/** 由父组件触发复原（其它编辑操作二次确认后）：按用户口径默认最大化显示 */
+function restoreMaximized(): void { minimized.value = false; winMode.value = 'maximized' }
 function doClose(): void { minimized.value = false; visible.value = false }
 function submit(): void { coreRef.value?.submit() }
-defineExpose({ submit, canSave: () => Boolean(coreRef.value?.canSave), restore, isMinimized: () => minimized.value })
+defineExpose({ submit, canSave: () => Boolean(coreRef.value?.canSave), restore, restoreMaximized, isMinimized: () => minimized.value })
 
 // 向上同步最小化态，父组件据此在其它编辑操作触发时二次确认
 watch(minimized, (m) => { if (visible.value) emit('update:minimized', m) })
