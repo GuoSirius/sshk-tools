@@ -1,7 +1,7 @@
 # 全仓 Code Review 二次复核与处置台账（2026-11-20）
 
-- 状态：**二次复核完成**（全部条目回源码核验 + 分类处置；待用户拍板项集中于 §六）
-- 版本：v1.0
+- 状态：**二次复核完成 + 三次核对完成**（全部条目回源码核验 + 分类处置；**三次核对**对台账本身回源码抽查，勘误与批3见 §八；待用户拍板项集中于 §六）
+- 版本：v1.1（v1.0 = 二次复核落档；v1.1 = 2026-11-21 三次核对勘误 + 批3）
 - 日期：2026-11-20（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`（分支 `main`）
 - 复核对象：
@@ -31,11 +31,11 @@
 
 | 分类 | 数量 | 说明 |
 |---|---|---|
-| ✅ 属实且已直接改 | 14 项 | 文档口径 4 + 纯 bug 3 + 图标 1 + 危险操作漏报 8（其中重叠按项计）|
+| ✅ 属实且已直接改 | 批1/2 共 14 项 + 批3 共 7 处 | 批3（三次核对）：危险守卫 2 + D18 注释 3 + EDM v5 归档 1 + README/00-index 治理 1 组（见 §二、§八）|
 | ✅ 属实待用户决策 | ~30 项 | 架构/多方案/产品意图，见 §六 |
 | ⚠️ 部分属实 | 5 项 | 方向对、计数或范围夸大 |
-| ❌ 误报（当前态） | 8 项 | 与源码不符 / 已被修复 / 属故意设计 |
-| 🆕 漏报（本次新增） | 4 类 | 报告未点名，本次复核发现 |
+| ❌ 误报（当前态） | 7 项 | CR-21 / CR-51 / CR-53 / CR-54* / R5 / R6 / E1（*CR-54 经三次核对改判，见 §八 Z1）|
+| 🆕 漏报（本次新增） | 4 类 | 危险操作守卫共 10 处 / tools main 66 裸 throw / check-dialogs 盲区 / CR-32 补充点位 |
 
 ---
 
@@ -50,9 +50,13 @@
 | 批1 | CR-26 `ToolConfigPage` 漏导出 | ✅ | `shared/index.ts` 的 `export type` 列表补 `ToolConfigPage` | `4e879fb` |
 | 批1 | CR-43 contentSave status 无白名单 | ✅ | `content.ts` 加 4 态白名单（`draft/published/retracted/scheduled`）+ `AppError(validation)` | `4e879fb` |
 | 批2 | CR-10 share-manager 缺图标 | ✅ | 新建 `tools/share-manager/assets/icon.svg`（与其余工具同风格） | `3a0acf5` |
-| 批2 | 🆕 危险操作缺禁遮罩/禁 ESC（漏报） | ✅ | 补 8 处：`App.vue:86` 退出、`SystemTab:148` 降级 /`:222` 清空快照、`ToolsTab:145` 禁用依赖、`UsagePage:104` 清空用量、`ContentManagePage:835/929/1008` 丢弃/覆盖/删除 | `3a0acf5` |
+| 批2 | 🆕 危险操作缺禁遮罩/禁 ESC（漏报） | ✅ | 补 8 处：`App.vue:86` 退出、`SystemTab:148` 降级 /`:222` 清空快照、`ToolsTab:145` 禁用依赖、`UsagePage:104` 清空用量、`ContentManagePage:835/929/1008` 丢弃/覆盖/删除；**三次核对全仓审计发现另有 2 处漏网（批3 补齐）** | `3a0acf5` |
+| 批3 | 🆕 危险操作守卫补漏（三次核对，§八 Z5） | ✅ | 全仓 57 处 `ElMessageBox.confirm` 审计后补 2 处活代码：`SystemTab.vue:213` 恢复快照覆盖、`edm-studio/shared.ts:57` confirmRemove 删除确认（edm 三死代码页随 Q-09 一并处置） | `f830be6` |
+| 批3 | CR-06 D18 注释收尾（§八 Z4） | ✅ | `packages/backup/src/{crypto,export,manifest}` 3 处注释改"填口令即加密携带，无 env 开关" | `f830be6` |
+| 批3 | CR-54 v5 归档落实（台账原判失实，§八 Z1） | ✅ | `EDM…统一规划.md`（v5）`git mv` → `99-archive/`（只移不删） | `f830be6` |
+| 批3 | 报告B G1/G3/G5 + G2/G6 残留（文档，§八 Z3） | ✅ | README M0 横幅→收尾阶段、husky 现行、工具清单 3→6、D18 行、写死测试数；`00-index` `pnpm local`×2→`pnpm dist`、D17/D18 行、EDM v5 路径 | docs 批3 |
 
-> 两批均 `pnpm verify` 全绿（13 门禁 + typecheck + lint + build + 70 files / 467 tests），commit 后已 `git log -1` 核验 message，并 `git push origin main` 成功（`7c55f32..3a0acf5`）。
+> 批1/批2 均 `pnpm verify` 全绿（13 门禁 + typecheck + lint + build + 70 files / 467 tests），commit 后已 `git log -1` 核验 message，并 `git push origin main` 成功（`7c55f32..3a0acf5`）。批3 于 2026-11-21 以同口径 verify 全绿（70 files / 467 tests）后提交、message 已核验；docs 批3（台账勘误 v1.1 + 两报告横幅更正 + README/00-index 治理 + requirement.txt 用户指令快照）随后单独提交。
 
 ---
 
@@ -109,7 +113,7 @@
 | CR-51 00-index 断链 + 写死测试数 | ❌ 误报（当前态已修复） | 复核时 `00-index.md:3` 已指向正确的 `99-archive/...`，测试数已改"以最近 verify 输出为准" | 不改（已修复）|
 | CR-52 00-index 元信息过时 | ⚠️ 部分属实 | 版本已更 v1.4、已收录 11-20 文档；但 `03-design/` 空占位仍在（`:50`）| 📋 待决策 Q-18 关联（清占位）|
 | CR-53 archive 优化建议文档 | ❌ 处置错误 | 报告建议"确认吸收后删除"，但项目铁律 `00-index.md:52` 明确 `99-archive/` **只移不删**；文件已在 archive | 不改（保持归档）|
-| CR-54 EDM v5/v6 主从 | ❌ 伪分歧 | 报告A判"v6 权威、勿删 v6"；`00-index.md:38-39` 已标 v6 权威、v5 已归档——三方一致，无冲突 | 不改 |
+| CR-54 EDM v5/v6 主从 | ⚠️ **三次核对改判** | v6 权威三方一致属实；但原判"v5 文件已在 archive"**有误**——实测 v5 当时仍在 02-architecture、99-archive 无此文件（报告B G4 才是对的） | ✅ 批3 已按只移不删 git mv 归档落实 |
 | CR-55 Provider 补齐"部分实现" | ⚠️ 报告低估 | `packages/upload-core/src/providers/cloud-sdk.ts`/`cloud.ts` 已有 cos/七牛/S3 真实 SDK；仅差真实账号验证 V7 | 📋 待决策 Q-14（仅需确认验证范围）|
 | CR-56 内容管理双实现 | ✅ 属实（有意分离） | file-manager/ContentsPage（通用文章）vs edm/ContentManagePage（EDM 领域树）是 plans/11 明确职责分离 | 故意设计暂不动（文档明确集合归属即可）|
 | CR-57 旧称 upload-manager 残留 | ✅ 属实 | 9+ 文档以旧名作当前名称；**但迁移兼容代码（`services.ts:333-366`）、IPC 通道 `uploadManagerGet/Set`、`shared/upload-manager.ts` 文件名必须保留** | 文档批量替换（待执行），代码兼容保留 |
@@ -121,10 +125,19 @@
 
 | 条目 | 判定 | 处置 |
 |---|---|---|
-| CR-25 P2 补充（yes 见 §3.2） | — | — |
 | E4/E5/E6（报告A :214 的 P2） | ✅ 属实 | 归入 Q-17 env 契约批次 |
 | R1~R6 环境/死代码补充（报告B） | 部分误报 | R5（FormHint 0 使用）、R6（isUploadCloudVendor 两份）误报；其余归对应条目 |
-| D6~D11、N1~N7、G1~G6、S1~S6、B1~B6、F1~F10、T1~T4、C1~C7 | 见报告B明细 | 逐条处置见 §六与"报告B逐条" |
+| D6~D11、N1~N7、G1~G6、S1~S6、B1~B6、F1~F10、T1~T4、C1~C7 | 见报告B明细 | 逐条处置见 §六；**G1~G6 已于批3按报告B建议修完**（README M0 横幅/husky/工具清单、00-index `pnpm local`×2），其余仍待拍板 |
+
+### 3.4 文档残留清单（CR-06 / CR-57 收尾跟踪，三次核对补建）
+
+| 位置 | 问题 | 处置 |
+|---|---|---|
+| `packages/backup/src/{crypto.ts,export.ts,manifest.ts}` | 注释仍称 `SSHK_TOOLS_ALLOW_SECRET_MIGRATION` 开关有效 | ✅ 批3已改（填口令即加密携带） |
+| `README.md` D18 行 + M0 横幅 + husky `.git/cph` + 工具清单 3 个 + 写死测试数 | 报告B G1/G3/G5 + D18 + CR-51 同类"写死数字" | ✅ 批3已改 |
+| `docs/00-index.md` `pnpm local`×2、D17/D18 行旧开关口径、EDM v5 路径 | G2/G6 残留 + CR-06 + CR-54 | ✅ 批3已改 |
+| `工具插件化需求台账.md`（D18 相关行）、`2026-11-12-技术选型与任务拆分.md:210-211,232,575`、`04-api/2026-11-12-数据契约.md:222-223` | 历史设计稿/台账中的 D18 旧口径 | ⏳ 按总纲 §5.6：历史稿加"实现已变更"批注而非改写（随 Q-18 文档批次执行） |
+| 9+ 文档"上传配置/upload-manager"旧称（CR-57） | 旧名作当前名 | ⏳ 批量替换待执行（Q-18 关联）；迁移兼容代码 / `uploadManagerGet/Set` 通道 / `shared/upload-manager.ts` 文件名保留 |
 
 ---
 
@@ -133,7 +146,7 @@
 | # | 冲突点 | 报告A | 报告B | 复核者判断 |
 |---|---|---|---|---|
 | C1 | D18 env 开关处置 | CR-06：门控已删，清理残留注释/文档 | E1：变量 5 处使用，补登记 `.env.example` | **A 对**：已 grep 证实零代码读取，补登记=给僵尸变量立契约 |
-| C2 | EDM v5/v6 主从 | CR-54：v6 权威、勿删 v6 | G4：v5 应移 99-archive | **不冲突**：都认 v6 权威；00-index 已标 v5 归档，文件已在 archive，无需再动 |
+| C2 | EDM v5/v6 主从 | CR-54：v6 权威、勿删 v6 | G4：v5 应移 99-archive | **不冲突**：都认 v6 权威；三次核对证实 v5 文件当时仍在 02-architecture（台账原判"已在 archive"失实），已按 G4 归档落实（批3） |
 | C3 | 三能力是否上提 | 专题A：骨架合理、无需上提，待办集中在下沉 | S1/T1/T2/H3：配置 UI 藏在可禁用工具=高危，必须升应用 | **判据不同**：A 看"数据所在层"，B 看"配置入口可达性"。数据已在应用层但入口在工具（模型/上传；分享已在应用设置 ShareTab）——需用户定优先级，见 Q-04 |
 | C4 | 危险操作确认弹框收敛 | CR-60 💭：统一 `ConfirmDialog` | C4/P5：`ElMessageBox.confirm` 单轨（推荐），ConfirmDialog 降级/删除 | **直接相反**，必须裁决 Q-07 |
 | C5 | `pnpm start` preview 归属 | CR-03/P-9：倾向 dev | O1/P1：`__SSHK_DEV__` define 注入，preview 归 build | **相反倾向**，需统一 Q-06 |
@@ -154,10 +167,10 @@
 - 方案：A（激进/推荐）整体下沉 `tools/file-manager/src/main/fs-runtime/` + 扩展 `ToolHostCapabilities` 注入密钥/config；B（折中）抽 `packages/fs-core` 纯逻辑包、壳留应用；C（保守）维持 + 文档标注例外。
 - 建议：**A**（符合 D39 工具自包含 + 用户"彻底重构不打补丁"）；最大手术，需专项设计后执行 → Q-03。
 
-**D-2：`local-res.ts` + `local-res-rules.ts` 归属（报告B T5）**
-- 问题：本地资源流式服务（206 渐进下载）当前只服务 file-manager 媒体播放。
-- 方案：①仅 file-manager 消费→随 D-1 下沉；②多消费者→抽 `packages/local-res`。
-- 建议：先 grep 确认消费者数，倾向随 D-1 下沉（单一消费者场景）。
+**D-2：`local-res.ts` + `local-res-rules.ts` 归属（报告B T5）——三次核对改判（§八 Z2）**
+- 问题：本地资源流式服务（`localres://` 协议，206 渐进下载）的消费者，三次核对实测**并非仅 file-manager**：file-manager（音视频媒体）、`packages/rich-text`（MarkdownViewDialog / RichTextEditor / SourceViewDialog / display.ts 文档图片）、`packages/file-picker`（FilePickerDialog 图片预览）、edm-studio（ImageField 字段预览）均在用，**≥4 处消费**。
+- 方案：①随 D-1 下沉（前提已不成立，否决）；②抽 `packages/local-res`；③留应用主进程（渲染层媒体/图片渲染的公共基础设施）。
+- 建议（v1.1 修正）：**③ 留应用层**——按总纲 §1.3 归属判据属"≥2 消费者的公共能力"；消费者继续增长再抽包。**原 v1.0"单一消费者、倾向随 D-1 下沉"的判断失实，撤销。**
 
 ### 5.2 工具配置上提为应用（升级）
 
@@ -186,7 +199,7 @@
 | upload-core | 应用层 packages | 4 工具 | ✅ 保持应用层 |
 | share-core | 应用层 packages | 全工具 | ✅ 保持应用层 |
 | FsRuntime | **应用主进程** | **仅 1 工具** | ❌ 下沉（D-1）——单一消费者不该常驻应用层 |
-| local-res | 应用主进程 | 待确认（疑似 1） | 随 D-1 下沉或抽包 |
+| local-res | 应用主进程 | ≥4（file-manager + rich-text + file-picker + edm，三次核对实测） | ✅ 保持应用层（v1.0"疑似 1"失实，随 D-1 下沉的建议撤销） |
 | ShareDialog | **ui-kit** | 多工具 | 待裁决（U-2）|
 
 > 建议写入规范（见《代码规范总纲》§归属判据）：**≥2 工具复用→留应用层 `packages/`；仅 1 工具消费→下沉该工具 `src/`；通用无业务 UI→ui-kit，含业务语义→领域包或宿主。**
@@ -206,7 +219,7 @@
 | Q-07 | 危险操作确认弹框（C4） | ConfirmDialog 组件化 / ElMessageBox 单轨 | ElMessageBox 单轨（已是主流 49 处）|
 | Q-08 | ShareDialog 去留（C6/U-2） | 迁出 ui-kit / 保持 | 迁出 |
 | Q-09 | CR-11 edm 三死代码页 | 直接删 / 移 99-archive | 直接删 |
-| Q-10 | CR-54 EDM v5 | 无需动（已归档） / 删 | 无需动（只移不删）|
+| Q-10 | CR-54 EDM v5 归档 | ~~无需动（原判"已归档"失实）~~ / 删 | ✅ 已执行：批3 git mv → 99-archive（只移不删，落实 00-index 已标注状态） |
 | Q-11 | CR-53 archive 优化建议文档 | 保持归档 / 删 | 保持归档（铁律只移不删）|
 | Q-12 | CR-48 build+developerMode 图标字段 | 可改（devFeatures）/ 仅 dev 可改 | 按产品意图定 |
 | Q-13 | CR-44 分享路由硬鉴权 | 本轮纳入 / 另立安全项（plans/12 原定） | 本轮纳入（用户接受破坏性改动）|
@@ -226,8 +239,42 @@
 - [x] 通读两份报告 + 建任务清单
 - [x] 全部条目回源码核验（P0 关键项 + 文档口径 + 图标/死代码/导出/白名单 + 误报/漏报交叉）
 - [x] 待用户拍板项集中落档（§六）
-- [x] 直接改清单分批执行 + 提交 + 推送（批1 `4e879fb`、批2 `3a0acf5`）
-- [x] 工具⇄应用升降级专项落档（§五）
-- [ ] 同步更新两份审查文档处理结果
-- [ ] 落档《代码规范与铁律总纲》（新设备 WorkBuddy 优先读取）
-- [ ] 台账登记 #149 + 00-index 更新
+- [x] 直接改清单分批执行 + 提交 + 推送（批1 `4e879fb`、批2 `3a0acf5`、批3 `f830be6` + docs 批3）
+- [x] 工具⇄应用升降级专项落档（§五；三次核对修正 D-2：local-res ≥4 消费者应留应用层）
+- [x] 同步更新两份审查文档处理结果（`faa30c7` 横幅 + 三次核对批3再同步更正）
+- [x] 落档《代码规范与铁律总纲》（`docs/00-CONVENTIONS.md`，AGENTS.md 首读指针）
+- [x] 台账登记 #149 + 00-index 更新
+- [x] **三次核对**（2026-11-21）：台账本身回源码抽查，勘误 v1.1 + 批3，见 §八
+
+---
+
+## 八、三次核对记录（2026-11-21，对台账本身的回源码抽查）
+
+> 应用户要求核对"台账核得对不对、有没有要补充的"。方法：批1/批2 提交 diff 全量比对 + 误报/漏报判定回源码复验 + 全仓 `ElMessageBox.confirm` 守卫审计 + D18/旧称/文档状态专项 grep。结论：**台账主体判定与两批修复准确**；发现 7 处需修正（§8.2），全部已处置。
+
+### 8.1 证实准确的部分（抽查证据可复算）
+
+- 批1 `4e879fb` / 批2 `3a0acf5` 的 diff 与台账描述逐条相符（文件清单、改动内容、守卫选项均一致）。
+- 误报判定成立：CR-21（`baked-env.ts:43` 自锁在）、R5（FormHint 工具 6 文件在用：file-manager 3 + share-manager 3）、R6（`isUploadCloudVendor` 全仓唯一定义 `upload-vendors.ts:316`）、CR-51（`00-index.md:3` 链接正确且 99-archive 有目标文件）、CR-53（只移不删铁律见 00-index「归档」行）。
+- 计数复核成立：`fs:*` 唯一通道 30 个（CR-04"39 夸大"判定对）；tools main 裸 throw edm 49 + badge 17 = 66（漏报计数对）；`onUnmounted` 8 文件（CR-40"仅 1 处"失实判定对）；`toLocale*` 7 + `Date.parse` 7 = 14（CR-32"12+"成立）；`window.api.fs` 仅 file-manager 2 文件命中。
+- Q-21 前提成立：`scripts/check-dialogs.mjs` 只扫 `el-dialog/el-drawer` 标签，**不检查** `ElMessageBox.confirm` 选项——门禁盲区属实，补强建议维持。
+- 治理动作已在 `faa30c7` 落实：台账 #149 登记（台账 :1223）、00-index 三份 11-20 文档登记、`00-CONVENTIONS.md` 落档且 AGENTS.md 有首读指针。
+- husky 现状：`.husky/pre-commit` 生效（verify + 桌面构建），README 原 `.git/cph` 描述确为过时（G3 属实）。
+
+### 8.2 台账修正清单（本次全部处置）
+
+| # | 原判定/原文 | 三次核对事实 | 处置 |
+|---|---|---|---|
+| Z1 | CR-54"文件已在 archive，无需再动"；§四 C2 同 | **误判**：v5 当时仍在 `02-architecture/`，99-archive 无此文件（报告B G4 才对） | ✅ 批3 `f830be6` git mv 归档 + §3.2/§四 更正 |
+| Z2 | §五 D-2"local-res 疑似仅 1 消费者、倾向随 D-1 下沉"；§五.3 同 | **前提失实**：rich-text / file-picker / edm-studio 均消费 `localres://`，≥4 消费者 | ✅ §五 更正：保持应用层，撤销下沉建议 |
+| Z3 | 报告B横幅"G1~G5 多项已被顺手修复（README/00-index 已更新）" | **失实**：README M0 横幅 / husky / 3 工具清单、00-index `pnpm local`×2 当时均未修（仅 README `pnpm dist` 已改） | ✅ 批3补修 + 报告B横幅更正 |
+| Z4 | CR-06 标"✅ 已改" | **未收尾**：backup 3 文件注释 + README D18 行 + 00-index D17/D18 行仍写 env 开关 | ✅ 批3收尾 |
+| Z5 | §二"危险操作漏报 8 处（已修）" | **清点不完整**：全仓 57 处 `ElMessageBox.confirm` 审计，活代码另有 2 处无守卫（`SystemTab.vue:213` / `edm-studio/shared.ts:57`）；edm 三死代码页 3 处随 Q-09 | ✅ 批3补 2 处，合计 10 处 |
+| Z6 | §七进度 3 项未勾 | `faa30c7` 已完成（横幅 / 总纲 / #149+00-index） | ✅ 已勾 |
+| Z7 | CR-06 行引用"§三.4"但台账无该节；§3.3 首行格式残缺 | 台账自身文档缺陷 | ✅ 补 §3.4 + 清理 |
+
+### 8.3 全仓危险确认守卫审计口径（可复算）
+
+- `ElMessageBox.confirm(` 全仓 **57 处 / 28 文件**（apps + tools + packages，排除 out/ 与测试）。
+- 缺 `closeOnClickModal:false`/`closeOnPressEscape:false` 的：edm 三死代码页（Brands/Fragments/Templates，Q-09 待删）+ 本次 2 处（已补）。**其余全部合规**。
+- 门禁补强（Q-21 维持）：check-dialogs 增扫 `ElMessageBox.confirm(` 调用点，缺两个选项即非零退出。

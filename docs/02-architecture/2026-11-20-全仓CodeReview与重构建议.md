@@ -10,8 +10,9 @@
   - ❌ **E1 误报**：`SSHK_TOOLS_ALLOW_SECRET_MIGRATION` 开关已删除、全仓零代码读取，"补登记 .env.example"方向错误（应清理残留）。
   - ✅ **属实待拍板**：dev 判据（P1）、FsRuntime 下沉（P2）、三能力升层（P3）、ConfirmDialog 单轨（P5）、useSelection 删除（P6）等——见台账 §六。
   - ⚠️ **与报告A 冲突**：三能力是否上提（判据不同）、ConfirmDialog vs ElMessageBox 单轨（相反）、ShareDialog 去留（相反）、preview 归属（相反）——见台账 §四，需用户裁决。
-  - ❌ **失实条目**：R5（FormHint 工具 0 使用，实际 6 文件在用）、R6（isUploadCloudVendor 两份，实际唯一）、G1~G5 多项已被报告A 落档时顺手修复（README/00-index 现状已更新）。
-  - 🆕 **漏报**：危险操作 8 处缺禁遮罩/禁 ESC（已修）、tools 主进程 66 处裸 throw。
+  - ❌ **失实条目**：R5（FormHint 工具 0 使用，实际 6 文件在用）、R6（isUploadCloudVendor 两份，实际唯一）。⚠️ 原横幅称"G1~G5 多项已被顺手修复"经三次核对证伪——README M0 横幅 / husky / 工具清单与 00-index `pnpm local` 残留当时并未修复，已于批3按本报告 G1/G3/G5/G2 建议补齐（见台账 §八 Z3）。
+  - 🆕 **漏报**：危险操作缺禁遮罩/禁 ESC 共 10 处（批2 修 8 + 批3 补 2）、tools 主进程 66 处裸 throw。
+  - 🔁 **三次核对（2026-11-21）**：台账本身回源码抽查，勘误 v1.1 详见台账 §八；本报告 G4（EDM v5 归档）已按"只移不删"落实（批3 `f830be6`）。
 
 ---
 

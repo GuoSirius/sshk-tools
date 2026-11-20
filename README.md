@@ -11,11 +11,13 @@
 | `edm-studio` | 制作邮件 EDM：品牌 / 模板 / 片段 / 版本、数据填充、三阶段 HTML 生成 |
 | `badge-studio` | 上传点击数据 + 选择/上传邮件 HTML → badge 注入 → 生成海报长图 |
 | `model-console` | 模型 provider 配置、连接测试、对话调试、用量日志 |
+| `file-manager` | 文件浏览 / 上传通道管理 / 传输队列 / 内容管理（原"上传配置/上传管理"，11-19 改名） |
+| `share-manager` | 常驻分享服务运营台：路由 / 挂载 / 代理 / 日志 / 服务状态 |
+| `template-tool` | 新工具脚手架模板（全能力形态样例） |
 
-> **当前阶段：M0 工程骨架（已落地，待刷新依赖）**
+> **当前阶段：功能收尾打磨**——M0~M7 全部落地（R1–R24 / 工具插件化 / 工具包自包含 / 三能力分层已实现），当前重点为细节验证、健壮性与全仓 CodeReview 整改，不再追新功能。
 > 仓库：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
-> M0 只落根配置 + `packages/shared` + 校验脚本 + CI；`apps/desktop` 与其余 packages/tools 按 M1/M3 逐步落地，避免空壳。
-> **实现顺序（D26）**：`M0 → M1 → M2 → M3 → M7 → M6 → M4 → M5`，M6（badge + 海报）最急，先用现有 `juice-email-cli` 产物跑通；详见 [`docs/02-architecture/2026-11-12-实现顺序与M6先行方案.md`](docs/02-architecture/2026-11-12-实现顺序与M6先行方案.md)。
+> 当前状态与决策看板以 [`docs/00-index.md`](docs/00-index.md) 为唯一入口；全量遗留项见 `docs/02-architecture/遗留事项与收尾总账.md`。
 
 ## 快速开始（安装由你执行，AI 不代跑）
 
@@ -33,7 +35,7 @@ pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认
 > （electron + electron-builder-binaries）、只打 x64、可选 `-- --run` 构建完直接启动安装包。
 > 等价长命令：`pnpm --filter @sshk/desktop dev|build`。
 
-`pnpm-lock.yaml` **必须提交**，CI 用 `pnpm install --frozen-lockfile`。TypeScript 已按 D24 约束到 6.x，lockfile 已同步到 **6.0.3** 并随仓库提交；`pnpm verify` 在 TS 6.0.3 下全绿（typecheck / lint / 6 tests / 3 个脚本）。
+`pnpm-lock.yaml` **必须提交**，CI 用 `pnpm install --frozen-lockfile`。TypeScript 已按 D24 约束到 6.x，lockfile 已同步到 **6.0.3** 并随仓库提交；`pnpm verify` 在 TS 6.0.3 下全绿（typecheck / lint / vitest——测试数随迭代增长，以最近 verify 输出为准）。
 
 ## 文档入口
 
@@ -70,12 +72,12 @@ Electron + Vue 3 + **Element Plus** + UnoCSS + TypeScript + pnpm workspace
 2. **时间一律北京时间（Asia/Shanghai, UTC+8），不使用 UTC**；统一 `packages/shared/time.ts`（dayjs），禁 `toISOString()`。
 3. **应用配置可自定义产物目录** `app.outputDir`；改目录只迁移 `outputs/` + `assets/`，成功后按清单清理旧数据，**绝不递归删用户目录本身**。
 4. 所有 HTML / 海报产物**直接覆盖、不留历史副本**（D19）；后悔药只有手动导出 zip 快照。
-5. 导入导出 zip 包内**全相对路径**；模型密钥默认不进包，设置 `SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1` 后走口令加密的 100% 还原。
+5. 导入导出 zip 包内**全相对路径**；模型密钥默认不进包，导出端填「迁移口令」即加密携带密钥、可 100% 还原（D18，2026-11-17 起无 env 开关）。
 6. `docs/` 是**唯一**沟通文档区；一次性记录 `YYYY-MM-DD-主题.md`，长期维护用 `NN-` 前缀；头部写 `状态/版本/最后更新/关联需求`。
 7. 定稿后不原地大改，改结论按主题新开 ADR；过期文档移入 `99-archive/`，**不删除**。
 8. **能共用的必须提取到 `packages/`，禁止重复实现**（需求 15，监督清单在 `00-index.md` 第八节）。
 9. 临时产物统一 `.tmp/<用途>/`，用完即删。
-10. Git 小步提交 + 推送；本机 husky 跑不起来，用 `.git/cph` 的 `#!/bin/sh` 钩子：`git -c core.hooksPath=.git/cph commit -m "..."`，**绝不用 `--no-verify`**。
+10. Git 小步提交 + 推送；husky pre-commit 已生效（`.husky/` 钩子跑门禁），**绝不用 `--no-verify`**（`.git/cph` 为历史方案，已废弃）。
 
 ## 注意
 
