@@ -147,7 +147,7 @@ async function pickRuntimePackage(): Promise<void> {
     try {
       await ElMessageBox.confirm(
         `即将从 v${preview.installedVersion} 降级到 v${preview.newVersion}。新版本可能存在问题，降级可回退；但旧版本能力 / 数据可能不兼容，确定继续？`,
-        '降级安装确认', { type: 'warning', confirmButtonText: '仍要降级', cancelButtonText: '取消' },
+        '降级安装确认', { type: 'warning', confirmButtonText: '仍要降级', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
       )
     } catch { return }
   }
@@ -219,7 +219,7 @@ async function restoreSnapshotEntry(entry: SnapshotEntry): Promise<void> {
 }
 async function clearSnapshotAll(): Promise<void> {
   try {
-    await ElMessageBox.confirm('清空全部回滚快照？被覆盖的旧产物将无法再恢复。', '清空快照', { type: 'warning' })
+    await ElMessageBox.confirm('清空全部回滚快照？被覆盖的旧产物将无法再恢复。', '清空快照', { type: 'warning', closeOnClickModal: false, closeOnPressEscape: false })
   } catch { return }
   try {
     const { removed } = await callHostApi<{ removed: number }>(SNAPSHOT_CLEAR_SPEC)

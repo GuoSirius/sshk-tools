@@ -142,7 +142,7 @@ async function toggleEnabled(tool: ToolRuntimeState, value: boolean): Promise<vo
       .map((item) => item.name)
     if (affected.length > 0) {
       try {
-        await ElMessageBox.confirm(`禁用「${tool.name}」会影响：${affected.join('、')}。确定继续？`, '依赖提示', { type: 'warning' })
+        await ElMessageBox.confirm(`禁用「${tool.name}」会影响：${affected.join('、')}。确定继续？`, '依赖提示', { type: 'warning', closeOnClickModal: false, closeOnPressEscape: false })
       } catch { return }
     }
   }

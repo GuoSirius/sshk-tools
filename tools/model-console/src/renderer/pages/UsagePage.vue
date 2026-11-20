@@ -105,6 +105,8 @@ async function ElMessageBoxConfirm(): Promise<void> {
     type: 'warning',
     confirmButtonText: '清空',
     cancelButtonText: '取消',
+    closeOnClickModal: false,
+    closeOnPressEscape: false,
   })
 }
 </script>

@@ -832,7 +832,7 @@ async function closeCssTab(file: string): Promise<void> {
   const tab = cssTabs.value.find((t) => t.file === file)
   if (tab?.dirty) {
     try {
-      await ElMessageBox.confirm(`「${basename(file)}」有未保存修改，关闭将丢弃`, '提示', { type: 'warning', confirmButtonText: '丢弃并关闭', cancelButtonText: '取消' })
+      await ElMessageBox.confirm(`「${basename(file)}」有未保存修改，关闭将丢弃`, '提示', { type: 'warning', confirmButtonText: '丢弃并关闭', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false })
     } catch {
       return
     }
@@ -931,6 +931,8 @@ async function resolveConflict(dir: string, name: string): Promise<string | null
       distinguishCancelAndClose: true,
       confirmButtonText: '覆盖',
       cancelButtonText: '自动改名保留两者',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
     })
     return name
   } catch (action) {
@@ -1005,7 +1007,7 @@ async function onMenu(key: string): Promise<void> {
       return
     }
     if (key === 'remove') {
-      await ElMessageBox.confirm(`确定删除「${node.label}」？此操作不可恢复。`, '危险操作', { type: 'error', confirmButtonText: '删除', cancelButtonText: '取消' })
+      await ElMessageBox.confirm(`确定删除「${node.label}」？此操作不可恢复。`, '危险操作', { type: 'error', confirmButtonText: '删除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false })
       await api('content:remove', { source: node.data.source, file: node.data.path })
       ElMessage.success('已删除')
       if (selected.value?.data.path.startsWith(node.data.path)) selected.value = null

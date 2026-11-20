@@ -87,6 +87,8 @@ function showCloseConfirm(): void {
     type: 'warning',
     confirmButtonText: '退出',
     cancelButtonText: '取消',
+    closeOnClickModal: false,
+    closeOnPressEscape: false,
   }).then(() => { void window.api.app.confirmClose() }).catch(() => { /* 用户取消，保持窗口 */ })
 }
 onMounted(() => { window.api.app.onRequestClose(showCloseConfirm) })
