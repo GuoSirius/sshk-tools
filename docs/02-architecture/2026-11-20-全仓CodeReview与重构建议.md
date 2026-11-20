@@ -6,6 +6,12 @@
 - 关联需求：用户 2026-11-20「彻底全面 code review」19 项指令；关联决策 D37/D39/D50/D51/D32；铁律「dev 模式全量展示」
 - 审查方式：静态审查（结构扫描 + 关键文件精读 + 全仓 grep 交叉核验），未改动任何代码
 - 结论处置原则：用户已明确**不考虑兼容性**，允许彻底重构性修复，禁止打补丁
+- **▶ 二次复核结果（2026-11-20，请先看）**：本报告全部条目已逐项回源码二次复核，结论与处置见 `2026-11-20-CodeReview二次复核与处置台账.md`。要点：
+  - ❌ **E1 误报**：`SSHK_TOOLS_ALLOW_SECRET_MIGRATION` 开关已删除、全仓零代码读取，"补登记 .env.example"方向错误（应清理残留）。
+  - ✅ **属实待拍板**：dev 判据（P1）、FsRuntime 下沉（P2）、三能力升层（P3）、ConfirmDialog 单轨（P5）、useSelection 删除（P6）等——见台账 §六。
+  - ⚠️ **与报告A 冲突**：三能力是否上提（判据不同）、ConfirmDialog vs ElMessageBox 单轨（相反）、ShareDialog 去留（相反）、preview 归属（相反）——见台账 §四，需用户裁决。
+  - ❌ **失实条目**：R5（FormHint 工具 0 使用，实际 6 文件在用）、R6（isUploadCloudVendor 两份，实际唯一）、G1~G5 多项已被报告A 落档时顺手修复（README/00-index 现状已更新）。
+  - 🆕 **漏报**：危险操作 8 处缺禁遮罩/禁 ESC（已修）、tools 主进程 66 处裸 throw。
 
 ---
 
