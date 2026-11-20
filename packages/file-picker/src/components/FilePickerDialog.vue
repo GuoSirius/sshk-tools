@@ -9,7 +9,7 @@
  * - 定制面：accept / allowedExts / maxSize / maxUploads / maxCount / multiple / naming / conflict /
  *   confirmText / initialTab / defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
@@ -845,11 +845,14 @@ async function handleFiles(files: File[]): Promise<void> {
   // 造成「新加进来的进度覆盖之前项」）。既有任务由它们各自的 Promise 继续跑，互不干扰。
   const newTasks: UploadTask[] = []
   for (const { file, fingerprint, uploadName } of fresh) {
-    const task: UploadTask = {
+    // 必须建为响应式对象：runUpload 持有的是本局部引用，若传原始对象，runUpload 里改 status/percent
+    // 不会触发 uploadTasks 的 computed 依赖（已 success 却仍显示「上传中 1 / 3%」，2026-11-20 实证）。
+    // reactive 对象 push 进 ref 数组不会被二次代理，局部引用与数组元素共享同一代理，改动可触发刷新。
+    const task = reactive<UploadTask>({
       id: ++uploadSeq, file, name: file.name, uploadName, status: 'uploading', percent: 0,
       size: file.size, previewUrl: URL.createObjectURL(file), fingerprint,
       scope, source, target: { ...target.value },
-    }
+    })
     uploadTasks.value.push(task)
     newTasks.push(task)
   }
@@ -948,19 +951,58 @@ async function clearFinishedTasks(): Promise<void> {
   uploadTasks.value = uploadTasks.value.filter((t) => !finishedIds.has(t.id))
 }
 
-function removeUploaded(item: PoolItem): void {
+/**
+ * 从 uploadTasks 同步移出给定的成功项（按 url 匹配，url 与 itemKey 同口径）。
+ * uploadTasks 才是总体统计与「清除已结束」的计数源：只删 uploaded 而不动这里，
+ * 会导致删了 2 项后「清除已结束」仍显示 3 个（2026-11-20 用户实证）。
+ */
+function purgeUploadTasksByUrls(urls: Set<string>): void {
+  if (urls.size === 0) return
+  const matched = uploadTasks.value.filter((t) => t.status === 'success' && t.url && urls.has(t.url))
+  if (matched.length === 0) return
+  for (const t of matched) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
+  const ids = new Set(matched.map((t) => t.id))
+  uploadTasks.value = uploadTasks.value.filter((t) => !ids.has(t.id))
+  if (!uploadInProgress.value) stopProgressTimer()
+}
+
+/**
+ * 删除「本次上传」缩略图（右上角垃圾桶）：二次确认（禁遮罩/禁 ESC），且必须同步清 uploadTasks。
+ * 同样只清展示与选择池，不删除存储中的文件。
+ */
+async function removeUploaded(item: PoolItem): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `确定移除「${item.name || item.key}」？这只是把上传项从列表和「已选」中移除，不会删除已上传到存储的文件。`,
+      '移除上传项',
+      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch {
+    return
+  }
   const k = itemKey(item)
   uploaded.value = uploaded.value.filter((i) => itemKey(i) !== k)
   removePoolKey(k)
+  purgeUploadTasksByUrls(new Set([k]))
 }
 
-/** 只删除「本次上传且已选」的项，未选中的上传文件保留 */
-function removeSelectedUploaded(): void {
+/** 只删除「本次上传且已选」的项，未选中的上传文件保留；二次确认 + 同步清 uploadTasks */
+async function removeSelectedUploaded(): Promise<void> {
   const removed = uploaded.value.filter(isSelected)
   if (removed.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定移除选中的 ${removed.length} 个上传项？这只是从列表和「已选」中移除，不会删除已上传到存储的文件。`,
+      '移除上传项',
+      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch {
+    return
+  }
   for (const i of removed) removePoolKey(itemKey(i))
   const keys = new Set(removed.map(itemKey))
   uploaded.value = uploaded.value.filter((i) => !keys.has(itemKey(i)))
+  purgeUploadTasksByUrls(keys)
   ElMessage.success(`已删除 ${removed.length} 个未确认文件`)
 }
 
