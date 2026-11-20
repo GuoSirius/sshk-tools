@@ -203,7 +203,6 @@ onMounted(() => { void refresh() })
       <el-button size="small" type="danger" plain @click="clearLogs">仅清空访问日志</el-button>
       <el-divider direction="vertical" />
       <el-button size="small" plain :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
-      <span class="muted">共 {{ total }} 条</span>
     </div>
     <div class="table-wrap" v-loading="loading">
       <el-table v-if="rows.length > 0" :data="rows" size="small" height="100%" @selection-change="(v: ShareAccessLog[]) => selected = v">
@@ -264,7 +263,6 @@ onMounted(() => { void refresh() })
 .toolbar .el-button { padding-left: 8px; padding-right: 8px; }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; justify-content: flex-end; }
-.muted { font-size: 12px; color: var(--el-text-color-secondary); }
 .mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
 .op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .op-row .el-button + .el-button { margin-left: 0; }
