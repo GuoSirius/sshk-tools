@@ -110,12 +110,18 @@ function clampIntoView(): void {
   y.value = Math.min(Math.max(8, y.value), maxY)
 }
 function resetPosition(): void {
-  const d = defaultPosition()
-  x.value = d.x
-  y.value = d.y
-  // 默认位置按折叠条贴底算；展开态面板高 560，直接套用会冲出视区——按实际高度拉回
-  clampIntoView()
-  persist()
+  // #128：按「当前态实际宽度」贴右缘算初始位——收起条窄（~260），套展开面板宽 472 会落在离右缘
+  // ~212px 处（用户 2026-11-20 复反馈「没回初始位置」的实锤根因）。nextTick 等 DOM 换完尺寸再取宽。
+  void nextTick(() => {
+    const w = panelRef.value?.offsetWidth ?? 360
+    const vw = window.innerWidth ?? 1200
+    const vh = window.innerHeight ?? 800
+    x.value = Math.max(8, vw - w - 8)
+    y.value = Math.max(8, vh - 36 - 28 - 9)
+    // 展开态面板高，默认 y 会冲出视区——按实际高度拉回（既有口径）
+    clampIntoView()
+    persist()
+  })
 }
 onMounted(() => {
   window.addEventListener('resize', clampIntoView)

@@ -6,7 +6,7 @@
  */
 import type { Repository, ContentDoc } from '@sshk/repository'
 import { countHtmlWords, htmlToPlainText, toDisplayHtml } from '@sshk/rich-text/pure'
-import { format, ISO_WITH_OFFSET } from '@sshk/shared'
+import { AppError, format, ISO_WITH_OFFSET } from '@sshk/shared'
 import type { ContentSaveInput, ContentRecord, ShareContentResolverResult } from '@sshk/shared'
 
 const SUMMARY_MAX = 120
@@ -49,7 +49,8 @@ export async function contentGet(repo: Repository, id: string): Promise<ContentR
  *  status==='scheduled' 时 publishAt 必填且须为未来时刻；到点由定时器自动翻 published（见 ensureScheduler）。 */
 export async function contentSave(repo: Repository, input: ContentSaveInput): Promise<ContentRecord> {
   const name = String(input?.name ?? '').trim()
-  if (!name) throw new Error('内容名称不能为空')
+  // 表单类校验失败 = 预期业务失败，走 AppError(validation)（warn 落盘，不刷终端堆栈——#128 用户反馈）
+  if (!name) throw new AppError('内容名称不能为空', 'validation')
   const html = String(input?.html ?? '')
   const status = input.status ?? 'draft'
   let publishAt: string | undefined
@@ -57,7 +58,7 @@ export async function contentSave(repo: Repository, input: ContentSaveInput): Pr
     // 兼容数字毫秒（历史调用）与 ISO 字符串两种入参；入库统一 ISO 带 +08:00（项目铁律，禁 toISOString）
     const raw = input.publishAt
     const t = typeof raw === 'number' ? raw : Date.parse(String(raw ?? ''))
-    if (!Number.isFinite(t) || t <= Date.now()) throw new Error('定时发布时间必须是晚于当前的时间')
+    if (!Number.isFinite(t) || t <= Date.now()) throw new AppError('定时发布时间必须晚于当前时间', 'validation')
     publishAt = format(t, ISO_WITH_OFFSET)
   }
   const patch = {

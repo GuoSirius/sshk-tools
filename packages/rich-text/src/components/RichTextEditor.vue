@@ -318,6 +318,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end; /* #128：底部统计沉右下角 */
   gap: 14px;
   height: 26px;
   padding: 0 10px;

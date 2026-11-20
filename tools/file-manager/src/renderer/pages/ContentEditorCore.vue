@@ -44,11 +44,21 @@ const publishMs = computed({
     form.value.publishAt = format(v) // 'YYYY-MM-DD HH:mm:ss'（shared 统一封装）
   },
 })
-/** 仅可选今天及以后（disabledDate 按日粒度判定，具体到秒的「当前以后」在提交时由主进程校验兜底） */
+/** 仅可选今天及以后（disabledDate 按日粒度判定，具体到秒的「当前以后」由下方 publishAtTip 控件级校验） */
 const disabledDate = (d: Date): boolean => {
   const start = new Date(); start.setHours(0, 0, 0, 0)
   return d.getTime() < start.getTime()
 }
+// #128：定时时间控件级校验（选完即校 + 提交前拦截），红字 tip 显示在控件下方，不走 IPC 报错
+const publishAtTip = ref('')
+function validatePublishAt(): boolean {
+  publishAtTip.value = ''
+  if (form.value.status !== 'scheduled' || !form.value.publishAt) return true
+  const t = toMs(form.value.publishAt)
+  if (t == null || t <= Date.now()) { publishAtTip.value = '定时发布时间必须晚于当前时间'; return false }
+  return true
+}
+watch(publishMs, () => { if (publishAtTip.value) void validatePublishAt() })
 
 const onUploadImage = async (file: File): Promise<string> => {  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -90,6 +100,8 @@ function submit(): void {
   // 条件不符必须给 toast（项目铁律：禁静默 return；#125 定时时间必填）
   if (!form.value.name.trim()) { ElMessage.warning('请填写内容标题'); return }
   if (form.value.status === 'scheduled' && !form.value.publishAt) { ElMessage.warning('定时发布需选择定时时间'); return }
+  // #128：晚于当前时间控件级校验（红字 tip 在控件下，不发 IPC）
+  if (!validatePublishAt()) return
   const isScheduled = form.value.status === 'scheduled'
   // publishAt 契约：ISO 带 +08:00 字符串（与 ContentSaveInput 类型一致，勿发数字毫秒）
   const publishMsNum = isScheduled ? toMs(form.value.publishAt) ?? 0 : 0
@@ -126,15 +138,18 @@ defineExpose({ submit, canSave, isDirty })
           </el-select>
         </el-form-item>
         <el-form-item v-if="form.status === 'scheduled'" label="定时时间" required>
-          <el-date-picker
-            v-model="publishMs"
-            type="datetime"
-            :disabled-date="disabledDate"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="x"
-            placeholder="选择发布时间（当前以后，精确到秒）"
-            style="width: 100%"
-          />
+          <div class="ce-field-wrap">
+            <el-date-picker
+              v-model="publishMs"
+              type="datetime"
+              :disabled-date="disabledDate"
+              format="YYYY-MM-DD HH:mm:ss"
+              value-format="x"
+              placeholder="选择发布时间（当前以后，精确到秒）"
+              style="width: 100%"
+            />
+            <div v-if="publishAtTip" class="ce-field-tip">{{ publishAtTip }}</div>
+          </div>
         </el-form-item>
         <div v-else class="ce-reserved" aria-hidden="true"></div>
       </div>
@@ -161,7 +176,11 @@ defineExpose({ submit, canSave, isDirty })
 /* 两列栅格行：多列布局遵守页面留白与间距规范（gap 用统一 token） */
 .ce-row-2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sshk-gap-lg); align-items: start; }
 .ce-reserved { min-width: 0; }
-/* 编辑器占满剩余空间（#125 双滚动条根因②=min-height 520 在小窗强顶破容器致双层滚动；240 为保底不顶破） */
-.ce-editor { flex: 1; min-height: 240px; display: flex; flex-direction: column; }
-.ce-editor > :deep(.rich) { flex: 1; min-height: 0; }
+/* 控件级校验红字 tip（#128）：显示在控件正下方，不走 IPC 报错刷终端 */
+.ce-field-wrap { width: 100%; }
+.ce-field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; padding-top: 4px; }
+/* 编辑器随内容增高（#128 口径：头部/顶部固定，中间表单整体滚动，滚动条贴弹框右缘；
+   flex-basis 0 会在编辑器内产生第二条滚动条，改 1 0 auto：内容少时仍撑满剩余空间，多时随内容长） */
+.ce-editor { flex: 1 0 auto; min-height: 420px; display: flex; flex-direction: column; }
+.ce-editor > :deep(.rich) { flex: 1 0 auto; min-height: 0; }
 </style>

@@ -246,6 +246,9 @@ onMounted(() => { void refresh() })
 .page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-sm); }
 /* 筛选栏/操作栏（2026-11-20 列表页规范）：筛选在上 label+控件包 .f-item 整体换行不错开，操作单独一行居右 */
 .filter-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+/* #128：查询/重置互相间距与控件一致（归零 EP 兄弟 margin 走 gap），查询与控件之间加大间隔 */
+.filter-bar .el-button + .el-button { margin-left: 0; }
+.filter-bar > .el-button:first-of-type { margin-left: 16px; }
 .f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 /* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */

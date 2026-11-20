@@ -474,6 +474,9 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 /* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
 .contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
 .filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+/* #128：查询/重置互相间距与控件一致（归零 EP 兄弟 12px margin 走 gap），查询与控件之间加大间隔 */
+.filter-bar .el-button + .el-button { margin-left: 0; }
+.filter-bar > .el-button:first-of-type { margin-left: 16px; }
 /* label+控件包一体（2026-11-20 用户反馈：换行时不错开），.f-item 内不允许折行 */
 .f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
 /* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */
