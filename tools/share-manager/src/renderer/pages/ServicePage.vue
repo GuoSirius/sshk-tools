@@ -135,7 +135,7 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
   <div class="page-wrap">
     <section class="settings-card">
       <div class="card-title">服务状态</div>
-      <div class="status-bar">
+      <div class="service-status-row">
         <el-tag :type="statusType()" effect="dark" size="small">{{ statusText() }}</el-tag>
         <span class="ip-text">展示 IP：<strong>{{ ipSummary() }}</strong></span>
         <el-tag v-if="status && !status.running" type="warning" size="small" effect="plain" class="mini-tag">已停止时路由保留，重启即恢复</el-tag>
@@ -226,7 +226,8 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
 .page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-md); }
 .settings-card { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 12px 16px; }
 .card-title { font-weight: 600; font-size: 13px; margin-bottom: var(--sshk-gap-sm); }
-.status-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+/* 避开全局 theme.css 的 .status-bar（应用底部版本栏），同名会被其 height/background/border-top 命中导致错乱 */
+.service-status-row { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
 .actions { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; margin-top: var(--sshk-gap-md); }
 .ip-text { font-size: 13px; color: var(--el-text-color-secondary); }
 .ip-text strong { color: var(--el-text-color-primary); font-weight: 600; }
