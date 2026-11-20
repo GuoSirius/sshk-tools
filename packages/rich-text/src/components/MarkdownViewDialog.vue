@@ -61,8 +61,8 @@ async function copy(): Promise<void> {
   >
     <div class="md-body">
       <div class="md-toolbar">
-        <div class="md-tip">由当前正文 HTML 转换（Turndown）；Markdown 是富文本子集，复杂表格/嵌套样式可能简化。仅供查看与复制，不回写编辑器。</div>
-        <el-radio-group v-model="viewMode" size="small">
+        <div class="md-tip" title="由当前正文 HTML 转换（Turndown）；Markdown 是富文本子集，复杂表格/嵌套样式可能简化。仅供查看与复制，不回写编辑器。">由当前正文 HTML 转换；仅供查看与复制，不回写编辑器。</div>
+        <el-radio-group v-model="viewMode" size="small" class="md-mode-switch">
           <el-radio-button value="source">源码预览</el-radio-button>
           <el-radio-button value="rendered">渲染预览</el-radio-button>
         </el-radio-group>
@@ -105,7 +105,8 @@ async function copy(): Promise<void> {
 }
 .md-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
 .md-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.md-tip { font-size: 12px; opacity: 0.65; }
+.md-tip { flex: 1 1 auto; min-width: 0; font-size: 12px; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-mode-switch { flex: none; white-space: nowrap; }
 .md-render-panel {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25));
