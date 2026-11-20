@@ -56,6 +56,10 @@ import {
   fsMissingChunks,
   fsMultipartPlan,
   fsTransferCanPersist,
+  fsTransferEffectivelyDone,
+  FS_TRANSFER_CONFIG_KEYS,
+  FS_TRANSFER_DEFAULTS,
+  readFsTransferSettings,
 } from '@sshk/shared'
 import type { AppServices } from './services'
 import { logger } from './logger'
@@ -106,41 +110,33 @@ const FS_ZIP_FILE_CAP_MAX = 100_000
 const FS_ZIP_BYTES_CAP_MIN = 1024 * 1024
 const FS_ZIP_BYTES_CAP_MAX = 4 * 1024 * 1024 * 1024
 
-/** ── plans/10 分片设置（阈值/片大小/并发全部可设置、实时生效、跨重启记忆）── */
-const CFG_MP_ENABLED = 'app.fs.multipart.enabled'
-const CFG_MP_THRESHOLD_MB = 'app.fs.multipart.thresholdMb'
-const CFG_MP_PART_SIZE_MB = 'app.fs.multipart.partSizeMb'
-const CFG_MP_CONCURRENCY = 'app.fs.multipart.partsConcurrency'
-const CFG_MP_TIMEOUT_SEC = 'app.fs.multipart.requestTimeoutSec'
-const MP_TIMEOUT_DEFAULT = 300
-const MP_TIMEOUT_MIN = 30
-const MP_TIMEOUT_MAX = 3600
-const MP_THRESHOLD_DEFAULT = 50
-const MP_PART_SIZE_DEFAULT = 5
-const MP_CONCURRENCY_DEFAULT = 3
-const MP_THRESHOLD_MIN = 1
-const MP_THRESHOLD_MAX = 1024
-const MP_PART_SIZE_MIN = 5
-const MP_PART_SIZE_MAX = 100
-const MP_CONCURRENCY_MIN = 1
-const MP_CONCURRENCY_MAX = 8
+/** ── plans/10 传输设置（阈值/片大小/并发/超时全部可设置、实时生效、跨重启记忆）──
+ *  配置键/默认值/读取逻辑下沉到 shared（readFsTransferSettings），文件系统传输与图片库共用同一份。 */
+const CFG_MP_ENABLED = FS_TRANSFER_CONFIG_KEYS.enabled
+const CFG_MP_THRESHOLD_MB = FS_TRANSFER_CONFIG_KEYS.thresholdMb
+const CFG_MP_PART_SIZE_MB = FS_TRANSFER_CONFIG_KEYS.partSizeMb
+const CFG_MP_CONCURRENCY = FS_TRANSFER_CONFIG_KEYS.partsConcurrency
+const CFG_MP_TIMEOUT_SEC = FS_TRANSFER_CONFIG_KEYS.requestTimeoutSec
+const _D = FS_TRANSFER_DEFAULTS
+const MP_TIMEOUT_DEFAULT = _D.requestTimeoutSec
+const MP_TIMEOUT_MIN = _D.timeoutMin
+const MP_TIMEOUT_MAX = _D.timeoutMax
+const MP_THRESHOLD_DEFAULT = _D.thresholdMb
+const MP_PART_SIZE_DEFAULT = _D.partSizeMb
+const MP_CONCURRENCY_DEFAULT = _D.partsConcurrency
+const MP_THRESHOLD_MIN = _D.thresholdMin
+const MP_THRESHOLD_MAX = _D.thresholdMax
+const MP_PART_SIZE_MIN = _D.partSizeMin
+const MP_PART_SIZE_MAX = _D.partSizeMax
+const MP_CONCURRENCY_MIN = _D.concurrencyMin
+const MP_CONCURRENCY_MAX = _D.concurrencyMax
 const MB = 1024 * 1024
 /** 内存闸门：同时开片跑分片的任务数上限（总并发 = 通道并发 × 分片并发，由该闸门兜底） */
 const MP_TASK_GATE = 2
 
-/** 从配置读分片设置（缺省/非法回落默认值并钳制到合法区间） */
+/** 从配置读传输设置（薄包装，实际逻辑在 shared，图片库共用） */
 function readMultipartSettings(get: (key: string) => unknown): FsMultipartSettings {
-  const clamp = (raw: unknown, min: number, max: number, dflt: number): number => {
-    const n = Math.floor(Number(raw))
-    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt
-  }
-  return {
-    enabled: get(CFG_MP_ENABLED) !== false, // 键不存在/true 均为开；显式 false 才关
-    thresholdMb: clamp(get(CFG_MP_THRESHOLD_MB), MP_THRESHOLD_MIN, MP_THRESHOLD_MAX, MP_THRESHOLD_DEFAULT),
-    partSizeMb: clamp(get(CFG_MP_PART_SIZE_MB), MP_PART_SIZE_MIN, MP_PART_SIZE_MAX, MP_PART_SIZE_DEFAULT),
-    partsConcurrency: clamp(get(CFG_MP_CONCURRENCY), MP_CONCURRENCY_MIN, MP_CONCURRENCY_MAX, MP_CONCURRENCY_DEFAULT),
-    requestTimeoutSec: clamp(get(CFG_MP_TIMEOUT_SEC), MP_TIMEOUT_MIN, MP_TIMEOUT_MAX, MP_TIMEOUT_DEFAULT),
-  }
+  return readFsTransferSettings(get)
 }
 
 /** 分片上传检查点（`userData/fs-transfer/checkpoints/<taskId>.json`，每片完成即原子写） */
@@ -324,6 +320,8 @@ class FsTransferEngine {
     const out: PersistedTask[] = []
     for (const t of this.tasks.values()) {
       if (!fsTransferCanPersist(t.kind, t.status)) continue
+      // 实质完成（100% 窗口期状态尚未落 success）不落盘，避免重启恢复成"已暂停 100%"
+      if (fsTransferEffectivelyDone(t.transferred, t.size)) continue
       out.push({
         id: t.id, kind: t.kind, profileId: t.profileId, profileName: t.profileName, name: t.name,
         remotePath: t.remotePath, localPath: t.localPath, destPath: t.destPath, destRemotePath: t.destRemotePath,
@@ -349,11 +347,16 @@ class FsTransferEngine {
     this.store.save(this.persistable())
   }
 
-  /** 启动恢复：读回持久化任务，一律置 paused（不自动续跑），resumable 按检查点文件判定 */
+  /** 启动恢复：读回持久化任务，一律置 paused（不自动续跑），resumable 按检查点文件判定。
+   *  实质完成（transferred>=size）的历史任务不恢复——已完成只在启动周期内可见，重启清空；
+   *  同时把这些残留从 queue.json 抹掉，避免每次启动都读回一条"已暂停 100%"。 */
   restore(): number {
     const rows = this.store.load()
+    let restored = 0
+    let dropped = 0
     for (const r of rows) {
       if (this.tasks.has(r.id)) continue
+      if (fsTransferEffectivelyDone(r.transferred, r.size)) { dropped++; continue }
       const task: FsTransferTask = {
         id: r.id,
         kind: r.kind as FsTransferTask['kind'],
@@ -375,9 +378,15 @@ class FsTransferEngine {
         resumable: this.hasResumeArtifact(r),
       }
       this.tasks.set(task.id, task)
+      restored++
     }
-    if (rows.length) logger.info('upload', `fs 传输队列恢复：${rows.length} 个任务置为暂停（不自动续跑）`)
-    return rows.length
+    if (dropped) {
+      // 抹掉已完成的残留，避免重启反复读到（写回时 persistable 已过滤它们）
+      this.store.save(this.persistable())
+      logger.info('upload', `fs 传输队列清理：${dropped} 个已完成任务残留已从队列移除`)
+    }
+    if (restored) logger.info('upload', `fs 传输队列恢复：${restored} 个任务置为暂停（不自动续跑）`)
+    return restored
   }
 
   /** 是否存在续传产物（上传检查点 json / 下载区间元数据 json） */

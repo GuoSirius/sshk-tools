@@ -83,4 +83,29 @@ describe('CloudUploadProvider.aliyun-oss 大文件分片 + 进度', () => {
     expect(calls.ctorOpts[0]!.timeout).toBe(5 * 60 * 1000)
     expect(calls.put[0]!.opts).toMatchObject({ timeout: 5 * 60 * 1000 })
   })
+
+  it('图片库吃 profile 注入的传输设置：分片阈值/片大小/并发随配置变化', async () => {
+    const provider = new CloudUploadProvider({
+      ...base,
+      requestTimeoutMs: 600_000,
+      multipart: { enabled: true, thresholdMb: 5, partSizeMb: 8, partsConcurrency: 6 },
+    })
+    const big = new Uint8Array(6 * 1024 * 1024) // 6MB：注入阈值 5MB → 走分片（默认 10MB 则单流）
+    await provider.upload({ name: 'cfg.mp4', size: big.byteLength, data: big }, { targetType: 'cloud' })
+    expect(calls.put).toHaveLength(0)
+    expect(calls.multipart).toHaveLength(1)
+    expect(calls.multipart[0]!.opts).toMatchObject({ partSize: 8 * 1024 * 1024, parallel: 6, timeout: 600_000 })
+    expect(calls.ctorOpts[0]!.timeout).toBe(600_000)
+  })
+
+  it('注入 enabled=false 时大文件不走分片（尊重传输设置的分片开关）', async () => {
+    const provider = new CloudUploadProvider({
+      ...base,
+      multipart: { enabled: false, thresholdMb: 1, partSizeMb: 5, partsConcurrency: 4 },
+    })
+    const big = new Uint8Array(2 * 1024 * 1024)
+    await provider.upload({ name: 'off.mp4', size: big.byteLength, data: big }, { targetType: 'cloud' })
+    expect(calls.multipart).toHaveLength(0)
+    expect(calls.put).toHaveLength(1)
+  })
 })

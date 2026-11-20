@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fsMissingChunks, fsMultipartPlan, fsTransferCanPersist } from './fs'
+import { fsMissingChunks, fsMultipartPlan, fsTransferCanPersist, fsTransferEffectivelyDone, readFsTransferSettings } from './fs'
 
 /** plans/10：分片计划 / 下载缺片 / 持久化判定（纯函数单测） */
 
@@ -99,5 +99,39 @@ describe('fsTransferCanPersist（队列持久化判定）', () => {
       expect(fsTransferCanPersist(kind, 'running')).toBe(false)
       expect(fsTransferCanPersist(kind, 'failed')).toBe(false)
     }
+  })
+})
+
+describe('fsTransferEffectivelyDone（实质完成判定，避免重启后 100% 显示已暂停）', () => {
+  it('transferred 达到 size 视为完成（含 100% 窗口期状态未落 success）', () => {
+    expect(fsTransferEffectivelyDone(11370487, 11370487)).toBe(true)
+    expect(fsTransferEffectivelyDone(200, 100)).toBe(true) // 超传也算完成
+  })
+
+  it('未传满不判完成，size=0（未知大小）也不误判', () => {
+    expect(fsTransferEffectivelyDone(99, 100)).toBe(false)
+    expect(fsTransferEffectivelyDone(0, 0)).toBe(false)
+    expect(fsTransferEffectivelyDone(0, 100)).toBe(false)
+  })
+})
+
+describe('readFsTransferSettings（传输设置单一事实源，文件系统与图片库共用）', () => {
+  it('全部缺省时回落默认值', () => {
+    expect(readFsTransferSettings(() => undefined)).toEqual({
+      enabled: true, thresholdMb: 50, partSizeMb: 5, partsConcurrency: 3, requestTimeoutSec: 300,
+    })
+  })
+
+  it('读取配置并钳制到合法区间（图片库上传也吃这份）', () => {
+    const cfg: Record<string, unknown> = {
+      'app.fs.multipart.enabled': false,
+      'app.fs.multipart.thresholdMb': 9999,
+      'app.fs.multipart.partSizeMb': 1,
+      'app.fs.multipart.partsConcurrency': 99,
+      'app.fs.multipart.requestTimeoutSec': 10,
+    }
+    expect(readFsTransferSettings((k) => cfg[k])).toEqual({
+      enabled: false, thresholdMb: 1024, partSizeMb: 5, partsConcurrency: 8, requestTimeoutSec: 30,
+    })
   })
 })

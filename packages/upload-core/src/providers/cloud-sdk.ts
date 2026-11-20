@@ -16,6 +16,13 @@ export interface CloudProfile {
   baseUrl?: string
   /** SDK 单请求超时（毫秒）；省略走 CLOUD_REQUEST_TIMEOUT（可由传输设置注入） */
   requestTimeoutMs?: number
+  /** 分片设置（阈值/片大小/并发）；图片库上传与文件系统传输共用同一份配置，省略走内置默认（10MB/5MB/4） */
+  multipart?: {
+    enabled: boolean
+    thresholdMb: number
+    partSizeMb: number
+    partsConcurrency: number
+  }
 }
 
 export type SdkModule = Record<string, unknown>

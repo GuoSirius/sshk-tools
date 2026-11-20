@@ -20,6 +20,7 @@ import {
   normalizeUploadConfig,
   pickCloudProfile,
   pickRemoteProfile,
+  readFsTransferSettings,
   resolveUploadTool,
   uploadVendorMeta,
   type UploadGlobalConfig,
@@ -113,6 +114,15 @@ export class UploadRuntime {
     return normalizeUploadConfig(this.opts.services.config.get('app.upload'))
   }
 
+  /** 图片库上传注入的传输设置（与文件系统共用同一份 app.fs.multipart.* 配置，单一事实源） */
+  private cloudTransferOpts(): { requestTimeoutMs: number; multipart: { enabled: boolean; thresholdMb: number; partSizeMb: number; partsConcurrency: number } } {
+    const s = readFsTransferSettings((k) => this.opts.services.config.get(k))
+    return {
+      requestTimeoutMs: s.requestTimeoutSec * 1000,
+      multipart: { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency },
+    }
+  }
+
   private prepare(req: UploadRequest, global: UploadGlobalConfig): Prepared {
     const services = this.opts.services
     const toolId = String(req.toolId ?? '').trim()
@@ -180,6 +190,7 @@ export class UploadRuntime {
         accessKeyId: p.accessKeyId,
         accessKeySecret,
         baseUrl: p.baseUrl,
+        ...this.cloudTransferOpts(),
       }))
       ctx.profileId = p.id
     }
@@ -240,6 +251,7 @@ export class UploadRuntime {
         accessKeyId: p.accessKeyId,
         accessKeySecret: this.opts.services.getUploadSecret(p.id),
         baseUrl: p.baseUrl,
+        ...this.cloudTransferOpts(),
       }))
       ctx.profileId = p.id
     }
@@ -347,6 +359,7 @@ export class UploadRuntime {
       provider: p.provider, sdk: uploadVendorMeta(p.provider).sdk, region: p.region,
       endpoint: p.endpoint, bucket: p.bucket, accessKeyId: p.accessKeyId,
       accessKeySecret: secret, baseUrl: p.baseUrl,
+      ...this.cloudTransferOpts(),
     }).testConnection()
   }
 }

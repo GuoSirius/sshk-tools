@@ -64,8 +64,19 @@ function publicUrl(profile: CloudProfile, key: string, sdkUrl?: string): string 
 
 interface PutOutcome { url?: string }
 
-/** 分片上传阈值：超过此大小走 ali-oss multipartUpload（单请求不会 60s 超时，且能报真实进度） */
-const MULTIPART_THRESHOLD = 10 * 1024 * 1024
+/** 图片库分片上传内置默认（profile 未注入传输设置时回落，保持历史行为不变） */
+const CLOUD_MP_DEFAULT = { thresholdMb: 10, partSizeMb: 5, partsConcurrency: 4 } as const
+/** 分片设置：优先用 profile 注入的传输设置（与文件系统共用同一份），缺省回落内置默认 */
+function multipartOf(profile: CloudProfile): { thresholdBytes: number; partSizeBytes: number; parallel: number } {
+  const mp = profile.multipart
+  const thresholdMb = mp?.thresholdMb ?? CLOUD_MP_DEFAULT.thresholdMb
+  const partSizeMb = mp?.partSizeMb ?? CLOUD_MP_DEFAULT.partSizeMb
+  return {
+    thresholdBytes: thresholdMb * 1024 * 1024,
+    partSizeBytes: partSizeMb * 1024 * 1024,
+    parallel: mp?.partsConcurrency ?? CLOUD_MP_DEFAULT.partsConcurrency,
+  }
+}
 /**
  * 单请求超时：优先用 profile 注入的传输设置，缺省回落云 SDK 单一事实源（5min）。
  * 与 fs-cloud.newOss / cloud-sdk.listCloudPage 同口径，杜绝「有的路径吃配置、有的写死」。
@@ -89,11 +100,12 @@ async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buf
         accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret,
         timeout: requestTimeoutOf(profile),
       })
-      if (body.byteLength >= MULTIPART_THRESHOLD) {
+      const mp = multipartOf(profile)
+      if (profile.multipart?.enabled !== false && body.byteLength >= mp.thresholdBytes) {
         // ali-oss progress(percentage, checkpoint)：percentage 0–1；每片独立请求，避免大文件整体超时
         const r = await client.multipartUpload(key, body, {
-          partSize: 5 * 1024 * 1024,
-          parallel: 4,
+          partSize: mp.partSizeBytes,
+          parallel: mp.parallel,
           timeout: requestTimeoutOf(profile),
           progress: (percentage: number) => ctx.onProgress?.(Math.min(100, Math.round(percentage * 100))),
         })

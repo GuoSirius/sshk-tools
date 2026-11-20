@@ -381,6 +381,40 @@ export interface FsMultipartSettings {
   requestTimeoutSec: number
 }
 
+/** 传输设置配置键（单一事实源：文件系统传输 / 图片库上传共用同一份配置） */
+export const FS_TRANSFER_CONFIG_KEYS = {
+  enabled: 'app.fs.multipart.enabled',
+  thresholdMb: 'app.fs.multipart.thresholdMb',
+  partSizeMb: 'app.fs.multipart.partSizeMb',
+  partsConcurrency: 'app.fs.multipart.partsConcurrency',
+  requestTimeoutSec: 'app.fs.multipart.requestTimeoutSec',
+} as const
+
+/** 传输设置缺省与合法区间（单一事实源） */
+export const FS_TRANSFER_DEFAULTS = {
+  enabled: true,
+  thresholdMb: 50, thresholdMin: 1, thresholdMax: 1024,
+  partSizeMb: 5, partSizeMin: 5, partSizeMax: 100,
+  partsConcurrency: 3, concurrencyMin: 1, concurrencyMax: 8,
+  requestTimeoutSec: 300, timeoutMin: 30, timeoutMax: 3600,
+} as const
+
+/** 从配置读取传输设置（缺省/非法回落默认值并钳制到合法区间）——fs.ts 与图片库共用 */
+export function readFsTransferSettings(get: (key: string) => unknown): FsMultipartSettings {
+  const d = FS_TRANSFER_DEFAULTS
+  const clamp = (raw: unknown, min: number, max: number, dflt: number): number => {
+    const n = Math.floor(Number(raw))
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt
+  }
+  return {
+    enabled: get(FS_TRANSFER_CONFIG_KEYS.enabled) !== false,
+    thresholdMb: clamp(get(FS_TRANSFER_CONFIG_KEYS.thresholdMb), d.thresholdMin, d.thresholdMax, d.thresholdMb),
+    partSizeMb: clamp(get(FS_TRANSFER_CONFIG_KEYS.partSizeMb), d.partSizeMin, d.partSizeMax, d.partSizeMb),
+    partsConcurrency: clamp(get(FS_TRANSFER_CONFIG_KEYS.partsConcurrency), d.concurrencyMin, d.concurrencyMax, d.partsConcurrency),
+    requestTimeoutSec: clamp(get(FS_TRANSFER_CONFIG_KEYS.requestTimeoutSec), d.timeoutMin, d.timeoutMax, d.requestTimeoutSec),
+  }
+}
+
 /** 分片设置读取结果：附带服务端遗留 uploadId 数（崩溃遗留，面板/设置展示 + 手动清理） */
 export interface FsMultipartStatus extends FsMultipartSettings {
   /** 服务端遗留分片上传数（当前可写通道合计） */
@@ -449,6 +483,16 @@ export function fsTransferCanPersist(kind: FsTransferKind, status: FsTransferSta
   const kindOk = kind === 'upload' || kind === 'download'
   const statusOk = status === 'queued' || status === 'running' || status === 'paused' || status === 'conflict' || status === 'failed'
   return kindOk && statusOk
+}
+
+/**
+ * 实质完成判定（2026-11-20 用户反馈"重启后 100% 任务显示已暂停"）：
+ * transferred 已达 size（且 size>0）即视为传完——窗口期 setStatus('success') 尚未落定，
+ * 状态可能仍是 running/queued，此类任务不应持久化/恢复为 paused。
+ * 已完成任务只在当前启动周期内可见，重启清空；未完成的才落盘续传。
+ */
+export function fsTransferEffectivelyDone(transferred: number, size: number): boolean {
+  return size > 0 && transferred >= size
 }
 
 

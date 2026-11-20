@@ -951,7 +951,8 @@ async function enqueueUploads(files: { name: string; localPath: string; relPath:
     kind: 'upload' as const,
     profileId: profileId.value,
     name: f.name,
-    remotePath: path.value ? `${path.value}/${f.relPath}` : f.relPath,
+    // 根路径（'/'）不能再拼 '/'，否则得到 //1560.mp4（2026-11-20 用户反馈双斜杠）
+    remotePath: path.value && path.value !== '/' ? `${path.value}/${f.relPath}` : `/${f.relPath}`,
     localPath: f.localPath,
     size: f.size,
     overwrite: resolved.overwritePaths.has(f.relPath.toLowerCase()) ? true : undefined,
@@ -2613,8 +2614,8 @@ function onKeydown(event: KeyboardEvent): void {
       <el-form label-width="auto" size="small">
         <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
         <el-form-item label="大文件分片传输">
-          <el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
           <el-switch v-model="transferCfgForm.enabled" data-autofocus />
+          <el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3。阈值/片大小/并发/超时由文件系统传输与图片库上传共用同一份配置" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
         </el-form-item>
         <el-form-item label="分片阈值" required>
           <el-input-number v-model="transferCfgForm.thresholdMb" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />
@@ -2629,9 +2630,9 @@ function onKeydown(event: KeyboardEvent): void {
           <span class="fs-ziplimits-unit">个/任务（1~8）</span>
         </el-form-item>
         <el-form-item label="请求超时" required>
-          <el-tooltip content="云上传/下载单请求超时；弱网或大文件 ACK 慢可调大（30~3600 秒）。超时后自动复核服务端是否已落盘，已落盘不会误报失败" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
           <el-input-number v-model="transferCfgForm.requestTimeoutSec" :min="30" :max="3600" :step="30" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">秒（默认 300）</span>
+          <el-tooltip content="云上传/下载单请求超时；弱网或大文件 ACK 慢可调大（30~3600 秒）。超时后自动复核服务端是否已落盘，已落盘不会误报失败" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
         </el-form-item>
         <el-form-item v-if="transferCfgOrphans > 0" label="遗留分片">
           <span class="fs-ziplimits-unit">服务端残留 {{ transferCfgOrphans }} 个</span>
