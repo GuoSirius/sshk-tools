@@ -18,7 +18,7 @@ export interface ExportOptions {
   appVersion: string
   /** 是否携带产物 HTML/PNG（默认开） */
   includeOutputs?: boolean
-  /** 仅在 SSHK_TOOLS_ALLOW_SECRET_MIGRATION=1 时由主进程传入 */
+  /** 仅在导出端填了「迁移口令」时由主进程传入（填口令即加密携带，无 env 开关） */
   secretsJson?: string
   migrationPassphrase?: string
 }

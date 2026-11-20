@@ -210,7 +210,7 @@ async function saveSnapshotSwitch(): Promise<void> {
 }
 async function restoreSnapshotEntry(entry: SnapshotEntry): Promise<void> {
   try {
-    await ElMessageBox.confirm(`把「${entry.rel}」恢复为快照时的旧版本？当前文件将被覆盖。`, '恢复快照', { type: 'warning', confirmButtonText: '恢复', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`把「${entry.rel}」恢复为快照时的旧版本？当前文件将被覆盖。`, '恢复快照', { type: 'warning', confirmButtonText: '恢复', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false })
   } catch { return }
   try {
     const path = await callHostApi<string>(SNAPSHOT_RESTORE_SPEC, entry.id)

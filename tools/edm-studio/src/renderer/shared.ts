@@ -54,7 +54,7 @@ export function isSystem(row: Named): boolean {
 /** 统一删除确认（危险操作二次确认） */
 export async function confirmRemove(title: string, name: string, run: () => Promise<void>): Promise<void> {
   try {
-    await ElMessageBox.confirm(`确定删除「${name}」？记录将归档。`, title, { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`确定删除「${name}」？记录将归档。`, title, { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false })
   } catch {
     return
   }

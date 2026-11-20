@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:
  * 密钥加密迁移（D18 / 数据契约 §4.3）：
  * - PBKDF2-SHA256(口令, salt, iterations) → 256bit key
  * - AES-256-GCM 加密 secrets JSON；口令/密钥绝不落盘、绝不进包
- * - 功能开关 SSHK_TOOLS_ALLOW_SECRET_MIGRATION 由主进程检测，本模块不感知
+ * - 无 env 开关（D18 已于 2026-11-17 改为「填迁移口令即加密携带」，见 apps/desktop/src/main/index.ts:317）
  */
 export const PBKDF2_ITERATIONS = 210_000
 
