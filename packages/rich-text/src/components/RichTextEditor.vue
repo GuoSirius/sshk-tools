@@ -118,6 +118,8 @@ let viewTimers: number[] = []
 
 interface UploadImageConf {
   customUpload: (file: File, insertFn: (url: string) => void) => Promise<void>
+  /** wangEditor 原生钩子（uploadImage exec 优先于原生文件输入）：设置后「上传图片」改调本回调（#130） */
+  customBrowseAndUpload?: (insertFn: (url: string, alt?: string, href?: string) => void) => void
 }
 
 const hook = props.onUploadImage
@@ -129,18 +131,24 @@ const editorConfig: Partial<IEditorConfig> = {
     emit('update:modelValue', toStoredHtml(editor.getHtml()))
   },
 }
+const conf: Record<string, UploadImageConf> = {}
 if (hook) {
   const maxSize = props.imageRule?.maxSize ?? 0
-  const conf: Record<string, UploadImageConf> = {
-    uploadImage: {
-      customUpload: async (file, insertFn) => {
-        if (maxSize > 0 && file.size > maxSize) throw new Error(`图片超过大小上限 ${maxSize} 字节`)
-        insertFn(await hook(file))
-      },
+  conf.uploadImage = {
+    customUpload: async (file, insertFn) => {
+      if (maxSize > 0 && file.size > maxSize) throw new Error(`图片超过大小上限 ${maxSize} 字节`)
+      insertFn(await hook(file))
     },
   }
-  editorConfig.MENU_CONF = conf
 }
+// #130 用户拍板（2026-11-20）：有图片库桥接时，工具栏自带「上传图片」不再弹原生文件输入，
+// 改唤起宿主图片选择框（FilePickerDialog）；插入走既有 onLibraryConfirm（dangerouslyInsertHtml）
+if (props.imageLibrary) {
+  ;(conf.uploadImage ??= { customUpload: async () => undefined }).customBrowseAndUpload = () => {
+    libraryOpen.value = true
+  }
+}
+if (Object.keys(conf).length > 0) editorConfig.MENU_CONF = conf
 
 /**
  * 工具栏：以 wangEditor 默认 toolbarKeys 为基线（用户拍板：保持原始默认分组顺序）。
