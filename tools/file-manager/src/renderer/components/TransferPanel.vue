@@ -265,7 +265,7 @@ watch(expanded, (v) => {
 onMounted(() => { if (expanded.value) void loadMultipart() })
 
 defineExpose({
-  show: (): void => { hidden.value = false; expanded.value = true },
+  show: (): void => { hidden.value = false; expanded.value = true; void nextTick(resetPosition) }, // #127：弹出即回默认位置
 })
 </script>
 
@@ -298,7 +298,7 @@ defineExpose({
         <el-tooltip content="回到默认位置" placement="top">
           <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
         </el-tooltip>
-        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; emit('visible-change', false)">✕</el-button>
+        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; resetPosition(); emit('visible-change', false)">✕</el-button>
       </div>
     </template>
 
@@ -312,7 +312,7 @@ defineExpose({
           <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
         </el-tooltip>
         <el-button size="small" text class="fs-tpanel-mini" @click.stop="expanded = false">—</el-button>
-        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; emit('visible-change', false)">✕</el-button>
+        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; resetPosition(); emit('visible-change', false)">✕</el-button>
       </div>
 
       <!-- 全局控制：开始/暂停/停止/失败重试（语义配色） -->

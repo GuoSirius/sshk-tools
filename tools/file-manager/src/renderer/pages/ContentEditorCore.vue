@@ -10,6 +10,7 @@ import { RichTextEditor, toStoredHtml } from '@sshk/rich-text'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import type { ContentRecord, ContentSaveInput, ContentStatus } from '@sshk/shared'
 import { format, toMs, ISO_WITH_OFFSET } from '@sshk/shared'
+import { ElMessage } from 'element-plus'
 import { host } from '../host'
 
 const props = defineProps<{
@@ -31,6 +32,8 @@ interface CeForm {
 }
 const form = ref<CeForm>({ _id: undefined, name: '', html: '', summary: '', description: '', tags: [], status: 'draft', publishAt: '' })
 const nameRef = ref<{ focus?: () => void } | null>(null)
+// 脏检测基线（#126：关闭前有未保存内容需二次确认）：打开/切换记录时快照，isDirty 深比较
+const baseline = ref('')
 const imageLibrary = createHostImageLibrary(TOOL_ID, host.upload)
 
 // 定时发布时刻（毫秒）：el-date-picker value-format="x" 直出/直吃毫秒时间戳
@@ -47,8 +50,7 @@ const disabledDate = (d: Date): boolean => {
   return d.getTime() < start.getTime()
 }
 
-const onUploadImage = async (file: File): Promise<string> => {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
+const onUploadImage = async (file: File): Promise<string> => {  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
     reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
@@ -73,7 +75,10 @@ watch(() => [props.record, props.copySource] as const, () => {
       }
     : { _id: undefined, name: '', html: '', summary: '', description: '', tags: [], status: 'draft', publishAt: '' }
   nextTick(() => nameRef.value?.focus?.())
+  baseline.value = JSON.stringify(form.value)
 }, { immediate: true })
+
+const isDirty = computed(() => baseline.value !== '' && baseline.value !== JSON.stringify(form.value))
 
 /** 标题（原「名称」）必填；定时发布还须带有效时刻 */
 const canSave = computed(() => {
@@ -82,7 +87,9 @@ const canSave = computed(() => {
   return true
 })
 function submit(): void {
-  if (!canSave.value) return
+  // 条件不符必须给 toast（项目铁律：禁静默 return；#125 定时时间必填）
+  if (!form.value.name.trim()) { ElMessage.warning('请填写内容标题'); return }
+  if (form.value.status === 'scheduled' && !form.value.publishAt) { ElMessage.warning('定时发布需选择定时时间'); return }
   const isScheduled = form.value.status === 'scheduled'
   // publishAt 契约：ISO 带 +08:00 字符串（与 ContentSaveInput 类型一致，勿发数字毫秒）
   const publishMsNum = isScheduled ? toMs(form.value.publishAt) ?? 0 : 0
@@ -93,7 +100,7 @@ function submit(): void {
     publishAt: publishMsNum ? format(publishMsNum, ISO_WITH_OFFSET) : undefined,
   } as ContentSaveInput)
 }
-defineExpose({ submit, canSave })
+defineExpose({ submit, canSave, isDirty })
 </script>
 
 <template>
@@ -118,7 +125,7 @@ defineExpose({ submit, canSave })
             <el-option label="已下线" value="retracted" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.status === 'scheduled'" label="定时时间">
+        <el-form-item v-if="form.status === 'scheduled'" label="定时时间" required>
           <el-date-picker
             v-model="publishMs"
             type="datetime"
@@ -154,6 +161,7 @@ defineExpose({ submit, canSave })
 /* 两列栅格行：多列布局遵守页面留白与间距规范（gap 用统一 token） */
 .ce-row-2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sshk-gap-lg); align-items: start; }
 .ce-reserved { min-width: 0; }
-.ce-editor { flex: 1; min-height: 520px; display: flex; flex-direction: column; }
+/* 编辑器占满剩余空间（#125 双滚动条根因②=min-height 520 在小窗强顶破容器致双层滚动；240 为保底不顶破） */
+.ce-editor { flex: 1; min-height: 240px; display: flex; flex-direction: column; }
 .ce-editor > :deep(.rich) { flex: 1; min-height: 0; }
 </style>

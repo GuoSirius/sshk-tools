@@ -36,6 +36,10 @@ function iconPath(menu: ToolMenu): string {
   // manifest 声明的 menu.icon 优先（SVG path d），其次宿主内置集，最后圆点兜底
   return menu.icon ?? ICONS[menu.id] ?? (menu.children?.length ? ICONS['config']! : DOT)
 }
+/** DOT 圆点兜底是闭合 path，需 fill 实心（其余 icon 一律 stroke 线条风格，theme.css .is-sub 口径） */
+function isDot(menu: ToolMenu): boolean {
+  return !menu.icon && !ICONS[menu.id] && !menu.children?.length
+}
 function containsActive(menu: ToolMenu): boolean {
   if (menu.id === props.active) return true
   return (menu.children ?? []).some(containsActive)
@@ -53,7 +57,7 @@ function containsActive(menu: ToolMenu): boolean {
         :title="menu.label"
         @click="toggleGroup(menu.id)"
       >
-        <svg class="side-icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(menu)" /></svg>
+        <svg class="side-icon" :class="{ 'is-dot': isDot(menu) }" viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(menu)" /></svg>
         <span class="side-label">{{ menu.label }}</span>
         <el-icon class="side-chevron" :size="14"><ArrowRight /></el-icon>
       </button>
@@ -65,7 +69,7 @@ function containsActive(menu: ToolMenu): boolean {
         :title="menu.label"
         @click="selectItem(menu.id)"
       >
-        <svg class="side-icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(menu)" /></svg>
+        <svg class="side-icon" :class="{ 'is-dot': isDot(menu) }" viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(menu)" /></svg>
         <span class="side-label">{{ menu.label }}</span>
       </button>
 
@@ -84,3 +88,7 @@ function containsActive(menu: ToolMenu): boolean {
     </li>
   </ul>
 </template>
+
+<style scoped>
+.side-icon.is-dot { fill: currentColor; stroke: none; }
+</style>

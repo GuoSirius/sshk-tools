@@ -11,7 +11,8 @@
  * 滚动口径（用户 2026-11-19）：滚动层 = .ce-body，头部/脚部不随内容滚；
  * 弹框自身 padding 归零，滚动条贴弹框最右缘，留白由 .ce-head/.ce-content 自身 padding 补偿。
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useDraggable } from '@vueuse/core'
 import { Rank } from '@element-plus/icons-vue'
 // 窗口四态图标用 FA（Windows 风格，EP icons 无对应；fa-window-* 全局 CSS 已在 main.ts 注册）
@@ -58,23 +59,64 @@ function setMode(mode: WinMode): void {
   else winMode.value = mode
   minimized.value = false
 }
-/** 最小化：统一停靠左下角（用户 2026-11-20：位置固定可找），手柄可拖拽走 */
+/**
+ * 最小化手柄（用户 2026-11-20 五轮定版）：默认对齐工具页主体（.tool-page-body，宿主 App 层
+ * 包裹工具内容、随侧栏展开/收起伸缩）的右下角；ResizeObserver 跟随容器尺寸变化自动重锚。
+ * 用户手动拖拽后（userMoved）不再自动重锚，尊重手动位置。
+ */
+const userMoved = ref(false)
+let anchorEl: HTMLElement | null = null
+let anchorRo: ResizeObserver | null = null
+function anchorBar(): void {
+  anchorEl ??= document.querySelector<HTMLElement>('.tool-page-body')
+  const w = barRef.value?.offsetWidth ?? 280
+  const h = barRef.value?.offsetHeight ?? 40
+  if (!anchorEl) {
+    // 兜底：找不到工具页容器（理论不可达，App 层恒有 .tool-page-body）时贴窗口右下角
+    x.value = Math.max(8, (window.innerWidth ?? 1200) - w - 16)
+    y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
+    return
+  }
+  const rect = anchorEl.getBoundingClientRect()
+  x.value = Math.max(8, rect.right - w)
+  y.value = Math.max(8, rect.bottom - h)
+}
+function watchAnchor(): void {
+  anchorRo?.disconnect()
+  anchorRo = null
+  anchorEl = null
+  anchorBar()
+  if (!anchorEl) return
+  anchorRo = new ResizeObserver(() => { if (!userMoved.value) anchorBar() })
+  anchorRo.observe(anchorEl)
+}
+onUnmounted(() => { anchorRo?.disconnect(); anchorRo = null })
+/** 最小化：停靠工具页主体右下角（位置确定可找、随侧栏展开收起跟随），手柄可拖拽走 */
 function doMinimize(): void {
   preMinimizeMode.value = winMode.value
   minimized.value = true
-  void nextTick(() => {
-    const h = barRef.value?.offsetHeight ?? 40
-    x.value = 8
-    y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
-  })
+  userMoved.value = false
+  void nextTick(watchAnchor)
 }
 /** 点悬浮条复原：还原到最小化之前的窗口状态 */
 function restore(): void { minimized.value = false; winMode.value = preMinimizeMode.value }
 /** 由父组件触发复原（其它编辑操作二次确认后）：按用户口径默认最大化显示 */
 function restoreMaximized(): void { minimized.value = false; winMode.value = 'maximized' }
-function doClose(): void { minimized.value = false; visible.value = false }
+/** 关闭（#126：有未保存内容先二次确认；项目铁律禁遮罩禁 ESC） */
+async function doClose(): Promise<void> {
+  if (coreRef.value?.isDirty) {
+    try {
+      await ElMessageBox.confirm('当前内容尚未保存，关闭后将丢失修改。确定关闭吗？', '未保存提醒', {
+        type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
+        confirmButtonText: '关闭', cancelButtonText: '继续编辑', distinguishCancelAndClose: true,
+      })
+    } catch { return } // 取消/ESC → 留在编辑
+  }
+  minimized.value = false
+  visible.value = false
+}
 function submit(): void { coreRef.value?.submit() }
-defineExpose({ submit, canSave: () => Boolean(coreRef.value?.canSave), restore, restoreMaximized, isMinimized: () => minimized.value })
+defineExpose({ submit, canSave: () => Boolean(coreRef.value?.canSave), isDirty: () => Boolean(coreRef.value?.isDirty), restore, restoreMaximized, isMinimized: () => minimized.value })
 
 // 向上同步最小化态，父组件据此在其它编辑操作触发时二次确认
 watch(minimized, (m) => { if (visible.value) emit('update:minimized', m) })
@@ -93,6 +135,8 @@ const { x, y } = useDraggable(barRef, {
   handle: barHandleRef,
   preventDefault: true,
   stopPropagation: true,
+  // 用户拖过就不再自动重锚（ResizeObserver 让位于手动位置）
+  onStart: () => { userMoved.value = true },
 })
 // 拖出视口防丢（TransferPanel 同款口径）：横纵各留 80px 可见，任何时候都能抓回来
 function clampBar(): void {
@@ -165,9 +209,10 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
 .ce-controls { display: inline-flex; gap: 2px; }
 .ce-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--el-text-color-regular); cursor: pointer; border-radius: 4px; }
 .ce-btn:hover { background: var(--el-fill-color-light); }
-/* 唯一滚动层：滚动条贴弹框最右缘（弹框 padding 已在全局块归零）；头部/脚部在此层之外，不随内容滚 */
+/* 唯一滚动层（#125：双滚动条根因①=此层 height:100% 不含 padding 恒溢出 12px 强制外滚，加 border-box 根治）：
+   滚动条贴弹框最右缘；头部/脚部在此层之外，不随内容滚 */
 .ce-body { flex: 1; min-height: 0; overflow-y: auto; }
-.ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; }
+.ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 /* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
 .ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
 .ce-mini-bar { position: fixed; z-index: 4000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
