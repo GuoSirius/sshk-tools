@@ -25,6 +25,7 @@ import type {
 } from '../types'
 import {
   defaultSourceId,
+  displayDirPath,
   loadSettings,
   matchFileKeyword,
   normalizeDirInput,
@@ -330,6 +331,16 @@ function commitDirInput(): void {
   const normalized = typeOf.value === 'local' ? String(raw ?? '').trim() : normalizeDirInput(raw)
   dirModel.value = normalized
 }
+
+/**
+ * 手输框的显示镜像：非编辑态补前导 / 与级联回显一致（/bt_backup），编辑时还原内部原值，
+ * 避免光标跳动、无法删改前导 /。写回仍落 dirModel（桶根相对路径），上传/作用域/校验口径不变。
+ */
+const dirManualFocused = ref(false)
+const dirManualDisplay = computed({
+  get: () => (dirManualFocused.value || typeOf.value === 'local' ? dirModel.value : displayDirPath(dirModel.value, typeOf.value)),
+  set: (v: string) => { dirModel.value = v },
+})
 
 /** 恢复持久化设置后归一化目录写法（旧数据可能带首尾斜杠），保持作用域口径一致 */
 function normalizeRestoredDir(): void {
@@ -1102,11 +1113,13 @@ function onPaneScroll(e: Event): void {
               @change="onDirChange"
             />
             <el-input
-              v-model="dirModel"
+              v-model="dirManualDisplay"
               clearable
               class="dir-manual"
               :class="{ 'dir-invalid': dirValidation.level === 'error' }"
               placeholder="或手输目录"
+              @focus="dirManualFocused = true"
+              @blur="dirManualFocused = false; commitDirInput()"
               @change="commitDirInput"
             />
           </div>

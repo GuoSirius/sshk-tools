@@ -47,6 +47,18 @@ export function normalizeDirInput(raw: string): string {
     .join('/')
 }
 
+/**
+ * 目录显示值：云/远程的桶根相对路径（如 bt_backup）补前导 /，与级联回显口径（/bt_backup）一致。
+ * 级联框靠「根 label='' + separator='/'」拼出 /，并列的手输框直接绑内部值则显示 bt_backup，
+ * 两个控件显示不一致（2026-11-20 用户反馈），故手输框非编辑态走本函数补显。
+ * 仅用于展示，不改内部存储值（上传 prefix / scope / 校验仍用桶根相对路径）。
+ * 本地路径与已带 / 的值原样返回。
+ */
+export function displayDirPath(raw: string, type: 'local' | 'remote' | 'cloud'): string {
+  const v = String(raw ?? '')
+  return type !== 'local' && v && !v.startsWith('/') ? `/${v}` : v
+}
+
 function parseSettings(raw: string | null): FilePickerSettings | null {
   if (!raw) return null
   try {

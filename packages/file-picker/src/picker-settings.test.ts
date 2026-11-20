@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FilePickerSource } from './types'
 import {
   defaultSourceId,
+  displayDirPath,
   loadSettings,
   matchFileKeyword,
   normalizeDirInput,
@@ -102,6 +103,23 @@ describe('normalizeDirInput', () => {
   it('空串与全斜杠归一为空', () => {
     expect(normalizeDirInput('')).toBe('')
     expect(normalizeDirInput('/')).toBe('')
+  })
+})
+
+describe('displayDirPath', () => {
+  it('云/远程桶根相对路径补前导 /，与级联回显一致', () => {
+    expect(displayDirPath('bt_backup', 'cloud')).toBe('/bt_backup')
+    expect(displayDirPath('a/b/c', 'cloud')).toBe('/a/b/c')
+    expect(displayDirPath('home/user', 'remote')).toBe('/home/user')
+  })
+  it('已带 / 的值不重复补', () => {
+    expect(displayDirPath('/bt_backup', 'cloud')).toBe('/bt_backup')
+    expect(displayDirPath('/a/b', 'remote')).toBe('/a/b')
+  })
+  it('本地路径与空值原样返回', () => {
+    expect(displayDirPath('D:\\a\\b', 'local')).toBe('D:\\a\\b')
+    expect(displayDirPath('', 'cloud')).toBe('')
+    expect(displayDirPath('', 'local')).toBe('')
   })
 })
 
