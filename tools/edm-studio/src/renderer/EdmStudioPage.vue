@@ -36,9 +36,6 @@ onMounted(() => {
   <ToolPageLayout title="EDM Studio" description="品牌 → 模板/片段（版本不可变）→ 邮件三阶段产物 → 导出与分享">
     <component :is="active" :menu="menu" />
     <UploadProgressToast />
-    <template #footer>
-      <span class="muted">版本不可变（D8）· 覆盖式产物（D19）· 黑名单优先（D14）· 北京时间（D22）</span>
-    </template>
   </ToolPageLayout>
 </template>
 

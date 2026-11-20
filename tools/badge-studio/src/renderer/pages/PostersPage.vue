@@ -147,10 +147,10 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
 
     <!-- 操作栏：单独一行居右，紧凑口径 -->
     <div class="toolbar">
-      <el-button size="small" type="primary" plain @click="createPoster">新建海报</el-button>
-      <el-divider direction="vertical" />
       <el-button size="small" type="warning" plain :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出（{{ selectedPosters.length }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selectedPosters.length === 0" @click="doBatchDelete">批量删除（{{ selectedPosters.length }}）</el-button>
+      <el-divider direction="vertical" />
+      <el-button size="small" type="primary" plain @click="createPoster">新建海报</el-button>
       <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openListShare">分享列表</el-button>
     </div>
 
@@ -250,7 +250,7 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 /* 操作栏紧凑口径：gap 4px + 归零 EP 兄弟 margin + padding 8px */
 .toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-button + .el-divider, .toolbar .el-divider + .el-button { margin-left: 0; }
+.toolbar .el-button + .el-button, .toolbar .el-divider + .el-button { margin-left: 0; }
 .toolbar .el-button { padding-left: 8px; padding-right: 8px; }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; justify-content: flex-end; }

@@ -218,10 +218,10 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
 
     <!-- 操作栏：单独一行居右，紧凑口径 -->
     <div class="toolbar">
-      <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>
       <el-button size="small" type="success" plain :disabled="selectedMails.length === 0" @click="batchExport">批量导出（{{ selectedMails.length }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selectedMails.length === 0" @click="batchRemove">批量删除（{{ selectedMails.length }}）</el-button>
       <el-divider direction="vertical" />
+      <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>
       <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openShare">分享产物</el-button>
     </div>
 
@@ -309,7 +309,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
 .f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 /* 操作栏紧凑口径：gap 4px + 归零 EP 兄弟 margin + padding 8px */
 .toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-button + .el-divider, .toolbar .el-divider + .el-button { margin-left: 0; }
+.toolbar .el-button + .el-button, .toolbar .el-divider + .el-button { margin-left: 0; }
 .toolbar .el-button { padding-left: 8px; padding-right: 8px; }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; align-items: center; justify-content: space-between; }
