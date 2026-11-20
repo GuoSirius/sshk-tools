@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 分享管理 · 访问日志页（plans/12 §8.2）。
- * EP daterange 快捷+自选时间范围；IP/路径搜索、状态码/工具过滤；导出 CSV（随筛选）、
+ * EP datetimerange 快捷+自选时间范围（精确到时分秒，2026-11-20 列表页规范）；IP/路径搜索、状态码/工具过滤；导出 CSV（随筛选）、
  * 单条删除/批量删除/仅清空访问日志（均二次确认）；分页。数据走 NeDB shareLogs 独立通道。
  */
 import { computed, onMounted, ref } from 'vue'
@@ -36,13 +36,13 @@ const shortcuts = [
 
 const routeMap = computed(() => new Map(routes.value.map((r) => [r.id, r])))
 
-/** UI 过滤状态 → 查询条件（时间：自选=自然日闭区间毫秒；无范围=全部） */
+/** UI 过滤状态 → 查询条件（时间：2026-11-20 规範精确到时分秒，闭区间毫秒；无范围=全部） */
 function buildQuery(offsetOverride?: number): ShareLogsQuery {
   let from: number | undefined
   let to: number | undefined
   if (dateRange.value && dateRange.value[0] && dateRange.value[1]) {
-    from = new Date(`${dateRange.value[0]}T00:00:00`).getTime()
-    to = new Date(`${dateRange.value[1]}T23:59:59.999`).getTime()
+    from = Date.parse(dateRange.value[0])
+    to = Date.parse(dateRange.value[1])
   }
   return {
     from, to,
@@ -151,26 +151,38 @@ onMounted(() => { void refresh() })
 
 <template>
   <div class="page-wrap">
-    <div class="toolbar">
-      <el-input v-model="searchIp" clearable placeholder="来源 IP" size="small" style="width: 140px" @keyup.enter="doSearch" />
-      <el-input v-model="searchPath" clearable placeholder="路径" size="small" style="width: 160px" @keyup.enter="doSearch" />
+    <!-- 筛选栏（2026-11-20 列表页规范：label+控件；宽度统一 180px、时间范围 400px；时间精确到时分秒） -->
+    <div class="filter-bar">
+      <span class="f-label">来源 IP</span>
+      <el-input v-model="searchIp" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
+      <span class="f-label">路径</span>
+      <el-input v-model="searchPath" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
+      <span class="f-label">时间</span>
       <el-date-picker
-        v-model="dateRange" type="daterange" size="small" unlink-panels
-        value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期"
-        range-separator="至" :shortcuts="shortcuts" style="width: 300px" @change="doSearch" />
-      <el-select v-model="statusGroup" clearable placeholder="状态码：全部" size="small" style="width: 120px" @change="doSearch">
+        v-model="dateRange" type="datetimerange" size="small" unlink-panels
+        value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间"
+        range-separator="至" :shortcuts="shortcuts" style="width: 400px" @change="doSearch" />
+      <span class="f-label">状态码</span>
+      <el-select v-model="statusGroup" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
         <el-option label="2xx 成功" value="2xx" />
         <el-option label="3xx 跳转" value="3xx" />
         <el-option label="4xx 失败" value="4xx" />
         <el-option label="5xx 服务错" value="5xx" />
       </el-select>
-      <el-select v-model="toolFilter" clearable placeholder="工具：全部" size="small" style="width: 140px" @change="doSearch">
+      <span class="f-label">工具</span>
+      <el-select v-model="toolFilter" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
         <el-option v-for="r in routes" :key="r.id" :label="r.toolId" :value="r.toolId" />
       </el-select>
+    </div>
+
+    <!-- 操作栏：筛选栏下方，单独一行居右 -->
+    <div class="toolbar">
       <el-button size="small" type="primary" @click="doSearch">查询</el-button>
       <el-button size="small" type="success" :icon="Download" @click="exportCsv">导出 CSV</el-button>
+      <el-divider direction="vertical" />
       <el-button size="small" type="danger" :icon="Delete" :disabled="!selected.length" @click="removeSelected">批量删除</el-button>
       <el-button size="small" type="danger" plain @click="clearLogs">仅清空访问日志</el-button>
+      <el-divider direction="vertical" />
       <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       <span class="muted">共 {{ total }} 条</span>
     </div>
@@ -213,8 +225,11 @@ onMounted(() => { void refresh() })
 </template>
 
 <style scoped>
-.page-wrap { padding: 12px 16px; }
-.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.page-wrap { padding: var(--sshk-page-padding); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sshk-gap-sm); }
+/* 筛选栏/操作栏（2026-11-20 列表页规范）：筛选在上 label+控件，操作单独一行居右 */
+.filter-bar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
+.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
+.toolbar { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; justify-content: flex-end; }
 .muted { font-size: 12px; color: var(--el-text-color-secondary); }
 .mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
 .op-row { display: inline-flex; align-items: center; gap: 2px; }

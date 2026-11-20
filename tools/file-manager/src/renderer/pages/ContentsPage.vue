@@ -54,11 +54,12 @@ const allTags = computed(() => {
   for (const r of rows.value) for (const t of r.tags ?? []) set.add(t)
   return [...set]
 })
-/** 时间范围判定：按更新时间（ISO 字符串，比较到日即可） */
+/** 时间范围判定（2026-11-20 规范：筛选时间范围默认精确到时分秒）：按更新时间毫秒闭区间比较 */
 function inDateRange(iso: string): boolean {
-  if (!dateRange.value || !dateRange.value[0] || !dateRange.value[1]) return true
-  const d = iso.slice(0, 10)
-  return d >= dateRange.value[0] && d <= dateRange.value[1]
+  if (!dateRange.value?.[0] || !dateRange.value[1]) return true
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return true
+  return t >= Date.parse(dateRange.value[0]) && t <= Date.parse(dateRange.value[1])
 }
 const filteredRows = computed(() => {
   const k = kw.value.trim().toLowerCase()
@@ -285,30 +286,36 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       @cancel="editorOpen = false"
     />
     <template v-else>
-    <!-- 筛选栏在最上（用户 2026-11-20：顶部操作放搜索下方且居右） -->
+    <!-- 筛选栏（2026-11-20 列表页规范：统一 label+控件形式；宽度统一 180px、时间范围 400px；时间默认精确到时分秒） -->
     <div class="filter-bar">
-      <el-input v-model="kw" size="small" clearable placeholder="搜索标题 / 描述" style="width: 200px" />
+      <span class="f-label">搜索</span>
+      <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" />
+      <span class="f-label">时间</span>
       <el-date-picker
         v-model="dateRange"
         size="small"
-        type="daterange"
+        type="datetimerange"
         range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        style="width: 240px"
+        start-placeholder="开始时间"
+        end-placeholder="结束时间"
+        value-format="YYYY-MM-DD HH:mm:ss"
+        :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
+        style="width: 400px"
       />
-      <el-select v-model="tagFilter" size="small" multiple clearable placeholder="标签" style="width: 200px" collapse-tags collapse-tags-tooltip>
+      <span class="f-label">标签</span>
+      <el-select v-model="tagFilter" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
         <el-option v-for="t in allTags" :key="t" :label="t" :value="t" />
       </el-select>
-      <el-select v-model="shareFilter" size="small" style="width: 130px">
-        <el-option label="全部分享状态" value="all" />
+      <span class="f-label">分享状态</span>
+      <el-select v-model="shareFilter" size="small" style="width: 180px">
+        <el-option label="全部" value="all" />
         <el-option label="私有" value="own" />
         <el-option label="共用" value="common" />
         <el-option label="未分享" value="none" />
       </el-select>
-      <el-select v-model="statusFilter" size="small" style="width: 130px">
-        <el-option label="全部发布状态" value="all" />
+      <span class="f-label">发布状态</span>
+      <el-select v-model="statusFilter" size="small" style="width: 180px">
+        <el-option label="全部" value="all" />
         <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-button size="small" text :disabled="!kw && !dateRange && !tagFilter.length && shareFilter === 'all' && statusFilter === 'all'" @click="resetFilters">清空筛选</el-button>
@@ -430,6 +437,8 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 .contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
 .toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+/* 筛选栏 label（2026-11-20 列表页规范：label+控件形式，明确搜索对象） */
+.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; justify-content: flex-end; }
 .op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
