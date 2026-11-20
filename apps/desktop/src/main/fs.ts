@@ -111,6 +111,10 @@ const CFG_MP_ENABLED = 'app.fs.multipart.enabled'
 const CFG_MP_THRESHOLD_MB = 'app.fs.multipart.thresholdMb'
 const CFG_MP_PART_SIZE_MB = 'app.fs.multipart.partSizeMb'
 const CFG_MP_CONCURRENCY = 'app.fs.multipart.partsConcurrency'
+const CFG_MP_TIMEOUT_SEC = 'app.fs.multipart.requestTimeoutSec'
+const MP_TIMEOUT_DEFAULT = 300
+const MP_TIMEOUT_MIN = 30
+const MP_TIMEOUT_MAX = 3600
 const MP_THRESHOLD_DEFAULT = 50
 const MP_PART_SIZE_DEFAULT = 5
 const MP_CONCURRENCY_DEFAULT = 3
@@ -135,6 +139,7 @@ function readMultipartSettings(get: (key: string) => unknown): FsMultipartSettin
     thresholdMb: clamp(get(CFG_MP_THRESHOLD_MB), MP_THRESHOLD_MIN, MP_THRESHOLD_MAX, MP_THRESHOLD_DEFAULT),
     partSizeMb: clamp(get(CFG_MP_PART_SIZE_MB), MP_PART_SIZE_MIN, MP_PART_SIZE_MAX, MP_PART_SIZE_DEFAULT),
     partsConcurrency: clamp(get(CFG_MP_CONCURRENCY), MP_CONCURRENCY_MIN, MP_CONCURRENCY_MAX, MP_CONCURRENCY_DEFAULT),
+    requestTimeoutSec: clamp(get(CFG_MP_TIMEOUT_SEC), MP_TIMEOUT_MIN, MP_TIMEOUT_MAX, MP_TIMEOUT_DEFAULT),
   }
 }
 
@@ -1182,6 +1187,8 @@ export class FsRuntime {
           accessKeyId: cloud.accessKeyId,
           accessKeySecret,
           baseUrl: cloud.baseUrl,
+          // 传输设置里的超时（秒→毫秒）注入云 SDK，弱网可调大；缺省回落 5 分钟
+          requestTimeoutMs: readMultipartSettings((k) => this.opts.services.config.get(k)).requestTimeoutSec * 1000,
         }),
         channel: {
           id: cloud.id,
@@ -1820,12 +1827,14 @@ export class FsRuntime {
       thresholdMb: req?.thresholdMb == null ? cur.thresholdMb : Math.min(MP_THRESHOLD_MAX, Math.max(MP_THRESHOLD_MIN, Math.floor(Number(req.thresholdMb)) || MP_THRESHOLD_DEFAULT)),
       partSizeMb: req?.partSizeMb == null ? cur.partSizeMb : Math.min(MP_PART_SIZE_MAX, Math.max(MP_PART_SIZE_MIN, Math.floor(Number(req.partSizeMb)) || MP_PART_SIZE_DEFAULT)),
       partsConcurrency: req?.partsConcurrency == null ? cur.partsConcurrency : Math.min(MP_CONCURRENCY_MAX, Math.max(MP_CONCURRENCY_MIN, Math.floor(Number(req.partsConcurrency)) || MP_CONCURRENCY_DEFAULT)),
+      requestTimeoutSec: req?.requestTimeoutSec == null ? cur.requestTimeoutSec : Math.min(MP_TIMEOUT_MAX, Math.max(MP_TIMEOUT_MIN, Math.floor(Number(req.requestTimeoutSec)) || MP_TIMEOUT_DEFAULT)),
     }
     this.opts.services.config.set(CFG_MP_ENABLED, next.enabled)
     this.opts.services.config.set(CFG_MP_THRESHOLD_MB, next.thresholdMb)
     this.opts.services.config.set(CFG_MP_PART_SIZE_MB, next.partSizeMb)
     this.opts.services.config.set(CFG_MP_CONCURRENCY, next.partsConcurrency)
-    logger.info('upload', `fs 分片设置更新：${next.enabled ? '开' : '关'} / 阈值 ${next.thresholdMb}MB / 片 ${next.partSizeMb}MB / 并发 ${next.partsConcurrency}`)
+    this.opts.services.config.set(CFG_MP_TIMEOUT_SEC, next.requestTimeoutSec)
+    logger.info('upload', `fs 传输设置更新：${next.enabled ? '分片开' : '分片关'} / 阈值 ${next.thresholdMb}MB / 片 ${next.partSizeMb}MB / 并发 ${next.partsConcurrency} / 超时 ${next.requestTimeoutSec}s`)
     return next
   }
 

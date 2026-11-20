@@ -5,6 +5,7 @@ import { isKindFileName, type FileKind } from '@sshk/shared'
 import { collectPrefixes, MAX_DIRECTORIES, normalizeDirPath } from '../directories'
 import type { UploadedImageInfo, UploadedImagePage, UploadContext, UploadFile, UploadListQuery, UploadProvider, UploadResult } from '../types'
 import {
+  CLOUD_REQUEST_TIMEOUT,
   ctorOf,
   listCloudPage,
   loadSdk,
@@ -65,8 +66,8 @@ interface PutOutcome { url?: string }
 
 /** 分片上传阈值：超过此大小走 ali-oss multipartUpload（单请求不会 60s 超时，且能报真实进度） */
 const MULTIPART_THRESHOLD = 10 * 1024 * 1024
-/** 单请求超时放宽到 5 分钟（ali-oss 默认 60s，大视频在弱网下易触发 ResponseTimeoutError） */
-const OSS_REQUEST_TIMEOUT = 5 * 60 * 1000
+/** 单请求超时沿用云 SDK 单一事实源（cloud-sdk CLOUD_REQUEST_TIMEOUT） */
+const OSS_REQUEST_TIMEOUT = CLOUD_REQUEST_TIMEOUT
 
 async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buffer, ctx: UploadContext): Promise<PutOutcome> {
   const bucket = ctx.overrides?.bucket || profile.bucket
@@ -198,7 +199,7 @@ async function probe(profile: CloudProfile, mod: SdkModule): Promise<string> {
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
-      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: OSS_REQUEST_TIMEOUT })
       await client.listV2({ 'max-keys': 1 })
       return `阿里云 OSS 连通：bucket ${bucket} 可读`
     }

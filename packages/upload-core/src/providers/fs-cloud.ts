@@ -6,7 +6,7 @@ import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
 import { deleteDeniedError, type FsDriver } from '../fs-driver'
 import { sortFsEntries, type FsSearchBatchFn } from '../fs-driver'
-import { collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withCloudTimeout, withScheme, type CloudProfile } from './cloud-sdk'
+import { CLOUD_REQUEST_TIMEOUT, collectObjects, ctorOf, listCloudPage, loadSdk, specOf, strOf, withCloudTimeout, withScheme, type CloudProfile, type SdkModule } from './cloud-sdk'
 
 /**
  * F-3：云（对象存储）文件系统驱动。
@@ -82,6 +82,18 @@ function isDeniedError(err: unknown): boolean {
     /no right to access|bucket acl|AccessDenied|permission denied|Forbidden/i.test(String(e?.message ?? err))
 }
 
+/**
+ * 是否为「请求超时」类错误（服务端可能已落盘、客户端 ACK 慢导致误报）。
+ * ali-oss：ResponseTimeoutError / ConnectionTimeoutError（name 或 status -1/-2）；
+ * 通用兜底：超时字样。仅用于写后幂等复核，不掩盖真实 4xx/5xx。
+ */
+function isTimeoutError(err: unknown): boolean {
+  const e = err as { name?: unknown; status?: unknown; code?: unknown; message?: unknown }
+  if (e?.name === 'ResponseTimeoutError' || e?.name === 'ConnectionTimeoutError') return true
+  if (Number(e?.status) === -1 || Number(e?.status) === -2) return true
+  return /timeout|超时/i.test(String(e?.message ?? err))
+}
+
 // ── 删除权限探测（用户 2026-11-18：写删组合操作先探测再执行，避免半程操作）──
 // 探测方式：delete 一个必然不存在的 key。OSS/S3 系 DeleteObject 幂等——
 // 权限允许时对不存在 key 也返回成功；Bucket ACL 拒绝时抛 AccessDenied。
@@ -152,6 +164,20 @@ export class CloudFsDriver implements FsDriver {
     return this.profile.bucket
   }
 
+  /**
+   * 构造 ali-oss 客户端的唯一入口：统一带 CLOUD_REQUEST_TIMEOUT。
+   * 之前各操作各自 new OSS({...}) 漏了 timeout，默认 60s 导致「服务端已落盘、客户端 ACK 慢」
+   * 时抛 ResponseTimeoutError（文件系统传 <50MB 小文件反复误报，2026-11-20 根治）。
+   */
+  private newOss(mod: SdkModule, ep = this.profile.endpoint?.trim() ?? ''): OssClient {
+    const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => OssClient
+    return new OSS({
+      region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(),
+      accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret,
+      timeout: this.profile.requestTimeoutMs ?? CLOUD_REQUEST_TIMEOUT,
+    })
+  }
+
   async list(path: string, opts?: { pageSize?: number; cursor?: string | null }): Promise<FsListPage> {
     const mod = await loadSdk(specOf(this.profile))
     const base = sdkPrefix(path)
@@ -197,10 +223,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
-          head(k: string): Promise<{ res: { headers: Record<string, string> } }>
-        }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         try {
           const r = await client.head(key)
           const h = r.res?.headers ?? {}
@@ -241,8 +264,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { put(k: string, b: Buffer): Promise<unknown> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         await client.put(marker, Buffer.alloc(0))
         return
       }
@@ -289,8 +311,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { delete(k: string): Promise<unknown> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         await client.delete(key)
         return
       }
@@ -335,8 +356,7 @@ export class CloudFsDriver implements FsDriver {
     // 2) 分批删除
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { deleteMulti(ks: string[]): Promise<unknown> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         for (let i = 0; i < keys.length; i += CLOUD_DELETE_BATCH) {
           await client.deleteMulti(keys.slice(i, i + CLOUD_DELETE_BATCH))
           done = Math.min(total, i + CLOUD_DELETE_BATCH)
@@ -374,8 +394,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { copy(dest: string, src: string): Promise<unknown> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         await client.copy(destKey, srcKey)
         return
       }
@@ -434,8 +453,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { get(k: string): Promise<{ content: Buffer; res: { headers: Record<string, string> } }> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         const r = await client.get(key)
         const h = r.res?.headers ?? {}
         return { data: Buffer.from(r.content), size: r.content.length, etag: h['etag'], modified: h['last-modified'] ? new Date(h['last-modified']).getTime() : undefined }
@@ -466,10 +484,24 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { put(k: string, b: Buffer): Promise<unknown> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
-        await client.put(key, buffer)
-        return
+        const client = this.newOss(mod, ep)
+        try {
+          await client.put(key, buffer)
+          return
+        } catch (err) {
+          // 根治「文件已在却报失败」：ali-oss Buffer put 是单次请求、无 retry，弱网 ACK 慢会在
+          // 服务端已落盘后仍抛 ResponseTimeoutError。超时类错误先 head 幂等复核，大小一致即判成功，
+          // 避免误报 + 重复上传冲突；非超时错误（4xx/5xx/权限）照常抛出。
+          if (!isTimeoutError(err)) throw err
+          try {
+            const r = await client.head(key)
+            const size = Number(r?.res?.headers?.['content-length'] ?? -1)
+            if (size === buffer.length) return
+          } catch {
+            // head 复核失败（对象确实没落盘 / 网络仍不通）→ 落回抛原始超时错误
+          }
+          throw err
+        }
       }
       case 'aws-s3': {
         const S3Client = ctorOf(mod, ['S3Client'], '@aws-sdk/client-s3') as new (o: Record<string, unknown>) => { send(cmd: unknown): Promise<unknown> }
@@ -493,8 +525,7 @@ export class CloudFsDriver implements FsDriver {
     const ep = this.profile.endpoint?.trim() ?? ''
     switch (this.profile.provider) {
       case 'aliyun-oss': {
-        const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => { getStream(k: string): Promise<{ stream: Readable }> }
-        const client = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+        const client = this.newOss(mod, ep)
         const r = await client.getStream(key)
         await new Promise<void>((res, rej) => {
           const out = createWriteStream(destFile)
@@ -538,9 +569,7 @@ export class CloudFsDriver implements FsDriver {
   private async oss(): Promise<OssClient> {
     if (this.ossCached) return this.ossCached
     const mod = await loadSdk(specOf(this.profile))
-    const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => OssClient
-    const ep = this.profile.endpoint?.trim() ?? ''
-    this.ossCached = new OSS({ region: this.profile.region, endpoint: ep || undefined, bucket: this.bucketOf(), accessKeyId: this.profile.accessKeyId, accessKeySecret: this.profile.accessKeySecret })
+    this.ossCached = this.newOss(mod)
     return this.ossCached
   }
 

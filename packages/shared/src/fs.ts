@@ -377,6 +377,8 @@ export interface FsMultipartSettings {
   partSizeMb: number
   /** 单任务分片并发（1~8，默认 3） */
   partsConcurrency: number
+  /** 云 SDK 单请求超时（秒，30~3600，默认 300=5分钟；弱网可调大避免大文件 ACK 慢误报） */
+  requestTimeoutSec: number
 }
 
 /** 分片设置读取结果：附带服务端遗留 uploadId 数（崩溃遗留，面板/设置展示 + 手动清理） */

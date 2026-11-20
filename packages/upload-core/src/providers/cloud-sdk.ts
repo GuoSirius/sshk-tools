@@ -14,6 +14,8 @@ export interface CloudProfile {
   accessKeyId: string
   accessKeySecret: string
   baseUrl?: string
+  /** SDK 单请求超时（毫秒）；省略走 CLOUD_REQUEST_TIMEOUT（可由传输设置注入） */
+  requestTimeoutMs?: number
 }
 
 export type SdkModule = Record<string, unknown>
@@ -96,6 +98,13 @@ export function withScheme(host: string): string {
   return /^https?:\/\//i.test(h) ? h : `https://${h}`
 }
 
+/**
+ * 云 SDK 单请求超时（单一事实源）：ali-oss 默认 60s，弱网/大文件 ACK 慢时服务端已落盘、
+ * 客户端却抛 ResponseTimeoutError（"文件已在却报失败"）。图片库 cloud.ts 与文件系统
+ * fs-cloud.ts 共用本常量，杜绝「改一处漏一处」（2026-11-20 用户三次反馈后根治）。
+ */
+export const CLOUD_REQUEST_TIMEOUT = 5 * 60 * 1000
+
 /** 云 SDK 请求超时兜底（2026-11-19 用户实测：本地切云偶发列目录永久挂起——SDK 请求无超时，
  *  连接僵死时永不 resolve，界面永远转圈且刷新也挂）。超时后 reject，刷新会新建客户端重连。 */
 export async function withCloudTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -166,7 +175,7 @@ export async function listCloudPage(
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
-      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret })
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: CLOUD_REQUEST_TIMEOUT })
       const raw = await client.listV2({
         'max-keys': q.pageSize, prefix, delimiter,
         ...(q.cursor ? { 'continuation-token': q.cursor } : {}),

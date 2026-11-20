@@ -1959,13 +1959,13 @@ async function saveEditor(): Promise<void> {
 
 // ── plans/10 传输设置（分片开关/阈值/片大小/并发实时生效；遗留分片清理，二次确认）──
 const transferCfgOpen = ref(false)
-const transferCfgForm = ref({ enabled: true, thresholdMb: 50, partSizeMb: 5, partsConcurrency: 3 })
+const transferCfgForm = ref({ enabled: true, thresholdMb: 50, partSizeMb: 5, partsConcurrency: 3, requestTimeoutSec: 300 })
 const transferCfgSaving = ref(false)
 const transferCfgOrphans = ref(0)
 async function openTransferConfig(): Promise<void> {
   try {
     const s = await window.api.fs.transferMultipart()
-    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency }
+    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency, requestTimeoutSec: s.requestTimeoutSec }
     transferCfgOrphans.value = s.orphans
   } catch { transferCfgOrphans.value = 0 }
   transferCfgOpen.value = true
@@ -1978,8 +1978,9 @@ async function submitTransferConfig(): Promise<void> {
       thresholdMb: transferCfgForm.value.thresholdMb,
       partSizeMb: transferCfgForm.value.partSizeMb,
       partsConcurrency: transferCfgForm.value.partsConcurrency,
+      requestTimeoutSec: transferCfgForm.value.requestTimeoutSec,
     })
-    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency }
+    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency, requestTimeoutSec: s.requestTimeoutSec }
     ElMessage.success('传输设置已保存（实时生效）')
     transferCfgOpen.value = false
   } catch (err) { ElMessage.error(friendlyError(err)) }
@@ -2626,6 +2627,11 @@ function onKeydown(event: KeyboardEvent): void {
         <el-form-item label="分片并发" required>
           <el-input-number v-model="transferCfgForm.partsConcurrency" :min="1" :max="8" :step="1" :controls="false" style="width: 150px" />
           <span class="fs-ziplimits-unit">个/任务（1~8）</span>
+        </el-form-item>
+        <el-form-item label="请求超时" required>
+          <el-tooltip content="云上传/下载单请求超时；弱网或大文件 ACK 慢可调大（30~3600 秒）。超时后自动复核服务端是否已落盘，已落盘不会误报失败" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
+          <el-input-number v-model="transferCfgForm.requestTimeoutSec" :min="30" :max="3600" :step="30" :controls="false" style="width: 150px" />
+          <span class="fs-ziplimits-unit">秒（默认 300）</span>
         </el-form-item>
         <el-form-item v-if="transferCfgOrphans > 0" label="遗留分片">
           <span class="fs-ziplimits-unit">服务端残留 {{ transferCfgOrphans }} 个</span>
