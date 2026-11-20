@@ -49,8 +49,9 @@ onMounted(() => {
     title="Badge Studio"
     description="邮件 HTML + 点击统计（文件 / 粘贴 / 多图识别）→ 可编辑表格人工校对 → 注入 badge 副本 → 海报长图（原文件永不修改）"
   >
-    <template #actions>
-      <template v-if="!isPosters">
+    <!-- 列表页的按钮/分页已下沉到 PostersPage：此处用条件 slot，海报页不提供 actions/footer，
+         ToolPageLayout 才不会渲染空白 head/foot 横条（2026-11-20 用户截图反馈） -->
+    <template v-if="!isPosters" #actions>
       <el-button size="small" @click="pickHtml">选择 HTML</el-button>
       <el-button size="small" @click="pickStats">选择数据源</el-button>
       <!-- 项4：数据源模板下载——点击主按钮直接下 Excel，右侧箭头下拉可选 CSV / JSON -->
@@ -81,13 +82,12 @@ onMounted(() => {
            补属性/生成只要求 HTML（数据可空，无数据时二次确认）；保存只要求海报名（新海报未生成可先存草稿）；
            截图/下载/分享要求已生成（存在 badge 副本），仅保存草稿不解锁 -->
       <el-button size="small" plain @click="backToList">返回列表</el-button>
-      </template>
     </template>
 
     <component :is="active" :menu="menu" />
 
-    <template #footer>
-      <span v-if="!isPosters" class="muted">原 HTML 全程只读 · 产物覆盖式生成</span>
+    <template v-if="!isPosters" #footer>
+      <span class="muted">原 HTML 全程只读 · 产物覆盖式生成</span>
     </template>
 
     <ConfirmDialog

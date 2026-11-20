@@ -100,6 +100,9 @@ async function saveBase(): Promise<void> {
     await host.config.set('app.shareHub.defaultTtlHours', defaultTtlHours.value)
     await host.config.set('app.shareHub.allowIndex', allowIndex.value)
     await host.config.set('app.shareHub.preferredIp', ipManual.value ? preferredIp.value.trim() : '')
+    // 保存后立即重拉：displayIp 由主进程按当前 preferredIp 实时计算（config.onChanged 即时生效），
+    // 本地 preferredIp 决定「（自动优选）」后缀——两者必须同刻更新，不能等 3s 定时器
+    await Promise.all([refresh(), loadConfig()])
     ElMessage.success('基础设置已保存（同键两处入口一致）')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { saving.value = false }

@@ -143,9 +143,8 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
     <div class="toolbar">
       <el-button size="small" type="success" plain :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       <el-divider direction="vertical" />
-      <el-tag size="small" type="info" class="mini-tag">{{ filtered.length }} 条 / 共 {{ routes.length }} 条</el-tag>
-      <el-tag v-if="status?.running" size="small" type="success" class="mini-tag">运行中 · 端口 {{ status.port }}</el-tag>
-      <el-tag v-else size="small" type="warning" class="mini-tag">服务未运行</el-tag>
+      <el-tag v-if="status?.running" size="small" type="success">运行中 · 端口 {{ status.port }}</el-tag>
+      <el-tag v-else size="small" type="warning">服务未运行</el-tag>
     </div>
 
     <div class="table-wrap" v-loading="loading">

@@ -90,6 +90,9 @@ async function save(): Promise<void> {
   try {
     // saveAppConfig('share') 只写 shareHub.* 分组 key，不影响其它 tab 已保存的字段，无需重载
     await saveAppConfig('share')
+    // 展示 IP 由 status.displayIp（主进程实时按 preferredIp 计算）决定：保存后立即重拉，
+    // 否则要等 3s 定时器才更新（用户 2026-11-20 反馈「改了 IP 保存后服务状态没变」）
+    await refreshShare()
     ElMessage.success('分享设置已保存')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { saving.value = false }

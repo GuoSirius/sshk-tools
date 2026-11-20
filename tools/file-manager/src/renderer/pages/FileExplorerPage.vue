@@ -2615,7 +2615,7 @@ function onKeydown(event: KeyboardEvent): void {
         <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
         <el-form-item label="大文件分片传输">
           <el-switch v-model="transferCfgForm.enabled" data-autofocus />
-          <el-tooltip content="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3。阈值/片大小/并发/超时由文件系统传输与图片库上传共用同一份配置" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
+          <FormHint inline detail="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3。阈值/片大小/并发/超时由文件系统传输与图片库上传共用同一份配置" />
         </el-form-item>
         <el-form-item label="分片阈值" required>
           <el-input-number v-model="transferCfgForm.thresholdMb" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />

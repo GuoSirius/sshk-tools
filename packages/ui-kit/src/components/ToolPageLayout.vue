@@ -1,15 +1,21 @@
 <script setup lang="ts">
-/** 工具页三段式布局（数据契约 §6）：顶部操作 flex:none / 中间唯一滚动 flex:1 / 底部分页 flex:none */
+/**
+ * 工具页三段式布局（数据契约 §6）：顶部操作 flex:none / 中间唯一滚动 flex:1 / 底部分页 flex:none。
+ * 2026-11-20：head/foot 条件渲染——空 slot 不再占一条空白横条（列表页由页面自身管理三段式）。
+ */
+import { useSlots } from 'vue'
+
 defineProps<{
   title?: string
   description?: string
 }>()
+const slots = useSlots()
 </script>
 
 <template>
   <div class="tool-page-layout">
     <!-- 页面标题/描述与侧栏工具名重复，统一只保留侧栏；head 仅承载右侧操作区 -->
-    <div class="tool-page-head">
+    <div v-if="slots.actions" class="tool-page-head">
       <span class="app-spacer" />
       <div class="tool-page-actions">
         <slot name="actions" />
@@ -20,7 +26,7 @@ defineProps<{
       <slot />
     </div>
 
-    <div class="tool-page-foot muted">
+    <div v-if="slots.footer" class="tool-page-foot muted">
       <slot name="footer" />
     </div>
   </div>
