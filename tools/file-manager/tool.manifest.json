@@ -54,11 +54,18 @@
           "label": "新建/编辑形式",
           "type": "select",
           "options": [
-            { "label": "弹框", "value": "dialog" },
-            { "label": "整页", "value": "page" }
+            {
+              "label": "弹框",
+              "value": "dialog"
+            },
+            {
+              "label": "整页",
+              "value": "page"
+            }
           ],
           "hint": "内容管理的新建/编辑容器形态（弹框=弹窗、整页=整页视图），两种形态共用同一编辑器实现；保存后下次打开生效",
-          "full": true
+          "full": true,
+          "default": "dialog"
         }
       ]
     }

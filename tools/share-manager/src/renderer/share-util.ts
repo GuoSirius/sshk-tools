@@ -1,4 +1,4 @@
-import { IPC_CHANNELS as C, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { IPC_CHANNELS as C, SHARE_PERMANENT_EXPIRES_AT, format } from '@sshk/shared'
 import type { ShareRouteInfo } from '@sshk/shared'
 
 /** share-manager 各页面共享的小工具函数（无状态）。 */
@@ -23,11 +23,9 @@ export function routeStateTag(t: string): 'success' | 'danger' | 'warning' {
   return t === '有效' ? 'success' : t === '已过期' ? 'danger' : 'warning'
 }
 
-/** 北京时间展示（yyyy-MM-dd HH:mm:ss） */
+/** 北京时间展示（yyyy-MM-dd HH:mm:ss）：实现收敛到 @sshk/shared time（2026-11-20 统一时间封装） */
 export function fmtDateTime(at: number): string {
-  const d = new Date(at)
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  return format(at)
 }
 
 export { C, SHARE_PERMANENT_EXPIRES_AT }

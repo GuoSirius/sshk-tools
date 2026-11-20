@@ -42,3 +42,24 @@ export function toFileName(input?: TimeInput): string {
 export function isBeijingOffset(value: string): boolean {
   return /\+08:00$/.test(value) || /\+0800$/.test(value)
 }
+
+/** 解析为毫秒时间戳；无效输入返回 null（统一时间抽离，2026-11-20：各工具勿再散写 Date.parse/手拼字符串） */
+export function toMs(input: TimeInput): number | null {
+  if (input === undefined) return null
+  const d = dayjs(input)
+  return d.isValid() ? d.valueOf() : null
+}
+
+/**
+ * 闭区间毫秒判定（时间范围过滤标准姿势，2026-11-20 列表页规范）：
+ * 目标值无效 → 不过滤；范围任一端缺省/无效 → 不限制该端。
+ */
+export function inMsRange(input: TimeInput, from?: string | number | null, to?: string | number | null): boolean {
+  const t = toMs(input)
+  if (t === null) return true
+  const f = from != null && from !== '' ? toMs(from) : null
+  const e = to != null && to !== '' ? toMs(to) : null
+  if (f !== null && t < f) return false
+  if (e !== null && t > e) return false
+  return true
+}

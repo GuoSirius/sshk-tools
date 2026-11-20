@@ -104,6 +104,8 @@ async function load(): Promise<void> {
     if ((values[field.key] ?? '') === '' && field.fallbackKey) {
       values[field.key] = await window.api.config.get(field.fallbackKey)
     }
+    // default：仍为空时回显 manifest 声明的默认值（如新建/编辑形式默认弹框）
+    if ((values[field.key] ?? '') === '' && field.default) values[field.key] = field.default
     if (field.optionsSource?.startsWith('upload:')) {
       const kind = field.optionsSource === 'upload:remote' ? 'remote'
         : field.optionsSource === 'upload:cloud' ? 'cloud' : undefined

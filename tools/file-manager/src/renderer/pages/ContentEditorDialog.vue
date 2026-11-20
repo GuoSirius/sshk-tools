@@ -3,7 +3,7 @@
  * 内容编辑弹框壳（plans/11 §3-5 / #8）：四态控件（最小化/最大化/全屏），打开默认最大化。
  * 编辑核心在 ContentEditorCore（dialog/page 两壳共用）。
  * - 最小化：弹框隐藏，收为可拖拽悬浮条（复用 TransferPanel useDraggable 范式），点击标题栏复原
- * - 最大化：铺满整个应用可视区（100vw×100vh、margin 0）
+ * - 最大化：铺满整个应用可视区（100vw×100vh、margin 0）；全屏：进出还原进入前模式（2026-11-20）
  * - 富文本 fullScreen() 是 @sshk/rich-text 内部 Teleport 到 body + z-index 满级，天然盖住本弹框
  *
  * ⚠️ 弹框节点样式必须放非 scoped 全局块（项目已知坑：teleport 到 body 的节点上没有本组件
@@ -13,7 +13,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useDraggable } from '@vueuse/core'
-import { FullScreen, Rank } from '@element-plus/icons-vue'
+import { Rank } from '@element-plus/icons-vue'
 // 窗口四态图标用 FA（Windows 风格，EP icons 无对应；fa-window-* 全局 CSS 已在 main.ts 注册）
 import type { ContentRecord, ContentSaveInput } from '@sshk/shared'
 import ContentEditorCore from './ContentEditorCore.vue'
@@ -33,6 +33,8 @@ const emit = defineEmits<{
 const visible = defineModel<boolean>('modelValue', { default: false })
 type WinMode = 'maximized' | 'normal' | 'fullscreen'
 const winMode = ref<WinMode>('maximized')
+/** 进入全屏前的窗口模式：退出全屏还原到它（用户 2026-11-20：全屏可还原，不强制回最大化） */
+const preFullscreenMode = ref<WinMode>('maximized')
 const minimized = ref(false)
 const coreRef = ref<InstanceType<typeof ContentEditorCore> | null>(null)
 
@@ -47,7 +49,13 @@ watch(visible, (open) => {
   minimized.value = false
 })
 
-function setMode(mode: WinMode): void { winMode.value = mode; minimized.value = false }
+function setMode(mode: WinMode): void {
+  // 全屏进出：进入时记住当前模式，退出时还原（而非强制回最大化）
+  if (mode === 'fullscreen') { preFullscreenMode.value = winMode.value; winMode.value = 'fullscreen' }
+  else if (winMode.value === 'fullscreen') winMode.value = preFullscreenMode.value
+  else winMode.value = mode
+  minimized.value = false
+}
 /** 最小化：贴底右侧停靠（用户 2026-11-20：参考传输面板收起条——位置确定可找、手柄显示标题、点击复原） */
 function doMinimize(): void {
   minimized.value = true
@@ -69,7 +77,10 @@ watch(minimized, (m) => { if (visible.value) emit('update:minimized', m) })
 
 const dialogVisible = computed({
   get: () => visible.value && !minimized.value,
-  set: (v: boolean) => { if (!v) doClose() },
+  // ⚠️ EP dialog 在关闭动画结束（afterLeave）会回发 update:modelValue=false——包括最小化这种
+  // 程序性隐藏（useDialog.mjs:85 实锤）。若当作用户关闭处理，最小化条刚挂出就被 doClose 拆掉
+  //（「最小化后找不到弹框」根因，2026-11-20）。本弹框所有关闭入口（footer 取消 / 标题栏 ✕）都直调 doClose，setter 无需做事。
+  set: () => {},
 })
 
 const barRef = ref<HTMLElement | null>(null)
@@ -106,7 +117,7 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
       <div class="ce-head">
         <span class="ce-title">{{ editTitle }}</span>
         <div class="ce-controls">
-          <!-- 窗口四态图标（Windows 风格 FA）：最小化=底部横条；最大化/还原=方框↔双叠方框 -->
+          <!-- 窗口四态图标（Windows 风格 FA）：最小化=底部横条；最大化/还原=方框↔双叠方框；全屏=展开↔收拢；关闭=✕ -->
           <el-tooltip content="最小化" placement="bottom"><button class="ce-btn" aria-label="最小化" @click="doMinimize"><i class="fa-solid fa-window-minimize"></i></button></el-tooltip>
           <el-tooltip :content="winMode === 'normal' ? '最大化' : '还原'" placement="bottom">
             <button class="ce-btn" aria-label="最大化/还原" @click="setMode(winMode === 'normal' ? 'maximized' : 'normal')">
@@ -114,9 +125,13 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
             </button>
           </el-tooltip>
           <el-tooltip :content="winMode === 'fullscreen' ? '退出全屏' : '全屏'" placement="bottom">
-            <button class="ce-btn" aria-label="全屏" @click="setMode(winMode === 'fullscreen' ? 'maximized' : 'fullscreen')"><el-icon><FullScreen /></el-icon></button>
+            <button class="ce-btn" aria-label="全屏" @click="setMode(winMode === 'fullscreen' ? 'normal' : 'fullscreen')">
+              <i :class="winMode === 'fullscreen' ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
+            </button>
           </el-tooltip>
-          <!-- 关闭在页内 footer「取消」已提供；弹框标题栏不再重复放关闭按钮 -->
+          <el-tooltip content="关闭" placement="bottom">
+            <button class="ce-btn" aria-label="关闭" @click="doClose"><i class="fa-solid fa-xmark"></i></button>
+          </el-tooltip>
         </div>
       </div>
       <div class="ce-body" :class="{ 'ce-body-normal': winMode === 'normal' }">
@@ -151,7 +166,7 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
 .ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; }
 /* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
 .ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
-.ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
+.ce-mini-bar { position: fixed; z-index: 4000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
 .ce-mini-handle { cursor: grab; color: var(--el-text-color-placeholder); display: inline-flex; align-items: center; padding: 2px; flex: none; }
 .ce-mini-title { cursor: pointer; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
 .ce-mini-title i { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }

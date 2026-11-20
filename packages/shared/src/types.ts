@@ -15,6 +15,8 @@ export interface ToolConfigField {
   full?: boolean
   /** 值为空时展示该配置键的当前值（如 defaultProviderId ← app.llm.activeProviderId） */
   fallbackKey?: string
+  /** 值为空时的默认值（工具配置标准姿势，2026-11-20：配置页下拉直接回显默认，不显示空白） */
+  default?: string
   /** 相对 `tools.<toolId>` 的点路径，如 `render.strict` */
   key: string
   label: string

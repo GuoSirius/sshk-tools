@@ -8,6 +8,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Delete, Download } from '@element-plus/icons-vue'
 import type { ShareAccessLog, ShareLogsQuery } from '@sshk/shared'
+import { toMs } from '@sshk/shared'
 import { host } from '../host'
 import { fmtDateTime } from '../share-util'
 
@@ -41,8 +42,8 @@ function buildQuery(offsetOverride?: number): ShareLogsQuery {
   let from: number | undefined
   let to: number | undefined
   if (dateRange.value && dateRange.value[0] && dateRange.value[1]) {
-    from = Date.parse(dateRange.value[0])
-    to = Date.parse(dateRange.value[1])
+    from = toMs(dateRange.value[0]) ?? undefined
+    to = toMs(dateRange.value[1]) ?? undefined
   }
   return {
     from, to,
@@ -67,6 +68,12 @@ async function refresh(): Promise<void> {
 }
 
 function doSearch(): void { page.value = 1; void refresh() }
+
+/** 重置：清空全部筛选并立即生效（2026-11-20 列表页规范：筛选栏统一 查询+重置） */
+function resetFilters(): void {
+  searchIp.value = ''; searchPath.value = ''; dateRange.value = null; statusGroup.value = ''; toolFilter.value = ''
+  doSearch()
+}
 
 function statusColor(s: number): string {
   return s >= 200 && s < 400 ? 'var(--el-color-success)' : 'var(--el-color-danger)'
@@ -151,7 +158,7 @@ onMounted(() => { void refresh() })
 
 <template>
   <div class="page-wrap">
-    <!-- 筛选栏（2026-11-20 列表页规范：label+控件；宽度统一 180px、时间范围 400px；时间精确到时分秒） -->
+    <!-- 筛选栏（2026-11-20 规范：label+控件；宽度 180/时间 360；末尾统一 查询+重置） -->
     <div class="filter-bar">
       <span class="f-label">来源 IP</span>
       <el-input v-model="searchIp" clearable placeholder="全部" size="small" style="width: 180px" @keyup.enter="doSearch" />
@@ -161,7 +168,7 @@ onMounted(() => { void refresh() })
       <el-date-picker
         v-model="dateRange" type="datetimerange" size="small" unlink-panels
         value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间"
-        range-separator="至" :shortcuts="shortcuts" style="width: 400px" @change="doSearch" />
+        range-separator="至" :shortcuts="shortcuts" style="width: 360px" @change="doSearch" />
       <span class="f-label">状态码</span>
       <el-select v-model="statusGroup" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
         <el-option label="2xx 成功" value="2xx" />
@@ -173,11 +180,12 @@ onMounted(() => { void refresh() })
       <el-select v-model="toolFilter" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
         <el-option v-for="r in routes" :key="r.id" :label="r.toolId" :value="r.toolId" />
       </el-select>
+      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
+      <el-button size="small" @click="resetFilters">重置</el-button>
     </div>
 
     <!-- 操作栏：筛选栏下方，单独一行居右 -->
     <div class="toolbar">
-      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
       <el-button size="small" type="success" :icon="Download" @click="exportCsv">导出 CSV</el-button>
       <el-divider direction="vertical" />
       <el-button size="small" type="danger" :icon="Delete" :disabled="!selected.length" @click="removeSelected">批量删除</el-button>

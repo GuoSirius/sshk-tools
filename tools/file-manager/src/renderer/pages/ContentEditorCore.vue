@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /**
- * 内容编辑核心（plans/11 #8 + 2026-11-20 布局定版）：
- * 第一行 标题 + 状态（两列）；第二行 标签（只占半行，右半预留）；
- * 第三行 定时时间（仅状态=定时发布时展示，精确到时分秒，仅可选当前以后）；
+ * 内容编辑核心（plans/11 #8 + 2026-11-20 三轮定版）：
+ * 第一行 标题 + 标签；第二行 状态 + 定时时间（仅状态=定时发布时显示，精确到时分秒，仅可选当前以后）；
  * 描述 textarea（最小 3 行、最大 5 行，超出内部滚动）；最后富文本正文。
  * 上传与图片库注入收敛在核心内（C2 唯一注入点），壳只管容器与 footer。
  */
@@ -10,7 +9,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { RichTextEditor, toStoredHtml } from '@sshk/rich-text'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import type { ContentRecord, ContentSaveInput, ContentStatus } from '@sshk/shared'
-import { format, ISO_WITH_OFFSET } from '@sshk/shared'
+import { format, toMs, ISO_WITH_OFFSET } from '@sshk/shared'
 import { host } from '../host'
 
 const props = defineProps<{
@@ -36,22 +35,16 @@ const imageLibrary = createHostImageLibrary(TOOL_ID, host.upload)
 
 // 定时发布时刻（毫秒）：el-date-picker value-format="x" 直出/直吃毫秒时间戳
 const publishMs = computed({
-  get: () => (form.value.publishAt ? Date.parse(form.value.publishAt) : 0),
+  get: () => toMs(form.value.publishAt) ?? 0,
   set: (v: number) => {
     if (!v) { form.value.publishAt = ''; return }
-    form.value.publishAt = toSecString(v)
+    form.value.publishAt = format(v) // 'YYYY-MM-DD HH:mm:ss'（shared 统一封装）
   },
 })
 /** 仅可选今天及以后（disabledDate 按日粒度判定，具体到秒的「当前以后」在提交时由主进程校验兜底） */
 const disabledDate = (d: Date): boolean => {
   const start = new Date(); start.setHours(0, 0, 0, 0)
   return d.getTime() < start.getTime()
-}
-
-function toSecString(ms: number): string {
-  const d = new Date(ms)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
 const onUploadImage = async (file: File): Promise<string> => {
@@ -76,7 +69,7 @@ watch(() => [props.record, props.copySource] as const, () => {
         description: src.description ?? '',
         tags: [...(src.tags ?? [])],
         status: props.copySource ? 'draft' : src.status,
-        publishAt: !props.copySource && src.status === 'scheduled' && src.publishAt ? toSecString(Date.parse(src.publishAt)) : '',
+        publishAt: !props.copySource && src.status === 'scheduled' && src.publishAt ? format(src.publishAt) : '',
       }
     : { _id: undefined, name: '', html: '', summary: '', description: '', tags: [], status: 'draft', publishAt: '' }
   nextTick(() => nameRef.value?.focus?.())
@@ -92,7 +85,7 @@ function submit(): void {
   if (!canSave.value) return
   const isScheduled = form.value.status === 'scheduled'
   // publishAt 契约：ISO 带 +08:00 字符串（与 ContentSaveInput 类型一致，勿发数字毫秒）
-  const publishMsNum = isScheduled && form.value.publishAt ? Date.parse(form.value.publishAt) : 0
+  const publishMsNum = isScheduled ? toMs(form.value.publishAt) ?? 0 : 0
   emit('save', {
     ...form.value,
     html: toStoredHtml(form.value.html),
@@ -106,11 +99,17 @@ defineExpose({ submit, canSave })
 <template>
   <div class="ce-core">
     <el-form label-width="auto" size="small" class="ce-meta">
-      <!-- 第一行：标题 + 状态（两列，用户 2026-11-20 定版） -->
+      <!-- 第一行：标题 + 标签（用户 2026-11-20 三轮定版） -->
       <div class="ce-row ce-row-2">
         <el-form-item label="标题" required>
           <el-input ref="nameRef" v-model="form.name" placeholder="内容标题（必填）" clearable data-autofocus />
         </el-form-item>
+        <el-form-item label="标签">
+          <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入回车添加标签" style="width: 100%" />
+        </el-form-item>
+      </div>
+      <!-- 第二行：状态 + 定时时间（仅状态=定时发布时显示，两列栅格与整体对齐；仅可选当前以后，精确到时分秒） -->
+      <div class="ce-row ce-row-2">
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width: 100%">
             <el-option label="草稿" value="draft" />
@@ -119,17 +118,7 @@ defineExpose({ submit, canSave })
             <el-option label="已下线" value="retracted" />
           </el-select>
         </el-form-item>
-      </div>
-      <!-- 第二行：标签只占半行，右半预留 -->
-      <div class="ce-row ce-row-2">
-        <el-form-item label="标签">
-          <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入回车添加标签" style="width: 100%" />
-        </el-form-item>
-        <div class="ce-reserved" aria-hidden="true"></div>
-      </div>
-      <!-- 第三行：定时时间（仅状态=定时发布时展示，两列栅格与整体对齐；仅可选当前以后，精确到时分秒） -->
-      <div v-if="form.status === 'scheduled'" class="ce-row ce-row-2">
-        <el-form-item label="定时时间">
+        <el-form-item v-if="form.status === 'scheduled'" label="定时时间">
           <el-date-picker
             v-model="publishMs"
             type="datetime"
@@ -140,7 +129,7 @@ defineExpose({ submit, canSave })
             style="width: 100%"
           />
         </el-form-item>
-        <div class="ce-reserved" aria-hidden="true"></div>
+        <div v-else class="ce-reserved" aria-hidden="true"></div>
       </div>
       <!-- 描述：最小 3 行、最大 5 行，超出内部滚动 -->
       <el-form-item label="描述">

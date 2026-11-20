@@ -9,7 +9,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket } from '@sshk/ui-kit'
 import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, inMsRange, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
 import { host } from '../host'
 import ContentEditorDialog from './ContentEditorDialog.vue'
 import ContentEditorPage from './ContentEditorPage.vue'
@@ -36,12 +36,27 @@ const STATUS_META: Record<ContentStatus, { label: string; type: 'info' | 'succes
   retracted: { label: '已下线', type: 'warning' },
 }
 
-// ── 列表筛选（2026-11-19 需求：搜索 + 时间范围 + 标签多选 + 分享状态 + 发布状态）──
+// ── 列表筛选（2026-11-20 三轮定版：筛选栏统一「查询+重置」两按钮——控件绑草稿态，点查询才生效；重置=清空并立即生效）──
 const kw = ref('')
 const dateRange = ref<[string, string] | null>(null)
 const tagFilter = ref<string[]>([])
 const shareFilter = ref<string>('all')
 const statusFilter = ref<string>('all')
+/** 生效态（真正参与过滤的快照），与草稿态分离 */
+const applied = ref({
+  kw: '', dateRange: null as [string, string] | null, tagFilter: [] as string[], shareFilter: 'all', statusFilter: 'all',
+})
+function doSearch(): void {
+  applied.value = {
+    kw: kw.value.trim(), dateRange: dateRange.value, tagFilter: [...tagFilter.value],
+    shareFilter: shareFilter.value, statusFilter: statusFilter.value,
+  }
+  currentPage.value = 1
+}
+function resetFilters(): void {
+  kw.value = ''; dateRange.value = null; tagFilter.value = []; shareFilter.value = 'all'; statusFilter.value = 'all'
+  doSearch()
+}
 const statusOptions = [
   { label: '草稿', value: 'draft' },
   { label: '已发布', value: 'published' },
@@ -54,28 +69,22 @@ const allTags = computed(() => {
   for (const r of rows.value) for (const t of r.tags ?? []) set.add(t)
   return [...set]
 })
-/** 时间范围判定（2026-11-20 规范：筛选时间范围默认精确到时分秒）：按更新时间毫秒闭区间比较 */
-function inDateRange(iso: string): boolean {
-  if (!dateRange.value?.[0] || !dateRange.value[1]) return true
-  const t = Date.parse(iso)
-  if (!Number.isFinite(t)) return true
-  return t >= Date.parse(dateRange.value[0]) && t <= Date.parse(dateRange.value[1])
-}
 const filteredRows = computed(() => {
-  const k = kw.value.trim().toLowerCase()
+  const f = applied.value
+  const k = f.kw.toLowerCase()
   return rows.value.filter((row) => {
     if (k && !(row.name.toLowerCase().includes(k) || (row.description ?? '').toLowerCase().includes(k))) return false
-    if (!inDateRange(row.updatedAt)) return false
-    if (tagFilter.value.length && !(row.tags ?? []).some((t) => tagFilter.value.includes(t))) return false
-    if (statusFilter.value !== 'all' && row.status !== statusFilter.value) return false
-    if (shareFilter.value !== 'all' && shareState(row).type !== shareFilter.value) return false
+    // 时间范围：毫秒闭区间（shared 统一封装，2026-11-20 列表页规范精确到秒）
+    if (!inMsRange(row.updatedAt, f.dateRange?.[0], f.dateRange?.[1])) return false
+    if (f.tagFilter.length && !(row.tags ?? []).some((t) => f.tagFilter.includes(t))) return false
+    if (f.statusFilter !== 'all' && row.status !== f.statusFilter) return false
+    if (f.shareFilter !== 'all' && shareState(row).type !== f.shareFilter) return false
     return true
   })
 })
 watch(filteredRows, () => { currentPage.value = 1 })
 
 const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
-function resetFilters(): void { kw.value = ''; dateRange.value = null; tagFilter.value = []; shareFilter.value = 'all'; statusFilter.value = 'all' }
 
 /** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。
  *  配置属工具级：tools.file-manager.editorMode（工具设置页）；旧键 app.content.editorMode 作回落读取（2026-11-20 迁移）。 */
@@ -258,6 +267,22 @@ function changeStatus(row: ContentRecord, status: ContentStatus): void {
   }, verb)
 }
 
+/** 批量发布/下线（2026-11-20 用户补充）：仅对状态允许的目标生效，逐条二次确认走 ConfirmDialog */
+function eligibleRows(status: 'published' | 'retracted'): ContentRecord[] {
+  return selected.value.filter((r) => r.status !== status)
+}
+function batchChangeStatus(status: 'published' | 'retracted'): void {
+  const targets = eligibleRows(status)
+  if (!targets.length) { ElMessage.warning(status === 'published' ? '所选内容均已是发布状态' : '所选内容均已下线'); return }
+  const verb = status === 'published' ? '发布' : '下线'
+  askConfirm(`批量${verb}`, targets.map((r) => r.name), async () => {
+    for (const r of targets) await host.content.save({ _id: r._id, name: r.name, html: r.html, summary: r.summary, description: r.description, tags: r.tags, status })
+    selected.value = []
+    await load()
+    ElMessage.success(`已批量${verb} ${targets.length} 篇内容`)
+  }, `批量${verb}`)
+}
+
 // ── 导出 ──
 function doExport(kind: 'triple' | 'html' | 'md', rowsToExport: ContentRecord[]): void {
   if (!rowsToExport.length) { ElMessage.warning('请先勾选要导出的内容'); return }
@@ -286,10 +311,10 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       @cancel="editorOpen = false"
     />
     <template v-else>
-    <!-- 筛选栏（2026-11-20 列表页规范：统一 label+控件形式；宽度统一 180px、时间范围 400px；时间默认精确到时分秒） -->
+    <!-- 筛选栏（2026-11-20 三轮定版：label+控件、宽度 180/时间 360、末尾统一 查询+重置 两按钮） -->
     <div class="filter-bar">
       <span class="f-label">搜索</span>
-      <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" />
+      <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" @keyup.enter="doSearch" />
       <span class="f-label">时间</span>
       <el-date-picker
         v-model="dateRange"
@@ -300,7 +325,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
         end-placeholder="结束时间"
         value-format="YYYY-MM-DD HH:mm:ss"
         :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
-        style="width: 400px"
+        style="width: 360px"
       />
       <span class="f-label">标签</span>
       <el-select v-model="tagFilter" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
@@ -318,7 +343,8 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
         <el-option label="全部" value="all" />
         <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
-      <el-button size="small" text :disabled="!kw && !dateRange && !tagFilter.length && shareFilter === 'all' && statusFilter === 'all'" @click="resetFilters">清空筛选</el-button>
+      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
+      <el-button size="small" @click="resetFilters">重置</el-button>
     </div>
 
     <!-- 操作栏：筛选栏下方，居右显示 -->
@@ -326,6 +352,8 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       <el-button size="small" type="primary" plain @click="openCreate">新建内容</el-button>
       <el-button size="small" type="success" plain @click="openCommonShare">分享内容</el-button>
       <el-divider direction="vertical" />
+      <el-button size="small" type="success" plain :disabled="selected.length === 0 || eligibleRows('published').length === 0" @click="batchChangeStatus('published')">批量发布（{{ eligibleRows('published').length }}）</el-button>
+      <el-button size="small" type="warning" plain :disabled="selected.length === 0 || eligibleRows('retracted').length === 0" @click="batchChangeStatus('retracted')">批量下线（{{ eligibleRows('retracted').length }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selected.length === 0" @click="batchRemove">批量删除（{{ selected.length }}）</el-button>
       <el-dropdown trigger="click" :disabled="selected.length === 0" @command="(cmd: string) => doExport(cmd as 'triple' | 'html' | 'md', selected)">
         <el-button size="small" type="warning" plain :disabled="selected.length === 0">批量导出▾</el-button>
