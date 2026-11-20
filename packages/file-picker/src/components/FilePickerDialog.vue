@@ -169,6 +169,8 @@ interface UploadTask {
   doneAt?: number
   /** 开始传输时间戳：无 byte 级上报时按经过时间估算爬升，使各项进度独立 */
   startedAt?: number
+  /** 用户已删除进行中的项：后台传输无法中断，但完成后不得再把它加回上传列表/选择池 */
+  cancelled?: boolean
   size: number
   /** 去重指纹（目标位置 + 源文件名 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
   fingerprint: string
@@ -742,6 +744,8 @@ async function runUpload(task: UploadTask): Promise<boolean> {
         task.percent = 100
       }
     })
+    // 用户已删除上传中的项：底层传输已发出无法中断，但不再回填 UI/选择池（否则删完又被加回「已选」）
+    if (task.cancelled) return false
     task.url = url
     task.percent = 100
     task.status = 'success'
@@ -841,8 +845,10 @@ async function handleFiles(files: File[]): Promise<void> {
   const results = await Promise.all(newTasks.map((t) => runUpload(t)))
   // 仅当没有任何在途任务时才停表；否则可能有另一批 handleFiles 仍在跑
   if (!uploadInProgress.value) stopProgressTimer()
-  const ok = results.filter(Boolean).length
-  const failed = results.length - ok
+  // 上传中被用户主动移除的项既不算成功也不算失败，避免误报「上传失败」
+  const counted = results.filter((_, i) => !newTasks[i]!.cancelled)
+  const ok = counted.filter(Boolean).length
+  const failed = counted.length - ok
   if (ok > 0) {
     // 上传成功后重挂级联：清掉懒加载缓存，下次展开即可看到新目录
     dirPanelKey.value++
@@ -870,12 +876,31 @@ async function onDrop(e: DragEvent): Promise<void> {
 async function retryUpload(task: UploadTask): Promise<void> {
   const ok = await runUpload(task)
   if (!uploadInProgress.value) stopProgressTimer()
+  if (task.cancelled) return // 重试途中被用户移除，不再提示
   if (ok) ElMessage.success(`「${task.name}」已重新上传并选中`)
   else ElMessage.error(`「${task.name}」重试失败：${task.error}`)
 }
 
-/** 删除单个任务：成功的同步从上传列表/选择池移除，失败的直接移出任务列表 */
-function removeUploadTask(task: UploadTask): void {
+/**
+ * 删除单个上传项：先二次确认（禁遮罩/禁 ESC）。
+ * 只清展示与选择池，不删除已上传到存储的文件；上传中的标记 cancelled，完成回调不再回填。
+ */
+async function removeUploadTask(task: UploadTask): Promise<void> {
+  const detail = task.status === 'uploading'
+    ? '该文件正在上传。移除后它就不再出现在上传列表、完成后也不会加入「已选」；但底层传输已发出无法中断，文件仍会保存到目标存储。'
+    : task.status === 'success'
+      ? '这只是把上传项从列表和「已选」中移除，不会删除已上传到存储的文件。'
+      : '失败项将从上传列表移除。'
+  try {
+    await ElMessageBox.confirm(
+      `确定移除「${task.name}」？${detail}`,
+      '移除上传项',
+      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch {
+    return
+  }
+  if (task.status === 'uploading') task.cancelled = true
   if (task.previewUrl) URL.revokeObjectURL(task.previewUrl)
   uploadTasks.value = uploadTasks.value.filter((t) => t.id !== task.id)
   if (task.status === 'success' && task.url) {
