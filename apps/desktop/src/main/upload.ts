@@ -131,11 +131,15 @@ export class UploadRuntime {
       prefix: ov.prefix || tool.overrides.prefix || undefined,
     }
 
+    // Provider 的分片/byte 级进度经 ctx.onProgress 上报，转成带 name 的事件发到渲染层，
+    // 供文件选择弹框逐项显示真实进度；service 的头尾 0/100 事件仍由 options.onProgress 负责。
+    const progressName = path.basename(String(req.name ?? '')).trim()
     const ctx: UploadContext = {
       targetType,
       profileId: profileId || undefined,
       overrides,
       validation: tool.validation,
+      onProgress: (percent) => this.opts.onProgress({ name: progressName, percent, status: 'uploading' }),
     }
     const globalValidation: UploadValidation = {
       accept: global.validation.accept,

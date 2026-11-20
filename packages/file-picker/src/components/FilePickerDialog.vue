@@ -10,7 +10,7 @@
  *   confirmText / initialTab / defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
 import { Close, Delete, Document, Link, Picture, UploadFilled } from '@element-plus/icons-vue'
@@ -138,7 +138,6 @@ const loadingSources = ref(false)
 /** 设置恢复完成前不写回，避免空状态覆盖已存值 */
 const restored = ref(false)
 
-const uploading = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
 /** 拖拽投放高亮态 */
 const dropActive = ref(false)
@@ -156,8 +155,10 @@ interface UploadTask {
   file: File
   name: string
   status: 'uploading' | 'success' | 'failed'
-  /** 0–100；Provider 无 byte 级上报时由 UI 爬升动画推进到 90，成功置 100，失败停在当时值 */
+  /** 0–100；有真实进度走 onProgress，无 byte 级上报时由 UI 爬升动画推进到 90，成功置 100，失败停在当时值 */
   percent: number
+  /** 是否收到过真实 byte 级进度：收到后停止 UI 假爬升，避免两套进度打架 */
+  realProgress?: boolean
   error?: string
   url?: string
   /** 本地预览 objectURL（缩略图），卸载/删除时 revoke；文件模式仅用于图片类文件的预览 */
@@ -166,6 +167,8 @@ interface UploadTask {
   previewFailed?: boolean
   /** 完成时间戳：成功后短暂保留「完成」卡片让用户看到进度结果，到点降级为普通缩略图 */
   doneAt?: number
+  /** 开始传输时间戳：无 byte 级上报时按经过时间估算爬升，使各项进度独立 */
+  startedAt?: number
   size: number
   /** 去重指纹（目标位置 + 源文件名 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
   fingerprint: string
@@ -177,20 +180,25 @@ interface UploadTask {
 }
 const uploadTasks = ref<UploadTask[]>([])
 let uploadSeq = 0
-/** 进行中任务总数（总体进度分母） */
+/** 本次打开累计任务总数（总体进度分母） */
 const uploadTotal = computed(() => uploadTasks.value.length)
-const uploadDone = computed(() => uploadTasks.value.filter((t) => t.status !== 'uploading').length)
+const uploadInProgressCount = computed(() => uploadTasks.value.filter((t) => t.status === 'uploading').length)
 const uploadSucceeded = computed(() => uploadTasks.value.filter((t) => t.status === 'success').length)
 const uploadFailed = computed(() => uploadTasks.value.filter((t) => t.status === 'failed').length)
-/** 总体进度：已完成任务按 100% 计，进行中按其 percent 计 */
+/**
+ * 总体进度 = 各项「传输完成度」的均值，口径明确化（2026-11-20 用户反馈）：
+ * - 成功项按 100%；失败项按失败瞬间的 percent（不回退到 0，反映已传多少）；进行中按其 percent。
+ * - 分母只算未清除的任务；失败项计入分母但不会虚高（失败瞬间多少就是多少）。
+ * 单项真实进度由 onProgress 上报；无 byte 级上报时由爬升动画推进到 90。
+ */
 const overallPercent = computed(() => {
   const all = uploadTasks.value
   if (all.length === 0) return 0
-  const sum = all.reduce((acc, t) => acc + (t.status === 'success' ? 100 : t.percent), 0)
+  const sum = all.reduce((acc, t) => acc + t.percent, 0)
   return Math.min(100, Math.round(sum / all.length))
 })
 /** 有活动上传任务时显示总体进度条 */
-const uploadInProgress = computed(() => uploadTasks.value.some((t) => t.status === 'uploading'))
+const uploadInProgress = computed(() => uploadInProgressCount.value > 0)
 /** 成功项完成后在卡片区保留这么久，让用户看清「上传中→100% 完成」的过程（Provider 太快时会一闪而过） */
 const DONE_KEEP_MS = 2500
 /** 时钟 tick：驱动「完成展示窗口」到期后重渲染（仅窗口内有任务时定时器才运行） */
@@ -464,7 +472,7 @@ function resolveSrcOf(url: string): string {
 
 /** 拖拽上传卡片主文案：与文件卡片同尺寸，只放短词；完整规则走 title 悬浮（2026-11-20 合并布局） */
 const uploadHint = computed<string>(() => {
-  if (uploading.value) return '上传中…'
+  if (uploadInProgress.value) return `上传中 ${uploadInProgressCount.value} 项…`
   return `点击或拖拽${kindLabel.value}`
 })
 /** 拖拽上传卡片悬浮说明：长说明不进卡片（行内只一两个词，长说明走悬浮提示） */
@@ -683,13 +691,24 @@ async function uploadMore(): Promise<void> {
   pickFiles()
 }
 
-/** 进度爬升定时器：Provider 无 byte 级上报，上传中让百分比平滑推进到 90，完成由回调置 100 */
+/**
+ * 进度爬升定时器：仅给「无 byte 级上报」的任务做兜底动画，收到真实进度的项跳过（2026-11-20）。
+ * 每项按自身大小估算爬升速度（大文件慢、小文件快），不再所有项同步 +N 导致进度完全一致。
+ */
 let progressTimer: ReturnType<typeof setInterval> | null = null
+function estimateUploadMs(size: number): number {
+  // 经验带宽 ~6MB/s，保底 4s / 封顶 12min；只是动画节奏，不代表真实剩余时间
+  return Math.min(720_000, Math.max(4000, (size / (6 * 1024 * 1024)) * 1000))
+}
 function ensureProgressTimer(): void {
   if (progressTimer) return
   progressTimer = setInterval(() => {
+    const now = Date.now()
     for (const t of uploadTasks.value) {
-      if (t.status === 'uploading' && t.percent < 90) t.percent = Math.min(90, t.percent + 3)
+      if (t.status !== 'uploading' || t.realProgress || t.percent >= 90) continue
+      const elapsed = now - (t.startedAt ?? now)
+      const step = Math.max(1, Math.round((elapsed / estimateUploadMs(t.size)) * 90))
+      if (step > t.percent) t.percent = Math.min(90, step)
     }
   }, 220)
 }
@@ -705,6 +724,8 @@ async function runUpload(task: UploadTask): Promise<boolean> {
   task.percent = 0
   task.error = undefined
   task.doneAt = undefined
+  task.realProgress = false
+  task.startedAt = Date.now()
   ensureProgressTimer()
   try {
     // 用策略解析出的存储名上传；重试沿用同一 uploadName 天然幂等。
@@ -714,7 +735,12 @@ async function runUpload(task: UploadTask): Promise<boolean> {
       lastModified: task.file.lastModified,
     })
     const url = await props.library.upload(uploadFile, task.source, task.target, (p) => {
-      if (p.status === 'success') task.percent = 100
+      if (typeof p.percent === 'number' && p.percent > 0 && p.percent < 100) {
+        task.realProgress = true
+        task.percent = Math.max(task.percent, Math.min(99, p.percent))
+      } else if (p.status === 'success') {
+        task.percent = 100
+      }
     })
     task.url = url
     task.percent = 100
@@ -800,6 +826,9 @@ async function handleFiles(files: File[]): Promise<void> {
     }
   }
 
+  // 只启动本次新增的任务：绝不能对既有的 uploading 任务重新 runUpload（会把它们的进度清零并重传，
+  // 造成「新加进来的进度覆盖之前项」）。既有任务由它们各自的 Promise 继续跑，互不干扰。
+  const newTasks: UploadTask[] = []
   for (const { file, fingerprint, uploadName } of fresh) {
     const task: UploadTask = {
       id: ++uploadSeq, file, name: file.name, uploadName, status: 'uploading', percent: 0,
@@ -807,11 +836,11 @@ async function handleFiles(files: File[]): Promise<void> {
       scope, source, target: { ...target.value },
     }
     uploadTasks.value.push(task)
+    newTasks.push(task)
   }
-  uploading.value = true
-  const results = await Promise.all(uploadTasks.value.filter((t) => t.status === 'uploading').map((t) => runUpload(t)))
-  uploading.value = false
-  stopProgressTimer()
+  const results = await Promise.all(newTasks.map((t) => runUpload(t)))
+  // 仅当没有任何在途任务时才停表；否则可能有另一批 handleFiles 仍在跑
+  if (!uploadInProgress.value) stopProgressTimer()
   const ok = results.filter(Boolean).length
   const failed = results.length - ok
   if (ok > 0) {
@@ -854,6 +883,33 @@ function removeUploadTask(task: UploadTask): void {
     removePoolKey(task.url!)
   }
   if (!uploadInProgress.value) stopProgressTimer()
+}
+
+/**
+ * 清除已结束（成功/失败）的上传任务，只保留上传中的。
+ * 危险操作二次确认（禁遮罩/禁 ESC），并按项目铁律同步清理成功项的选择池与 objectURL。
+ */
+async function clearFinishedTasks(): Promise<void> {
+  const finished = uploadTasks.value.filter((t) => t.status !== 'uploading')
+  if (finished.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `将清除 ${finished.length} 个已结束的上传项（成功 ${finished.filter((t) => t.status === 'success').length} · 失败 ${finished.filter((t) => t.status === 'failed').length}），已上传成功的文件会一并从「已选」中移除。上传中的项不受影响。`,
+      '清除已结束的上传项',
+      { type: 'warning', confirmButtonText: '清除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+    )
+  } catch {
+    return
+  }
+  const finishedIds = new Set(finished.map((t) => t.id))
+  for (const t of finished) {
+    if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
+    if (t.status === 'success' && t.url) {
+      uploaded.value = uploaded.value.filter((i) => itemKey(i) !== t.url)
+      removePoolKey(t.url)
+    }
+  }
+  uploadTasks.value = uploadTasks.value.filter((t) => !finishedIds.has(t.id))
 }
 
 function removeUploaded(item: PoolItem): void {
@@ -1050,10 +1106,10 @@ function onPaneScroll(e: Event): void {
         <!-- 上传总体进度固定在 header，滚动区只放纯文件列表 -->
         <div v-if="uploadTotal" class="upload-progress-bar">
           <div class="up-summary">
-            <span>上传进度 {{ uploadDone }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }}</span>
-            <el-button size="small" text type="info" @click="uploadTasks = uploadTasks.filter((t) => t.status === 'uploading')">清除已完成</el-button>
+            <span>已结束 {{ uploadSucceeded + uploadFailed }}/{{ uploadTotal }} · 成功 {{ uploadSucceeded }} · 失败 {{ uploadFailed }} · 上传中 {{ uploadInProgressCount }}</span>
+            <el-button size="small" text type="info" :disabled="!uploadSucceeded && !uploadFailed" @click="clearFinishedTasks">清除已结束</el-button>
           </div>
-          <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadDone === uploadTotal ? 'success' : undefined" :stroke-width="8" />
+          <el-progress :percentage="overallPercent" :status="uploadFailed && !uploadInProgress ? 'exception' : uploadInProgressCount === 0 && uploadFailed === 0 ? 'success' : undefined" :stroke-width="8" />
         </div>
       </div>
     </template>
@@ -1072,7 +1128,7 @@ function onPaneScroll(e: Event): void {
         <div
           v-if="tab === 'upload'"
           class="drop-cell"
-          :class="{ busy: uploading, active: dropActive }"
+          :class="{ busy: uploadInProgress, active: dropActive }"
           :title="uploadDropTip"
           @click="pickFiles"
           @dragover.prevent="dropActive = true"

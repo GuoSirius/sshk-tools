@@ -11,6 +11,7 @@ import type {
   FilePickerItem,
   FilePickerPage,
   FilePickerKind,
+  FilePickerUploadProgressHook,
 } from './types'
 
 const LOCAL_SOURCE_ID = '__local__'
@@ -21,6 +22,27 @@ export interface HostUploadBridge {
   single(req: Record<string, unknown>): Promise<unknown>
   listImages(req: Record<string, unknown>): Promise<unknown>
   listDirectories(req: Record<string, unknown>): Promise<unknown>
+  /** 进度事件订阅（事件订阅类直通，无 invoke 语义）；可选，未注入时退化为 0/100 两端进度 */
+  onProgress?(callback: (p: { name: string; percent: number; status: string; error?: string }) => void): void
+}
+
+/**
+ * 按文件名聚合的进度订阅：main 的分片/byte 进度以事件广播到渲染层，此处按 name 分发给
+ * 本次 upload 调用注入的 onProgress。同名并发上传（罕见）按注册顺序分发给全部监听者，各自取最大值即可。
+ */
+const progressHooks = new Map<string, Set<FilePickerUploadProgressHook>>()
+let progressSubscribed = false
+function subscribeProgressOnce(upload: HostUploadBridge): void {
+  if (progressSubscribed || !upload.onProgress) return
+  progressSubscribed = true
+  upload.onProgress((p) => {
+    const hooks = progressHooks.get(p.name)
+    if (!hooks) return
+    for (const hook of hooks) {
+      if (p.status === 'success') hook({ percent: 100, status: 'success' })
+      else if (p.status !== 'failed') hook({ percent: Math.min(100, Math.max(0, p.percent)), status: 'uploading' })
+    }
+  })
 }
 
 interface ProfileOption {
@@ -73,6 +95,19 @@ export function createHostImageLibrary(
       ]
     },
     async upload(file, source, target, onProgress) {
+      // 注册按文件名的真实进度监听（分片/byte 上报），结束一律注销避免泄漏
+      subscribeProgressOnce(upload)
+      let hooks: Set<FilePickerUploadProgressHook> | undefined
+      if (onProgress && upload.onProgress) {
+        hooks = progressHooks.get(file.name) ?? new Set()
+        hooks.add(onProgress)
+        progressHooks.set(file.name, hooks)
+      }
+      const unregister = () => {
+        if (!hooks) return
+        hooks.delete(onProgress!)
+        if (hooks.size === 0) progressHooks.delete(file.name)
+      }
       onProgress?.({ percent: 0, status: 'uploading' })
       try {
         const dataUrl = await readAsDataUrl(file)
@@ -87,6 +122,8 @@ export function createHostImageLibrary(
         return result.url
       } catch (err) {
         throw err
+      } finally {
+        unregister()
       }
     },
     async list(source, target, listOpts?: { limit?: number; cursor?: string; kind?: FilePickerKind }): Promise<FilePickerPage> {

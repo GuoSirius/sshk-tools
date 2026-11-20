@@ -53,11 +53,20 @@ function publicUrl(profile: CloudProfile, key: string, sdkUrl?: string): string 
     case 'huawei-obs': return `${ep}/${profile.bucket}/${key}`
     case 'baidu-bos': return `https://${profile.bucket}.${(profile.endpoint ?? 'bj.bcebos.com').replace(/^https?:\/\//i, '')}/${key}`
     case 'azure-blob': return `${ep}/${profile.bucket}/${key}`
+    // ali-oss 的 multipartUpload 返回体可能不带 url（版本差异），按标准 OSS 域名兜底，避免大视频传成功却报「缺访问域名」
+    case 'aliyun-oss': return ep
+      ? `${ep.replace(/\/+$/, '')}/${key}`
+      : `https://${profile.bucket}.oss-${profile.region}.aliyuncs.com/${key}`
     default: return ''
   }
 }
 
 interface PutOutcome { url?: string }
+
+/** 分片上传阈值：超过此大小走 ali-oss multipartUpload（单请求不会 60s 超时，且能报真实进度） */
+const MULTIPART_THRESHOLD = 10 * 1024 * 1024
+/** 单请求超时放宽到 5 分钟（ali-oss 默认 60s，大视频在弱网下易触发 ResponseTimeoutError） */
+const OSS_REQUEST_TIMEOUT = 5 * 60 * 1000
 
 async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buffer, ctx: UploadContext): Promise<PutOutcome> {
   const bucket = ctx.overrides?.bucket || profile.bucket
@@ -65,14 +74,27 @@ async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buf
   switch (profile.provider) {
     case 'aliyun-oss': {
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
-        put(k: string, b: Buffer): Promise<{ url: string }>
+        put(k: string, b: Buffer, opts?: Record<string, unknown>): Promise<{ url: string }>
+        multipartUpload(k: string, b: Buffer, opts?: Record<string, unknown>): Promise<{ url?: string }>
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
       const client = new OSS({
         region: profile.region, endpoint: ep || undefined, bucket,
         accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret,
+        timeout: OSS_REQUEST_TIMEOUT,
       })
-      return { url: (await client.put(key, body)).url }
+      if (body.byteLength >= MULTIPART_THRESHOLD) {
+        // ali-oss progress(percentage, checkpoint)：percentage 0–1；每片独立请求，避免大文件整体超时
+        const r = await client.multipartUpload(key, body, {
+          partSize: 5 * 1024 * 1024,
+          parallel: 4,
+          timeout: OSS_REQUEST_TIMEOUT,
+          progress: (percentage: number) => ctx.onProgress?.(Math.min(100, Math.round(percentage * 100))),
+        })
+        return { url: r.url }
+      }
+      const r = await client.put(key, body, { timeout: OSS_REQUEST_TIMEOUT })
+      return { url: r.url }
     }
     case 'tencent-cos': {
       const COS = ctorOf(mod, ['default', 'COS'], 'cos-nodejs-sdk-v5') as new (o: Record<string, unknown>) => {

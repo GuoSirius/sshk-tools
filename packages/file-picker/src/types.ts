@@ -46,9 +46,9 @@ export interface FilePickerPage {
   nextCursor?: string | null
 }
 
-/** 上传进度可观测点：Provider 无 byte 级上报，只有开始(0)/完成(100)；失败由 upload reject 表达 */
+/** 上传进度可观测点：支持 byte/分片上报时为 0–100 中间值；否则只有开始(0)/完成(100)；失败由 upload reject 表达 */
 export interface FilePickerUploadProgress {
-  /** 0 或 100 */
+  /** 0–100 */
   percent: number
   status: 'uploading' | 'success'
 }

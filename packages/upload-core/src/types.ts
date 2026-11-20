@@ -44,6 +44,8 @@ export interface UploadContext {
   overrides?: UploadOverrides
   /** 工具级校验：只能比全局默认更严 */
   validation?: UploadValidation
+  /** 单文件传输进度回调（0–100）：Provider 支持 byte/分片上报时逐次调用，用于逐项真实进度 */
+  onProgress?: (percent: number) => void
 }
 
 export interface UploadResult {
