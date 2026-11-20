@@ -520,6 +520,8 @@ export interface ShareContentResolverResult {
   summary?: string
   /** 定时发布时刻（status==='scheduled' 时展示）：ISO 字符串 */
   publishAt?: string
+  /** 最后更新时间：ISO 字符串（详情页与发布时间并列展示） */
+  updatedAt?: string
 }
 
 export interface ShareRouteInput {

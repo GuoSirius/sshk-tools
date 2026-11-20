@@ -105,7 +105,9 @@ export function makeContentResolver(repo: Repository): (contentId: string) => Pr
       title: doc.name,
       html: toDisplayHtml(doc.html),
       summary: doc.summary,
-      publishAt: doc.publishAt,
+      // #131 分享页新闻详情要显示发布时间：定时发布取 publishAt，普通内容回落创建时刻（types 字段语义保持 publishAt）
+      publishAt: doc.publishAt || doc.createdAt,
+      updatedAt: doc.updatedAt,
     }
   }
 }

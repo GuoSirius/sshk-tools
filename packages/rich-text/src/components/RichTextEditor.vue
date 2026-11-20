@@ -28,10 +28,17 @@ import {
   registerSourceViewMenu,
   unbindSourceView,
 } from '../source-view-menu'
+import {
+  MARKDOWN_VIEW_MENU_KEY,
+  bindMarkdownView,
+  registerMarkdownViewMenu,
+  unbindMarkdownView,
+} from '../markdown-view-menu'
 import { countText, type TextStats } from '../word-count'
 import { FilePickerDialog } from '@sshk/file-picker'
 import type { FilePickerItem } from '@sshk/file-picker'
 import SourceViewDialog from './SourceViewDialog.vue'
+import MarkdownViewDialog from './MarkdownViewDialog.vue'
 
 /**
  * 共享富文本编辑器（从 edm-studio 迁入，R27 B3）。
@@ -97,6 +104,7 @@ const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
 const libraryOpen = ref(false)
 const sourceOpen = ref(false)
+const markdownOpen = ref(false)
 
 /** 图片库确认（2026-11-17 泛化到 FilePickerDialog 后插入行为移回本组件）：拼 <img> 插入正文 */
 function onLibraryConfirm(items: FilePickerItem[]): void {
@@ -160,7 +168,9 @@ if (Object.keys(conf).length > 0) editorConfig.MENU_CONF = conf
 const toolbarConfig: Partial<IToolbarConfig> = {}
 if (!hook) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
 registerSourceViewMenu()
-const extraKeys: string[] = [SOURCE_VIEW_MENU_KEY]
+// #131 Markdown 预览与「查看源码」一样恒可用（纯本地转换，不依赖上传/图片库桥接）
+registerMarkdownViewMenu()
+const extraKeys: string[] = [SOURCE_VIEW_MENU_KEY, MARKDOWN_VIEW_MENU_KEY]
 if (props.imageLibrary) {
   registerImageLibraryMenu()
   extraKeys.push(IMAGE_LIBRARY_MENU_KEY)
@@ -173,8 +183,9 @@ toolbarConfig.insertKeys = {
     {
       key: 'group-sshk-extra',
       title: '扩展',
+      // #131 用户嫌三点图标不好看 → FontAwesome fa-toolbox（工具箱=附加工具集，viewBox 用 FA 原生 512）
       iconSvg:
-        '<svg viewBox="0 0 1024 1024"><path d="M204.8 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path><path d="M505.6 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path><path d="M806.4 505.6 m-76.8 0 a76.8 76.8 0 1 0 153.6 0 a76.8 76.8 0 1 0 -153.6 0 Z"></path></svg>',
+        '<svg viewBox="0 0 512 512"><path d="M176 56l0 40 160 0 0-40c0-4.4-3.6-8-8-8L184 48c-4.4 0-8 3.6-8 8zM128 96l0-40c0-30.9 25.1-56 56-56L328 0c30.9 0 56 25.1 56 56l0 40 28.1 0c12.7 0 24.9 5.1 33.9 14.1l51.9 51.9c9 9 14.1 21.2 14.1 33.9l0 76.1-136 0 0-16c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 16-144 0 0-16c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 16-136 0 0-76.1c0-12.7 5.1-24.9 14.1-33.9l51.9-51.9c9-9 21.2-14.1 33.9-14.1L128 96zM0 416l0-96 136 0 0 16c0 13.3 10.7 24 24 24s24-10.7 24-24l0-16 144 0 0 16c0 13.3 10.7 24 24 24s24-10.7 24-24l0-16 136 0 0 96c0 35.3-28.7 64-64 64L64 480c-35.3 0-64-28.7-64-64z"></path></svg>',
       menuKeys: extraKeys,
     } as unknown as string,
   ],
@@ -197,6 +208,8 @@ onMounted(() => {
   if (props.imageLibrary) bindImageLibrary(editor, () => { libraryOpen.value = true })
   // 查看源码菜单 → 本实例弹窗
   bindSourceView(editor, () => { sourceOpen.value = true })
+  // Markdown 预览菜单 → 本实例弹窗
+  bindMarkdownView(editor, () => { markdownOpen.value = true })
 
   // 双实例工具栏假死禁用修复（用户反馈 2026-11-16：切换实例后引用/代码块/网络图片变灰）。
   // 根因：工具栏禁用态只在编辑器 change 事件刷新（200ms 防抖），且 selection == null 时全禁。
@@ -270,6 +283,7 @@ onBeforeUnmount(() => {
   if (editorRef.value) {
     unbindImageLibrary(editorRef.value)
     unbindSourceView(editorRef.value)
+    unbindMarkdownView(editorRef.value)
   }
   editorRef.value?.destroy()
   editorRef.value = undefined
@@ -301,6 +315,7 @@ onBeforeUnmount(() => {
     @confirm="onLibraryConfirm"
   />
   <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
+  <MarkdownViewDialog v-model:open="markdownOpen" :editor="editorRef ?? null" />
 </template>
 
 <style scoped>
@@ -371,6 +386,19 @@ onBeforeUnmount(() => {
   --w-e-textarea-handler-bg-color: #2a2a2a;
   --w-e-modal-button-bg-color: #2a2a2a;
   --w-e-modal-button-border-color: #444;
+}
+
+/**
+ * #131 扩展组下拉左对齐：wangEditor 默认 .w-e-bar-item-menus-container{left:0} 对齐的是
+ * bar-item 外框（含 4px padding），面板左缘比按钮图标区偏左；改 left:4px 使面板与按钮左缘齐平，
+ * 菜单项内容强制左对齐（wangEditor 的 .w-e-bar-item 默认 text-align:center）。
+ */
+:global(.w-e-bar-item-group .w-e-bar-item-menus-container) {
+  left: 4px !important;
+}
+:global(.w-e-bar-item-group .w-e-bar-item-menus-container .w-e-bar-item) {
+  text-align: left !important;
+  justify-content: flex-start;
 }
 
 :global(html.dark .rich) {

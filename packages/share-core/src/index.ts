@@ -18,7 +18,7 @@ import type {
   HubStatus,
   ShareContentResolverResult,
 } from '@sshk/shared'
-import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { SHARE_PERMANENT_EXPIRES_AT, format } from '@sshk/shared'
 
 /** ttlHours 归一化为非负整数（0=永久），非法（负数/小数/NaN）回落默认值。 */
 function normalizeTtl(value: unknown): number {
@@ -725,16 +725,25 @@ export class ShareHub {
    *  图片为外链或有效 ShareHub 图片链接，直接内嵌。 */
   private renderArticle(route: ShareRoute, content: ShareContentResolverResult): string {
     const title = esc(content.title || route.label || '文章')
+    // 新闻详情排版（用户 2026-11-20 #131）：标题 → 发布时间/更新时间 → 描述 → 正文
+    // 时间取 ISO 带 +08:00 字符串，统一走 shared format（北京时区，禁手拼/toISOString）
+    const published = content.publishAt ? format(content.publishAt) : ''
+    const updated = content.updatedAt ? format(content.updatedAt) : ''
+    const metaParts: string[] = []
+    if (published) metaParts.push(`发布时间：${esc(published)}`)
+    if (updated) metaParts.push(`更新时间：${esc(updated)}`)
+    const meta = metaParts.length ? `<p class="meta">${metaParts.join('　　')}</p>` : ''
     const summary = content.summary ? `<p class="summary">${esc(content.summary)}</p>` : ''
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
       body{font:16px/1.8 system-ui,-apple-system,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#1f2430;background:#fff}
-      h1{font-size:28px;line-height:1.4;margin:0 0 8px;border-bottom:1px solid #e8eaf0;padding-bottom:16px}
-      .summary{color:#6b7280;font-size:14px;margin:0 0 28px}
+      h1{font-size:28px;line-height:1.4;margin:0 0 10px;color:#161b26}
+      .meta{color:#9aa1ad;font-size:13px;margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid #e8eaf0}
+      .summary{color:#5b6472;font-size:15px;line-height:1.75;margin:0 0 28px;padding:10px 14px;background:#f7f8fa;border-left:3px solid #5eb0ff;border-radius:0 4px 4px 0}
       .article img{max-width:100%;height:auto}
       pre{overflow:auto;background:#f5f6f8;padding:12px;border-radius:6px}
       blockquote{border-left:3px solid #5eb0ff;margin:0;padding-left:16px;color:#555}
       a{color:#2563eb}
-    </style></head><body><article><h1>${title}</h1>${summary}<div class="article">${content.html}</div></article></body></html>`
+    </style></head><body><article><h1>${title}</h1>${meta}${summary}<div class="article">${content.html}</div></article></body></html>`
   }
 
   private finish(res: import('node:http').ServerResponse, code: number, body: string, headers: Record<string, string> = {}): void {
