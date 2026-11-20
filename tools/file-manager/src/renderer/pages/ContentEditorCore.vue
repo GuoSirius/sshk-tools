@@ -117,7 +117,9 @@ defineExpose({ submit, canSave, isDirty })
 
 <template>
   <div class="ce-core">
-    <el-form label-width="auto" size="small" class="ce-meta">
+    <!-- #129 表单区 = 唯一外滚层：滚动条贴弹框右缘（本层全宽），留白由 .ce-meta 自身 padding 提供 -->
+    <div class="ce-form-scroll">
+      <el-form label-width="auto" size="small" class="ce-meta">
       <!-- 第一行：标题 + 标签（用户 2026-11-20 三轮定版） -->
       <div class="ce-row ce-row-2">
         <el-form-item label="标题" required>
@@ -162,8 +164,9 @@ defineExpose({ submit, canSave, isDirty })
           placeholder="内容描述（可选）"
         />
       </el-form-item>
-    </el-form>
-    <!-- 正文：富文本 -->
+      </el-form>
+    </div>
+    <!-- 正文：富文本（固定高度，编辑区自带内滚，工具栏不随外层滚动） -->
     <div class="ce-editor">
       <RichTextEditor v-model="form.html" :on-upload-image="onUploadImage" :image-library="imageLibrary" :state-key="record?._id ?? 'new'" />
     </div>
@@ -172,15 +175,17 @@ defineExpose({ submit, canSave, isDirty })
 
 <style scoped>
 .ce-core { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: var(--sshk-gap-md); }
-.ce-meta { flex: none; }
+/* #129 滚动口径定版：表单区=唯一外滚层（滚动条贴弹框右缘，留白由 .ce-meta padding 提供）；
+   富文本恢复固定高度（min 520，窗口大时随 flex 撑满），编辑区自带内滚、工具栏不滚 */
+.ce-form-scroll { flex: 0 1 auto; min-height: 140px; overflow-y: auto; }
+.ce-meta { padding: 0 16px; }
 /* 两列栅格行：多列布局遵守页面留白与间距规范（gap 用统一 token） */
 .ce-row-2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sshk-gap-lg); align-items: start; }
 .ce-reserved { min-width: 0; }
 /* 控件级校验红字 tip（#128）：显示在控件正下方，不走 IPC 报错刷终端 */
 .ce-field-wrap { width: 100%; }
 .ce-field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; padding-top: 4px; }
-/* 编辑器随内容增高（#128 口径：头部/顶部固定，中间表单整体滚动，滚动条贴弹框右缘；
-   flex-basis 0 会在编辑器内产生第二条滚动条，改 1 0 auto：内容少时仍撑满剩余空间，多时随内容长） */
-.ce-editor { flex: 1 0 auto; min-height: 420px; display: flex; flex-direction: column; }
-.ce-editor > :deep(.rich) { flex: 1 0 auto; min-height: 0; }
+/* min 300 防小窗裁切：窗口大时随 flex 撑满（≈520+），高度不随内容变化，内容溢出走编辑区内滚 */
+.ce-editor { flex: 1 1 auto; min-height: 300px; margin: 0 16px; display: flex; flex-direction: column; }
+.ce-editor > :deep(.rich) { flex: 1; min-height: 0; }
 </style>

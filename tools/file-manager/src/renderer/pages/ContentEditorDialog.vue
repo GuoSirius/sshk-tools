@@ -209,10 +209,10 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
 .ce-controls { display: inline-flex; gap: 2px; }
 .ce-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--el-text-color-regular); cursor: pointer; border-radius: 4px; }
 .ce-btn:hover { background: var(--el-fill-color-light); }
-/* 唯一滚动层（#125：双滚动条根因①=此层 height:100% 不含 padding 恒溢出 12px 强制外滚，加 border-box 根治）：
-   滚动条贴弹框最右缘；头部/脚部在此层之外，不随内容滚 */
-.ce-body { flex: 1; min-height: 0; overflow-y: auto; }
-.ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+/* #129 滚动口径定版：.ce-body 永不滚动（表单区=唯一外滚层，滚动条贴弹框右缘；
+   富文本固定高度自带内滚），头部/脚部固定；侧向留白由 .ce-meta/.ce-editor 自身 padding/margin 提供 */
+.ce-body { flex: 1; min-height: 0; overflow: hidden; }
+.ce-content { padding: 12px 0 0; min-height: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 /* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
 .ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
 .ce-mini-bar { position: fixed; z-index: 4000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
