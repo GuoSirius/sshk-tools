@@ -10,6 +10,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { RichTextEditor, toStoredHtml } from '@sshk/rich-text'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import type { ContentRecord, ContentSaveInput, ContentStatus } from '@sshk/shared'
+import { format, ISO_WITH_OFFSET } from '@sshk/shared'
 import { host } from '../host'
 
 const props = defineProps<{
@@ -29,7 +30,6 @@ interface CeForm {
   status: ContentStatus
   publishAt: string // 到秒的时间串 'YYYY-MM-DD HH:mm:ss'，仅 status==='scheduled' 时有效
 }
-const now = () => Date.now()
 const form = ref<CeForm>({ _id: undefined, name: '', html: '', summary: '', description: '', tags: [], status: 'draft', publishAt: '' })
 const nameRef = ref<{ focus?: () => void } | null>(null)
 const imageLibrary = createHostImageLibrary(TOOL_ID, host.upload)
@@ -42,8 +42,11 @@ const publishMs = computed({
     form.value.publishAt = toSecString(v)
   },
 })
-/** 仅可选当前以后（精确到时分秒） */
-const disabledDate = (d: Date): boolean => d.getTime() <= now()
+/** 仅可选今天及以后（disabledDate 按日粒度判定，具体到秒的「当前以后」在提交时由主进程校验兜底） */
+const disabledDate = (d: Date): boolean => {
+  const start = new Date(); start.setHours(0, 0, 0, 0)
+  return d.getTime() < start.getTime()
+}
 
 function toSecString(ms: number): string {
   const d = new Date(ms)
@@ -73,7 +76,7 @@ watch(() => [props.record, props.copySource] as const, () => {
         description: src.description ?? '',
         tags: [...(src.tags ?? [])],
         status: props.copySource ? 'draft' : src.status,
-        publishAt: !props.copySource && src.status === 'scheduled' && src.publishAt ? toSecString(Number(src.publishAt)) : '',
+        publishAt: !props.copySource && src.status === 'scheduled' && src.publishAt ? toSecString(Date.parse(src.publishAt)) : '',
       }
     : { _id: undefined, name: '', html: '', summary: '', description: '', tags: [], status: 'draft', publishAt: '' }
   nextTick(() => nameRef.value?.focus?.())
@@ -88,11 +91,13 @@ const canSave = computed(() => {
 function submit(): void {
   if (!canSave.value) return
   const isScheduled = form.value.status === 'scheduled'
+  // publishAt 契约：ISO 带 +08:00 字符串（与 ContentSaveInput 类型一致，勿发数字毫秒）
+  const publishMsNum = isScheduled && form.value.publishAt ? Date.parse(form.value.publishAt) : 0
   emit('save', {
     ...form.value,
     html: toStoredHtml(form.value.html),
     description: form.value.description || undefined,
-    publishAt: isScheduled && form.value.publishAt ? Date.parse(form.value.publishAt) : undefined,
+    publishAt: publishMsNum ? format(publishMsNum, ISO_WITH_OFFSET) : undefined,
   } as ContentSaveInput)
 }
 defineExpose({ submit, canSave })

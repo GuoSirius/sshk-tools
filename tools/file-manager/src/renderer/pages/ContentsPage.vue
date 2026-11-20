@@ -173,13 +173,12 @@ async function guardWhenMinimized(action: () => void): Promise<void> {
         confirmButtonText: '执行本次操作', cancelButtonText: '继续编辑', distinguishCancelAndClose: true,
       },
     )
-    // 用户选择「执行本次操作」→ 执行本次操作（关闭最小化态弹框）
-    editorMinimized.value = false
+    // 用户选择「执行本次操作」→ 先把最小化弹框复原（否则新内容落到仍隐藏的弹框里），再执行
+    editorDialogRef.value?.restore()
     action()
   } catch {
     // 用户选择「继续编辑」（cancel 分支）→ 复原最小化弹框，不执行
     editorDialogRef.value?.restore()
-    editorMinimized.value = false
   }
 }
 async function openCreate(): Promise<void> { await guardWhenMinimized(() => { editRecord.value = null; copySource.value = null; editorOpen.value = true }) }
@@ -403,9 +402,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next, jumper"
         small
-      >
-        <template #total="{ total }">共 {{ total }} 条</template>
-      </el-pagination>
+      />
     </div>
 
     <ContentEditorDialog v-if="!pageMode" ref="editorDialogRef" v-model="editorOpen" :record="editRecord" :copy-source="copySource" @save="onSave" @update:minimized="editorMinimized = $event" />

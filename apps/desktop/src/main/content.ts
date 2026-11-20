@@ -54,9 +54,10 @@ export async function contentSave(repo: Repository, input: ContentSaveInput): Pr
   const status = input.status ?? 'draft'
   let publishAt: string | undefined
   if (status === 'scheduled') {
-    const t = Number(input.publishAt)
+    // 兼容数字毫秒（历史调用）与 ISO 字符串两种入参；入库统一 ISO 带 +08:00（项目铁律，禁 toISOString）
+    const raw = input.publishAt
+    const t = typeof raw === 'number' ? raw : Date.parse(String(raw ?? ''))
     if (!Number.isFinite(t) || t <= Date.now()) throw new Error('定时发布时间必须是晚于当前的时间')
-    // 入库 ISO 带 +08:00（项目铁律，禁 toISOString）
     publishAt = format(t, ISO_WITH_OFFSET)
   }
   const patch = {
@@ -118,8 +119,10 @@ async function ensureScheduler(repo: Repository): Promise<void> {
     try {
       const now = Date.now()
       const rows = await repo.list<ContentDoc>('contents', { archived: false, status: 'scheduled' })
+      // publishAt 入库为 ISO 带 +08:00 字符串，必须 Date.parse 解析（Number() 对该格式恒 NaN，曾致定时器永不触发）
       const due = rows.filter((d) => {
-        const t = Number(d.publishAt)
+        if (!d.publishAt) return false
+        const t = Date.parse(d.publishAt)
         return Number.isFinite(t) && t <= now
       })
       for (const doc of due) {

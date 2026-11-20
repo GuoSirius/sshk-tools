@@ -108,9 +108,7 @@ onMounted(() => {
           small
           background
           @current-change="onPageChange"
-        >
-          <template #total="{ total }">共 {{ total }} 条</template>
-        </el-pagination>
+        />
       </template>
       <span v-else class="muted">共 {{ posters.length }} 个海报 · 原 HTML 全程只读 · 产物覆盖式生成</span>
     </template>

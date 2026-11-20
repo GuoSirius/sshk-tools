@@ -1348,7 +1348,8 @@ function openMove(mode: 'copy' | 'move'): void {
   // 默认回填根目录「/」（用户 2026-11-19：除打开时指定/非首次复用上传位置）；非首次才用 lastMoveDir
   moveDirInput.value = lastMoveDir.value || '/'
   moveDestProfile.value = profileId.value
-  moveCascaderPicked.value = '/'
+  // cascader 仅在输入框为根目录时回显「/」，其余保持未选，避免与输入框显示不一致
+  moveCascaderPicked.value = moveDirInput.value === '/' ? '/' : ''
   moveOpen.value = true
 }
 
@@ -1860,8 +1861,8 @@ function openUnzip(entry: FsEntry): void {
   const base = entry.name.replace(/\.zip$/i, '')
   const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
   unzipDirInput.value = parent === '/' ? `/${base}` : `${parent}/${base}`
-  // 默认根目录回显（用户 2026-11-19）
-  unzipCascaderPicked.value = '/'
+  // 输入框默认 = zip 所在目录下以 zip 名新建（根目录不可解压，属「打开时已指定」特例）；cascader 不预选，避免与输入框显示不一致
+  unzipCascaderPicked.value = ''
   unzipOpen.value = true
 }
 function onUnzipDirPicked(v: unknown): void {

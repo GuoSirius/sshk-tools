@@ -208,9 +208,7 @@ onMounted(() => { void refresh() })
       v-model:current-page="page" v-model:page-size="pageSize" :total="total"
       :page-sizes="[20, 50, 100, 200]" layout="total, sizes, prev, pager, next" size="small"
       class="pager" @current-change="refresh" @size-change="doSearch"
-    >
-      <template #total="{ total }">共 {{ total }} 条</template>
-    </el-pagination>
+    />
   </div>
 </template>
 

@@ -190,9 +190,7 @@ async function onRowCommand(cmd: string, row: Named): Promise<void> {
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         small
-      >
-        <template #total="{ total }">共 {{ total }} 条</template>
-      </el-pagination>
+      />
     </div>
 
     <el-dialog :close-on-click-modal="false" :close-on-press-escape="false" v-model="tplOpen" :title="tplForm._id ? '编辑模板' : '新增模板'" width="460px">

@@ -196,9 +196,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         small
-      >
-        <template #total="{ total }">共 {{ total }} 条</template>
-      </el-pagination>
+      />
       <span class="muted">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
     </div>
 
