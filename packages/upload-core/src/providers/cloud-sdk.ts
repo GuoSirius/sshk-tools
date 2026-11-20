@@ -175,7 +175,7 @@ export async function listCloudPage(
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
-      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: CLOUD_REQUEST_TIMEOUT })
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket: q.bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: profile.requestTimeoutMs ?? CLOUD_REQUEST_TIMEOUT })
       const raw = await client.listV2({
         'max-keys': q.pageSize, prefix, delimiter,
         ...(q.cursor ? { 'continuation-token': q.cursor } : {}),

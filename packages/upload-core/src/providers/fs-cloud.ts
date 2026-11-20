@@ -165,7 +165,8 @@ export class CloudFsDriver implements FsDriver {
   }
 
   /**
-   * 构造 ali-oss 客户端的唯一入口：统一带 CLOUD_REQUEST_TIMEOUT。
+   * 构造 ali-oss 客户端的唯一入口：统一带可配置超时（profile.requestTimeoutMs，
+   * 缺省回落 cloud-sdk 单一事实源 CLOUD_REQUEST_TIMEOUT）。
    * 之前各操作各自 new OSS({...}) 漏了 timeout，默认 60s 导致「服务端已落盘、客户端 ACK 慢」
    * 时抛 ResponseTimeoutError（文件系统传 <50MB 小文件反复误报，2026-11-20 根治）。
    */

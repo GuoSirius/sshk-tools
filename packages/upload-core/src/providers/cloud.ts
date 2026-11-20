@@ -66,8 +66,13 @@ interface PutOutcome { url?: string }
 
 /** 分片上传阈值：超过此大小走 ali-oss multipartUpload（单请求不会 60s 超时，且能报真实进度） */
 const MULTIPART_THRESHOLD = 10 * 1024 * 1024
-/** 单请求超时沿用云 SDK 单一事实源（cloud-sdk CLOUD_REQUEST_TIMEOUT） */
-const OSS_REQUEST_TIMEOUT = CLOUD_REQUEST_TIMEOUT
+/**
+ * 单请求超时：优先用 profile 注入的传输设置，缺省回落云 SDK 单一事实源（5min）。
+ * 与 fs-cloud.newOss / cloud-sdk.listCloudPage 同口径，杜绝「有的路径吃配置、有的写死」。
+ */
+function requestTimeoutOf(profile: CloudProfile): number {
+  return profile.requestTimeoutMs ?? CLOUD_REQUEST_TIMEOUT
+}
 
 async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buffer, ctx: UploadContext): Promise<PutOutcome> {
   const bucket = ctx.overrides?.bucket || profile.bucket
@@ -82,19 +87,19 @@ async function put(profile: CloudProfile, mod: SdkModule, key: string, body: Buf
       const client = new OSS({
         region: profile.region, endpoint: ep || undefined, bucket,
         accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret,
-        timeout: OSS_REQUEST_TIMEOUT,
+        timeout: requestTimeoutOf(profile),
       })
       if (body.byteLength >= MULTIPART_THRESHOLD) {
         // ali-oss progress(percentage, checkpoint)：percentage 0–1；每片独立请求，避免大文件整体超时
         const r = await client.multipartUpload(key, body, {
           partSize: 5 * 1024 * 1024,
           parallel: 4,
-          timeout: OSS_REQUEST_TIMEOUT,
+          timeout: requestTimeoutOf(profile),
           progress: (percentage: number) => ctx.onProgress?.(Math.min(100, Math.round(percentage * 100))),
         })
         return { url: r.url }
       }
-      const r = await client.put(key, body, { timeout: OSS_REQUEST_TIMEOUT })
+      const r = await client.put(key, body, { timeout: requestTimeoutOf(profile) })
       return { url: r.url }
     }
     case 'tencent-cos': {
@@ -199,7 +204,7 @@ async function probe(profile: CloudProfile, mod: SdkModule): Promise<string> {
       const OSS = ctorOf(mod, ['default', 'OSS'], 'ali-oss') as new (o: Record<string, unknown>) => {
         listV2(q: Record<string, unknown>): Promise<unknown>
       }
-      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: OSS_REQUEST_TIMEOUT })
+      const client = new OSS({ region: profile.region, endpoint: ep || undefined, bucket, accessKeyId: profile.accessKeyId, accessKeySecret: profile.accessKeySecret, timeout: requestTimeoutOf(profile) })
       await client.listV2({ 'max-keys': 1 })
       return `阿里云 OSS 连通：bucket ${bucket} 可读`
     }
