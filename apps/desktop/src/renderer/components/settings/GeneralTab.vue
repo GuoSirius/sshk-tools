@@ -96,17 +96,6 @@ onMounted(() => { void loadAppConfig() })
             <el-switch v-model="appConfig.closeToTray" />
           </div>
         </el-form-item>
-        <el-form-item label="内容编辑器形态">
-          <div class="switch-row">
-            <span class="switch-label">内容编辑器形态
-              <FormHint inline detail="内容管理的新建/编辑采用弹框（默认）或整页；两种形态共用同一编辑器实现，只换外壳，改动保存后立即生效">弹框</FormHint>
-            </span>
-            <el-select v-model="appConfig.contentEditorMode" class="theme-select">
-              <el-option label="弹框" value="dialog" />
-              <el-option label="整页" value="page" />
-            </el-select>
-          </div>
-        </el-form-item>
         <el-form-item label="自动更新">
           <div class="switch-row">
             <span class="switch-label">自动更新

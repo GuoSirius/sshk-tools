@@ -13,8 +13,8 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useDraggable } from '@vueuse/core'
-import { Close, Expand, FullScreen, Minus, Rank } from '@element-plus/icons-vue'
-// Close 仍用于最小化悬浮条关闭；标题栏关闭已移除（与 footer 取消重复）
+import { FullScreen, Rank } from '@element-plus/icons-vue'
+// 窗口四态图标用 FA（Windows 风格，EP icons 无对应；fa-window-* 全局 CSS 已在 main.ts 注册）
 import type { ContentRecord, ContentSaveInput } from '@sshk/shared'
 import ContentEditorCore from './ContentEditorCore.vue'
 
@@ -48,7 +48,16 @@ watch(visible, (open) => {
 })
 
 function setMode(mode: WinMode): void { winMode.value = mode; minimized.value = false }
-function doMinimize(): void { minimized.value = true }
+/** 最小化：贴底右侧停靠（用户 2026-11-20：参考传输面板收起条——位置确定可找、手柄显示标题、点击复原） */
+function doMinimize(): void {
+  minimized.value = true
+  void nextTick(() => {
+    const w = barRef.value?.offsetWidth ?? 280
+    const h = barRef.value?.offsetHeight ?? 40
+    x.value = Math.max(8, (window.innerWidth ?? 1200) - w - 16)
+    y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
+  })
+}
 /** 由父组件触发复原（用户选择「继续编辑」时） */
 function restore(): void { minimized.value = false; winMode.value = 'maximized' }
 function doClose(): void { minimized.value = false; visible.value = false }
@@ -64,21 +73,21 @@ const dialogVisible = computed({
 })
 
 const barRef = ref<HTMLElement | null>(null)
+const barHandleRef = ref<HTMLElement | null>(null)
 const { x, y } = useDraggable(barRef, {
-  initialValue: { x: 40, y: 90 },
+  handle: barHandleRef,
   preventDefault: true,
   stopPropagation: true,
-  // 悬浮条 fixed 定位在视口左上（40,90），可拖拽；始终在可视区内
 })
-// 最小化悬浮条渲染后把 draggable 的 x/y 同步到初始位置（fixed 左上，可见且可拖）
-watch(minimized, async (m) => {
-  if (!m) return
-  await nextTick()
-  if (barRef.value) {
-    // 若 useDraggable 尚未拿到 ref，手动初始化
-    x.value = 40; y.value = 90
-  }
-})
+// 拖出视口防丢（TransferPanel 同款口径）：横纵各留 80px 可见，任何时候都能抓回来
+function clampBar(): void {
+  const w = barRef.value?.offsetWidth ?? 280
+  const vw = window.innerWidth ?? 1200
+  const vh = window.innerHeight ?? 800
+  x.value = Math.min(Math.max(x.value, 8 - w + 80), vw - 80)
+  y.value = Math.min(Math.max(y.value, 0), vh - 40)
+}
+watch([x, y], () => clampBar(), { flush: 'sync' })
 </script>
 
 <template>
@@ -97,10 +106,11 @@ watch(minimized, async (m) => {
       <div class="ce-head">
         <span class="ce-title">{{ editTitle }}</span>
         <div class="ce-controls">
-          <el-tooltip content="最小化" placement="bottom"><button class="ce-btn" aria-label="最小化" @click="doMinimize"><el-icon><Minus /></el-icon></button></el-tooltip>
+          <!-- 窗口四态图标（Windows 风格 FA）：最小化=底部横条；最大化/还原=方框↔双叠方框 -->
+          <el-tooltip content="最小化" placement="bottom"><button class="ce-btn" aria-label="最小化" @click="doMinimize"><i class="fa-solid fa-window-minimize"></i></button></el-tooltip>
           <el-tooltip :content="winMode === 'normal' ? '最大化' : '还原'" placement="bottom">
             <button class="ce-btn" aria-label="最大化/还原" @click="setMode(winMode === 'normal' ? 'maximized' : 'normal')">
-              <el-icon><component :is="winMode === 'normal' ? Expand : Rank" /></el-icon>
+              <i :class="winMode === 'normal' ? 'fa-regular fa-window-maximize' : 'fa-regular fa-window-restore'"></i>
             </button>
           </el-tooltip>
           <el-tooltip :content="winMode === 'fullscreen' ? '退出全屏' : '全屏'" placement="bottom">
@@ -120,10 +130,11 @@ watch(minimized, async (m) => {
       </template>
     </el-dialog>
 
+    <!-- 最小化悬浮条（传输面板收起条同款）：默认贴底右侧、手柄拖拽、点标题复原、✕ 关闭 -->
     <div v-if="minimized" ref="barRef" class="ce-mini-bar" :style="{ left: `${x}px`, top: `${y}px` }">
-      <span class="ce-mini-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span>
-      <span class="ce-mini-title" @click="restore()"><el-icon class="mini-expand"><Expand /></el-icon>{{ editTitle }}（已最小化 · 点击展开）</span>
-      <button class="ce-btn" aria-label="关闭" @click="doClose"><el-icon><Close /></el-icon></button>
+      <span ref="barHandleRef" class="ce-mini-handle" aria-hidden="true"><el-icon><Rank /></el-icon></span>
+      <span class="ce-mini-title" :title="editTitle" @click="restore()"><i class="fa-regular fa-window-restore"></i>{{ editTitle }}（已最小化 · 点击展开）</span>
+      <button class="ce-btn" aria-label="关闭" @click="doClose">✕</button>
     </div>
   </teleport>
 </template>
@@ -140,10 +151,11 @@ watch(minimized, async (m) => {
 .ce-content { padding: 12px 16px 0; min-height: 0; display: flex; flex-direction: column; height: 100%; }
 /* normal 态：el-dialog 非 flex 上下文，用固定高度约束滚动层；max/full 由全局块的 flex:1 撑满 */
 .ce-body-normal { height: min(calc(100vh - 200px), calc(86vh - 70px)); min-height: 360px; }
-.ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 360px; }
-.ce-mini-handle { cursor: move; color: var(--el-text-color-placeholder); display: inline-flex; align-items: center; padding: 2px; }
-.ce-mini-title { cursor: pointer; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
-.mini-expand { flex: none; }
+.ce-mini-bar { position: fixed; z-index: 3000; display: flex; align-items: center; gap: 6px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); box-shadow: var(--el-box-shadow-light); border-radius: 6px; padding: 5px 8px; max-width: 380px; }
+.ce-mini-handle { cursor: grab; color: var(--el-text-color-placeholder); display: inline-flex; align-items: center; padding: 2px; flex: none; }
+.ce-mini-title { cursor: pointer; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.ce-mini-title i { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
+.ce-btn { font-size: 13px; }
 </style>
 
 <!-- 非 scoped 全局块：el-dialog 节点 teleport 到 body，无本组件 data-v 属性，:deep() 打不进（项目已知坑） -->

@@ -37,9 +37,32 @@
       "id": "profiles",
       "label": "通道配置",
       "icon": "M12 15V4M8 8l4-4 4 4M4 20h16"
+    },
+    {
+      "id": "config",
+      "label": "工具设置",
+      "icon": "M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 3.1l2-.6-1-3.4-2 .6a8 8 0 00-1.2-1.2l.6-2-3.4-1-.6 2a8 8 0 00-1.7 0l-.6-2-3.4 1 .6 2a8 8 0 00-1.2 1.2l-2-.6-1 3.4 2 .6a8 8 0 000 1.7l-2 .6 1 3.4 2-.6c.4.4.8.8 1.2 1.2l-.6 2 3.4 1 .6-2a8 8 0 001.7 0l.6 2 3.4-1-.6-2c.4-.4.8-.8 1.2-1.2l2 .6 1-3.4-2-.6a8 8 0 000-1.7z"
     }
   ],
-  "configGroups": [],
+  "configGroups": [
+    {
+      "id": "content-editor",
+      "label": "内容编辑器",
+      "fields": [
+        {
+          "key": "editorMode",
+          "label": "新建/编辑形式",
+          "type": "select",
+          "options": [
+            { "label": "弹框", "value": "dialog" },
+            { "label": "整页", "value": "page" }
+          ],
+          "hint": "内容管理的新建/编辑容器形态（弹框=弹窗、整页=整页视图），两种形态共用同一编辑器实现；保存后下次打开生效",
+          "full": true
+        }
+      ]
+    }
+  ],
   "defaults": {},
   "package": {
     "schemaVersion": 1,

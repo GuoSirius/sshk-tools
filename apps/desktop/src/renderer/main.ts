@@ -8,6 +8,8 @@ import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
+// FontAwesome（图标约定：EP icons 没有再用 FA；窗口四态类图标 fa-window-* 全局注册一次）
+import '@fortawesome/fontawesome-free/css/all.min.css'
 import 'virtual:uno.css'
 import './styles/theme.css'
 import App from './App.vue'

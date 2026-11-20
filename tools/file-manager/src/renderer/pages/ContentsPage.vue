@@ -76,14 +76,23 @@ watch(filteredRows, () => { currentPage.value = 1 })
 const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 function resetFilters(): void { kw.value = ''; dateRange.value = null; tagFilter.value = []; shareFilter.value = 'all'; statusFilter.value = 'all' }
 
-/** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。 */
+/** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。
+ *  配置属工具级：tools.file-manager.editorMode（工具设置页）；旧键 app.content.editorMode 作回落读取（2026-11-20 迁移）。 */
 const pageMode = ref(false)
 async function loadEditorMode(): Promise<void> {
+  const spec = { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取编辑器形态' } satisfies HostApiSpec
   try {
-    const spec = { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取编辑器形态' } satisfies HostApiSpec
-    const mode = await callHostApi<unknown>(spec, 'app.content.editorMode')
+    const mode = await callHostApi<unknown>(spec, 'tools.file-manager.editorMode')
     pageMode.value = mode === 'page'
-  } catch { pageMode.value = false }
+  } catch {
+    pageMode.value = false
+  }
+  if (!pageMode.value) {
+    try {
+      const legacy = await callHostApi<unknown>(spec, 'app.content.editorMode')
+      pageMode.value = legacy === 'page'
+    } catch { pageMode.value = false }
+  }
 }
 
 async function load(): Promise<void> {
@@ -134,14 +143,14 @@ async function copyLink(row: ContentRecord): Promise<void> {
   const ownAlive = own && ownRoute(row)
   if (own && ownAlive && own.urls[0]) {
     await hostClipboard(own.urls[0])
-    ElMessage.success('已复制本文章的专属链接')
+    ElMessage.success('已复制私有链接')
     return
   }
   const common = commonTicket()
   const commonAlive = common && commonRoute()
   if (common && commonAlive && common.urls[0]) {
     await hostClipboard(common.urls[0])
-    ElMessage.success('已复制公用总链接（可浏览全部已发布内容）')
+    ElMessage.success('已复制共用总链接（可浏览全部已发布内容）')
     return
   }
   ElMessage.warning('还没有可用分享：点「分享」生成单篇链接，或点顶部「分享内容」生成公用总链')
@@ -276,23 +285,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       @cancel="editorOpen = false"
     />
     <template v-else>
-    <div class="toolbar">
-      <el-button size="small" type="primary" plain @click="openCreate">新建内容</el-button>
-      <el-button size="small" type="success" plain @click="openCommonShare">分享内容</el-button>
-      <el-divider direction="vertical" />
-      <el-button size="small" type="danger" plain :disabled="selected.length === 0" @click="batchRemove">批量删除（{{ selected.length }}）</el-button>
-      <el-dropdown trigger="click" :disabled="selected.length === 0" @command="(cmd: string) => doExport(cmd as 'triple' | 'html' | 'md', selected)">
-        <el-button size="small" type="warning" plain :disabled="selected.length === 0">批量导出▾</el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="triple">导出（三件套 ZIP）</el-dropdown-item>
-            <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
-            <el-dropdown-item command="md">导出 MD</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </div>
-
+    <!-- 筛选栏在最上（用户 2026-11-20：顶部操作放搜索下方且居右） -->
     <div class="filter-bar">
       <el-input v-model="kw" size="small" clearable placeholder="搜索标题 / 描述" style="width: 200px" />
       <el-date-picker
@@ -310,8 +303,8 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       </el-select>
       <el-select v-model="shareFilter" size="small" style="width: 130px">
         <el-option label="全部分享状态" value="all" />
-        <el-option label="自己的" value="own" />
-        <el-option label="公用的" value="common" />
+        <el-option label="私有" value="own" />
+        <el-option label="共用" value="common" />
         <el-option label="未分享" value="none" />
       </el-select>
       <el-select v-model="statusFilter" size="small" style="width: 130px">
@@ -319,6 +312,24 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
         <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-button size="small" text :disabled="!kw && !dateRange && !tagFilter.length && shareFilter === 'all' && statusFilter === 'all'" @click="resetFilters">清空筛选</el-button>
+    </div>
+
+    <!-- 操作栏：筛选栏下方，居右显示 -->
+    <div class="toolbar">
+      <el-button size="small" type="primary" plain @click="openCreate">新建内容</el-button>
+      <el-button size="small" type="success" plain @click="openCommonShare">分享内容</el-button>
+      <el-divider direction="vertical" />
+      <el-button size="small" type="danger" plain :disabled="selected.length === 0" @click="batchRemove">批量删除（{{ selected.length }}）</el-button>
+      <el-dropdown trigger="click" :disabled="selected.length === 0" @command="(cmd: string) => doExport(cmd as 'triple' | 'html' | 'md', selected)">
+        <el-button size="small" type="warning" plain :disabled="selected.length === 0">批量导出▾</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="triple">导出（三件套 ZIP）</el-dropdown-item>
+            <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
+            <el-dropdown-item command="md">导出 MD</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
 
     <div class="table-wrap" v-loading="loading">
@@ -344,12 +355,12 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
         </el-table-column>
         <el-table-column label="创建时间" width="150"><template #default="{ row }"><TimeText :value="row.createdAt" /></template></el-table-column>
         <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
-        <!-- 分享状态（2026-11-19 重设计）：单 tag 显示类型，点击复制；未分享显示操作入口 -->
-        <el-table-column label="分享" width="130">
+        <!-- 分享状态列（2026-11-20 定版措辞：共用/私有/未分享）：单 tag 显示类型，点击复制；未分享显示操作入口 -->
+        <el-table-column label="分享状态" width="110">
           <template #default="{ row }">
             <div class="share-cell">
               <template v-if="shareState(row).type !== 'none'">
-                <el-tooltip :content="shareState(row).type === 'own' ? '本行专属链接（点击复制）' : '公用总链接（点击复制）'">
+                <el-tooltip :content="shareState(row).type === 'own' ? '私有链接（点击复制）' : '共用总链接（点击复制）'">
                   <el-tag
                     size="small"
                     :type="shareState(row).type === 'own' ? 'primary' : 'warning'"
@@ -357,7 +368,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
                     class="share-click"
                     @click="copyLink(row)"
                   >
-                    {{ shareState(row).type === 'own' ? '自己的' : '公用的' }}{{ shareState(row).alive ? '' : '·已失效' }}
+                    {{ shareState(row).type === 'own' ? '私有' : '共用' }}{{ shareState(row).alive ? '' : '·已失效' }}
                   </el-tag>
                 </el-tooltip>
               </template>
@@ -417,7 +428,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 <style scoped>
 /* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
 .contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
-.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+.toolbar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
 .table-wrap { flex: 1; min-height: 0; }
 .foot { flex: none; display: flex; justify-content: flex-end; }
