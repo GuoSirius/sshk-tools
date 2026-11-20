@@ -118,9 +118,7 @@ defineExpose({ submit, canSave, isDirty })
 
 <template>
   <div class="ce-core">
-    <!-- #129 表单区 = 唯一外滚层：滚动条贴弹框右缘（本层全宽），留白由 .ce-meta 自身 padding 提供 -->
-    <div class="ce-form-scroll">
-      <el-form label-width="auto" size="small" class="ce-meta">
+    <el-form label-width="auto" size="small" class="ce-meta">
       <!-- 第一行：标题 + 标签（用户 2026-11-20 三轮定版） -->
       <div class="ce-row ce-row-2">
         <el-form-item label="标题" required>
@@ -165,20 +163,21 @@ defineExpose({ submit, canSave, isDirty })
           placeholder="内容描述（可选）"
         />
       </el-form-item>
-      </el-form>
-    </div>
-    <!-- 正文：富文本（固定高度，编辑区自带内滚，工具栏不随外层滚动） -->
-    <div class="ce-editor">
-      <RichTextEditor v-model="form.html" :on-upload-image="onUploadImage" :image-library="imageLibrary" :state-key="record?._id ?? 'new'" />
-    </div>
+
+      <el-form-item label="内容">
+        <!-- 正文：富文本（固定高度，编辑区自带内滚，工具栏不随外层滚动） -->
+        <div class="ce-editor">
+          <RichTextEditor v-model="form.html" :on-upload-image="onUploadImage" :image-library="imageLibrary" :state-key="record?._id ?? 'new'" />
+        </div>
+      </el-form-item>
+    </el-form>
   </div>
 </template>
 
 <style scoped>
-.ce-core { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: var(--sshk-gap-md); }
-/* #129 滚动口径定版：表单区=唯一外滚层（滚动条贴弹框右缘，留白由 .ce-meta padding 提供）；
-   富文本恢复固定高度（min 520，窗口大时随 flex 撑满），编辑区自带内滚、工具栏不滚 */
-.ce-form-scroll { flex: 0 1 auto; min-height: 140px; overflow-y: auto; }
+/* #129 弹框滚动定版（用户 2026-11-20 定稿）：本层=唯一外滚层（滚动条贴弹框右缘，头部/footer 固定不滚）；
+   留白由 .ce-meta padding 提供；富文本收进「内容」form-item 固定 min 600 高度、溢出走编辑区内滚 */
+.ce-core { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: var(--sshk-gap-md); overflow: auto; }
 .ce-meta { padding: 0 16px; }
 /* 两列栅格行：多列布局遵守页面留白与间距规范（gap 用统一 token） */
 .ce-row-2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sshk-gap-lg); align-items: start; }
@@ -187,6 +186,6 @@ defineExpose({ submit, canSave, isDirty })
 .ce-field-wrap { width: 100%; }
 .ce-field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; padding-top: 4px; }
 /* min 300 防小窗裁切：窗口大时随 flex 撑满（≈520+），高度不随内容变化，内容溢出走编辑区内滚 */
-.ce-editor { flex: 1 1 auto; min-height: 300px; margin: 0 16px; display: flex; flex-direction: column; }
+.ce-editor { min-height: 600px; display: flex; flex-direction: column; }
 .ce-editor > :deep(.rich) { flex: 1; min-height: 0; }
 </style>
