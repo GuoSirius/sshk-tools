@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { provideToolId } from '@sshk/ui-kit'
 import FileExplorerPage from './pages/FileExplorerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
 import ContentsPage from './pages/ContentsPage.vue'
@@ -11,6 +12,8 @@ import ContentsPage from './pages/ContentsPage.vue'
  * 「工具配置」菜单由宿主 ToolSettingsPage 接管，不进本组件。
  */
 const props = defineProps<{ menu?: string; toolId?: string }>()
+// 工具 id 单一来源（#129 铁律）：宿主注入 → provide，深层 useToolId() inject，禁字面量
+provideToolId(() => props.toolId ?? '')
 const pages: Record<string, unknown> = { files: FileExplorerPage, profiles: ProfilesPage, contents: ContentsPage }
 const active = computed(() => pages[props.menu ?? 'files'] ?? FileExplorerPage)
 </script>

@@ -12,6 +12,7 @@ import type { ContentRecord, ContentSaveInput, ContentStatus } from '@sshk/share
 import { format, toMs, ISO_WITH_OFFSET } from '@sshk/shared'
 import { ElMessage } from 'element-plus'
 import { host } from '../host'
+import { useToolId } from '@sshk/ui-kit'
 
 const props = defineProps<{
   record: ContentRecord | null
@@ -19,7 +20,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ save: [input: ContentSaveInput] }>()
 
-const TOOL_ID = 'file-manager'
+const toolId = useToolId() // #129 铁律：工具 id 单一来源（根组件 provideToolId），禁字面量
 interface CeForm {
   _id?: string
   name: string
@@ -34,7 +35,7 @@ const form = ref<CeForm>({ _id: undefined, name: '', html: '', summary: '', desc
 const nameRef = ref<{ focus?: () => void } | null>(null)
 // 脏检测基线（#126：关闭前有未保存内容需二次确认）：打开/切换记录时快照，isDirty 深比较
 const baseline = ref('')
-const imageLibrary = createHostImageLibrary(TOOL_ID, host.upload)
+const imageLibrary = createHostImageLibrary(toolId.value, host.upload)
 
 // 定时发布时刻（毫秒）：el-date-picker value-format="x" 直出/直吃毫秒时间戳
 const publishMs = computed({
@@ -66,7 +67,7 @@ const onUploadImage = async (file: File): Promise<string> => {  const dataUrl = 
     reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
     reader.readAsDataURL(file)
   })
-  const result = await host.upload.single({ toolId: TOOL_ID, name: file.name, size: file.size, mime: file.type, dataUrl }) as { url: string }
+  const result = await host.upload.single({ toolId: toolId.value, name: file.name, size: file.size, mime: file.type, dataUrl }) as { url: string }
   return result.url
 }
 

@@ -49,7 +49,6 @@ import {
   isFsVideoName,
   isFsZipName,
   normalizeUploadConfig,
-  TOOL_IDS,
   type FsChannelInfo,
   type FsEntry,
   type FsFavorite,
@@ -59,6 +58,7 @@ import {
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/ui-kit'
+import { useToolId } from '@sshk/ui-kit'
 import TransferPanel from '../components/TransferPanel.vue'
 
 /**
@@ -68,8 +68,8 @@ import TransferPanel from '../components/TransferPanel.vue'
  * 通道 = 文件管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
  */
 
-/** 工具 id 唯一真相源：manifest 的 id（'file-manager'）。分享路由归属/凭证缓存都按它记账 */
-const TOOL_ID = TOOL_IDS.fileManager
+/** #129 铁律：工具 id 单一来源=根组件 provideToolId 注入，renderer 禁字面量/常量表直取 */
+const TOOL_ID = useToolId()
 
 // ── 通道与目录状态 ──
 const channels = ref<FsChannelInfo[]>([])
@@ -1108,9 +1108,9 @@ async function loadConfigForShare(entry: FsEntry): Promise<void> {
 const shareRoutes = ref<ShareRouteInfo[]>([])
 async function loadShareRoutes(): Promise<void> {
   try {
-    shareRoutes.value = await window.api.shareHub.list(TOOL_ID)
+    shareRoutes.value = await window.api.shareHub.list(TOOL_ID.value)
     // 工具改名（upload-manager→file-manager）后凭证缓存键失配：按路由反查迁移，保证旧链接继续复用
-    migrateShareTickets(TOOL_ID, shareRoutes.value)
+    migrateShareTickets(TOOL_ID.value, shareRoutes.value)
   }
   catch { shareRoutes.value = [] }
 }

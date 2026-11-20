@@ -8,14 +8,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket } from '@sshk/ui-kit'
-import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
+import { callHostApi, type HostApiSpec, useToolId } from '@sshk/ui-kit'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, inMsRange, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
 import { host } from '../host'
 import ContentEditorDialog from './ContentEditorDialog.vue'
 import ContentEditorPage from './ContentEditorPage.vue'
 import { exportTriple, exportHtml, exportMarkdown } from './content-export'
 
-const TOOL_ID = 'file-manager'
+const toolId = useToolId() // #129 铁律：工具 id 单一来源（根组件 provideToolId），禁字面量
 /** content kind 的虚拟 root（内容在 NeDB，无真实目录）；ShareDialog 四元组复用键用得上 */
 const CONTENT_ROOT = 'content://contents'
 const COMMON_LABEL = '内容：公用总链'
@@ -110,7 +110,7 @@ async function load(): Promise<void> {
   try {
     const [list, rs] = await Promise.all([
       host.content.list(),
-      callHostApi<ShareRouteInfo[]>(listSpec, TOOL_ID),
+      callHostApi<ShareRouteInfo[]>(listSpec, toolId.value),
     ])
     rows.value = list
     routes.value = Array.isArray(rs) ? rs : []
@@ -124,14 +124,14 @@ onMounted(() => { void load(); void loadEditorMode() })
 
 // ── 分享状态反查 ──
 function ownTicket(row: ContentRecord) {
-  return readShareTicket(TOOL_ID, `文章：${row.name}`, CONTENT_ROOT, `contents/${row._id}`)
+  return readShareTicket(toolId.value, `文章：${row.name}`, CONTENT_ROOT, `contents/${row._id}`)
 }
 function ownRoute(row: ContentRecord): ShareRouteInfo | undefined {
   const t = ownTicket(row)
   return (t && routes.value.find((r) => r.id === t.id && (t.expiresAt === SHARE_PERMANENT_EXPIRES_AT || t.expiresAt > Date.now()))) ?? undefined
 }
 function commonTicket() {
-  return readShareTicket(TOOL_ID, COMMON_LABEL, CONTENT_ROOT, '__list__')
+  return readShareTicket(toolId.value, COMMON_LABEL, CONTENT_ROOT, '__list__')
 }
 function commonRoute(): ShareRouteInfo | undefined {
   const t = commonTicket()
@@ -463,7 +463,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 
     <ContentEditorDialog v-if="!pageMode" ref="editorDialogRef" v-model="editorOpen" :record="editRecord" :copy-source="copySource" @save="onSave" @update:minimized="editorMinimized = $event" />
 
-    <ShareDialog :open="shareOpen" :tool-id="TOOL_ID" :label="shareLabel" :default-root="CONTENT_ROOT" :default-entry="shareEntry" :content-id="shareContentId" route-kind="content" @update:open="shareOpen = $event" @changed="load" />
+    <ShareDialog :open="shareOpen" :tool-id="toolId" :label="shareLabel" :default-root="CONTENT_ROOT" :default-entry="shareEntry" :content-id="shareContentId" route-kind="content" @update:open="shareOpen = $event" @changed="load" />
 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" :confirm-text="confirmText" @confirm="onConfirmed" />
     </template>

@@ -25,7 +25,7 @@ const htmlB = ref(
 const readonly = ref(false)
 
 /** 图片库桥接按 toolId 生成（宿主注入后才有值；未配置远程/云 profile 时只有本地来源） */
-const library = computed(() => createTemplateImageLibrary(toolId.value || 'template-tool'))
+const library = computed(() => createTemplateImageLibrary(toolId.value))
 
 function reset(): void {
   htmlA.value = '<h2>实例 A</h2><p>内容已重置。</p>'

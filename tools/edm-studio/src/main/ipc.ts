@@ -4,7 +4,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
 import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { IPC_CHANNELS, now } from '@sshk/shared'
+import { IPC_CHANNELS, TOOL_IDS, now } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
 import { seedSystemContent, seedCustomContent, versionNumberOf } from './edm-seed.js'
 import {
@@ -60,7 +60,7 @@ const SYSTEM_FILE_EXTS = new Set(['.css', '.yaml', '.yml', '.njk'])
  */
 function resolveEdmRoot(_source: string = 'builtin', _baseDir?: string): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'edm-studio', 'assets', 'edm')
+    return path.join(process.resourcesPath, TOOL_IDS.edmStudio, 'assets', 'edm')
   }
   return path.resolve(app.getAppPath(), '../../tools/edm-studio/assets/edm')
 }
@@ -409,7 +409,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
           outputRoot: deps.outputRoot,
           unoEnabled: true,
         })
-        const snap = outputSnapshotOptions(deps.config, 'edm-studio', app.getPath('userData'))
+        const snap = outputSnapshotOptions(deps.config, TOOL_IDS.edmStudio, app.getPath('userData'))
         const outputs = {
           assembled: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled, snap),
           inlined: writeOutput(deps.outputRoot, edmOutputRel(mail._id, 'inlined'), stages.inlined, snap),
