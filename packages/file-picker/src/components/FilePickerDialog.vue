@@ -63,7 +63,7 @@ const props = withDefaults(
     conflict?: FilePickerConflict
     /** 确认按钮文案；缺省 image→「插入所选」、其余类别→「确认选择」 */
     confirmText?: string
-    /** 弹框标题；缺省按类别：「图片库」「文档库」「代码库」「文件库」 */
+    /** 弹框标题；缺省按类别：「图片库」「文档库」「代码库」「视频库」「文件库」 */
     title?: string
     /** 打开时默认页签（无已保存设置时生效） */
     initialTab?: 'upload' | 'gallery' | 'selected'

@@ -104,7 +104,7 @@ async function copy(): Promise<void> {
   padding: 0 !important;
 }
 .md-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
-.md-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.md-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 1px 8px 0; }
 .md-tip { flex: 1 1 auto; min-width: 0; font-size: 12px; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .md-mode-switch { flex: none; white-space: nowrap; }
 .md-render-panel {

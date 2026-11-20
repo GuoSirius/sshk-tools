@@ -45,7 +45,8 @@ import MarkdownViewDialog from './MarkdownViewDialog.vue'
  * F1：直接用 @wangeditor/editor 的 createEditor/createToolbar —— @wangeditor/editor-for-vue
  *     的 latest 是 Vue2 包，与本项目 Vue3 不兼容，禁止引入。
  * F2：fullScreen() 要求 toolbar 与 textarea 父节点一致，故二者用【同一 selector】创建。
- * C2：图片上传通过 onUploadImage 回调由工具侧注入，本包不依赖 upload-core。
+ * C2：图片上传通过 onUploadImage 回调由工具侧注入，本包不依赖 upload-core；
+ *     有 imageLibrary 桥接时工具栏「上传图片 / 上传视频」均改唤起 FilePickerDialog（#130 / #133）。
  *
  * N12 二次根治（依据 @wangeditor/core@1.1.19 实际实现，勿凭印象改）：
  *   fullScreen()   → getTextarea(editor).$box.parent().addClass('w-e-full-screen-container')
@@ -103,6 +104,9 @@ const editorBoxEl = ref<HTMLElement | null>(null)
 const richEl = ref<HTMLElement | null>(null)
 const fullScreen = ref(false)
 const libraryOpen = ref(false)
+/** #133 视频选择框：与图片库分开（mode=video → 标题/accept/上传校验均按视频），插入走 wangEditor uploadVideo 的 insertFn */
+const videoOpen = ref(false)
+let videoInsertFn: ((url: string, poster?: string) => void) | null = null
 const sourceOpen = ref(false)
 const markdownOpen = ref(false)
 
@@ -115,6 +119,15 @@ function onLibraryConfirm(items: FilePickerItem[]): void {
     items.map((i) => `<img src="${String(i.url).replace(/"/g, '%22')}" alt=""/>`).join(''),
   )
   ElMessage.success(`已插入 ${items.length} 张图片`)
+}
+/** 视频库确认（#133）：走 wangEditor 标准 insertVideo 通道生成 <div data-w-e-type="video">，裸 <video> 编辑器不识别 */
+function onVideoConfirm(items: FilePickerItem[]): void {
+  const insert = videoInsertFn
+  videoInsertFn = null
+  const first = items[0]
+  if (!insert || !first) return
+  insert(toDisplaySrc(first.url)) // 存储 file:// → 编辑器显示 localres://，回写由 toStoredHtml 对称还原
+  ElMessage.success('已插入视频')
 }
 /** 底部状态栏（Word 式字数统计） */
 const stats = ref<TextStats>({ words: 0, chars: 0, charsNoSpace: 0, paragraphs: 0 })
@@ -129,6 +142,10 @@ interface UploadImageConf {
   /** wangEditor 原生钩子（uploadImage exec 优先于原生文件输入）：设置后「上传图片」改调本回调（#130） */
   customBrowseAndUpload?: (insertFn: (url: string, alt?: string, href?: string) => void) => void
 }
+interface UploadVideoConf {
+  /** uploadVideo 菜单同样支持该钩子（5.1.23 exec 实锤）：设置后「上传视频」改调本回调（#133） */
+  customBrowseAndUpload?: (insertFn: (url: string, poster?: string) => void) => void
+}
 
 const hook = props.onUploadImage
 const editorConfig: Partial<IEditorConfig> = {
@@ -139,7 +156,7 @@ const editorConfig: Partial<IEditorConfig> = {
     emit('update:modelValue', toStoredHtml(editor.getHtml()))
   },
 }
-const conf: Record<string, UploadImageConf> = {}
+const conf: Record<string, UploadImageConf | UploadVideoConf> = {}
 if (hook) {
   const maxSize = props.imageRule?.maxSize ?? 0
   conf.uploadImage = {
@@ -155,6 +172,15 @@ if (props.imageLibrary) {
   ;(conf.uploadImage ??= { customUpload: async () => undefined }).customBrowseAndUpload = () => {
     libraryOpen.value = true
   }
+  // #133 上传视频同样改唤起文件选择框：mode=video 决定标题「视频库」、accept=video/*、
+  // 上传扩展名白名单 VIDEO_EXTS 与列取 kind=video；图片/视频两个弹框与状态完全隔离
+  const videoConf: UploadVideoConf = {
+    customBrowseAndUpload: (insertFn) => {
+      videoInsertFn = insertFn
+      videoOpen.value = true
+    },
+  }
+  conf.uploadVideo = videoConf
 }
 if (Object.keys(conf).length > 0) editorConfig.MENU_CONF = conf
 
@@ -313,6 +339,19 @@ onBeforeUnmount(() => {
     :resolve-src="toDisplaySrc"
     confirm-text="插入所选"
     @confirm="onLibraryConfirm"
+  />
+  <!-- #133 视频选择框：独立标题「选择视频」+ mode=video（accept=video/* / VIDEO_EXTS 校验），stateKey 后缀隔离图片选择状态 -->
+  <FilePickerDialog
+    v-if="imageLibrary"
+    v-model:open="videoOpen"
+    mode="video"
+    title="选择视频"
+    confirm-text="插入视频"
+    :multiple="false"
+    :library="imageLibrary"
+    :state-key="stateKey + '::video'"
+    :resolve-src="toDisplaySrc"
+    @confirm="onVideoConfirm"
   />
   <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
   <MarkdownViewDialog v-model:open="markdownOpen" :editor="editorRef ?? null" />
