@@ -577,6 +577,5 @@ onMounted(async () => {
     <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" @create-tool="createToolOpen = true" />
     <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
     <VerifyGuidePage v-model="verifyGuideOpen" @open-settings="(g) => openSettings(String(g).includes('工具') ? 'tools' : 'system')" />
-    <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
   </div>
 </template>

@@ -24,6 +24,7 @@ export type {
   ToolConfigFieldType,
   ToolConfigField,
   ToolConfigGroup,
+  ToolConfigPage,
   ToolConfigDependency,
   ToolPluginDescriptor,
   ToolPackageContract,

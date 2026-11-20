@@ -10,7 +10,7 @@
  */
 
 export interface TextStats {
-  /** 字数（Word 口径近似） */
+  /** 字数（非空白字符数，中西文逐字符计 1） */
   words: number
   /** 字符数（计空格，不含换行） */
   chars: number
@@ -43,7 +43,7 @@ export function htmlToPlainText(html: string): string {
     .trim()
 }
 
-/** 保存入库用：HTML → 提纯文本 → 字数（Word 口径近似）。plans/11 H1 修正：countText 只吃纯文本且返回 TextStats。 */
+/** 保存入库用：HTML → 提纯文本 → 字数（非空白字符数，中西文逐字符计 1）。plans/11 H1 修正：countText 只吃纯文本且返回 TextStats。 */
 export function countHtmlWords(html: string | null | undefined): number {
   if (!html) return 0
   return countText(htmlToPlainText(html)).words

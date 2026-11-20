@@ -184,7 +184,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'S10', group: 'S', title: '穿越 .. → 404', guide: '在分享链接后拼 `/../../etc/passwd` → 返回 404，无法越出 root', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.2' },
   { id: 'S11', group: 'S', title: '端口被占 → 回落 + 告警', guide: '「监听端口」填一个被占用端口保存 → 服务回落到随机端口并告警，状态显示实际端口', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
   { id: 'S12', group: 'S', title: 'IP 自动 / 下拉 / 手输三种生效', guide: '自动优选显示 10.x 优先；下拉选检测 IP 生成对应链接；手输合法 IPv4 生效，格式非法（如 abc/999.1.1.1）保存被拦截且不覆盖原值', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§四' },
-  { id: 'S13', group: 'S', title: '分享密码 → 无 key 拒绝', guide: '带 password 创建分享 → 不带 ?key= 访问 403，带正确 key 可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
+  { id: 'S13', group: 'S', title: '分享密码 → 无访问密钥拒绝', guide: '带 password 创建分享 → 不带 ?ak= 访问 403，带正确访问密钥（ak）可访问', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
   { id: 'S14', group: 'S', title: '二维码扫码可开', guide: 'ShareDialog 链接旁二维码 → 手机扫码直达分享页（第三方 qrcode 包生成）', entry: { type: 'route', target: 'badge-studio' }, relates: 'ShareHub/§六-D' },
   { id: 'S15', group: 'S', title: '文件系统安全分享 → 可撤销有 TTL', guide: '文件管理本地通道行「安全分享」→ ShareDialog 生成可撤销/有 TTL 链接；裸外链「链接」按钮仍可用（两种并存）', entry: { type: 'route', target: 'file-manager' }, relates: 'ShareHub/§六-C' },
   { id: 'S16', group: 'S', title: '停止并清空 → 状态文件删除', guide: '点「停止并清空」（二次确认）→ hub-state.json 删除、路由列表空；重启后无分享路由', entry: { type: 'settings', target: 'share' }, relates: 'ShareHub/§3.1' },
@@ -209,7 +209,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
 
   // ── M 组：内容管理（plans/11，C1-C14）──
   { id: 'M1', group: 'M', title: 'CRUD + 名称必填 + label 不换行', guide: '文件管理→内容管理：新建/编辑/复制另存/删除均正常；名称空时保存禁用；表单一行 label 自动右对齐不换行', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C1' },
-  { id: 'M2', group: 'M', title: '字数入库正确', guide: '写一篇中英混排文章保存 → 列表字数与 Word 口径近似（CJK 每字 1、西文串 1），刷新后仍正确（入库字段非现算）', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C12/H1' },
+  { id: 'M2', group: 'M', title: '字数入库正确', guide: '写一篇中英混排文章保存 → 列表字数＝非空白字符数（中西文逐字符计 1，如「ab 中文」计 4），刷新后仍正确（入库字段非现算）', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C12/H1' },
   { id: 'M3', group: 'M', title: '分享状态列自己/公用颜色与 tip', guide: '行分享后显示「复制链接」+ 自己的(primary)；顶部分享内容后显示公用的(warning)；可访问/已失效颜色正确', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C2' },
   { id: 'M4', group: 'M', title: '复制链接优先级（自己优先、失效回落）', guide: '本行有存活 B 票→复制直达单篇；撤销后回落 C 公用总链；都没有→提示生成', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C3' },
   { id: 'M5', group: 'M', title: '编辑弹框默认最大化 + 四态控件', guide: '点编辑→弹框默认最大化；最小化收为可拖拽悬浮条点击复原；最大化/还原、全屏、关闭均生效', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C4' },

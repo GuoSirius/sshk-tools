@@ -1,6 +1,6 @@
 /**
- * D18 的开关是环境变量 SSHK_TOOLS_ALLOW_SECRET_MIGRATION（唯一真相源见 .env.example），
- * 由主进程用字面量读取，以便 check-env 门禁双向校验；这里不再重复定义常量，避免僵尸声明。
+ * D18 密钥跨机迁移（2026-11-17 起已删除 env 门控）：导出端填「迁移口令」即加密携带密钥，
+ * 不再有 SSHK_TOOLS_ALLOW_SECRET_MIGRATION 开关（见 main/index.ts:317）。此处不定义任何相关常量。
  */
 export const DEFAULT_THEME_MODE = 'dark'
 export const DEFAULT_BADGE_ATTR = 'data-edm-badge'
