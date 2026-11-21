@@ -11,7 +11,21 @@
  * 与原页面行为一致，不做能力探测。
  */
 /* eslint-disable no-restricted-syntax -- H2 豁免：window.api.* 直连唯一封装点（原 .vue 页面行为保真平移） */
-export const fsApi = window.api.fs
-export const osApi = window.api.os
-export const uploadApi = window.api.upload
-export const shareHubApi = window.api.shareHub
+
+/**
+ * 惰性命名空间句柄：本模块随 main.ts 的 import 链（router → 文件页 → composables）
+ * 在 installPlainApi() 之前求值（ESM import 提升），顶层直接取 window.api.fs 会踩空
+ * TypeError（2026-11-22 dev 启动报错，P4-4 拆分引入）。改为 Proxy 惰性解析：
+ * 消费方 `fsApi.list(...)` 的属性访问发生在运行期（组件 setup 之后，window.api 已组装），
+ * 通道、参数、调用时机零变化；api 各方法均为闭包、不依赖 this，转发安全。
+ */
+function lazyNamespace<K extends 'fs' | 'os' | 'upload' | 'shareHub'>(name: K): Window['api'][K] {
+  return new Proxy({} as Window['api'][K], {
+    get: (_target, prop) => Reflect.get(window.api[name], prop),
+  })
+}
+
+export const fsApi = lazyNamespace('fs')
+export const osApi = lazyNamespace('os')
+export const uploadApi = lazyNamespace('upload')
+export const shareHubApi = lazyNamespace('shareHub')
