@@ -21,6 +21,7 @@
     "@fortawesome/fontawesome-free": "latest",
     "@sshk/badge-studio": "workspace:*",
     "@sshk/edm-studio": "workspace:*",
+    "@sshk/export-core": "workspace:*",
     "@sshk/llm-gateway": "workspace:*",
     "@sshk/repository": "workspace:*",
     "@sshk/share-core": "workspace:*",

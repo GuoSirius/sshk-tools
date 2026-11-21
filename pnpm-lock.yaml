@@ -64,6 +64,9 @@ importers:
       '@sshk/edm-studio':
         specifier: workspace:*
         version: link:../../tools/edm-studio
+      '@sshk/export-core':
+        specifier: workspace:*
+        version: link:../../packages/export-core
       '@sshk/llm-gateway':
         specifier: workspace:*
         version: link:../../packages/llm-gateway
@@ -187,6 +190,22 @@ importers:
       vitest:
         specifier: latest
         version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
+
+  packages/export-core:
+    dependencies:
+      '@sshk/rich-text':
+        specifier: workspace:*
+        version: link:../rich-text
+      '@sshk/shared':
+        specifier: workspace:*
+        version: link:../shared
+      fflate:
+        specifier: latest
+        version: 0.8.3
+    devDependencies:
+      typescript:
+        specifier: '6'
+        version: 6.0.3
 
   packages/file-picker:
     dependencies:

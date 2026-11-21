@@ -1,0 +1,24 @@
+{
+  "name": "@sshk/export-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 渲染层导出产物内核（B12-T6 · P5-4）：三件套 ZIP / 单文件 HTML / Markdown + 文件名编码统一（safeName + toFileName re-export），fflate 直用收敛",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sshk/rich-text": "workspace:*",
+    "@sshk/shared": "workspace:*",
+    "fflate": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
