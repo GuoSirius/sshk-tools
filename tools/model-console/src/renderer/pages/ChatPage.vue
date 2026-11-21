@@ -1,14 +1,27 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+/**
+ * 模型管理 · 对话调试页（P4-5 迁即重构）。
+ * 双布局核实：本页只有单一全高布局（输出区吃满剩余 + 底部统一输入区），无桌面/全屏分支（C2 核实结论）。
+ * P4-5 退订根治：流式分片订阅由旧壳代订（卸载不退订）下沉本页自管——挂载订阅、卸载退订；
+ * 流式中切页会暂停分片显示（chatting 守卫保留消息单例，最终内容随 chat Promise 落定）。
+ * 初始化走 state.ensureLoaded()（幂等）：壳直引 / AppAdminPage 直引两形态共用。
+ */
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
-import { Cpu, Top, User } from '@element-plus/icons-vue'
-import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta } from '../state'
+import { Bottom, Cpu, Top, User } from '@element-plus/icons-vue'
+import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta, appendDelta, ensureLoaded } from '../state'
 import { host } from '../host'
 
 // LLM 输出为不可信内容：先 markdown 解析再 DOMPurify 净化，避免 v-html XSS
 marked.setOptions({ gfm: true, breaks: true })
+
+// 流式分片：本页自行订阅（P4-5 前由壳代订且卸载不退订，已知泄漏）。
+// H2 豁免：事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——host 代理不登记事件订阅。
+// eslint-disable-next-line no-restricted-syntax
+const offDelta = window.api.llm.onDelta((delta) => appendDelta(delta))
+onBeforeUnmount(() => { offDelta() })
 
 const chatScroller = ref<HTMLElement | null>(null)
 /**
@@ -107,6 +120,7 @@ watch(
 )
 
 onMounted(() => {
+  void ensureLoaded()
   // 首次进入（或切回）把输入区高度复位
   void nextTick(() => onComposerInput())
 })
@@ -135,7 +149,8 @@ onMounted(() => {
       </div>
       <transition name="el-fade-in">
         <button v-if="!chatAutoScroll" type="button" class="chat-to-bottom" @click="scrollToBottomNow">
-          ↓ 回到底部
+          <el-icon :size="12"><Bottom /></el-icon>
+          <span>回到底部</span>
         </button>
       </transition>
     </div>
@@ -177,8 +192,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 全高布局：页面除输入区外全部让给输出区（ToolPageLayout body flex:1 已约束） */
-.chat-panel { height: 100%; display: flex; flex-direction: column; }
+/* 全高布局：页面除输入区外全部让给输出区；P4-5 直引后自管留白（壳不再包 ToolPageLayout） */
+.chat-panel { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: var(--sshk-page-padding); }
 .chat-main { position: relative; flex: 1; min-height: 0; display: flex; }
 .chat-scroller {
   flex: 1;
@@ -326,6 +341,9 @@ onMounted(() => {
   right: 16px;
   bottom: 14px;
   z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--el-color-primary);
   background: var(--el-color-primary);
   color: #fff;

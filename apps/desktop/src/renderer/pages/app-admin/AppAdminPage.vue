@@ -7,7 +7,8 @@
  * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
  *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
- *   文件/模型/分享三模块过渡直引工具壳组件（provideToolId / llm.onDelta 注入在壳内已处理，最少侵入），
+ *   模型管理三页 P4-5 起直引页面组件（toolId 注入与幂等加载职责上收本壳），
+ *   文件/分享两模块过渡直引工具壳组件（provideToolId 在壳内已处理，最少侵入），
  *   fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动）。
  */
 import { computed, ref, type Ref } from 'vue'
@@ -20,14 +21,22 @@ import GeneralPage from './settings/GeneralPage.vue'
 import SystemDataPage from './settings/SystemDataPage.vue'
 import ToolsPermissionPage from './settings/ToolsPermissionPage.vue'
 import AboutPage from './settings/AboutPage.vue'
-// 三模块壳直引（过渡）：相对路径与 discovery.ts 同一跨包引用先例（apps → tools 方向合法）
+// 三模块页直引（过渡）：相对路径与 discovery.ts 同一跨包引用先例（apps → tools 方向合法）。
+// P4-5 起模型管理分发到各页面组件（不再整壳直引）——壳的 toolId 注入职责上收本壳：
+// state.toolId 是 config key 拼装（modelPresets/chat.*）的单一来源，AppAdminPage 以模块 id 显式赋值。
 import FileManagerPage from '../../../../../../tools/file-manager/src/renderer/FileManagerPage.vue'
-import ModelConsolePage from '../../../../../../tools/model-console/src/renderer/ModelConsolePage.vue'
+import ProvidersPage from '../../../../../../tools/model-console/src/renderer/pages/ProvidersPage.vue'
+import ChatPage from '../../../../../../tools/model-console/src/renderer/pages/ChatPage.vue'
+import UsagePage from '../../../../../../tools/model-console/src/renderer/pages/UsagePage.vue'
 import ShareManagerPage from '../../../../../../tools/share-manager/src/renderer/ShareManagerPage.vue'
+import { toolId as modelManagerToolId } from '../../../../../../tools/model-console/src/renderer/state'
 
 defineOptions({ name: 'AppAdminPage' })
 
 const emit = defineEmits<{ 'create-tool': [] }>()
+
+// 模块 id 与 C-11 敲板一致（原 model-console 工具 id 存量沿用，P4-8 改 model-manager 时同批迁移）
+modelManagerToolId.value = 'model-console'
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
 const APP_MENUS: ToolMenu[] = [
@@ -203,7 +212,8 @@ function goBackDesktop(): void {
             <span class="muted" style="margin-left: 12px">{{ activeMeta.description }}</span>
           </div>
           <div class="admin-module-body">
-            <!-- 工具设置页：宿主 ToolSettingsPage（manifest configGroups 驱动；layout=single 与工具宿主一致） -->
+            <!-- 工具设置页：宿主 ToolSettingsPage（manifest configGroups 驱动；layout=single 与工具宿主一致）。
+                 P4-5 敲板（三轮复核）：模型「工具配置」（网关偏好）恢复独立页，不并入模型配置页 -->
             <ToolSettingsPage
               v-if="activePage === 'fileconfig'"
               :key="'fileconfig'"
@@ -217,18 +227,16 @@ function goBackDesktop(): void {
               :menu="activePage"
               tool-id="file-manager"
             />
+            <!-- 模型管理三页直引（P4-5 迁即重构；页头由本壳 tool-page-head 提供，页面自管留白） -->
+            <ProvidersPage v-else-if="activePage === 'providers'" />
+            <ChatPage v-else-if="activePage === 'chat'" />
+            <UsagePage v-else-if="activePage === 'usage'" />
             <ToolSettingsPage
               v-else-if="activePage === 'modelconfig'"
               :key="'modelconfig'"
               tool-id="model-console"
               section="config"
               layout="single"
-            />
-            <ModelConsolePage
-              v-else-if="activeModule === 'models'"
-              :key="'model-console'"
-              :menu="activePage"
-              tool-id="model-console"
             />
             <ShareManagerPage
               v-else-if="activeModule === 'share'"

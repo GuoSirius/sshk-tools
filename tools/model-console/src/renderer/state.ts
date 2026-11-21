@@ -116,6 +116,15 @@ export async function persist(): Promise<void> {
   await host.config.set('app.llm.providers', providers.value)
 }
 
+/** 幂等初始化（P4-5 页面直引）：ProvidersPage/ChatPage 挂载时调用，壳直引 / AppAdminPage 直引两形态全局只跑一次；失败可重试 */
+let loadPromise: Promise<void> | null = null
+export function ensureLoaded(): Promise<void> {
+  if (!loadPromise) {
+    loadPromise = load().catch((err) => { loadPromise = null; throw err })
+  }
+  return loadPromise
+}
+
 export function newProviderId(): string {
   return entityId('prv')
 }

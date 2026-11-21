@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { ToolPageLayout } from '@sshk/ui-kit'
+import { computed } from 'vue'
 import ChatPage from './pages/ChatPage.vue'
 import ProvidersPage from './pages/ProvidersPage.vue'
 import UsagePage from './pages/UsagePage.vue'
-import { toolId, load, appendDelta } from './state'
+import { toolId } from './state'
 
 /**
- * 模型控制台渲染层——页面壳：
- * 只负责接收宿主 menu/toolId 并分发到 pages/ 下各页面，业务全部在子页面与 state。
+ * 模型管理渲染层壳（过渡保留，P4-8 三工具退役时删除）：
+ * 入口 *Page.vue 只负责接收宿主 menu/toolId 并分发到 pages/ 下各页面（与 share-manager 壳同一约定）。
  *
- * onDelta（流式分片）注册在壳上而非 ChatPage：切到 Provider 页时 ChatPage 被卸载，
- * 壳持续把分片追加进 messages 单例，切回对话页内容完整（滚动由 ChatPage 的 watch 处理）。
+ * P4-5 迁即重构：Provider/对话/用量三页由 AppAdminPage 直引复用——
+ * - 壳不再包 ToolPageLayout（避免「壳标题 + 应用管理页头」双层头部与双层留白，页面自管 padding）；
+ * - 壳不再代订 llm.onDelta：旧实现在壳上订阅且卸载不退订（已知泄漏），根治为 ChatPage 页内
+ *   自管订阅（挂载订阅 / 卸载退订）；初始化由页面 ensureLoaded() 幂等接管，壳只注入 toolId。
  */
 const props = defineProps<{ menu?: string; toolId?: string }>()
 // toolId 单一来源 = manifest.id，经宿主目录裁决后以 prop 注入；源码不兜底硬编码
@@ -20,28 +21,8 @@ toolId.value = props.toolId ?? ''
 const tab = computed(() => props.menu ?? 'chat')
 const pages: Record<string, unknown> = { chat: ChatPage, providers: ProvidersPage, usage: UsagePage }
 const active = computed(() => pages[tab.value] ?? ChatPage)
-
-onMounted(() => {
-  void load()
-  // 流式分片：交给 state.appendDelta（D-V3-2 打字平滑开关裁决入队或直追加）
-  // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
-  // eslint-disable-next-line no-restricted-syntax
-  window.api.llm.onDelta((delta) => appendDelta(delta))
-})
 </script>
 
 <template>
-  <ToolPageLayout
-    title="模型控制台"
-    description="内置常用模型预设，填一个 Key 即可使用；模型名可下拉选择（真实查询 /models）；apiKey 单独加密存储"
-  >
-    <component :is="active" :menu="menu" />
-    <template #footer>
-      <span class="panel-title">apiKey 单独加密存储（safeStorage）· 测试与试聊走 llm 网关</span>
-    </template>
-  </ToolPageLayout>
+  <component :is="active" :menu="menu" />
 </template>
-
-<style scoped>
-.panel-title { font-size: 12px; opacity: .7; }
-</style>

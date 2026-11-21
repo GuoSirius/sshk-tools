@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+/**
+ * 模型管理 · 模型配置页（P4-5 迁即重构）：Provider CRUD / 内置预设 / 连接测试 / 连通性列。
+ * 页头由 AppAdminPage 统一提供（PAGE_META「模型配置」），本页自管留白（var(--sshk-page-padding)）；
+ * 表单区走 FormGrid，行内说明统一 FormHint；连通性为表格列（health 内存态）而非表单字段，
+ * ConnectivityField（表单「测试连接+结果」形态）结构不适配，按敲板保持原列但语义色对齐。
+ * 初始化走 state.ensureLoaded()（幂等）：壳直引 / AppAdminPage 直引两形态共用。
+ */
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, ConfirmDialog, FormGrid } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, FormGrid, FormHint } from '@sshk/ui-kit'
 import { format } from '@sshk/shared'
 import { applyFallbackModels } from '../model-fallback'
 import { host } from '../host'
 import {
   providers, presets, health,
-  persist, newProviderId,
+  persist, newProviderId, ensureLoaded,
   type Provider, type ModelPreset,
 } from '../state'
+
+onMounted(() => { void ensureLoaded() })
 
 const modelOptions = ref<string[]>([])
 const presetId = ref('')
@@ -310,7 +319,7 @@ async function revealKey(): Promise<void> {
               >
                 <el-option v-for="p in presets" :key="p.id" :label="`${p.name} · ${p.baseURL}`" :value="p.id" />
               </el-select>
-              <div class="form-hint">预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</div>
+              <FormHint>预设只含公开端点信息，不含任何密钥；选好后填 API Key 保存即可用</FormHint>
             </el-form-item>
             <el-form-item label="名称" prop="name">
               <el-input clearable v-model="form.name" placeholder="如：本地 Ollama" />
@@ -339,7 +348,7 @@ async function revealKey(): Promise<void> {
                 </el-select>
                 <el-button size="small" :loading="fetchingModels" @click="fetchModels">拉取模型列表</el-button>
               </div>
-              <div class="form-hint">「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</div>
+              <FormHint>「拉取模型列表」会真实请求该端点的 /models；端点不支持时可直接手动输入模型名</FormHint>
             </el-form-item>
             <el-form-item label="回退模型">
               <el-select
@@ -353,11 +362,11 @@ async function revealKey(): Promise<void> {
               >
                 <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
               </el-select>
-              <div class="form-hint">调用优先级：工具自选 → 默认 → 回退模型；全链失败才报错</div>
+              <FormHint>调用优先级：工具自选 → 默认 → 回退模型；全链失败才报错</FormHint>
             </el-form-item>
             <el-form-item label="重试次数">
               <el-input-number v-model="form.maxRetries" :min="0" :max="5" :step="1" :precision="0" style="width: 120px" />
-              <div class="form-hint">每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</div>
+              <FormHint>每个模型失败后的额外重试次数（应对网络抖动等瞬时错误），0 表示不重试</FormHint>
             </el-form-item>
             <el-form-item label="apiKey" prop="apiKey" class="full">
               <div class="model-row">
@@ -394,17 +403,25 @@ async function revealKey(): Promise<void> {
 </template>
 
 <style scoped>
-.page-actions { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+/* P4-5 直引后自管留白：根容器吃满高度、内容超高整页滚动（与 .lp-page 同口径的 padding token） */
+.providers-page {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--sshk-page-padding);
+  overflow-y: auto;
+}
+.page-actions { display: flex; justify-content: flex-end; }
 .preset-bar {
   border: 1px solid rgba(128,128,128,.25);
   border-radius: 6px;
   padding: 10px 12px;
-  margin-bottom: 10px;
 }
 .preset-label { font-size: 12px; opacity: .7; margin-bottom: 8px; }
 .preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .model-row { display: flex; gap: 6px; width: 100%; }
-.form-hint { font-size: 11px; opacity: .6; line-height: 1.5; margin-top: 4px; }
 /* 弹框表单定高（52vh，随视口缩放）：新增/编辑内容差异不引起弹框高度跳动，超长时区内滚动 */
 .provider-form-body { height: 52vh; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
 .masked { letter-spacing: 2px; }
