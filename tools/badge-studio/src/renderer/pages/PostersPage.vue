@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
+import { EmptyState, ListPageShell, ListPagination, TimeText, useTablePage, useToolId } from '@sshk/ui-kit'
 import { inMsRange } from '@sshk/shared'
 import {
-  posters, listLoading, currentPage, pageSize,
-  onSelectionChange, onPageChange,
+  posters, listLoading,
   loadPosterIntoWorkspace, onPosterCommand,
   sourceStates, staleCount, copyPosterLink,
   shareDialog, refreshShareLinks, posterLinkState,
-  selectedPosters, batchExportHtml, batchDeletePosters, openListShare,
+  batchExportHtml, batchDeletePosters, openListShare,
   startNewPosterConfirm,
 } from '../state'
 
@@ -21,12 +20,46 @@ import {
  * 操作列条件化（用户 2026-11-18）：复制链接/导出/复制代码/下载图片/分享/重新打标
  * 均按产物与链接状态条件显示，编辑/删除恒可用。
  *
- * 2026-11-20 列表页规范改造：壳 actions/footer 的批量按钮与分页下沉到页面内，
- * 形成 筛选栏 → 操作栏 → 表格 → 分页 的固定顺序；新增筛选与本地分页（草稿态/生效态分离）。
+ * P6-1 收尾（#156）：接 useTablePage（草稿/生效筛选+分页+内置 useSelection）/ListPageShell/ListPagination
+ * 公共组件栈（布局 CSS 全部上收 theme.css .lp-*；flush=嵌在 ToolPageLayout 留白体内去根 padding）。
+ * 批量勾选单一真相 = useSelection（§七），批量删除/导出读 selection、删除后 prune 防「幽灵计数」；
+ * 数据源 = state 单例 posters（壳挂载与各状态函数里 loadPosters），fetch 只回读该 ref，
+ * watch 到集合替换后本地 refresh（不再发 IPC，零重复请求）。
  */
 const route = useRoute()
 const router = useRouter()
 const toolId = useToolId()
+
+// ── 列表状态（P6-1：useTablePage 统一承载 草稿/生效筛选 + 客户端分页）──
+const table = useTablePage<PosterRecord, { kw: string; state: string; dateRange: [string, string] | null }>({
+  // 数据源：state.loadPosters 写入 posters 单例；fetch 直返镜像（客户端过滤/分页由本组件承载，无 IPC）
+  fetch: async () => posters.value,
+  rowKey: (r) => r._id,
+  filters: () => ({ kw: '', state: 'all', dateRange: null }),
+  clientFilter: (list, f) => {
+    const k = f.kw.trim().toLowerCase()
+    return list.filter((row) => {
+      if (k && !row.name.toLowerCase().includes(k)) return false
+      if (f.state !== 'all' && posterState(row) !== f.state) return false
+      // 时间范围：毫秒闭区间（shared 统一封装，规范精确到秒）
+      if (!inMsRange(row.lastGeneratedAt ?? row.updatedAt, f.dateRange?.[0], f.dateRange?.[1])) return false
+      return true
+    })
+  },
+  selection: true,
+})
+const rowKey = table.rowKey
+const selection = table.selection!
+// 集合被 loadPosters 整体替换时本地重切分页（fetch 无 IPC，零重复请求），并清理已不存在的勾选
+watch(posters, () => {
+  void table.refresh().then(() => selection.prune(new Set(posters.value.map(rowKey))))
+})
+
+/** 批量勾选单一真相 = useSelection（§七）：el-table selection-change 全量同步（reserve-selection 跨页保留） */
+function syncSelection(tableRows: PosterRecord[]): void {
+  selection.clear()
+  selection.selectMany(tableRows.map(rowKey))
+}
 
 /** 页面内切视图：走路由（宿主菜单/高亮/URL 全同步），不再用 emit 补丁 */
 function navigateToGenerate(): void {
@@ -43,9 +76,14 @@ async function editPoster(row: PosterRecord): Promise<void> {
   ElMessage.success('已载入「' + row.name + '」到工作区，改完点「生成海报」覆盖该海报')
 }
 
-/** 批量删除（危险操作二次确认：禁遮罩禁 ESC） */
+/** 勾选单一真相（§七）：从 useSelection 反查行集合 */
+function selectedRows(): PosterRecord[] {
+  return posters.value.filter((p) => selection.has(p._id))
+}
+
+/** 批量删除（危险操作二次确认：禁遮罩禁 ESC）；删除后 prune 清理失效勾选（§七） */
 async function doBatchDelete(): Promise<void> {
-  const rows = selectedPosters.value
+  const rows = selectedRows()
   if (rows.length === 0) { ElMessage.warning('请先勾选要删除的海报'); return }
   try {
     await ElMessageBox.confirm(
@@ -54,45 +92,23 @@ async function doBatchDelete(): Promise<void> {
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
     )
   } catch { return }
-  await batchDeletePosters()
+  await batchDeletePosters(rows)
+  selection.prune(new Set(posters.value.map(rowKey)))
 }
 
-// ── 列表筛选（2026-11-20 规范：控件=草稿态，点查询才生效；重置=清空并立即生效）──
-const kw = ref('')
-const stateFilter = ref('all')
-const dateRange = ref<[string, string] | null>(null)
-const applied = ref({ kw: '', state: 'all', dateRange: null as [string, string] | null })
-function doSearch(): void {
-  applied.value = { kw: kw.value.trim(), state: stateFilter.value, dateRange: dateRange.value }
-  currentPage.value = 1
-  onPageChange()
+async function doBatchExport(): Promise<void> {
+  await batchExportHtml(selectedRows())
 }
-function resetFilters(): void {
-  kw.value = ''
-  stateFilter.value = 'all'
-  dateRange.value = null
-  doSearch()
-}
+
 function posterState(row: PosterRecord): 'stale' | 'draft' | 'generated' {
   if (sourceStates.value[row._id]?.stale) return 'stale'
   return row.outputs.badged ? 'generated' : 'draft'
 }
-const filteredPosters = computed(() => {
-  const f = applied.value
-  const k = f.kw.toLowerCase()
-  return posters.value.filter((row) => {
-    if (k && !row.name.toLowerCase().includes(k)) return false
-    if (f.state !== 'all' && posterState(row) !== f.state) return false
-    // 时间范围：毫秒闭区间（shared 统一封装，规范精确到秒）
-    if (!inMsRange(row.lastGeneratedAt ?? row.updatedAt, f.dateRange?.[0], f.dateRange?.[1])) return false
-    return true
-  })
-})
-const pagedRows = computed(() => filteredPosters.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 
 // 事件订阅类（ipcRenderer.on 包装，无 invoke 语义）保留直通——H2 豁免
 // eslint-disable-next-line no-restricted-syntax
 onMounted(() => {
+  void table.refresh() // 回读 state 单例当前集合（首轮等壳层 loadPosters 完成后由 watch 接管）
   void refreshShareLinks() // 链接列 tag 数据源（路由快照）
 })
 // 分享弹框每次关闭后刷新：新建/撤销/重新生成都会改变行链接状态
@@ -112,51 +128,49 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
       description="点对应行「重新打标」即可用新源覆盖重生成（统计与角标配置沿用该海报已存的快照）。"
     />
 
-    <!-- 筛选栏：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置 -->
-    <div class="filter-bar">
-      <div class="f-item">
-        <span class="f-label">搜索</span>
-        <el-input v-model="kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="doSearch" />
-      </div>
-      <div class="f-item">
-        <span class="f-label">状态</span>
-        <el-select v-model="stateFilter" size="small" style="width: 180px">
-          <el-option label="全部" value="all" />
-          <el-option label="已生成" value="generated" />
-          <el-option label="草稿" value="draft" />
-          <el-option label="源已更新" value="stale" />
-        </el-select>
-      </div>
-      <div class="f-item">
-        <span class="f-label">生成时间</span>
-        <el-date-picker
-          v-model="dateRange"
-          size="small"
-          type="datetimerange"
-          range-separator="至"
-          start-placeholder="开始时间"
-          end-placeholder="结束时间"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
-          style="width: 360px"
-        />
-      </div>
-      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
-      <el-button size="small" @click="resetFilters">重置</el-button>
-    </div>
+    <ListPageShell flush :loading="listLoading || table.loading.value">
+      <template #filter>
+        <div class="f-item">
+          <span class="f-label">搜索</span>
+          <el-input v-model="table.draft.value.kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="table.search" />
+        </div>
+        <div class="f-item">
+          <span class="f-label">状态</span>
+          <el-select v-model="table.draft.value.state" size="small" style="width: 180px">
+            <el-option label="全部" value="all" />
+            <el-option label="已生成" value="generated" />
+            <el-option label="草稿" value="draft" />
+            <el-option label="源已更新" value="stale" />
+          </el-select>
+        </div>
+        <div class="f-item">
+          <span class="f-label">生成时间</span>
+          <el-date-picker
+            v-model="table.draft.value.dateRange"
+            size="small"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
+            style="width: 360px"
+          />
+        </div>
+        <el-button size="small" type="primary" @click="table.search">查询</el-button>
+        <el-button size="small" @click="table.reset">重置</el-button>
+      </template>
 
-    <!-- 操作栏：单独一行居右，紧凑口径 -->
-    <div class="toolbar">
-      <el-button size="small" type="warning" plain :disabled="selectedPosters.length === 0" @click="batchExportHtml">批量导出（{{ selectedPosters.length }}）</el-button>
-      <el-button size="small" type="danger" plain :disabled="selectedPosters.length === 0" @click="doBatchDelete">批量删除（{{ selectedPosters.length }}）</el-button>
-      <el-divider direction="vertical" />
-      <el-button size="small" type="primary" plain @click="createPoster">新建海报</el-button>
-      <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openListShare">分享列表</el-button>
-    </div>
+      <template #ops>
+        <el-button size="small" type="warning" plain :disabled="selection.count.value === 0" @click="doBatchExport">批量导出（{{ selection.count.value }}）</el-button>
+        <el-button size="small" type="danger" plain :disabled="selection.count.value === 0" @click="doBatchDelete">批量删除（{{ selection.count.value }}）</el-button>
+        <el-divider direction="vertical" />
+        <el-button size="small" type="primary" plain @click="createPoster">新建海报</el-button>
+        <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openListShare">分享列表</el-button>
+      </template>
 
-    <div class="table-wrap">
-      <el-table v-if="filteredPosters.length > 0" v-loading="listLoading" :data="pagedRows" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
-        <el-table-column type="index" label="#" width="46" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
+      <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
+        <el-table-column type="index" label="#" width="46" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
         <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
@@ -187,7 +201,8 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
         <el-table-column label="操作" width="220" align="right" fixed="right">
           <template #default="{ row }">
             <!-- 操作列条件化（用户 2026-11-18 定版，顺序 2026-11-18：复制链接在编辑前）；编辑/删除恒可用；复制链接有可用票才显示；
-                 导出/复制代码/分享依赖 badged 产物、下载图片依赖截图产物、重新打标依赖源更新——全部条件显示 -->
+                 导出/复制代码/分享依赖 badged 产物、下载图片依赖截图产物、重新打标依赖源更新——全部条件显示。
+                 （条件随行变化，TableOpsColumn 静态 actions 表达不了 per-row v-if，保持手写 op-row） -->
             <div class="op-row">
               <el-button
                 v-if="posterLinkState(row).type"
@@ -221,39 +236,18 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
         action-text="新建海报"
         @action="createPoster"
       />
-    </div>
 
-    <div class="foot">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="filteredPosters.length"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        size="small"
-        background
-        @current-change="onPageChange"
-      />
-    </div>
+      <template #footer>
+        <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      </template>
+    </ListPageShell>
   </div>
 </template>
 
 <style scoped>
-/* 页面留白与区块间距由宿主 .tool-page-body 提供，页面自身不再加 padding（规范） */
+/* 页面留白与区块间距由 ToolPageLayout .tool-page-body + .lp-page 提供，页面自身不再加 padding（规范）。
+   列表布局（筛选/操作/表格/分页）CSS 全部上收 theme.css .lp-*，本页只留页面私有样式 */
 .poster-list-panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; gap: var(--sshk-gap-sm); }
 .stale-banner { flex: none; }
 .stale-tag { margin-left: 6px; }
-.filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
-.filter-bar .el-button + .el-button { margin-left: 0; }
-.filter-bar > .el-button:first-of-type { margin-left: 16px; }
-.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
-.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
-/* 操作栏紧凑口径：gap 4px + 归零 EP 兄弟 margin + padding 8px */
-.toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-divider + .el-button { margin-left: 0; }
-.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
-.table-wrap { flex: 1; min-height: 0; }
-.foot { flex: none; display: flex; justify-content: flex-end; }
-.op-row { display: flex; gap: 4px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-.op-row .el-button + .el-button { margin-left: 0; }
 </style>

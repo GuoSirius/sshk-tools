@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
+import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, useTablePage, useToolId } from '@sshk/ui-kit'
 import { ShareDialog } from '@sshk/share-core/ui'
 import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
@@ -13,21 +13,51 @@ import MailEditor from '../MailEditor.vue'
  * 列表：名称/来源/品牌/模板版本/片段数/生成时间；操作 = 生成 | 导出 | 更多(编辑/复制为新邮件/打开产物/删除)。
  * 编辑走 MailEditor 分步流程；导出 zip 含各形态 html；分享复用局域网 token 通道。
  *
- * 2026-11-20 列表页规范改造：筛选栏（草稿态/生效态分离）→ 操作栏 → 表格 → 分页；
- * 时间范围精确到秒并走 shared inMsRange 闭区间；ShareDialog tool-id 走 provide/inject 单一来源。
+ * P6-1 收尾（#156）：接 useTablePage（草稿/生效筛选+分页）/ListPageShell/ListPagination/TableOpsColumn
+ * 公共组件栈（布局 CSS 全部上收 theme.css .lp-*）；批量勾选单一真相 = useSelection（§七），
+ * 批量删除/导出读 selection，删除成功后 prune 防「幽灵计数」。
+ * 数据源 = state 单例 mails（shell ensureLoaded / 编辑器 saved 回调里 loadMails），
+ * fetch 只回读该 ref，watch 到集合替换后本地 refresh（不再发 IPC，零重复请求）。
  */
 const toolId = useToolId()
 const editorOpen = ref(false)
 const editorMail = ref<MailRow | null>(null)
 const mailGenerating = ref('')
 
-// ── 分页（底部分页固定；# 序号跨页连续） ──
-const currentPage = ref(1)
-const pageSize = ref(10)
+// ── 列表状态（P6-1：useTablePage 统一承载 草稿/生效筛选 + 客户端分页）──
+const table = useTablePage<MailRow, { kw: string; origin: string; brand: string; dateRange: [string, string] | null }>({
+  // 数据源：state.loadMails 写入 mails 单例；fetch 直返镜像（客户端过滤/分页由本组件承载，无 IPC）
+  fetch: async () => mails.value,
+  rowKey: (r) => r._id,
+  filters: () => ({ kw: '', origin: 'all', brand: 'all', dateRange: null }),
+  clientFilter: (list, f) => {
+    const k = f.kw.trim().toLowerCase()
+    return list.filter((row) => {
+      if (k && !row.name.toLowerCase().includes(k)) return false
+      if (f.origin !== 'all' && (row.origin ?? 'custom') !== f.origin) return false
+      if (f.brand !== 'all' && row.brandId !== f.brand) return false
+      // 时间范围：毫秒闭区间（shared 统一封装，规范精确到秒）；限定范围时未生成邮件不参与
+      if (f.dateRange) {
+        if (!row.lastGeneratedAt) return false
+        if (!inMsRange(row.lastGeneratedAt, f.dateRange[0], f.dateRange[1])) return false
+      }
+      return true
+    })
+  },
+  selection: true,
+})
+const rowKey = table.rowKey
+const selection = table.selection!
+// 集合被 loadMails 整体替换时本地重切分页（fetch 无 IPC，零重复请求），并清理已不存在的勾选
+watch(mails, () => {
+  void table.refresh().then(() => selection.prune(new Set(mails.value.map(rowKey))))
+})
 
-// ── 批量选择（翻页不清空：reserve-selection） ──
-const selectedMails = ref<MailRow[]>([])
-function onSelectionChange(rows: MailRow[]): void { selectedMails.value = rows }
+/** 批量勾选单一真相 = useSelection（§七）：el-table selection-change 全量同步（reserve-selection 跨页保留） */
+function syncSelection(tableRows: MailRow[]): void {
+  selection.clear()
+  selection.selectMany(tableRows.map(rowKey))
+}
 
 function brandLabel(brandId: string): string {
   const b = brands.value.find((x) => x._id === brandId)
@@ -41,44 +71,11 @@ function placementCount(row: MailRow): number {
   return row.bindings?.length ?? 0
 }
 
-// ── 列表筛选（控件=草稿态，点查询才生效；重置=清空并立即生效）──
-const kw = ref('')
-const originFilter = ref('all')
-const brandFilter = ref('all')
-const dateRange = ref<[string, string] | null>(null)
-const applied = ref({ kw: '', origin: 'all', brand: 'all', dateRange: null as [string, string] | null })
-function doSearch(): void {
-  applied.value = { kw: kw.value.trim(), origin: originFilter.value, brand: brandFilter.value, dateRange: dateRange.value }
-  currentPage.value = 1
-}
-function resetFilters(): void {
-  kw.value = ''
-  originFilter.value = 'all'
-  brandFilter.value = 'all'
-  dateRange.value = null
-  doSearch()
-}
 const brandOptions = computed(() => {
   const map = new Map<string, string>()
   for (const b of brands.value) map.set(b._id, b.name)
   return [...map].map(([value, label]) => ({ value, label }))
 })
-const filteredMails = computed(() => {
-  const f = applied.value
-  const k = f.kw.toLowerCase()
-  return mails.value.filter((row) => {
-    if (k && !row.name.toLowerCase().includes(k)) return false
-    if (f.origin !== 'all' && (row.origin ?? 'custom') !== f.origin) return false
-    if (f.brand !== 'all' && row.brandId !== f.brand) return false
-    // 时间范围：毫秒闭区间（shared 统一封装，规范精确到秒）；限定范围时未生成邮件不参与
-    if (f.dateRange) {
-      if (!row.lastGeneratedAt) return false
-      if (!inMsRange(row.lastGeneratedAt, f.dateRange[0], f.dateRange[1])) return false
-    }
-    return true
-  })
-})
-const pagedMails = computed(() => filteredMails.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 
 function openEditor(row?: MailRow): void {
   editorMail.value = row ?? null
@@ -119,7 +116,7 @@ async function openOutput(row: MailRow): Promise<void> {
   if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/${EDM_OUTPUT_FILES.final}`)
 }
 
-// ── 导出（单封 .html(final) / 批量 .zip 含各形态 html） ──
+// ── 导出（单封 .html(final) / 批量 .zip 含各形态 html）──
 async function exportMail(row: MailRow): Promise<void> {
   try {
     if (!row.outputs?.final) { ElMessage.warning('该邮件尚未生成产物'); return }
@@ -130,9 +127,14 @@ async function exportMail(row: MailRow): Promise<void> {
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 
+/** 勾选单一真相（§七）：从 useSelection 反查行集合；已生成产物者才可导出 */
+function selectedRows(): MailRow[] {
+  return mails.value.filter((m) => selection.has(m._id))
+}
+
 async function batchExport(): Promise<void> {
   try {
-    const rows = selectedMails.value.filter((row) => row.outputs?.final)
+    const rows = selectedRows().filter((row) => row.outputs?.final)
     if (rows.length === 0) { ElMessage.warning('请先勾选已生成产物的邮件'); return }
     const date = toFileName()
     const save = await osApi().pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
@@ -142,9 +144,9 @@ async function batchExport(): Promise<void> {
   } catch (err) { ElMessage.error((err as Error).message) }
 }
 
-/** 批量删除（批量约定；危险操作二次确认） */
+/** 批量删除（批量约定；危险操作二次确认）；删除后 prune 清理失效勾选（§七） */
 async function batchRemove(): Promise<void> {
-  const rows = selectedMails.value
+  const rows = selectedRows()
   if (rows.length === 0) { ElMessage.warning('请先勾选要删除的邮件'); return }
   try {
     await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 封邮件？记录将归档。`, '批量删除', {
@@ -167,26 +169,39 @@ async function openShare(): Promise<void> {
   finally { shareDialog.loading = false }
 }
 
-/** 行内「更多」命令分发 */
-async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
-  if (cmd === 'edit') { openEditor(row); return }
-  if (cmd === 'duplicate') { await duplicateMail(row); return }
-  if (cmd === 'open') { await openOutput(row); return }
-  if (cmd === 'delete') await confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })
+// ── 操作列（TableOpsColumn：≤3 内联 + 更多▾；语义配色 §2.5）──
+// 行内「生成」的 per-row loading 态以 disabled 兜底（TableOpsColumn 无 per-row loading；
+// 生成期间禁用全部行生成按钮防并发，完成即恢复）。
+const ops = computed(() => [
+  { key: 'generate', label: '生成', type: 'primary' as const, disabled: mailGenerating.value !== '' },
+  { key: 'export', label: '导出', type: 'success' as const },
+])
+const moreOps = [
+  { key: 'edit', label: '编辑', type: 'primary' as const },
+  { key: 'duplicate', label: '复制为新邮件', type: 'success' as const },
+  { key: 'open', label: '打开产物', type: 'info' as const },
+  { key: 'delete', label: '删除', type: 'danger' as const },
+]
+function onAction(key: string, row: MailRow): void {
+  if (key === 'generate') void generateMail(row)
+  else if (key === 'export') void exportMail(row)
+  else if (key === 'edit') openEditor(row)
+  else if (key === 'duplicate') void duplicateMail(row)
+  else if (key === 'open') void openOutput(row)
+  else if (key === 'delete') void confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })
 }
 </script>
 
 <template>
-  <div class="mails-page">
-    <!-- 筛选栏：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置 -->
-    <div class="filter-bar">
+  <ListPageShell flush :loading="table.loading.value">
+    <template #filter>
       <div class="f-item">
         <span class="f-label">搜索</span>
-        <el-input v-model="kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="doSearch" />
+        <el-input v-model="table.draft.value.kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="table.search" />
       </div>
       <div class="f-item">
         <span class="f-label">来源</span>
-        <el-select v-model="originFilter" size="small" style="width: 180px">
+        <el-select v-model="table.draft.value.origin" size="small" style="width: 180px">
           <el-option label="全部" value="all" />
           <el-option label="系统" value="system" />
           <el-option label="自定义" value="custom" />
@@ -194,7 +209,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
       </div>
       <div class="f-item">
         <span class="f-label">品牌</span>
-        <el-select v-model="brandFilter" size="small" filterable style="width: 180px">
+        <el-select v-model="table.draft.value.brand" size="small" filterable style="width: 180px">
           <el-option label="全部" value="all" />
           <el-option v-for="b in brandOptions" :key="b.value" :label="b.label" :value="b.value" />
         </el-select>
@@ -202,7 +217,7 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
       <div class="f-item">
         <span class="f-label">生成时间</span>
         <el-date-picker
-          v-model="dateRange"
+          v-model="table.draft.value.dateRange"
           size="small"
           type="datetimerange"
           range-separator="至"
@@ -213,83 +228,53 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
           style="width: 360px"
         />
       </div>
-      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
-      <el-button size="small" @click="resetFilters">重置</el-button>
-    </div>
+      <el-button size="small" type="primary" @click="table.search">查询</el-button>
+      <el-button size="small" @click="table.reset">重置</el-button>
+    </template>
 
-    <!-- 操作栏：单独一行居右，紧凑口径 -->
-    <div class="toolbar">
-      <el-button size="small" type="success" plain :disabled="selectedMails.length === 0" @click="batchExport">批量导出（{{ selectedMails.length }}）</el-button>
-      <el-button size="small" type="danger" plain :disabled="selectedMails.length === 0" @click="batchRemove">批量删除（{{ selectedMails.length }}）</el-button>
+    <template #ops>
+      <el-button size="small" type="success" plain :disabled="selection.count.value === 0" @click="batchExport">批量导出（{{ selection.count.value }}）</el-button>
+      <el-button size="small" type="danger" plain :disabled="selection.count.value === 0" @click="batchRemove">批量删除（{{ selection.count.value }}）</el-button>
       <el-divider direction="vertical" />
       <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>
       <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openShare">分享产物</el-button>
-    </div>
+    </template>
 
-    <div class="table-wrap">
-      <el-table v-if="filteredMails.length > 0" :data="pagedMails" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
-        <el-table-column type="index" label="#" width="46" align="center" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
-        <el-table-column type="selection" width="40" reserve-selection />
-        <el-table-column prop="name" label="邮件" min-width="140" show-overflow-tooltip />
-        <el-table-column label="来源" width="76" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="品牌" width="120" show-overflow-tooltip>
-          <template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template>
-        </el-table-column>
-        <el-table-column label="模板版本" width="110">
-          <template #default="{ row }"><span class="muted">{{ tplLabel(row.templateVersionId) }}</span></template>
-        </el-table-column>
-        <el-table-column label="片段" width="60" align="center">
-          <template #default="{ row }"><span class="muted">{{ placementCount(row) }}</span></template>
-        </el-table-column>
-        <el-table-column label="生成时间" width="150">
-          <template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" align="center" fixed="right">
-          <template #default="{ row }">
-            <!-- 操作列约定：实体按钮 ≤3（常用优先），其余一律进「更多」下拉 -->
-            <div class="op-row">
-              <el-button size="small" type="primary" plain :loading="mailGenerating === row._id" @click="generateMail(row)">生成</el-button>
-              <el-button size="small" type="success" plain @click="exportMail(row)">导出</el-button>
-              <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                <el-button size="small" plain>更多</el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                    <el-dropdown-item command="duplicate">复制为新邮件</el-dropdown-item>
-                    <el-dropdown-item command="open">打开产物</el-dropdown-item>
-                    <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      <EmptyState
-        v-else
-        :description="mails.length === 0 ? '还没有邮件；点「新增邮件」走 名称→来源→品牌→模板→片段布局→数据→生成 的完整流程' : '没有符合条件的邮件，试试调整筛选条件'"
-      />
-    </div>
+    <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
+      <el-table-column type="index" label="#" width="46" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
+      <el-table-column type="selection" width="40" reserve-selection />
+      <el-table-column prop="name" label="邮件" min-width="140" show-overflow-tooltip />
+      <el-table-column label="来源" width="76" align="center">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="品牌" width="120" show-overflow-tooltip>
+        <template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template>
+      </el-table-column>
+      <el-table-column label="模板版本" width="110">
+        <template #default="{ row }"><span class="muted">{{ tplLabel(row.templateVersionId) }}</span></template>
+      </el-table-column>
+      <el-table-column label="片段" width="60" align="center">
+        <template #default="{ row }"><span class="muted">{{ placementCount(row) }}</span></template>
+      </el-table-column>
+      <el-table-column label="生成时间" width="150">
+        <template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template>
+      </el-table-column>
+      <TableOpsColumn :actions="ops" :more="moreOps" width="220" fixed="right" @action="(key: string, row: Record<string, unknown>) => onAction(key, row as unknown as MailRow)" />
+    </el-table>
+    <EmptyState
+      v-else
+      :description="mails.length === 0 ? '还没有邮件；点「新增邮件」走 名称→来源→品牌→模板→片段布局→数据→生成 的完整流程' : '没有符合条件的邮件，试试调整筛选条件'"
+    />
 
-    <div class="foot">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="filteredMails.length"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        small
-      />
-      <span class="muted">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
-    </div>
+    <template #footer>
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <span class="muted foot-hint">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
+    </template>
 
+    <!-- 编辑器与分享弹框（el-dialog teleport 到 body，锚点留在表格区无视觉影响） -->
     <MailEditor v-model:visible="editorOpen" :mail="editorMail" @saved="onEditorSaved" />
-
-    <!-- 统一分享对话框（plans/09 ShareHub） -->
     <ShareDialog
       v-model:open="shareDialog.open"
       :tool-id="toolId"
@@ -297,24 +282,11 @@ async function onRowCommand(cmd: string, row: MailRow): Promise<void> {
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
     />
-  </div>
+  </ListPageShell>
 </template>
 
 <style scoped>
-/* 页面留白与区块间距由宿主 .tool-page-body 提供，页面自身不再加 padding（规范） */
-.mails-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; gap: var(--sshk-gap-sm); }
-.filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
-.filter-bar .el-button + .el-button { margin-left: 0; }
-.filter-bar > .el-button:first-of-type { margin-left: 16px; }
-.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
-.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
-/* 操作栏紧凑口径：gap 4px + 归零 EP 兄弟 margin + padding 8px */
-.toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-divider + .el-button { margin-left: 0; }
-.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
-.table-wrap { flex: 1; min-height: 0; }
-.foot { flex: none; display: flex; align-items: center; justify-content: space-between; }
-.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
-.op-row .el-button + .el-button { margin-left: 0; }
 .muted { opacity: 0.6; font-size: 12px; }
+/* footer 提示语推到最左（.lp-foot 默认居右）：等价旧 space-between 布局 */
+.foot-hint { margin-right: auto; }
 </style>

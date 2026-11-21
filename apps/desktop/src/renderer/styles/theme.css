@@ -730,6 +730,7 @@ html.dark .el-image-viewer__next {
    原则：根容器高度链 + 区块间距 token；筛选 label+控件包 .f-item 整体换行不错开；
    操作栏单独一行居右、紧凑口径（gap 4px + 归零 EP 兄弟 margin + padding 8px）。 */
 .lp-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
+.lp-page--flush { padding: 0; } /* P6-1：嵌在 ToolPageLayout .tool-page-body 等已留白容器内的列表页去根 padding */
 .lp-filter { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
 .lp-filter .el-button + .el-button { margin-left: 0; }
 .lp-filter > .el-button:first-of-type { margin-left: 16px; }

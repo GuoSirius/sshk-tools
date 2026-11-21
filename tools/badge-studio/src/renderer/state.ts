@@ -101,11 +101,8 @@ export const previewHtml = ref('')
 export const capturing = ref(false)
 export const posters = ref<PosterRecord[]>([])
 export const listLoading = ref(false)
-// 表格布局三段式：顶部操作 / 中间表格撑满滚动 / 底部分页；跨页勾选由 reserve-selection 保留
-export const currentPage = ref(1)
-export const pageSize = ref(10)
-/** 分页后的数据由 PostersPage 本地计算（筛选后才能正确分页），state 只持有分页游标与跨页勾选清理 */
-export function onPageChange(): void { selectedPosters.value = selectedPosters.value.filter((s) => posters.value.some((p) => p._id === s._id)) }
+// P6-1：分页游标与批量勾选改由 PostersPage 的 useTablePage/useSelection 页内承载（§七单一真相），
+// state 只持有数据集合与加载态；批量导出/删除改为显式接收勾选行集合（页面从 selection 反查）。
 
 export const hasHtml = computed(() => htmlPath.value !== '' || pastedHtml.value.trim() !== '')
 export const hasStats = computed(() => statRows.value.length > 0)
@@ -582,9 +579,8 @@ export async function regeneratePoster(row: PosterRecord): Promise<void> {
   }
 }
 
-// ── 海报列表管理：多选 / 编辑载入 / 导出 / 批量删除导出（交互范本，EDM 复用） ──
-export const selectedPosters = ref<PosterRecord[]>([])
-export function onSelectionChange(rows: PosterRecord[]): void { selectedPosters.value = rows }
+// ── 海报列表管理：编辑载入 / 导出 / 批量删除导出（交互范本，EDM 复用）──
+// 多选状态已随 P6-1 收敛到 PostersPage 的 useSelection，批量函数显式接收勾选行集合
 
 export async function exportPosterHtml(row: PosterRecord): Promise<void> {
   if (!row.outputs.badged) return
@@ -599,8 +595,8 @@ export async function exportPosterHtml(row: PosterRecord): Promise<void> {
   ElMessage.success('已导出 ' + count + ' 个海报（HTML + 长图）：' + outPath)
 }
 
-export async function batchExportHtml(): Promise<void> {
-  const rows = selectedPosters.value.filter((row) => row.outputs.badged)
+export async function batchExportHtml(selected: PosterRecord[]): Promise<void> {
+  const rows = selected.filter((row) => row.outputs.badged)
   if (rows.length === 0) { ElMessage.warning('请先勾选要导出的海报')
     return }
   const date = toFileName()
@@ -655,13 +651,11 @@ export function onPosterCommand(cmd: string, row: PosterRecord): void {
   else if (cmd === 'delete') { deleteTarget.value = row; deleteOpen.value = true }
 }
 
-export async function batchDeletePosters(): Promise<void> {
-  const rows = selectedPosters.value
+export async function batchDeletePosters(rows: PosterRecord[]): Promise<void> {
   if (rows.length === 0) { ElMessage.warning('请先勾选要删除的海报')
     return }
   for (const row of rows) await host.badge.deletePoster(row._id)
   ElMessage.success('已删除 ' + rows.length + ' 个')
-  selectedPosters.value = []
   await loadPosters()
 }
 

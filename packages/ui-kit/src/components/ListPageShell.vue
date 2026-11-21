@@ -5,15 +5,19 @@
  * 各列表页不再各自维护三段式 scoped CSS（CR-30：11+ 页逐字重复的根因）。
  * 空态：表格自身为空时由调用方渲染 <EmptyState>（保留三类空态文案自主权），
  * 或直接把 EmptyState 放 default slot 与 el-table v-if 互斥。
+ * flush（P6-1）：页面嵌在已有留白容器（如 ToolPageLayout .tool-page-body）内时去根 padding，
+ * 避免「宿主 20px + .lp-page 20px」双重留白。
  */
-defineProps<{
+withDefaults(defineProps<{
   /** v-loading 绑定值（表格区） */
   loading?: boolean
-}>()
+  /** 嵌套在已带页面留白的容器内时置 true（根 .lp-page 去 padding） */
+  flush?: boolean
+}>(), { loading: false, flush: false })
 </script>
 
 <template>
-  <div class="lp-page">
+  <div class="lp-page" :class="{ 'lp-page--flush': flush === true }">
     <!-- 筛选栏：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置 -->
     <div v-if="$slots.filter" class="lp-filter">
       <slot name="filter" />
