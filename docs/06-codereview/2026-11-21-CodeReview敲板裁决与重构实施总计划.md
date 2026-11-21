@@ -1,7 +1,7 @@
 # CodeReview 敲板裁决与重构实施总计划（2026-11-21）
 
 - 状态：**终审完成（2026-11-21 用户已逐项回复全部 CF/C，见 §十三）· 具备开工条件，待令执行 P0~P9**
-- 版本：v1.1（v1.0 = 敲板汇总；v1.1 = 终审落档：CF-1 改判 developerMode 保留（D52 推翻→D55）+ C-6 菜单结构原样下移定稿 + C-11 model-manager + 其余 C 项采纳）
+- 版本：v1.2（v1.0 = 敲板汇总；v1.1 = 终审落档（D52 推翻→D55 / C-6 下移 / model-manager）；**v1.2 = 菜单规整二轮（§十四）：2 更名 + 3 合并，应用设置二级 6→4 页零新增**）
 - 日期：2026-11-21（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`（分支 `main`）
 - 关联需求：台账 #151；输入四份文档（本目录下 报告A / 报告B / 二次复核台账 v1.1 / 交叉合并总计划）+ 用户 2026-11-21 敲板消息（报告B 40 项 + 报告A 18 项 + 台账 C1/C4/Q-01~21 + **重构新想法 1~8**）
@@ -228,10 +228,8 @@
 │  递归渲染）    │  │ ├ 操作栏（居右紧凑）────────────────────────┤ │  │
 │              │  │ ├ 表格（撑满 + EmptyState）─────────────────┤ │  │
 │ ▾应用设置     │  │ └ 分页（total,sizes,prev,pager,next,jumper）┘ │  │
-│  常规         │  └───────────────────────────────────────────────┘  │
-│  分享         │   （表单类页面：FormGrid + FormHint + 校验双层）      │
-│  文件与传输   │                                                      │
-│  系统与数据   │                                                      │
+│  常规设置     │  └───────────────────────────────────────────────┘  │
+│  系统与数据   │   （表单类页面：FormGrid + FormHint + 校验双层）      │
 │  工具与权限   │                                                      │
 │  关于         │                                                      │
 │ ▾文件管理     │                                                      │
@@ -240,10 +238,9 @@
 │  通道配置     │                                                      │
 │  工具设置     │                                                      │
 │ ▾模型管理     │                                                      │
-│  模型 Provider│                                                      │
+│  模型配置     │                                                      │
 │  对话调试     │                                                      │
 │  用量统计     │                                                      │
-│  工具配置     │                                                      │
 │ ▾分享管理     │                                                      │
 │  路由管理     │                                                      │
 │  访问日志     │                                                      │
@@ -255,35 +252,45 @@
 ```
 
 - 路由：hash 路由 `#/app/<模块>/<页面>`（如 `#/app/files/explorer`）；`← 返回桌面` 与工具页返回协议一致。
-- **菜单结构定稿（C-6 终审）**：应用设置 5 个 tab 与三工具现有菜单**结构原样下移一级**——tab/一级→二级、二级→三级，标签与层级沿用现状，不重命名不重排；唯一新增 = 应用设置 >「文件与传输」（承接 §六#1 提取的传输参数；文件管理侧不保留入口，C-8）。
+- **菜单结构定稿（C-6 终审 + 二轮规整 2026-11-21）**：应用设置 tab 与三工具现有菜单**结构原样下移一级**为基线；二轮按你的 5 点调整执行：2 处更名（常规→常规设置、模型 Provider→模型配置）+ 3 处合并（传输参数并入文件管理工具设置【你授权】、应用设置分享页并入分享管理服务配置【实测同键双入口重合】、模型工具配置并入模型配置页【可回退】）；应用设置二级 6→4 页，**零新增页**（原计划新增的「文件与传输」取消）。详见 §五.5/§5.5a。
 - 菜单驱动推荐：三模块各保留一份**模块描述文件**（复用 manifest 的 menus/configGroups 引擎与 SettingsPage 表单组件，实现「原样下移」零重写；仅数据文件，不构成对工具代码的依赖）。
 - 传输面板：保持**全局悬浮**（不占菜单，任何页面可唤起）。
 
-### 5.5 应用管理菜单结构表（C-6 终审定稿：结构原样下移一级）
+### 5.5 应用管理菜单结构表（v1.2：下移基线 + 二轮规整）
 
-> 原则：应用设置 5 个 tab 与三工具现有菜单**标签、层级、顺序全部沿用现状**，仅整体下移一级（tab/一级→二级、二级→三级）；唯一新增页 = 应用设置 >「文件与传输」。
+> 基线（C-6）：应用设置 tab 与三工具现有菜单**标签、层级、顺序沿用现状**，仅整体下移一级（tab/一级→二级、二级→三级）。**二轮规整（2026-11-21，用户 5 点调整 + 合并/细拆规划，§十四）**：2 处更名 + 3 处合并；应用设置二级 6→4 页，**零新增页**。
 
-| 一级 | 二级/三级 | 内容来源（现状） | 说明 |
+| 一级 | 二级/三级 | 内容来源（现状） | 标记 |
 |---|---|---|---|
-| 应用设置 | 常规 | GeneralTab → 页面（主题/开机自启/托盘/自动更新/开发者模式/产物目录） | **开发者模式行保留**（CF-1 终审） |
-| | 分享 | ShareTab → 页面（端口/autoPort/TTL/目录开关） | 与 分享管理▸工具设置▸服务配置 同键读写（#115 既有口径） |
-| | 文件与传输 | **唯一新增页**：分片阈值/片大小/并发/超时（`app.fs.multipart.*`） | 承接 §六#1 提取；文件管理侧不保留入口（C-8） |
-| | 系统与数据 | SystemTab → 页面（更新/数据目录与日志/备份/配置预览/运行时工具包/回滚快照/诊断） | 原样迁移 |
-| | 工具与权限 | ToolsTab → 页面（启用/密钥权限/元数据覆盖） | 仅剩纯工具 + 外部安装工具 |
-| | 关于 | AboutTab → 页面（运行环境/配置分层约定） | 「更多>关于应用」轻弹框复用其数据 |
-| 文件管理 | 文件系统 | 原 file-manager 一级菜单「文件系统」（FileExplorerPage，迁移时拆 composables/组件） | 一级菜单下移为二级（C-6）；全屏工作台，ToolPageLayout 豁免 |
-| | 内容管理 | 原「内容管理」（ContentsPage + ContentEditorCore/Dialog） | editorMode 设置随迁 |
-| | 通道配置 | 原「通道配置」（ProfilesPage + Cloud/RemoteProfileForm，迁移时抽 SecretField） | 数据 `app.upload.*` 不动 |
-| | 工具设置 | 原「工具设置」（content-editor 配置组 → 页面） | 键随 C-3 迁 `app.modules.fileManager.*` |
-| 模型管理 | 模型 Provider | 原 model-console 一级「模型 Provider」（ProvidersPage） | **模块 id `model-manager`（C-11）** |
-| | 对话调试 | 原「对话调试」（ChatPage） | 核实双布局（C2） |
-| | 用量统计 | 原「用量统计」（UsagePage） | — |
-| | 工具配置 | 原「工具配置」（config-gateway 网关偏好 → 页面） | 键迁 `app.modules.modelManager.*` |
-| 分享管理 | 路由管理 | 原「路由管理」（RoutesPage） | — |
-| | 访问日志 | 原「访问日志」（LogsPage） | — |
-| | 工具设置 ▸ 服务配置 | 原「工具设置>服务配置」（ServicePage：状态/启停/日志容量） | **二级变三级**（C-6） |
-| | 工具设置 ▸ 挂载管理 | 原「工具设置>挂载管理」（MountsPage） | 三级 |
-| | 工具设置 ▸ 代理管理 | 原「工具设置>代理管理」（ProxiesPage） | 三级 |
+| 应用设置 | 常规设置 | GeneralTab → 页面（主题/开机自启/托盘/自动更新/开发者模式/产物目录） | **更名**（原「常规」，用户 #1）；开发者模式行保留（CF-1） |
+| | 系统与数据 | SystemTab → 页面（更新/数据目录与日志/备份/配置预览/运行时工具包/回滚快照/诊断） | 原样 |
+| | 工具与权限 | ToolsTab → 页面（启用/密钥权限/元数据覆盖） | 原样；仅剩纯工具 + 外部安装工具 |
+| | 关于 | AboutTab → 页面（运行环境/配置分层约定） | 原样；「更多>关于应用」轻弹框复用其数据 |
+| 文件管理 | 文件系统 | 原「文件系统」（FileExplorerPage，迁移时拆 composables/组件） | 下移；全屏工作台，ToolPageLayout 豁免 |
+| | 内容管理 | 原「内容管理」（ContentsPage + ContentEditorCore/Dialog） | 下移；editorMode 设置随迁 |
+| | 通道配置 | 原「通道配置」（ProfilesPage + Cloud/RemoteProfileForm，迁移时抽 SecretField） | 下移；数据 `app.upload.*` 不动 |
+| | 工具设置 | 原「工具设置」（content-editor 组）+ **新增「传输与分片」分组**（阈值/片大小/并发/超时，`app.fs.multipart.*`） | **合并**（用户 #3 授权）；原「传输设置」面板入口删除（C-8） |
+| 模型管理 | 模型配置 | 原「模型 Provider」（ProvidersPage：CRUD/预设/连接测试）+ **底部「网关偏好」分组**（默认 Provider/超时/流式，原「工具配置」3 字段） | **更名**（用户 #4）+ **合并**（建议·可回退）；模块 id `model-manager`（C-11） |
+| | 对话调试 | 原「对话调试」（ChatPage） | 下移；核实双布局（C2） |
+| | 用量统计 | 原「用量统计」（UsagePage） | 下移 |
+| 分享管理 | 路由管理 | 原「路由管理」（RoutesPage） | 下移 |
+| | 访问日志 | 原「访问日志」（LogsPage） | 下移 |
+| | 工具设置 ▸ 服务配置 | 原 ServicePage（状态/启停/清路由/基础设置/日志容量）**+ 收编 ShareTab 全部内容**（状态卡/autoStart/基础设置 4 字段：端口/默认时长/分享 IP/允许目录） | **合并**（用户 #5，实测同键双入口重合）；应用设置「分享」页取消，用户 #2 改名随页面取消（可回退） |
+| | 工具设置 ▸ 挂载管理 | 原「挂载管理」（MountsPage） | 三级 |
+| | 工具设置 ▸ 代理管理 | 原「代理管理」（ProxiesPage） | 三级 |
+
+#### 5.5a 合并与细拆规划（二轮结论）
+
+| 处置 | 项 | 依据 |
+|---|---|---|
+| ✅ 合（已拍板） | 传输/分片参数 → 文件管理>工具设置「传输与分片」 | 用户 #3 授权；参数语义属文件/传输能力域，FilePicker 本质是该能力的通用组件（同一份 `app.fs.multipart.*`，#139 已统一注入）；模块化后无「禁用不可达」问题；应用设置回归纯全局偏好 |
+| ✅ 合（事实驱动） | 应用设置>分享 整页 → 分享管理>工具设置>服务配置 | **实测两页同键双入口大面积重合**：服务状态卡（含 autoStart）+ 基础设置 4 字段（端口/默认时长/分享 IP/允许目录）两处重复渲染，仅日志容量与启停/清空操作为服务页独有（`ShareTab.vue:111-171` / `ServicePage.vue:140-175`，ServicePage 头注释自述「与应用设置同键读写天然一致」）；双份表单是维护隐患 |
+| ✅ 合（建议·可回退） | 模型管理>工具配置（3 字段）→ 模型配置页底部「网关偏好」 | 3 个字段不值得独立菜单页；与文件管理工具设置多分组做法保持一致 |
+| ✂ 保持独立 | 常规设置 / 系统与数据 / 工具与权限 / 关于 | 应用全局域：偏好 / 本体运维 / 纯工具治理 / 信息，与任何单一能力无关 |
+| ✂ 保持独立 | 通道配置 ↔ 工具设置（文件管理） | 资产数据（Profile CRUD + 密钥）vs 偏好参数；混页会让 Profile 表单页过长 |
+| ✂ 保持独立 | 对话调试 / 用量统计；路由 / 日志 / 挂载 / 代理 | 高频操作页与运营列表页，各自成页 |
+
+> 可回退：两处「事实驱动 / 建议」合并若不认可，回复一句即回退为「下移基线 + #1/#4 更名」结构（恢复应用设置分享页 / 模型工具配置独立页）。
 
 ### 5.6 目标代码结构（Q-23/P10/A3/A2 落地形态）
 
@@ -316,10 +323,9 @@ apps/desktop/src/renderer/
 ├── pages/
 │   ├── app-admin/
 │   │   ├── AppAdminPage.vue          # 左菜单（折叠）+ 右内容 + hash 路由
-│   │   ├── settings/  GeneralPage / SharePage / FileTransferPage /     # 5 tab 页 + 新增文件与传输（C-6/C-8）
-│   │   │              SystemDataPage / ToolsPermissionPage / AboutPage
+│   │   ├── settings/  GeneralPage / SystemDataPage / ToolsPermissionPage / AboutPage  # 4 页（二轮规整，分享页并入分享管理）
 │   │   ├── files/     FileExplorerPage / ContentsPage / ProfilesPage  # 原页平移（C-6 下移原则）
-│   │   ├── models/    ProvidersPage / ChatPage / UsagePage            # 模块 id model-manager（C-11）
+│   │   ├── models/    ProvidersPage（模型配置，含网关偏好分组）/ ChatPage / UsagePage  # model-manager（C-11）
 │   │   └── share/     RoutesPage / LogsPage / ServicePage / MountsPage / ProxiesPage
 │   └── verify-guide/VerifyGuidePage.vue          # 从 components/ 归位（A2）
 ├── components/        # 真组件+弹框（原 settings/tabs 拆为页面后，组件留此或随页面就近）
@@ -356,14 +362,14 @@ scripts/
 
 | # | 配置 | 现位置 | 配置键 | 新位置 | 说明 |
 |---|---|---|---|---|---|
-| 1 | 传输/分片参数（阈值/片大小/并发/超时） | 文件管理「更多▾→传输设置」面板 | `app.fs.multipart.*` | **应用设置 > 文件与传输（唯一新增页）** | FilePicker 图片库同一份配置（#139 已统一注入）；**文件管理侧不保留入口（C-8 终审）** |
+| 1 | 传输/分片参数（阈值/片大小/并发/超时） | 文件管理「更多▾→传输设置」面板 | `app.fs.multipart.*` | **文件管理 > 工具设置「传输与分片」分组**（二轮规整，#3 授权并入） | FilePicker 图片库同一份配置（#139 已统一注入）；「传输设置」面板入口删除（C-8）；应用设置零新增页 |
 | 2 | 上传通道 Profile CRUD | file-manager 通道配置页 | `app.upload.*` + 密钥 `app:upload:<pid>` | **文件管理 > 通道配置（原页平移）** | 数据零迁移，仅 UI 归位为模块页 |
 | 3 | 模型 Provider CRUD | model-console Provider 页 | `app.provider*`（密钥 safeStorage） | **模型管理 > 模型 Provider（原页平移）** | 模块 id model-manager（C-11） |
 | 4 | 模型预设 + 播种 | main/presets.ts + seedDefaultProviders | `app.provider*` | **main/modules/llm/**（应用本体） | T4 对齐，宿主单一播种器 |
-| 5 | 分享服务参数（端口/TTL/目录开关/日志容量） | 应用设置 ShareTab | `app.shareHub.*` | **应用设置 > 分享服务** | 已是正面范例，保持 |
+| 5 | 分享服务参数+状态（端口/autoPort/TTL/分享 IP/允许目录/autoStart/日志容量/启停） | 应用设置 ShareTab + share-manager ServicePage（**同键双入口**） | `app.shareHub.*` | **分享管理 > 工具设置 > 服务配置（唯一页，二轮规整并入）** | 两页实测重合（状态卡+基础设置 4 字段双渲染）；应用设置删分享页，#2 改名随页面取消（可回退） |
 | 6 | 挂载/代理 | share-manager 工具设置子菜单 | 模块配置 | **分享管理 > 工具设置 ▸ 挂载管理/代理管理（下移为三级）** | 运营数据留模块 |
 | 7 | 内容编辑器形态 | file-manager 工具设置 | `tools.file-manager.editorMode` | **文件管理 > 工具设置（原页平移）** | 键随 C-3 迁 `app.modules.fileManager.*` |
-| 8 | 网关偏好（默认 Provider/超时/流式） | model-console 工具配置 | `tools.model-console.*` | **模型管理 > 工具配置（原页平移）** | 键随 C-3 迁 `app.modules.modelManager.*`；模块 id model-manager（C-11） |
+| 8 | 网关偏好（默认 Provider/超时/流式） | model-console 工具配置（3 字段） | `tools.model-console.*` | **模型管理 > 模型配置页「网关偏好」分组**（二轮规整并入，可回退） | 键随 C-3 迁 `app.modules.modelManager.*`；模块 id model-manager（C-11） |
 | 9 | OCR 命令/超时 | template-tool config-ocr | `tools.template-tool.ocr.*` | **删除** | 随 PaddleOCR 移除（CF-5） |
 | 10 | badge/edm/template 工具业务配置 | 各工具 manifest configGroups | `tools.<id>.*` | **不动** | 纯工具自留（D32 边界不变） |
 | 11 | 常规项（主题/自启/托盘/更新/产物目录） | 设置抽屉 GeneralTab | `app.*` | **应用设置 > 常规** | 删开发者模式行 |
@@ -438,11 +444,11 @@ scripts/
 | **P3-5** | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
 | **P4-1** | 顶栏改版 + App.vue 瘦身 | 彩色胶囊按钮组（C-7）；更多下拉三段；关于应用轻弹框；App.vue 抽 `AppHeader.vue` + useUpdateBanner/useNewToolScan/useRuntimeComponent（CR-42 首刀） | 新想法#2/#3、CR-42 | M |
 | **P4-2** | AppAdminPage 壳 | 页面骨架 + 左菜单（SidebarMenu 复用/折叠）+ hash 路由 `#/app/...` + 返回桌面协议 + 桌面入口按钮 | 新想法#4 | M |
-| **P4-3** | 应用设置页化 | **5 个 tab 变页面 + 新增文件与传输页（C-6/C-8）**：GeneralPage（开发者模式行保留）/SharePage/SystemDataPage/ToolsPermissionPage/AboutPage/FileTransferPage（新增，§六#1）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑 | 新想法#5、C-6、§六 | L |
-| **P4-4** | 文件管理模块迁入 | FileExplorerPage（迁移时同步拆 composables：useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…+ 组件）/ContentsPage+编辑器/ProfilesPage（同步用 SecretField）；菜单**原样下移**（文件系统/内容管理/通道配置/工具设置）；传输设置入口移除（C-8） | 新想法#5、C-6、§六#2/#7、B37-F1 | XL |
-| **P4-5** | 模型管理模块迁入 | **模块 id `model-manager`（C-11，原 model-console）**；ProvidersPage/ChatPage（核实双布局）/UsagePage/工具配置页；菜单原样下移 | §六#3/#8、C-11 | M |
-| **P4-6** | 分享管理模块迁入 | Routes/Logs + 工具设置▸Service/Mounts/Proxies（**二级变三级**，C-6）；服务状态启停留模块页 | §六#5/#6、C-6 | M |
-| **P4-7** | 传输面板全局化 | TransferPanel 挂 App 层（跨桌面/应用管理/工具宿主可用）；传输设置入口改跳应用设置（C-8）；FilePicker 联动回归 | §六#1 | M |
+| **P4-3** | 应用设置页化 | **4 页（二轮规整）**：GeneralPage（更名「常规设置」；开发者模式行保留）/SystemDataPage/ToolsPermissionPage/AboutPage；**分享页取消**（并入分享管理，P4-6）；**不再新增文件与传输页**（传输参数并入文件管理工具设置，P4-4）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑 | 新想法#5、C-6、二轮规整、§六 | L |
+| **P4-4** | 文件管理模块迁入 | FileExplorerPage（迁移时同步拆 composables：useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…+ 组件）/ContentsPage+编辑器/ProfilesPage（同步用 SecretField）；菜单**原样下移**（文件系统/内容管理/通道配置/工具设置）；**工具设置页含「内容编辑器」+「传输与分片」两组**（传输参数迁入，原「传输设置」面板入口删除 C-8） | 新想法#5、C-6、二轮规整、§六#2/#7、B37-F1 | XL |
+| **P4-5** | 模型管理模块迁入 | **模块 id `model-manager`（C-11，原 model-console）**；**模型配置页**（ProvidersPage 更名，底部「网关偏好」分组收编原工具配置 3 字段）/ChatPage（核实双布局）/UsagePage；菜单原样下移+更名 | §六#3/#8、C-11、二轮规整 | M |
+| **P4-6** | 分享管理模块迁入 | Routes/Logs + 工具设置▸Service/Mounts/Proxies（**二级变三级**，C-6）；**ServicePage 扩容为唯一分享服务页**：收编 ShareTab 全部内容（状态卡/autoStart/基础设置 4 字段/保存后重拉逻辑 #144）+ 既有启停/清路由/日志容量；应用设置分享页删除 | §六#5/#6、C-6、二轮规整 | M |
+| **P4-7** | 传输面板全局化 | TransferPanel 挂 App 层（跨桌面/应用管理/工具宿主可用）；**不设任何传输设置入口**（C-8；参数在 文件管理>工具设置「传输与分片」）；FilePicker 联动回归 | §六#1 | M |
 | **P4-8** | 三工具包退役 | 删 tools/{file-manager,model-console,share-manager}；discovery/catalog/BUILTIN 名单/内置判定收缩为纯工具；配置键一次性迁移 `app.modules.<moduleId>.*`（C-3；模块 id：file-manager / **model-manager**（原 model-console，C-11）/ share-manager）；verify-steps 相关条目改写指向应用管理页；工具与权限页适配；桌面卡片只剩纯工具 | 新想法#5/#6 | L |
 | **P4-9** | VerifyGuidePage 归位 | pages/verify-guide/（A2）；入口=顶栏验证引导（仅 dev）；verify-sessions 数据结构不动 | B21/A2 | S |
 | **P5-1** | tool-skeleton 迁出 | → `scripts/tool-skeleton/`（C-5）；shared 零运行时骨架代码；dev:toolCreate/向导预览接线 | B11/Q-23 | S |
@@ -526,3 +532,19 @@ scripts/
 | 10 | 顶栏方案一 | 语义色胶囊组（§五.3，P4-1） |
 
 > 决策看板同步：D52 加「已推翻」标注指向 D55；D53 细化（菜单下移 + module id）；本记录登记台账 #152。
+
+---
+
+## 十四、菜单规整二轮（2026-11-21，用户 5 点调整 + 合并/细拆规划）
+
+> 背景：C-6 定稿后用户对菜单提出 5 点调整，并要求规划「哪些合在一起、哪些需要细拆」。结论见 §五.5/§5.5a；总计划升 v1.2。
+
+| # | 用户调整 | 落定 |
+|---|---|---|
+| 1 | 常规 → **常规设置** | ✅ 更名（P4-3） |
+| 2 | 分享 → 分享服务 | ⚠️ **随 #5 合并被取消**：应用设置不再有分享页；若想保留应用侧入口请回复（届时按「分享服务」名保留，字段仍同键读写） |
+| 3 | 文件与传输的设置能否并入文件管理>工具设置 | ✅ **可以并（已拍板）**：工具设置页新增「传输与分片」分组（阈值/片大小/并发/超时）；应用设置零新增页；「传输设置」面板入口删除（C-8）；FilePicker 共用同一份 `app.fs.multipart.*`（规范文档写明参数位置） |
+| 4 | 模型 Provider → **模型配置** | ✅ 更名（P4-5） |
+| 5 | 应用的分享设置与服务配置是否重合 | **重合（实测）**：ShareTab 与 ServicePage 为同键双入口——服务状态卡（含 autoStart）+ 基础设置 4 字段两处重复渲染，仅日志容量与启停/清空操作为服务页独有；**整页并入 分享管理>工具设置>服务配置**，应用设置删分享页（可回退） |
+
+> 登记台账 #153；00-index 变更记录 v1.8。
