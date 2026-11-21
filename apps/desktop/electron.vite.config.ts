@@ -74,20 +74,22 @@ function sshkDevDefine(mode: string) {
 }
 
 /**
- * 构建期烤入 env（用户 2026-11-18 拍板）：.env 中声明的 SSHK_ 前缀键整批注入
- * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
- * 构建期把 .env 中声明的 SSHK_ 前缀键整批注入
- * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
+ * 构建期烤入 env（用户 2026-11-18 拍板；CR-20/CR-47/E4 完善批 · C-9 保持机制只修 bug）：
+ * 键集合 = .env 声明的 SSHK_* ∪ 本机 process.env 的 SSHK_*（真实环境优先），
+ * 整批注入 __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值。
  * 默认不允许本机环境变量覆盖，SSHK_APP_OVERRIDABLE 列出可覆盖的键（语义见 shared/baked-env.ts）。
- * 只注入主进程：渲染层没有本机 env 可言，且避免把敏感值打进渲染 bundle；
- * 构建专用键（SSHK_BUILD_*）不烤入——进产物等于泄漏。
+ * 只注入主进程：渲染层没有本机 env 可言，且避免把敏感值打进渲染 bundle。
+ * 专用前缀不烤入（CR-47/E5 对齐契约）：SSHK_BUILD_*（构建旋钮，进产物等于泄漏）、
+ * SSHK_DEV_*（仅 dev 生效的调试键，烤入等于把 dev 行为带进安装版）。
  */
-const BAKED_ENV_DENYLIST = new Set(['SSHK_BUILD_SIGNING_KEY', 'SSHK_BUILD_SIGNING_ROTATE'])
+const BAKED_ENV_DENY_PREFIXES = ['SSHK_BUILD_', 'SSHK_DEV_']
 const BAKED_ENV = (() => {
   const envFile = existsSync(join(ROOT, '.env')) ? parseDotenv(readFileSync(join(ROOT, '.env'))) : {}
+  const keys = new Set([...Object.keys(envFile), ...Object.keys(process.env)])
   const out: Record<string, string> = {}
-  for (const key of Object.keys(envFile)) {
-    if (!key.startsWith('SSHK_') || BAKED_ENV_DENYLIST.has(key)) continue
+  for (const key of keys) {
+    if (!key.startsWith('SSHK_')) continue
+    if (BAKED_ENV_DENY_PREFIXES.some((p) => key.startsWith(p))) continue
     const value = process.env[key] ?? envFile[key]
     if (value !== undefined && value !== '') out[key] = String(value)
   }
@@ -120,7 +122,10 @@ function builtinStubPlugin(excluded: readonly string[]): Plugin {
  * 新增工具包放进 tools/ 后，别名与 externalize 白名单自动生效，宿主零改动。
  */
 const WORKSPACE_PKGS: string[] = []
-const sshkAlias: Alias[] = []
+const sshkAlias: Alias[] = [
+  // 包内聚子入口（B6 · P0-5）：upload-core 零依赖类型真相源（shared re-export 指向此处）
+  { find: /^@sshk\/upload-core\/types$/, replacement: pkg('packages/upload-core/src/upload-types.ts') },
+]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)
   if (!existsSync(dir)) continue

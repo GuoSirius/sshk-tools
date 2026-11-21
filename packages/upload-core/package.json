@@ -5,7 +5,8 @@
   "type": "module",
   "description": "sshk-tools 应用级上传能力：本地/远程(ftp|sftp)/云存储 Provider 抽象、校验、并发与重试",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./types": "./src/upload-types.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

@@ -6,7 +6,9 @@ import { defineConfig } from 'vitest/config'
 // 让跨包 import（@sshk/*）在 vitest 运行时按源码解析（与 tsconfig paths 一致）。
 // 动态扫描 packages/* 与 tools/*：新增工具包无需改测试配置。
 const ROOT = fileURLToPath(new URL('./', import.meta.url))
-const alias: { find: RegExp; replacement: string }[] = []
+const alias: { find: RegExp; replacement: string }[] = [
+  { find: /^@sshk\/upload-core\/types$/, replacement: join(ROOT, 'packages/upload-core/src/upload-types.ts') },
+]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)
   if (!existsSync(dir)) continue

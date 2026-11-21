@@ -1,9 +1,10 @@
 /**
- * R26：应用级上传配置的纯数据层（全局预设 + 工具覆盖）。
- *
- * 放在 shared 而不是 upload-core：渲染层（配置页 / 工具配置表单）也要读类型与纯函数，
- * 但绝不能把 upload-core 的 Node 侧依赖（basic-ftp / ssh2 / ali-oss）拖进渲染 bundle。
- * 本文件不 import 任何 Node 模块，profile 里也**不含密钥**——密钥只存 safeStorage。
+ * R26：应用级上传配置的纯数据层（全局预设 + 工具覆盖）——B6/P0-5 唯一真相源。
+ * 经 upload-core 的零依赖子入口 `@sshk/upload-core/types` 暴露给「不想拖 dayjs」的
+ * 渲染消费者；@sshk/shared 桶导出本文件保持既有消费面。
+ * 渲染层（配置页 / 工具配置表单）也读这里的类型与纯函数，但绝不能拖进 Node 侧依赖
+ * （basic-ftp / ssh2 / ali-oss）——本文件与 upload-vendors.ts 均不 import 任何 Node 模块，
+ * profile 里也**不含密钥**——密钥只存 safeStorage。
  */
 import { isUploadCloudVendor, type UploadCloudVendor } from './upload-vendors'
 

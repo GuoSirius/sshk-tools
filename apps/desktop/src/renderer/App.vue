@@ -327,7 +327,7 @@ onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverT
 
 async function checkUpdate(): Promise<void> {
   if (updater.value.phase === 'checking' || updater.value.phase === 'downloading' || updater.value.phase === 'available') return
-  const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
+  const result = await window.api.update.check().catch(() => ({}) as { disabled?: boolean; dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string })
   if (result.disabled) {
     ElMessage.info('自动更新已禁用（SSHK_APP_AUTO_UPDATE=0）')
   } else if (result.dev) {

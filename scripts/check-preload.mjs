@@ -21,14 +21,15 @@ const directInvokes = [...text.matchAll(/ipcRenderer\.invoke\s*\(/g)]
 if (directInvokes.length !== 1) {
   errors.push(`ipcRenderer.invoke 应只出现 1 次（在统一包装内），实际 ${directInvokes.length} 次`)
 }
-const wrapper = text.match(/const invoke\s*=\s*async\s*\([\s\S]{0,400}?ipcRenderer\.invoke\s*\([^\n]*\)/)
+// P0-5：invoke 泛型化（invoke<T>(...)）后正则同步适配；不变量不变（1 处裸调 + toPlain 脱壳）
+const wrapper = text.match(/const invoke\s*=\s*async\s*(<[^>]*>)?\([\s\S]{0,400}?ipcRenderer\.invoke\s*\([^\n]*\)/)
 if (!wrapper) {
   errors.push('未找到统一的 invoke 包装函数')
 } else if (!/toPlain/.test(wrapper[0])) {
   errors.push('统一 invoke 包装未调用 toPlain()，响应式对象会再次触发克隆报错')
 }
 
-const channelCalls = [...text.matchAll(/invoke\s*\(\s*IPC_CHANNELS\.[A-Za-z0-9_]+/g)]
+const channelCalls = [...text.matchAll(/invoke\s*(<[^>]*>)?\s*\(\s*IPC_CHANNELS\.[A-Za-z0-9_]+/g)]
 if (channelCalls.length < 10) {
   errors.push(`经统一包装的 IPC 通道数异常偏少（${channelCalls.length}），疑似漏接`)
 }

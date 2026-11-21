@@ -39,7 +39,7 @@ const updateStatusText = computed(() => {
 })
 async function checkUpdate(): Promise<void> {
   if (updaterState.value.phase === 'checking' || updaterState.value.phase === 'downloading' || updaterState.value.phase === 'available') return
-  const result = await window.api.update.check().catch(() => ({}) as Record<string, unknown>)
+  const result = await window.api.update.check().catch(() => ({}) as { disabled?: boolean; dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string })
   if (result.disabled) ElMessage.info('自动更新已禁用（SSHK_APP_AUTO_UPDATE=0）')
   else if (result.dev) ElMessage.info('开发环境不检查更新')
   else if (result.error) ElMessage.error('检查更新失败：' + String(result.error))

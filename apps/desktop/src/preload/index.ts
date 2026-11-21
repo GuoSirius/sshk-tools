@@ -14,13 +14,13 @@ import { toPlain } from './plain'
  * 未标记的历史返回值原样透传，兼容渐进迁移。
  */
 // 返回值类型由各方法自身的标注与 renderer/env.d.ts 约束，这里只统一处理入参。
-const invoke = async (channel: string, ...args: unknown[]): Promise<any> => {
+const invoke = async <T = unknown>(channel: string, ...args: unknown[]): Promise<T> => {
   const result = await ipcRenderer.invoke(channel, ...args.map(toPlain))
   if (isIpcResult(result)) {
-    if (result.ok) return result.data
+    if (result.ok) return result.data as T
     throw new Error(result.message)
   }
-  return result
+  return result as T
 }
 
 const api = {
@@ -64,16 +64,26 @@ const api = {
     confirmClose: (): Promise<boolean> => invoke(IPC_CHANNELS.appConfirmClose),
   },
   update: {
-    check: (): Promise<{ dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }> =>
+    check: (): Promise<{ disabled?: boolean; dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string }> =>
       invoke(IPC_CHANNELS.updateCheck),
     download: (): Promise<boolean> => invoke(IPC_CHANNELS.updateDownload),
     quitAndInstall: (): Promise<{ dev?: boolean } | void> => invoke(IPC_CHANNELS.updateQuitAndInstall),
     /** 主进程主动推送 autoUpdater 状态（检查/发现/下载进度/完成/失败），渲染层据此驱动 UI */
-    onState: (callback: (payload: unknown) => void): void => {
+    onState: (callback: (payload: {
+      phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev' | 'disabled'
+      version?: string
+      percent?: number
+      error?: string
+    }) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.updateState, (_event, payload) => callback(payload))
     },
     /** 拉取主进程当前状态：订阅推送前主进程可能已推过 disabled/dev（窗口未建落空），启动时拉一次兜底 */
-    getState: (): Promise<{ phase: string; version?: string; percent?: number; error?: string } | null> =>
+    getState: (): Promise<{
+      phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev' | 'disabled'
+      version?: string
+      percent?: number
+      error?: string
+    } | null> =>
       invoke(IPC_CHANNELS.updateGetState),
   },
   llm: {
@@ -91,16 +101,16 @@ const api = {
       })
     },
     /** 保存 Provider 前也能用刚填的 key 探测；不传则读主进程 safeStorage */
-    listModels: (provider: unknown, apiKey?: string): Promise<string[]> =>
+    listModels: (provider: LlmProvider, apiKey?: string): Promise<string[]> =>
       invoke(IPC_CHANNELS.llmListModels, provider, apiKey),
-    healthCheck: (provider: unknown, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
+    healthCheck: (provider: LlmProvider, apiKey?: string): Promise<{ ok: boolean; message: string; latencyMs?: number }> =>
       invoke(IPC_CHANNELS.llmHealthCheck, provider, apiKey),
     setApiKey: (providerId: string, apiKey: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.llmSetApiKey, providerId, apiKey),
     /** 编辑时按需查看已存密钥（用户主动点击） */
     getApiKey: (providerId: string): Promise<string> => invoke(IPC_CHANNELS.llmGetApiKey, providerId),
     /** 应用级 Provider 只读清单；所有工具共用，返回值绝不含密钥明文 */
-    providers: (): Promise<unknown[]> => invoke(IPC_CHANNELS.llmProviders),
+    providers: (): Promise<import('@sshk/shared').LlmProviderInfo[]> => invoke(IPC_CHANNELS.llmProviders),
     /** 按 Provider id 真实查询 /models，密钥由主进程注入 */
     providerModels: (providerId: string, apiKey?: string): Promise<string[]> =>
       invoke(IPC_CHANNELS.llmProviderModels, providerId, apiKey),
@@ -111,12 +121,12 @@ const api = {
       invoke(IPC_CHANNELS.uploadSingle, req),
     batch: (reqs: unknown[]): Promise<{ url: string; key?: string; name: string }[]> =>
       invoke(IPC_CHANNELS.uploadBatch, reqs),
-    onProgress: (callback: (payload: unknown) => void): void => {
+    onProgress: (callback: (payload: { name: string; percent: number; status: string; error?: string }) => void): void => {
       ipcRenderer.on(IPC_CHANNELS.uploadProgress, (_event, payload) => callback(payload))
     },
     getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerGet),
     setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerSet, cfg),
-    profiles: (type?: 'remote' | 'cloud'): Promise<unknown[]> =>
+    profiles: (type?: 'remote' | 'cloud'): Promise<import('@sshk/shared').UploadProfileOption[]> =>
       invoke(IPC_CHANNELS.uploadProfiles, type),
     setSecret: (profileId: string, value: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.uploadSecretSet, profileId, value),
@@ -216,18 +226,18 @@ const api = {
   },
   tools: {
     /** 主进程裁决后的工具目录；返回值不含任何密钥明文 */
-    list: (): Promise<unknown> => invoke(IPC_CHANNELS.toolsList),
-    setEnabled: (id: string, enabled: boolean): Promise<unknown> =>
+    list: (): Promise<import('@sshk/shared').ToolCatalogPayload> => invoke(IPC_CHANNELS.toolsList),
+    setEnabled: (id: string, enabled: boolean): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsSetEnabled, id, enabled),
-    setGrant: (id: string, grant: string): Promise<unknown> =>
+    setGrant: (id: string, grant: string): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsSetGrant, id, grant),
-    setDependencies: (id: string, ids: string[]): Promise<unknown> =>
+    setDependencies: (id: string, ids: string[]): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsSetDependencies, id, ids),
-    setOverrides: (id: string, overrides: Record<string, string>): Promise<unknown> =>
+    setOverrides: (id: string, overrides: Record<string, string>): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsSetOverrides, id, overrides),
-    setDistribution: (ids: string[] | null): Promise<unknown> =>
+    setDistribution: (ids: string[] | null): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsSetDistribution, ids),
-    cleanupOrphans: (): Promise<unknown> =>
+    cleanupOrphans: (): Promise<import('@sshk/shared').ToolCatalogPayload> =>
       invoke(IPC_CHANNELS.toolsCleanupOrphans),
     /** N2 工具健康度：聚合目录裁决 + 插件状态 + 日志 error 检索（无敏感信息） */
     health: (): Promise<import('@sshk/shared').ToolHealthPayload> => invoke(IPC_CHANNELS.toolsHealth),
@@ -278,7 +288,7 @@ const api = {
   },
   accessKey: {
     /** 仅写入 safeStorage；明文不会回传渲染层 */
-    set: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.accessKeySet, key),
+    set: (key: string): Promise<import('@sshk/shared').ToolCatalogPayload> => invoke(IPC_CHANNELS.accessKeySet, key),
   },
   /** 开发者工具：仅源码开发环境可用；打包版 state().available=false，UI 会禁用入口 */
   dev: {
@@ -430,13 +440,16 @@ const api = {
   },
   /** 生命周期控制：仅宿主「分享服务」tab 可用 */
   shareHubControl: {
-    start: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'start'),
-    restart: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'restart'),
-    stop: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'stop'),
-    clear: (): Promise<{ port: number }> => invoke(IPC_CHANNELS.shareHubControl, 'clear'),
+    start: (): Promise<{ port: number }> => invoke<{ port: number }>(IPC_CHANNELS.shareHubControl, 'start'),
+    restart: (): Promise<{ port: number }> => invoke<{ port: number }>(IPC_CHANNELS.shareHubControl, 'restart'),
+    stop: (): Promise<{ port: number }> => invoke<{ port: number }>(IPC_CHANNELS.shareHubControl, 'stop'),
+    clear: (): Promise<{ port: number }> => invoke<{ port: number }>(IPC_CHANNELS.shareHubControl, 'clear'),
   },
 }
 
 // 暴露到 sshkApiBridge 而非 api：exposeInMainWorld 的属性是只读的，
 // 渲染层无法覆盖 window.api；由渲染层 installPlainApi() 把它包装成 window.api。
 contextBridge.exposeInMainWorld('sshkApiBridge', api)
+
+// P0-5（O5）：渲染层 window.api 类型由 preload 真相源推导（env.d.ts 只留一行引用），不再手工维护两份
+export type SshkApi = typeof api
