@@ -1,8 +1,8 @@
 # 项目规范与铁律总纲（新设备必读）
 
 - 状态：**权威汇总 · 唯一入口**。本文件是所有开发规范、设计约定、文件/命名/使用/契约规范、铁律的**统一汇总**，供人及 WorkBuddy 等 AI 工具在本机或**新设备拉取代码后第一时间读取并严格落实**。
-- 版本：v1.0
-- 日期：2026-11-20（北京时间）
+- 版本：v1.1
+- 日期：2026-11-21（北京时间；v1.1 = P8-2 同步：§1.3 补 D53 基础能力模块例外 + §5.6 补 P4-8 配置键迁移事实与 verify-steps 现址 + §2.1/§2.3 指向 P8-1 三合一《UI 与页面规范》）
 - 配套：仓库根 `AGENTS.md`（IDE AI 必读铁律，本文件是其完整展开）；`docs/00-index.md`（文档索引与决策看板 D1~D51）。
 - 更新纪律：新增/修改规范**先改本文件**再同步到专项文档；专项文档与本文冲突时以本文为准，除非对应决策编号明确推翻。
 
@@ -60,15 +60,17 @@ tools/<id>/
 - **分层铁律**：renderer 禁引 `electron`/`node:fs`/`BrowserWindow`；main 禁引 `.vue`/`element-plus`/`window.api`。`check-boundaries.mjs` 强制。
 - **工具 id 单一来源**：renderer 一律 `provideToolId(() => props.toolId)` + `useToolId()` 注入，**禁止任何工具 id 字面量或本地 TOOL_ID 常量**；主进程/跨进程/改名迁移链静态引用走 `@sshk/shared` 的 `TOOL_IDS`；manifest id 是最终真相源。
 
-### 1.3 能力归属判据（本次复核定版，用户第 11 条）
+### 1.3 能力归属判据（本次复核定版，用户第 11 条；D53 边界铁律 2026-11-21 补）
 
 | 消费者数 | 归属 | 例 |
 |---|---|---|
-| ≥2 工具复用 | 留应用层 `packages/` | llm-gateway / upload-core / share-core / ui-kit |
-| 仅 1 工具消费 | 下沉该工具 `src/` | FsRuntime（当前错留在应用主进程，待决策 Q-03）|
-| 通用无业务 UI | `ui-kit` | ToolPageLayout / EmptyState / FormHint |
-| 含业务语义的 UI | 领域包或宿主 | ShareDialog（争议中，Q-08）|
+| ≥2 消费者复用 | 留应用层 `packages/` | llm-gateway / upload-core / share-core / ui-kit / export-core |
+| 仅 1 消费者且属"纯工具" | 下沉该工具 `src/` | （FsRuntime 已按 CF-3/Q-03 落定为应用内 `main/modules/file/`，不再下沉工具）|
+| 通用无业务 UI | `ui-kit` | ToolPageLayout / EmptyState / FormHint / ListPageShell |
+| 含业务语义的 UI | 领域包或宿主 | ShareDialog（已定 `@sshk/share-core/ui`，Q-08/C-4）|
 
+> **基础能力模块例外（D53）**：文件管理 / 模型管理 / 分享管理三模块属**应用本体**（应用管理页面 `pages/app-admin/{files,models,share}` + main 侧 `main/modules/{file,llm,share}`），**不参与"下沉工具"判定**；依赖方向唯一=工具 → 应用能力，应用本体绝不 import 工具代码（运行时 discovery 除外）。
+>
 > 密钥一律进 safeStorage（`secrets.bin`），settings 只存 sha256 摘要；上传通道密钥命名空间 `app:upload:<pid>`（勿回退 `getToolSecret('file-manager',...)`）。
 
 ### 1.4 docs 目录
@@ -191,3 +193,5 @@ docs/
 - 报告/文档中"已被删除/改名"的东西（D18 env 开关、`?key=`、旧工具名 upload-manager），处置方向是**清理残留**，不是补登记/补兼容；但历史设计稿加"实现已变更"批注而非改写历史结论。
 - 迁移兼容代码、IPC 通道名、文件名即使"旧"也必须保留（改名迁移链 first-wins）。
 - 任何"报告结论"落到代码前必须回源码验证当前态——两份 CodeReview 报告已发现多处"当前已修复/失实"条目（CR-21/CR-51/R5/R6）。
+- **P4-8c（C-3）配置键一次性迁移已落定**：`tools.file-manager.editorMode` → `app.modules.fileManager.editorMode`、`tools.model-console.*` → `app.modules.modelManager.*`（模块 id model-manager，C-11；旧键弃用不写运行时迁移，存量数据不迁移）；`app.fs.multipart.*` / `app.upload.*` / `app.shareHub.*` / `app.llm.*` / 密钥命名空间不动。新代码禁再写旧键。
+- **verify-steps 现址 `apps/desktop/src/shared/verify-steps.ts`**（P5-2 · C-10：宿主专用，shared 回归纯契约）；其 target 白名单门禁在 `scripts/verify-structure.mjs` §3a-2（KNOWN：纯工具 3 家 + 模块 id 3 个 + share 预览路由）。
