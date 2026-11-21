@@ -1,30 +1,29 @@
 <script setup lang="ts">
 import {
-  computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch,
-  type Component,
+  computed, nextTick, onBeforeUnmount, onMounted, ref, watch,
   type Ref,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, DArrowLeft, Download, Setting } from '@element-plus/icons-vue'
-import { DEFAULT_THEME_MODE, isDevFeaturesEnabled, SSHK_DEV } from '@sshk/shared'
-import type { ThemeMode, ToolCatalogPayload, ToolMenu, ToolRuntimeState } from '@sshk/shared'
+import { DArrowLeft } from '@element-plus/icons-vue'
+import { isDevFeaturesEnabled, SSHK_DEV } from '@sshk/shared'
+import type { ToolCatalogPayload, ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
-import { useTheme } from './composables/useTheme'
-import { useUpdater } from './composables/useUpdater'
-import { toolComponent } from './plugins'
+import { useUpdateBanner } from './composables/useUpdateBanner'
+import { useNewToolScan } from './composables/useNewToolScan'
+import { useRuntimeComponent } from './composables/useRuntimeComponent'
 import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
+import AppHeader from './components/AppHeader.vue'
+import AboutDialog from './components/AboutDialog.vue'
 import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
 import VerifyGuidePage from './components/VerifyGuidePage.vue'
 import { promptSecret } from './components/secret-prompt'
-import logoUrl from '../../build/icon.svg'
 
-const { mode, setMode } = useTheme()
 const { visibleTools: catalogTools, byId, accept: acceptCatalog, refresh: refreshCatalog } = useToolCatalog()
-// 路由即状态（vue-router）：桌面=/，工具页=/tool/:toolId/:menu?
+// 路由即状态（vue-router）：桌面=/，工具页=/tool/:toolId/:menu?，应用管理=/app/:module/:page?
 const route = useRoute()
 const router = useRouter()
 const activeToolId = computed(() => (route.params.toolId as string | undefined) ?? null)
@@ -51,17 +50,8 @@ function tickClock(): void {
   const p = (n: number) => String(n).padStart(2, '0')
   clockText.value = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} 星期${WEEK_CN[d.getDay()]}`
 }
-const { state: updater } = useUpdater()
-/** 更新横幅是否被用户关闭（项10）：仅对当前这一轮版本生效，下次发现新版自动重置 */
-const updateBannerDismissed = ref(false)
-const dismissedForVersion = ref('')
-watch(updater, (u) => {
-  if (u.version && u.version !== dismissedForVersion.value) {
-    dismissedForVersion.value = u.version
-    updateBannerDismissed.value = false
-  }
-})
-function dismissUpdateBanner(): void { updateBannerDismissed.value = true }
+// 顶栏更新簇 + 三态更新横幅状态（P4-1 抽 composable，AppHeader 与横幅共用同一单例）
+const { updater, bannerKind, dismissUpdateBanner, checkUpdate, installUpdate } = useUpdateBanner()
 let hoverTimer: number | undefined
 
 // 可见性由主进程裁决：桌面首页与侧栏都只消费 catalog 结果
@@ -93,47 +83,8 @@ function showCloseConfirm(): void {
 }
 onMounted(() => { window.api.app.onRequestClose(showCloseConfirm) })
 const isConfigMenu = computed(() => activeMenu.value === 'config' || activeMenu.value.startsWith('config-'))
-// 渲染插件按清单动态加载，单个工具组件失败只影响它自己
-// 内置工具走构建期组件；运行时包走 Blob URL 动态 import（编译后 ESM 组件）
-const runtimeComponents = reactive(new Map<string, Component>())
-// 按 id 记录加载中 / 失败：失败不再自动重试，避免反复弹错刷屏（F5 可整体重试）
-const runtimeLoading = reactive(new Set<string>())
-const runtimeFailed = reactive(new Set<string>())
-async function loadRuntimeComponent(id: string): Promise<void> {
-  if (runtimeComponents.has(id) || runtimeLoading.has(id) || runtimeFailed.has(id)) return
-  runtimeLoading.add(id)
-  try {
-    const code = await window.api.runtime.readRenderer(id)
-    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))
-    const mod = (await import(/* @vite-ignore */ url)) as { default?: Component }
-    URL.revokeObjectURL(url)
-    if (!mod.default) throw new Error('渲染层未默认导出组件')
-    runtimeComponents.set(id, markRaw(mod.default))
-  } catch (err) {
-    runtimeFailed.add(id)
-    ElMessage.error('运行时组件加载失败：' + (err as Error).message)
-  } finally {
-    runtimeLoading.delete(id)
-  }
-}
-// 加载触发独立于 toolView：computed 只做纯渲染推导，副作用放 watch（进工具时拉起一次）
-// 仅「无构建期内置渲染层」的运行时包才走安装副本加载：manifest 带 package 契约的内建工具
-// 同样会 runtime=true，但内置组件优先，绝不能去请求 runtime:readRenderer（未装外部副本必报错）
-watch(() => {
-  const tool = currentTool.value
-  return tool?.runtime && !toolComponent(tool.id) ? tool.id : null
-}, (id) => {
-  if (id) void loadRuntimeComponent(id)
-}, { immediate: true })
-const toolView = computed(() => {
-  const tool = currentTool.value
-  if (!tool) return null
-  const builtin = toolComponent(tool.id)
-  if (builtin) return builtin
-  // 运行时包：声明了渲染层且带 package 契约
-  if (tool.runtime) return runtimeComponents.get(tool.id) ?? null
-  return null
-})
+// 运行时组件加载抽 composable（CR-42 首刀 · P4-1）：内置工具走构建期组件；运行时包走 Blob URL 动态 import
+const { runtimeLoading, runtimeFailed, toolView } = useRuntimeComponent(currentTool)
 const visibleTools = computed(() => {
   const keyword = query.value.trim().toLowerCase()
   if (!keyword) return catalogTools.value
@@ -160,12 +111,6 @@ const sidebarMenus = computed(() => {
     ? { ...menu, children: configSubMenus(tool) }
     : menu)
 })
-
-const themeOptions: { label: string; value: ThemeMode }[] = [
-  { label: '暗黑', value: 'dark' },
-  { label: '亮色', value: 'light' },
-  { label: '跟随系统', value: 'system' },
-]
 
 /** 找出 active 所在的分组链，保证激活项在任何层级都可见 */
 function pathTo(items: ToolMenu[], active: string, parents: string[] = []): string[] | null {
@@ -218,11 +163,14 @@ function goHome(): void {
   sidebarHover.value = false
   void router.push('/')
 }
-function onThemeChange(next: ThemeMode): void { void setMode(next) }
 function openDataDir(): void { void window.api.app.openDataDir() }
 function openSettings(group = 'general'): void {
   settingsGroup.value = group
   settingsOpen.value = true
+}
+/** P4-2：顶栏「应用管理」入口——跳应用管理页（hash 路由 /app/...，默认 应用设置 > 常规设置） */
+function openAppAdmin(): void {
+  void router.push('/app/settings/general')
 }
 /** dev 随意开关；打包版先试无密钥（会抛错），再弹密钥输入（默认 sshk-tools@888） */
 async function openDevTools(): Promise<void> {
@@ -240,13 +188,15 @@ async function openDevTools(): Promise<void> {
   }
 }
 function onMoreCommand(command: string): void {
+  // 数据目录 / 工具与权限 / 系统与数据 三项已从「更多」下拉移除（迁往应用管理对应页，P4-2）；
+  // 分支按口径保留不删（命令项没了自然不触发），about 改开轻弹框（P4-1）
   if (command === 'dataDir') openDataDir()
   else if (command === 'reload') void window.api.app.reload()
   else if (command === 'reloadForce') void window.api.app.reload(true)
   else if (command === 'devtools') void openDevTools()
   else if (command === 'tools') openSettings('tools')
   else if (command === 'system') openSettings('system')
-  else if (command === 'about') openSettings('about')
+  else if (command === 'about') aboutOpen.value = true
   else if (command === 'createTool') createToolOpen.value = true
   else openSettings('general')
 }
@@ -254,6 +204,7 @@ function onMoreCommand(command: string): void {
 /** N16 创建工具向导（仅 dev 显示入口）：创建成功后刷新目录让新工具立即可见 */
 const isDev = SSHK_DEV
 const createToolOpen = ref(false)
+const aboutOpen = ref(false)
 
 /** U2 验证引导（dev 恒显示；打包版 developerMode 开启后显示）——口径统一 isDevFeaturesEnabled（D-2 · P0-2） */
 const verifyGuideOpen = ref(false)
@@ -273,28 +224,8 @@ function onToolCreated(catalog: unknown): void {
   else void refreshCatalog()
 }
 
-// ── U1-1 L1 提示层（仅 dev）：窗口 focus / 定时轻扫描 tools/，发现新工具出横幅引导重启 ──
-const newTools = ref<{ id: string; name: string }[]>([])
-const newToolsDismissed = ref(false)
-let scanTimer: number | undefined
-async function scanNewTools(): Promise<void> {
-  if (!isDev || newToolsDismissed.value || newTools.value.length > 0) return
-  try {
-    const res = await window.api.dev.toolScan()
-    newTools.value = res.newTools ?? []
-  } catch { /* 打包版 / 旧宿主快照：静默跳过 */ }
-}
-function dismissNewTools(): void {
-  newToolsDismissed.value = true
-  newTools.value = []
-}
-onMounted(() => {
-  if (!isDev) return
-  void scanNewTools()
-  window.addEventListener('focus', () => { void scanNewTools() })
-  scanTimer = window.setInterval(() => { void scanNewTools() }, 30_000)
-})
-onBeforeUnmount(() => { if (scanTimer !== undefined) window.clearInterval(scanTimer) })
+// U1-1 L1 提示层（仅 dev）抽 composable（P4-1）：focus / 30s 轻扫描发现新工具出横幅，见 useNewToolScan
+const { newTools, dismissNewTools } = useNewToolScan()
 
 // 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
 watch(catalogTools, (list) => {
@@ -325,33 +256,6 @@ function selectMenu(id: string): void {
 watch(sidebarCollapsed, (collapsed) => { if (!collapsed) sidebarHover.value = false })
 onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
-async function checkUpdate(): Promise<void> {
-  if (updater.value.phase === 'checking' || updater.value.phase === 'downloading' || updater.value.phase === 'available') return
-  const result = await window.api.update.check().catch(() => ({}) as { disabled?: boolean; dev?: boolean; updateAvailable?: boolean; version?: string | null; error?: string })
-  if (result.disabled) {
-    ElMessage.info('自动更新已禁用（SSHK_APP_AUTO_UPDATE=0）')
-  } else if (result.dev) {
-    ElMessage.info('开发环境不检查更新')
-  } else if (result.error) {
-    ElMessage.error('检查更新失败：' + String(result.error))
-  } else if (result.updateAvailable) {
-    ElMessage.success(`发现新版本 ${String(result.version ?? '')}，已开始下载`)
-  } else {
-    ElMessage.success('当前已是最新版本')
-  }
-}
-
-/** 下载完成后点击触发退出并安装（electron-updater 在下次启动时落地） */
-async function installUpdate(): Promise<void> {
-  const r = await window.api.update.quitAndInstall().catch((err: unknown) => {
-    ElMessage.error('安装失败：' + (err as Error).message)
-    return null
-  })
-  if (r && typeof r === 'object' && 'dev' in r) {
-    ElMessage.info('dev 更新测试模式：已拦截安装，仅验证下载流程；请手动重启后改回版本号')
-  }
-}
-
 onMounted(async () => {
   version.value = await window.api.app.version().catch(() => '0.1.0')
 })
@@ -359,91 +263,17 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell">
-    <!-- 应用级：高频操作平铺，低频收纳到「更多」，全部应用配置进设置抽屉 -->
-    <header class="app-bar">
-      <img class="app-logo" :src="logoUrl" alt="sshk-tools" />
-      <span class="app-title">sshk-tools</span>
-      <el-button size="small" text @click="goHome">桌面</el-button>
-      <span class="app-spacer" />
-      <el-select
-        :model-value="mode || DEFAULT_THEME_MODE"
-        size="small"
-        style="width: 118px"
-        @change="onThemeChange"
-      >
-        <el-option v-for="opt in themeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-      </el-select>
-      <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
-      <!-- SSHK_APP_AUTO_UPDATE=0 时自动更新整体禁用（phase=disabled）：顶栏不渲染任何更新入口 -->
-      <template v-if="updater.phase !== 'disabled'">
-        <!-- 已下载：保留绿色（用户认可），文案改「可安装」 -->
-        <el-button
-          v-if="updater.phase === 'downloaded'"
-          size="small"
-          type="success"
-          @click="installUpdate"
-        >立即更新 v{{ updater.version }}</el-button>
-      <!-- 有可用包：状态指示（后台自动下载中），不再触发 checkUpdate——点它会重新检查导致「检查中→发现新版本」来回跳 -->
-      <el-button
-        v-else-if="updater.phase === 'available'"
-        size="small"
-        type="warning"
-        plain
-        title="已发现新版本，正在后台下载，请稍候"
-      ><el-icon><Download /></el-icon> 发现新版本{{ updater.percent !== undefined ? ` ${updater.percent}%` : '' }}</el-button>
-      <!-- 下载中：文字行盖一层进度遮罩，按百分比从左填充，能看清是否完成 -->
-      <el-button
-        v-else-if="updater.phase === 'downloading'"
-        size="small"
-        text
-        class="update-btn--progress"
-        :style="{ '--p': (updater.percent ?? 0) + '%' }"
-        :title="updater.error ?? ''"
-        @click="checkUpdate"
-      ><span class="update-btn__mask"></span><span class="update-btn__label">下载 {{ updater.percent ?? 0 }}%</span></el-button>
-      <!-- 其余：检查 / 出错 / 开发版，朴素 text -->
-      <el-button
-        v-else
-        size="small"
-        text
-        :loading="updater.phase === 'checking'"
-        :title="updater.error ?? ''"
-        @click="checkUpdate"
-      >
-        <template v-if="updater.phase === 'idle' || updater.phase === 'not-available'">检查更新</template>
-        <template v-else-if="updater.phase === 'checking'">检查中…</template>
-        <template v-else-if="updater.phase === 'error'">更新出错</template>
-        <template v-else-if="updater.phase === 'dev'">开发版</template>
-      </el-button>
-      </template>
-      <!-- 验证引导：常用入口直接放顶栏（曾放「更多」下拉，走查频繁点击不方便） -->
-      <el-button v-if="canShowVerifyGuide" size="small" text @click="verifyGuideOpen = true">验证引导</el-button>
-      <el-dropdown trigger="click" @command="onMoreCommand">
-        <el-button size="small" text>更多<el-icon><ArrowDown /></el-icon></el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="dataDir">数据目录</el-dropdown-item>
-            <el-dropdown-item command="tools">工具与权限</el-dropdown-item>
-            <el-dropdown-item v-if="isDev" command="createTool">创建工具（开发者）</el-dropdown-item>
-            <el-dropdown-item command="system">系统与数据</el-dropdown-item>
-            <el-dropdown-item command="reload" divided>刷新页面（F5 / Ctrl+R）</el-dropdown-item>
-            <el-dropdown-item command="reloadForce">强制刷新（Ctrl+F5 / Ctrl+Shift+R）</el-dropdown-item>
-            <el-dropdown-item command="devtools">开发者工具</el-dropdown-item>
-            <el-dropdown-item command="about" divided>关于应用</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <button class="app-settings-btn" type="button" title="应用设置" @click="openSettings('general')">
-        <el-icon :size="15"><Setting /></el-icon>
-        <span>设置</span>
-      </button>
-    </header>
+    <!-- 应用级顶栏：语义色胶囊组 + 更多下拉（三段）+ 应用管理入口（P4-1 抽 AppHeader） -->
+    <AppHeader
+      :verify-guide-visible="canShowVerifyGuide"
+      @go-home="goHome"
+      @open-app-admin="openAppAdmin"
+      @open-verify-guide="verifyGuideOpen = true"
+      @more-command="onMoreCommand"
+    />
 
     <!-- 更新横幅：下载中显示进度条 / 完成提示安装 / 失败重试；均可关闭（项10：允许用户忽略，稍后自行重启） -->
-    <div
-      v-if="updater.phase === 'downloading' && !updateBannerDismissed"
-      class="update-banner update-banner--progress"
-    >
+    <div v-if="bannerKind === 'downloading'" class="update-banner update-banner--progress">
       <span class="update-banner-progress">
         正在下载新版本 v{{ updater.version }} · {{ updater.percent ?? 0 }}%
         <el-progress :percentage="updater.percent ?? 0" :stroke-width="6" :show-text="false" style="width: 180px; display: inline-block; vertical-align: middle; margin-left: 8px" />
@@ -451,7 +281,7 @@ onMounted(async () => {
       <el-button size="small" text type="info" title="关闭提示（下载仍在后台继续）" @click="dismissUpdateBanner">关闭</el-button>
     </div>
     <div
-      v-else-if="updater.phase === 'downloaded' && !updateBannerDismissed"
+      v-else-if="bannerKind === 'downloaded'"
       class="update-banner update-banner--ok"
     >
       <span>新版本 v{{ updater.version }} 已下载完成，重启即可生效</span>
@@ -461,7 +291,7 @@ onMounted(async () => {
       </span>
     </div>
     <div
-      v-else-if="updater.phase === 'error' && !updateBannerDismissed"
+      v-else-if="bannerKind === 'error'"
       class="update-banner update-banner--err"
     >
       <span>更新出错：{{ updater.error }}</span>
@@ -586,6 +416,8 @@ onMounted(async () => {
 
     <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" @create-tool="createToolOpen = true" />
     <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
+    <!-- 更多下拉「关于应用」轻弹框（P4-1）：运行环境四行 + 完整信息指引 -->
+    <AboutDialog v-model="aboutOpen" />
     <VerifyGuidePage v-model="verifyGuideOpen" @open-settings="(g) => openSettings(String(g).includes('工具') ? 'tools' : 'system')" />
   </div>
 </template>
