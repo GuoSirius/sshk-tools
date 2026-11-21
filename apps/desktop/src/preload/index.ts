@@ -39,8 +39,10 @@ const api = {
   theme: {
     set: (mode: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.configSet, 'app.themeMode', mode),
-    onSystemChanged: (callback: () => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.themeSystemChanged, () => callback())
+    onSystemChanged: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on(IPC_CHANNELS.themeSystemChanged, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.themeSystemChanged, listener) }
     },
   },
   app: {
@@ -57,8 +59,10 @@ const api = {
     verifyDevtoolsKey: (key: string, operation?: 'devtools' | 'developerMode'): Promise<boolean> =>
       invoke(IPC_CHANNELS.appVerifyDevtoolsKey, key, operation),
     /** 主进程在窗口关闭前回调：渲染层据此弹出主题色确认框 */
-    onRequestClose: (callback: () => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.appRequestClose, () => callback())
+    onRequestClose: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on(IPC_CHANNELS.appRequestClose, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.appRequestClose, listener) }
     },
     /** 渲染层确认关闭后调用：主进程置 quitting 并真正退出 */
     confirmClose: (): Promise<boolean> => invoke(IPC_CHANNELS.appConfirmClose),
@@ -74,8 +78,10 @@ const api = {
       version?: string
       percent?: number
       error?: string
-    }) => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.updateState, (_event, payload) => callback(payload))
+    }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]): void => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.updateState, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.updateState, listener) }
     },
     /** 拉取主进程当前状态：订阅推送前主进程可能已推过 disabled/dev（窗口未建落空），启动时拉一次兜底 */
     getState: (): Promise<{
@@ -95,10 +101,12 @@ const api = {
     ): Promise<{ content: string; model: string }> =>
       invoke(IPC_CHANNELS.llmChat, provider, messages, options),
     /** 流式回调经事件通道分片推送 */
-    onDelta: (callback: (delta: string) => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.llmChat, (_event, payload: { delta?: string }) => {
+    onDelta: (callback: (delta: string) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { delta?: string }): void => {
         if (typeof payload?.delta === 'string') callback(payload.delta)
-      })
+      }
+      ipcRenderer.on(IPC_CHANNELS.llmChat, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.llmChat, listener) }
     },
     /** 保存 Provider 前也能用刚填的 key 探测；不传则读主进程 safeStorage */
     listModels: (provider: LlmProvider, apiKey?: string): Promise<string[]> =>
@@ -121,8 +129,10 @@ const api = {
       invoke(IPC_CHANNELS.uploadSingle, req),
     batch: (reqs: unknown[]): Promise<{ url: string; key?: string; name: string }[]> =>
       invoke(IPC_CHANNELS.uploadBatch, reqs),
-    onProgress: (callback: (payload: { name: string; percent: number; status: string; error?: string }) => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.uploadProgress, (_event, payload) => callback(payload))
+    onProgress: (callback: (payload: { name: string; percent: number; status: string; error?: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { name: string; percent: number; status: string; error?: string }): void => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.uploadProgress, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.uploadProgress, listener) }
     },
     getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerGet),
     setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerSet, cfg),
@@ -361,8 +371,10 @@ const api = {
     /** 遗留分片手动清理（调用方先做二次确认） */
     cleanOrphanUploads: (): Promise<number> => invoke(IPC_CHANNELS.fsTransferOrphansClean),
     /** 主进程推送传输任务全量形态（进度/状态节流） */
-    onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, (_event, task) => callback(task))
+    onTransferEvent: (callback: (task: import('@sshk/shared').FsTransferTask) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, task: import('@sshk/shared').FsTransferTask): void => callback(task)
+      ipcRenderer.on(IPC_CHANNELS.fsTransferEvent, listener)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.fsTransferEvent, listener) }
     },
     /** 主进程推送媒体边下边播进度；返回退订函数 */
     onMediaEvent: (callback: (e: import('@sshk/shared').FsMediaEvent) => void): (() => void) => {
