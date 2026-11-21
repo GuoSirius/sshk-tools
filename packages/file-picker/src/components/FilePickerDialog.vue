@@ -8,34 +8,25 @@
  * - 列表一次拉足（桥接层提高 limit）+ 前端分批渲染 + 懒加载；文件名搜索支持跨页全量扫描
  * - 定制面：accept / allowedExts / maxSize / maxUploads / maxCount / multiple / naming / conflict /
  *   confirmText / initialTab / defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
+ *
+ * P6-3 拆分（读码后真实结构）：本组件收缩为壳（tab 切换 + 公共状态编排）——
+ * - composables/useDirPicker：来源/桶/目录 + 级联懒加载 + 设置持久化
+ * - composables/useUploadPool：统一选择池 + 上传任务队列（拦截/去重/进度/二次确认移除）
+ * - composables/useGalleryList：图库列表 + 游标续拉 + 搜索跨页扫描
+ * - components/PickerThumbGrid：三页签共享的条目网格；components/UploadTaskCards：上传页拖拽卡+任务卡
+ * 行为零变化（upload-dedupe / picker-settings 单测为回归锚）。
  */
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { CascaderInstance } from 'element-plus'
-// 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
-import { Close, Delete, Document, Link, Picture, UploadFilled } from '@element-plus/icons-vue'
-import type {
-  FilePickerConflict,
-  FilePickerItem,
-  FilePickerLibrary,
-  FilePickerMode,
-  FilePickerNaming,
-  FilePickerSource,
-  FilePickerTarget,
-} from '../types'
-import {
-  defaultSourceId,
-  displayDirPath,
-  loadSettings,
-  matchFileKeyword,
-  normalizeDirInput,
-  saveSettings,
-  sortSourcesByDefault,
-  validateDirInput,
-} from '../picker-settings'
-import type { DirValidation } from '../picker-settings'
-import { FILE_KIND_ACCEPT, FILE_KIND_LABELS, isKindFileName } from '@sshk/shared'
-import { fingerprintKey, hashFile, resolveUploadName } from '../upload-dedupe'
+import type { FilePickerConflict, FilePickerItem, FilePickerLibrary, FilePickerMode, FilePickerNaming, FilePickerTarget } from '../types'
+import { matchFileKeyword } from '../picker-settings'
+import { FILE_KIND_ACCEPT, FILE_KIND_LABELS } from '@sshk/shared'
+import { PAGE_SIZE, useGalleryList } from '../composables/useGalleryList'
+import { useUploadPool, type PoolItem } from '../composables/useUploadPool'
+import { useDirPicker, type PickerTab } from '../composables/useDirPicker'
+import PickerThumbGrid from './PickerThumbGrid.vue'
+import UploadTaskCards from './UploadTaskCards.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -67,7 +58,7 @@ const props = withDefaults(
     /** 弹框标题；缺省按类别：「图片库」「文档库」「代码库」「视频库」「文件库」 */
     title?: string
     /** 打开时默认页签（无已保存设置时生效） */
-    initialTab?: 'upload' | 'gallery' | 'selected'
+    initialTab?: PickerTab
     /** 无已保存设置时的预设桶/目录（打开即定位；已保存的设置优先） */
     defaultTarget?: FilePickerTarget
     /** 预览 URL 解析钩子（rich-text 传 localres 显示形态转换；其他应用可不传） */
@@ -126,322 +117,64 @@ const uploadMultiple = computed(() => props.multiple)
 /** 生效最大可选数：multiple=false 视为 1（新选替换旧选） */
 const effectiveMax = computed(() => (props.multiple ? (props.maxCount || 0) : 1))
 
-/** 一批渲染的文件数：一次拉全但分批挂 DOM，滚动到底再追加 */
-const PAGE_SIZE = 48
-/** 一次向后端拉取的文件上限（各云 SDK 单页上限 ≥ 500；前端再分批渲染/懒加载） */
-const FETCH_LIMIT = 500
-
-const tab = ref<'upload' | 'gallery' | 'selected'>('upload')
-const sources = ref<FilePickerSource[]>([])
-const sourceId = ref('')
-const target = ref<FilePickerTarget>({})
-const loadingSources = ref(false)
-/** 设置恢复完成前不写回，避免空状态覆盖已存值 */
-const restored = ref(false)
-
-const uploadInput = ref<HTMLInputElement | null>(null)
-/** 拖拽投放高亮态 */
-const dropActive = ref(false)
-/** 本次上传的文件（未确认前可删除）；列表页也会合并展示 */
-interface PoolItem extends FilePickerItem {
-  key?: string
-  origin: 'upload' | 'existing'
-  /** 归属作用域：sourceId|bucket|目录，跨源/桶/目录的同名文件互不串扰 */
-  scope: string
-}
-const uploaded = ref<PoolItem[]>([])
-/** 上传任务队列（含进行中/成功/失败），用于总体与单项进度、失败重试/删除 */
-interface UploadTask {
-  id: number
-  file: File
-  name: string
-  status: 'uploading' | 'success' | 'failed'
-  /** 0–100；有真实进度走 onProgress，无 byte 级上报时由 UI 爬升动画推进到 90，成功置 100，失败停在当时值 */
-  percent: number
-  /** 是否收到过真实 byte 级进度：收到后停止 UI 假爬升，避免两套进度打架 */
-  realProgress?: boolean
-  error?: string
-  url?: string
-  /** 本地预览 objectURL（缩略图），卸载/删除时 revoke；文件模式仅用于图片类文件的预览 */
-  previewUrl?: string
-  /** 缩略图加载失败（CSP 拦截/损坏文件/不支持格式）时改用占位，不显示浏览器裂图 */
-  previewFailed?: boolean
-  /** 完成时间戳：成功后短暂保留「完成」卡片让用户看到进度结果，到点降级为普通缩略图 */
-  doneAt?: number
-  /** 开始传输时间戳：无 byte 级上报时按经过时间估算爬升，使各项进度独立 */
-  startedAt?: number
-  /** 用户已删除进行中的项：后台传输无法中断，但完成后不得再把它加回上传列表/选择池 */
-  cancelled?: boolean
-  size: number
-  /** 去重指纹（目标位置 + 源文件名 + 内容 hash / 文件名+大小）；重试沿用同一指纹 */
-  fingerprint: string
-  /** 实际存储名（按 naming/conflict 策略解析）；UI 显示原名 name，上传用此名，保证重试幂等 */
-  uploadName: string
-  scope: string
-  source: FilePickerSource
-  target: FilePickerTarget
-}
-const uploadTasks = ref<UploadTask[]>([])
-let uploadSeq = 0
-/** 本次打开累计任务总数（总体进度分母） */
-const uploadTotal = computed(() => uploadTasks.value.length)
-const uploadInProgressCount = computed(() => uploadTasks.value.filter((t) => t.status === 'uploading').length)
-const uploadSucceeded = computed(() => uploadTasks.value.filter((t) => t.status === 'success').length)
-const uploadFailed = computed(() => uploadTasks.value.filter((t) => t.status === 'failed').length)
-/**
- * 总体进度 = 各项「传输完成度」的均值，口径明确化（2026-11-20 用户反馈）：
- * - 成功项按 100%；失败项按失败瞬间的 percent（不回退到 0，反映已传多少）；进行中按其 percent。
- * - 分母只算未清除的任务；失败项计入分母但不会虚高（失败瞬间多少就是多少）。
- * 单项真实进度由 onProgress 上报；无 byte 级上报时由爬升动画推进到 90。
- */
-const overallPercent = computed(() => {
-  const all = uploadTasks.value
-  if (all.length === 0) return 0
-  const sum = all.reduce((acc, t) => acc + t.percent, 0)
-  return Math.min(100, Math.round(sum / all.length))
-})
-/** 有活动上传任务时显示总体进度条 */
-const uploadInProgress = computed(() => uploadInProgressCount.value > 0)
-/** 成功项完成后在卡片区保留这么久，让用户看清「上传中→100% 完成」的过程（Provider 太快时会一闪而过） */
-const DONE_KEEP_MS = 2500
-/** 时钟 tick：驱动「完成展示窗口」到期后重渲染（仅窗口内有任务时定时器才运行） */
-const nowTick = ref(0)
-let doneWindowTimer: ReturnType<typeof setInterval> | null = null
-function ensureDoneWindowTimer(): void {
-  if (doneWindowTimer) return
-  doneWindowTimer = setInterval(() => {
-    nowTick.value = Date.now()
-    if (!uploadTasks.value.some((t) => t.status === 'success' && t.doneAt && Date.now() - t.doneAt < DONE_KEEP_MS)) {
-      clearInterval(doneWindowTimer!)
-      doneWindowTimer = null
-    }
-  }, 300)
-}
-function stopDoneWindowTimer(): void {
-  if (!doneWindowTimer) return
-  clearInterval(doneWindowTimer)
-  doneWindowTimer = null
-}
-/** 上传中/失败 + 刚完成仍在展示窗口内的任务：以卡片并入网格，受文件名搜索过滤 */
-const activeUploadTasks = computed(() => {
-  void nowTick.value // 依赖时钟，窗口到期后重算
-  const inWindow = (t: UploadTask): boolean =>
-    t.status !== 'success' || Boolean(t.doneAt && Date.now() - t.doneAt < DONE_KEEP_MS)
-  return uploadTasks.value.filter(
-    (t) => inWindow(t) && (!keyword.value || t.name.toLowerCase().includes(keyword.value.toLowerCase())),
-  )
-})
-/** 列表已列文件 */
-const items = ref<FilePickerItem[]>([])
-const loadingList = ref(false)
-/** 目录懒加载失败原因（仍可手输目录） */
-const dirError = ref('')
-/** 级联面板序号：换源/换桶/上传成功后自增重挂载，清掉已加载的懒加载缓存 */
-const dirPanelKey = ref(0)
-/** 级联自身选中值镜像（仅 @change 驱动）：用于「只选根」回显 / 的 class 判断。
- *  三态：null=从未经级联选择（不补显 /）；''=只选了根；其他=选了子目录。
- *  不直接判 dirModel——它和手输框共享，用户手输不该影响级联框显示 */
-const dirCascaderPicked = ref<string | null>(null)
-/** 面板交互代次：用户显式选择或面板重挂时自增，作废在途的「空目录自动选中」，防止覆盖用户新选择 */
-const dirPanelGen = ref(0)
-watch(dirPanelKey, () => {
-  dirPanelGen.value++
-  // 目录为空 = 根目录：保持根选中态补显 /（用户 2026-11-19 反馈：初次打开默认选中根目录）
-  dirCascaderPicked.value = dirModel.value ? null : ''
-})
-const cascaderRef = ref<CascaderInstance | null>(null)
+const tab = ref<PickerTab>('upload')
 /** 文件名搜索关键词 */
 const keyword = ref('')
 /** 已渲染数量（分批渲染） */
 const renderedCount = ref(PAGE_SIZE)
 
-/** 统一选择池键：url 唯一标识一个文件。不同源/桶的对象 URL 本身就不同；
- *  上传选中后切列表（同 url）仍保持选中，切目录/源亦然，且计数不重复。 */
+/** ── 目录/来源域（composable）── */
+function onSourceChanged(): void {
+  gallery.items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
+  renderedCount.value = PAGE_SIZE
+  if (tab.value === 'gallery') void loadGallery()
+}
+function onTargetChanged(): void {
+  scheduleGalleryReload()
+}
+const cascaderRef = ref<CascaderInstance | null>(null)
+const dirPicker = useDirPicker(props, { tab, cascaderRef, onSourceChanged, onTargetChanged })
+const {
+  sources, sourceId, target, loadingSources, restored,
+  typeOf, showBucket, dirError, dirPanelKey, dirCascaderPicked,
+  cascaderProps, dirModel, dirManualFocused, dirManualDisplay,
+  commitDirInput, onDirChange, dirValidation, currentScope,
+} = dirPicker
+
+/** ── 图库列表域（composable）── */
+const gallery = useGalleryList(props, {
+  activeSource: dirPicker.activeSource,
+  target: dirPicker.target,
+  keyword,
+  renderedCount,
+})
+const { items, loadingList, galleryCursor, loadingMore, scanning, scanTotal, scanCapped, cancelScan, runSearchScan, loadGallery, loadMoreGallery } = gallery
+
+/** ── 统一选择池 + 上传队列域（composable）── */
+const uploadPool = useUploadPool(props, {
+  currentScope,
+  activeSource: dirPicker.activeSource,
+  target: dirPicker.target,
+  effectiveExts,
+  extAllowed,
+  effectiveMax,
+  kindLabel,
+  keyword,
+  onBatchUploaded: () => { dirPanelKey.value++ }, // 上传成功后重挂级联：清掉懒加载缓存，下次展开即可看到新目录
+})
+const {
+  uploaded, uploadTotal, uploadInProgressCount, uploadSucceeded, uploadFailed,
+  overallPercent, uploadInProgress, activeUploadTasks,
+  poolList, poolCount, uploadPicked, existingPicked,
+  isSelected, addToPool, removeFromPool, togglePool, removePoolKey, clearPool,
+  handleFiles, retryUpload, removeUploadTask, clearFinishedTasks, removeUploaded, removeSelectedUploaded,
+  dispose: disposeUploadPool,
+} = uploadPool
+
+/** 统一选择池键：url 唯一标识一个文件（与 useUploadPool 同口径） */
 const itemKey = (i: { url: string }): string => i.url
 
-/** 统一选择池：跨 tab / 目录 / 源 / 桶累积；scope 只记录来源用于清单展示 */
-const pool = ref<Record<string, PoolItem>>({})
-const poolList = computed(() => Object.values(pool.value))
-const poolCount = computed(() => poolList.value.length)
-const uploadPicked = computed(() => poolList.value.filter((i) => i.origin === 'upload').length)
-const existingPicked = computed(() => poolList.value.filter((i) => i.origin === 'existing').length)
-const isSelected = (item: PoolItem): boolean => Boolean(pool.value[itemKey(item)])
-/** 剩余可选数量：不限时为 Infinity */
-const capacityLeft = computed(() => (effectiveMax.value > 0 ? effectiveMax.value - poolCount.value : Number.POSITIVE_INFINITY))
-function addToPool(item: PoolItem): boolean {
-  if (!item.url) return false
-  if (pool.value[itemKey(item)]) {
-    pool.value[itemKey(item)] = item
-    return true
-  }
-  if (capacityLeft.value <= 0) {
-    ElMessage.warning(`最多可选 ${effectiveMax.value} 个`)
-    return false
-  }
-  pool.value[itemKey(item)] = item
-  return true
-}
-function removeFromPool(item: PoolItem): void {
-  const k = itemKey(item)
-  if (!pool.value[k]) return
-  const next = { ...pool.value }
-  delete next[k]
-  pool.value = next
-}
-function togglePool(item: PoolItem): void {
-  if (isSelected(item)) removeFromPool(item)
-  else addToPool(item)
-}
-/** 按作用域 key 移除（用于跨源清单，item 可能来自已切换的旧源） */
-function removePoolKey(k: string): void {
-  const next = { ...pool.value }
-  delete next[k]
-  pool.value = next
-}
-function clearPool(): void {
-  pool.value = {}
-}
-/** 作用域中文标签，用于「已选择」tab 卡片标注来源 */
-function scopeLabel(scope: string): string {
-  const [sid = '', bucket = '', dir = ''] = scope.split('|')
-  const src = sources.value.find((s) => s.id === sid)
-  const base = src?.label ?? sid
-  const extra = [bucket, dir].filter(Boolean).join(' / ')
-  return extra ? `${base} · ${extra}` : base
-}
-
-const activeSource = computed(() => sources.value.find((s) => s.id === sourceId.value) ?? null)
-const typeOf = computed(() => activeSource.value?.type ?? 'cloud')
-const showBucket = computed(() => typeOf.value === 'cloud')
-/** 目录（云前缀 / 远程路径 / 本地目录）统一完整路径字符串，支持级联选择与手输 */
-const dirModel = computed({
-  get: () => target.value.prefix || target.value.remotePath || target.value.localDir || '',
-  set: (v: string) => {
-    // 手输过程中保持原样（逐字输入 a/ 会被立刻归一化成 a，打断输入）；在 @change/blur 时再归一化
-    if (typeOf.value === 'cloud') target.value = { ...target.value, prefix: v }
-    else if (typeOf.value === 'remote') target.value = { ...target.value, remotePath: v }
-    else target.value = { ...target.value, localDir: v }
-  },
-})
-/**
- * 手输目录提交时归一化（本地文件系统路径只 trim，保留 /..、盘符等语义）。
- */
-function commitDirInput(): void {
-  const raw = dirModel.value
-  const normalized = typeOf.value === 'local' ? String(raw ?? '').trim() : normalizeDirInput(raw)
-  dirModel.value = normalized
-}
-
-/**
- * 手输框的显示镜像：非编辑态补前导 / 与级联回显一致（/bt_backup），编辑时还原内部原值，
- * 避免光标跳动、无法删改前导 /。写回仍落 dirModel（桶根相对路径），上传/作用域/校验口径不变。
- */
-const dirManualFocused = ref(false)
-const dirManualDisplay = computed({
-  get: () => (dirManualFocused.value || typeOf.value === 'local' ? dirModel.value : displayDirPath(dirModel.value, typeOf.value)),
-  set: (v: string) => { dirModel.value = v },
-})
-
-/** 恢复持久化设置后归一化目录写法（旧数据可能带首尾斜杠），保持作用域口径一致 */
-function normalizeRestoredDir(): void {
-  const raw = dirModel.value
-  if (!raw) return
-  const normalized = typeOf.value === 'local' ? String(raw).trim() : normalizeDirInput(raw)
-  if (normalized === raw) return
-  if (typeOf.value === 'cloud') target.value = { ...target.value, prefix: normalized }
-  else if (typeOf.value === 'remote') target.value = { ...target.value, remotePath: normalized }
-  else target.value = { ...target.value, localDir: normalized }
-}
-/** 作用域用归一化目录：同一目录的不同写法不应被视为不同位置（影响去重与选择池） */
-const scopeDir = computed(() => (typeOf.value === 'local' ? dirModel.value.trim() : normalizeDirInput(dirModel.value)))
-/** 手输目录实时校验提示（不阻断输入；error 仅提示，仍允许保存后由 Provider 兜底） */
-const dirValidation = computed<DirValidation>(() => validateDirInput(dirModel.value, typeOf.value))
-/** 当前来源+桶+目录的作用域串，构造条目时固化进 pool key */
-const currentScope = computed(() => [sourceId.value, target.value.bucket ?? '', scopeDir.value].join('|'))
-
-/** ── 目录级联懒加载：展开某级时才列该级子目录（三种源统一），Provider 返回该源语义下的完整路径 ── */
-function targetForDir(dir: string): FilePickerTarget {
-  if (typeOf.value === 'cloud') return { ...target.value, prefix: dir }
-  if (typeOf.value === 'remote') return { ...target.value, remotePath: dir }
-  return { ...target.value, localDir: dir }
-}
-
-/** EP cascader-panel 实例的最小类型面（expose 的 Ref 运行时已解包，按实际形态取用） */
-interface CascaderPanelApi {
-  getFlattedNodes(leafOnly: boolean): { value: unknown }[]
-  handleCheckChange(node: { value: unknown }, checked: boolean, emitClose?: boolean): void
-}
-
-const cascaderProps = {
-  /** 逐级懒加载：点文字下钻（触发 lazyLoad），圈单选（checkStrictly）选中即回显 */
-  lazy: true,
-  checkStrictly: true,
-  emitPath: false,
-  lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
-    // 打开瞬间的挂载竞态：cascader 挂载早于 open 初始化流程（sources 还没拉到、激活源为空），
-    // EP 会在挂载时立刻触发根节点懒加载；此时若 resolve([]) 会把根节点钉死成已加载空态，
-    // 之后展开不再重新拉取（2026-11-17 用户反馈「必须切一次源才能拉出目录」）。
-    // 等初始化完成（或弹框已关）再继续；等待期间 EP 自带 loading 态。
-    if (!activeSource.value && props.open && !restored.value) {
-      await new Promise<void>((done) => {
-        const stop = watch(
-          [restored, () => props.open],
-          () => {
-            if (restored.value || !props.open) {
-              stop()
-              done()
-            }
-          },
-          { flush: 'post' },
-        )
-      })
-    }
-    // 根目录规则（2026-11-19 定版，与文件管理页目录级联一致）：
-    // 根 label 置 '' + 级联 separator="/" → 回显 /a/b/c（根 label 为 '/' 会拼出 //a/b 双斜杠）；
-    // 面板首列根节点的 "/" 由非 scoped CSS 伪元素补显示（fp-dir-cascader-popper）
-    if (node.level === 0) { resolve([{ value: '', label: '' }]); return } // 根目录独立首级（value '' = 三种源的根语义）
-    const source = activeSource.value
-    if (!source || !props.library.listDirectories) {
-      resolve([])
-      return
-    }
-    const parent = String(node.value ?? '')
-    // 捕获交互代次与已选值：在途期间用户另做选择/面板重挂则放弃自动选中；值已选中说明是回显同步加载
-    const gen = dirPanelGen.value
-    const echoing = dirModel.value === parent
-    try {
-      const children = await props.library.listDirectories(source, targetForDir(parent))
-      dirError.value = ''
-      // 不写 leaf 字段：EP 在「已加载且无子数据」时自动推断叶子；显式 leaf:false 会把节点永久钉死为
-      // 非叶子（isLeaf 直接取 data.leaf，不再走推断），导致空目录不被标记为叶子、点文字永远不能选中
-      resolve(
-        children.map((seg) => {
-          // label 取末段（兼容 Windows 本地绝对路径的反斜杠）；value 保持完整路径供 dirModel 语义
-          const last = seg.slice(Math.max(seg.lastIndexOf('/'), seg.lastIndexOf('\\')) + 1) || seg
-          return { value: seg, label: last }
-        }),
-      )
-      // 点文字下钻发现该级无子目录：视为叶子，第一次点击即按选中走（回显+关闭），不让用户点两次（2026-11-17）
-      if (node.level > 0 && children.length === 0 && !echoing && gen === dirPanelGen.value) {
-        const panel = (cascaderRef.value as unknown as { cascaderPanelRef?: CascaderPanelApi } | null)?.cascaderPanelRef
-        const targetNode = panel?.getFlattedNodes(false).find((n) => String(n.value) === parent)
-        if (panel && targetNode) panel.handleCheckChange(targetNode, true, false)
-      }
-    } catch (err) {
-      dirError.value = (err as Error)?.message || String(err)
-      resolve([])
-    }
-  },
-}
-
-/** 点单选圈选中：回显 + 关闭面板（checkStrictly 下 EP 不会自动收起）；点文字由 EP 下钻 */
-function onDirChange(v: string | null): void {
-  dirPanelGen.value++
-  dirCascaderPicked.value = String(v ?? '') // 镜像级联自身选中值：只选根（''）时靠它判 is-root-selected 补显 /
-  cascaderRef.value?.togglePopperVisible(false)
-  dirModel.value = v ?? ''
-}
-
+/** ── 三页签可见视图（壳层编排：上传池 + 图库列表合并）── */
 /** 列表页可见项：本次上传（含旧源上传的）优先，当前源列文件按作用域+url 去重补充，再按文件名过滤 */
 const galleryView = computed<PoolItem[]>(() => {
   const map = new Map<string, PoolItem>()
@@ -483,6 +216,15 @@ function resolveSrcOf(url: string): string {
   return props.resolveSrc ? props.resolveSrc(url) : url
 }
 
+/** 作用域中文标签，用于「已选择」tab 卡片标注来源 */
+function scopeLabel(scope: string): string {
+  const [sid = '', bucket = '', dir = ''] = scope.split('|')
+  const src = sources.value.find((s) => s.id === sid)
+  const base = src?.label ?? sid
+  const extra = [bucket, dir].filter(Boolean).join(' / ')
+  return extra ? `${base} · ${extra}` : base
+}
+
 /** 拖拽上传卡片主文案：与文件卡片同尺寸，只放短词；完整规则走 title 悬浮（2026-11-20 合并布局） */
 const uploadHint = computed<string>(() => {
   if (uploadInProgress.value) return `上传中 ${uploadInProgressCount.value} 项…`
@@ -508,88 +250,23 @@ const emptyStateText = computed<string>(() => {
   return keyword.value ? '无匹配文件' : `暂无${kindLabel.value}，点「刷新」或先上传${isImage.value ? '几张' : '几个'}`
 })
 
-function storage(): Storage | null {
-  try { return window.localStorage } catch { return null }
-}
-
-function persist(): void {
-  if (!restored.value) return
-  saveSettings(storage(), props.stateKey, {
-    sourceId: sourceId.value,
-    targets: { ...(targetCache[props.stateKey] ?? {}), [sourceId.value]: { ...target.value } },
-    tab: tab.value,
-  })
-  targetCache[props.stateKey] = { ...(targetCache[props.stateKey] ?? {}), [sourceId.value]: { ...target.value } }
-}
-
-/** 模块内只做缓存镜像；真正持久化在 localStorage，按 stateKey 隔离 */
-const targetCache: Record<string, Record<string, FilePickerTarget>> = {}
-
-async function loadSources(): Promise<void> {
-  loadingSources.value = true
-  try {
-    const list = await props.library.sources()
-    sources.value = sortSourcesByDefault(list)
-  } catch (err) {
-    ElMessage.error(`读取来源失败：${(err as Error).message}`)
-  } finally {
-    loadingSources.value = false
-  }
-}
-
+/** ── 打开/关闭编排（与原实现逐行对齐）── */
 watch(
   () => props.open,
   async (open) => {
     if (!open) return
-    restored.value = false
     // 每次重新打开是新一轮会话：重置上传缓存与选择池
-    uploaded.value = []
-    for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
-    uploadTasks.value = []
-    stopProgressTimer()
-    stopDoneWindowTimer()
-    pool.value = {}
+    uploadPool.resetSession()
     items.value = []
     keyword.value = ''
     renderedCount.value = PAGE_SIZE
-    await loadSources()
-    const saved = loadSettings(storage(), props.stateKey)
-    targetCache[props.stateKey] = saved?.targets ?? {}
-    sourceId.value = defaultSourceId(sources.value, saved?.sourceId)
-    // 已保存设置优先；没有时回落到应用方预设的桶/目录（defaultTarget）
-    target.value = {
-      ...(props.defaultTarget ?? {}),
-      ...(targetCache[props.stateKey]?.[sourceId.value] ?? {}),
-    }
-    normalizeRestoredDir()
-    tab.value = saved?.tab ?? props.initialTab ?? 'upload'
-    // 初次打开无已存目录时默认选中根目录（用户 2026-11-19 反馈）：
-    // dirModel 空 = 根语义，补 is-root-selected class 让级联输入框回显「/」
-    if (!dirModel.value) dirCascaderPicked.value = ''
-    // 设置恢复后再打开写回监听，防止空值落盘覆盖
-    await nextTick()
-    restored.value = true
+    const savedTab = await dirPicker.restoreSettings()
+    tab.value = savedTab ?? props.initialTab ?? 'upload'
+    // 设置恢复后再打开写回监听，防止空值落盘覆盖（finishRestore 内部 nextTick + restored=true）
+    await dirPicker.finishRestore()
     if (tab.value === 'gallery') await loadGallery()
   },
 )
-
-let sourceWatchBusy = false
-watch(sourceId, async (id) => {
-  if (!restored.value || sourceWatchBusy) return
-  target.value = {
-    ...(props.defaultTarget ?? {}),
-    ...(targetCache[props.stateKey]?.[id] ?? {}),
-  }
-  normalizeRestoredDir()
-  // 换源后无已存目录时同样默认根选中（与首次打开口径一致）
-  if (!dirModel.value) dirCascaderPicked.value = ''
-  items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
-  dirError.value = ''
-  dirPanelKey.value++ // 换源重挂级联：清掉上一来源的懒加载缓存
-  renderedCount.value = PAGE_SIZE
-  persist()
-  if (tab.value === 'gallery') await loadGallery()
-})
 
 /** 列表页改桶/目录后自动重列（防抖，避免逐字输入时反复请求） */
 let galleryReloadTimer: ReturnType<typeof setTimeout> | null = null
@@ -599,17 +276,8 @@ function scheduleGalleryReload(): void {
   galleryReloadTimer = setTimeout(() => { galleryReloadTimer = null; void loadGallery() }, 300)
 }
 
-watch(target, () => {
-  persist()
-  scheduleGalleryReload()
-}, { deep: true })
-/** 换桶：根目录列取随桶变化，重挂级联清缓存（目录手输不触发——只动 prefix/remotePath/localDir） */
-watch(() => target.value.bucket, () => {
-  dirError.value = ''
-  dirPanelKey.value++
-})
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(tab, async (v) => {
-  persist()
   renderedCount.value = PAGE_SIZE
   if (v === 'gallery' && props.open && restored.value) await loadGallery()
 })
@@ -637,61 +305,21 @@ function close(): void {
 onBeforeUnmount(() => {
   if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
   if (searchTimer) clearTimeout(searchTimer)
-  stopProgressTimer()
-  stopDoneWindowTimer()
-  for (const t of uploadTasks.value) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
+  disposeUploadPool()
 })
-
-/** 文件扩展名（小写、含点；无扩展名返回空串） */
-function extOf(name: string): string {
-  const dot = name.lastIndexOf('.')
-  return dot > 0 ? name.slice(dot).toLowerCase() : ''
-}
-
-/** 字节数的简短中文展示（文件卡片用） */
-function formatSize(size?: number): string {
-  if (!size || size <= 0) return ''
-  const units = ['B', 'KB', 'MB', 'GB']
-  let v = size
-  let u = 0
-  while (v >= 1024 && u < units.length - 1) { v /= 1024; u++ }
-  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]!}`
-}
-
-/** 复制文件完整链接：优先 Clipboard API，失败回退 execCommand（file:// 等非安全上下文） */
-async function copyLink(item: PoolItem): Promise<void> {
-  const url = item.url
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url)
-      ElMessage.success('链接已复制')
-      return
-    }
-    const ta = document.createElement('textarea')
-    ta.value = url
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    document.body.removeChild(ta)
-    ElMessage.success('链接已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
 
 /** 确认：交付已选条目给应用方；弹框只收尾（清池、清上传缓存、关闭），不决定用途 */
 function confirmSelected(): void {
   const picked = poolList.value
   if (picked.length === 0) return
   emit('confirm', picked.map((i) => ({ url: i.url, name: i.name, size: i.size, key: i.key, modified: i.modified })))
-  pool.value = {}
+  clearPool()
   uploaded.value = []
   close()
   ElMessage.success(`已选择 ${picked.length} 个文件`)
 }
 
+const uploadInput = ref<HTMLInputElement | null>(null)
 function pickFiles(): void {
   uploadInput.value?.click()
 }
@@ -704,173 +332,6 @@ async function uploadMore(): Promise<void> {
   pickFiles()
 }
 
-/**
- * 进度爬升定时器：仅给「无 byte 级上报」的任务做兜底动画，收到真实进度的项跳过（2026-11-20）。
- * 每项按自身大小估算爬升速度（大文件慢、小文件快），不再所有项同步 +N 导致进度完全一致。
- */
-let progressTimer: ReturnType<typeof setInterval> | null = null
-function estimateUploadMs(size: number): number {
-  // 经验带宽 ~6MB/s，保底 4s / 封顶 12min；只是动画节奏，不代表真实剩余时间
-  return Math.min(720_000, Math.max(4000, (size / (6 * 1024 * 1024)) * 1000))
-}
-function ensureProgressTimer(): void {
-  if (progressTimer) return
-  progressTimer = setInterval(() => {
-    const now = Date.now()
-    for (const t of uploadTasks.value) {
-      if (t.status !== 'uploading' || t.realProgress || t.percent >= 90) continue
-      const elapsed = now - (t.startedAt ?? now)
-      const step = Math.max(1, Math.round((elapsed / estimateUploadMs(t.size)) * 90))
-      if (step > t.percent) t.percent = Math.min(90, step)
-    }
-  }, 220)
-}
-function stopProgressTimer(): void {
-  if (!progressTimer) return
-  clearInterval(progressTimer)
-  progressTimer = null
-}
-
-/** 执行一次上传任务：更新单项状态/进度，成功后并入 uploaded 与选择池；失败留给 UI 重试/删除 */
-async function runUpload(task: UploadTask): Promise<boolean> {
-  task.status = 'uploading'
-  task.percent = 0
-  task.error = undefined
-  task.doneAt = undefined
-  task.realProgress = false
-  task.startedAt = Date.now()
-  ensureProgressTimer()
-  try {
-    // 用策略解析出的存储名上传；重试沿用同一 uploadName 天然幂等。
-    // File.name 只读，包一层引用原内容即可（不重复拷贝数据）。UI 仍显示用户选的原名 task.name。
-    const uploadFile = new File([task.file], task.uploadName, {
-      type: task.file.type,
-      lastModified: task.file.lastModified,
-    })
-    const url = await props.library.upload(uploadFile, task.source, task.target, (p) => {
-      if (typeof p.percent === 'number' && p.percent > 0 && p.percent < 100) {
-        task.realProgress = true
-        task.percent = Math.max(task.percent, Math.min(99, p.percent))
-      } else if (p.status === 'success') {
-        task.percent = 100
-      }
-    })
-    // 用户已删除上传中的项：底层传输已发出无法中断，但不再回填 UI/选择池（否则删完又被加回「已选」）
-    if (task.cancelled) return false
-    task.url = url
-    task.percent = 100
-    task.status = 'success'
-    task.doneAt = Date.now()
-    ensureDoneWindowTimer()
-    // 入库项用存储名：与 Provider 列表刷新回来的名字一致，避免刷新前后显示不一致
-    const item: PoolItem = { url, key: task.uploadName, name: task.uploadName, origin: 'upload', scope: task.scope, size: task.size }
-    uploaded.value.push(item)
-    addToPool(item) // 上传即默认选中，可取消
-    return true
-  } catch (err) {
-    task.status = 'failed'
-    task.error = (err as Error).message || String(err)
-    return false
-  }
-}
-
-/** 选中的文件统一入口（点击选择与拖拽投放共用）：大小拦截 → 指纹去重 → 入队上传 */
-async function handleFiles(files: File[]): Promise<void> {
-  const source = activeSource.value
-  if (!source || files.length === 0) return
-  const scope = currentScope.value
-
-  // 组件侧快速拦截：单文件超 maxSize 直接拒绝（真正的校验在 Upload Service 侧，这里给即时反馈）
-  if (props.maxSize > 0) {
-    const oversized = files.filter((f) => f.size > props.maxSize!)
-    if (oversized.length > 0) {
-      ElMessage.error(`以下文件超过大小限制（${formatSize(props.maxSize)}）：${oversized.slice(0, 3).map((f) => f.name).join('、')}${oversized.length > 3 ? ' 等' : ''}`)
-      files = files.filter((f) => f.size <= props.maxSize!)
-    }
-    if (files.length === 0) return
-  }
-
-  // 扩展名拦截：allowedExts 非空时替代 kind 类别白名单（自定义口径优先）；否则 image/document/code 按类别白名单
-  if (effectiveExts.value) {
-    const mismatched = files.filter((f) => !extAllowed(f.name))
-    if (mismatched.length > 0) {
-      ElMessage.error(`仅允许 ${effectiveExts.value.join('、')} 格式，已跳过：${mismatched.slice(0, 3).map((f) => f.name).join('、')}${mismatched.length > 3 ? ' 等' : ''}`)
-      files = files.filter((f) => extAllowed(f.name))
-    }
-    if (files.length === 0) return
-  } else if (props.mode !== 'all') {
-    const mismatched = files.filter((f) => !isKindFileName(props.mode, f.name))
-    if (mismatched.length > 0) {
-      ElMessage.error(`以下文件不属于${kindLabel.value}类，已跳过：${mismatched.slice(0, 3).map((f) => f.name).join('、')}${mismatched.length > 3 ? ' 等' : ''}`)
-      files = files.filter((f) => isKindFileName(props.mode, f.name))
-    }
-    if (files.length === 0) return
-  }
-
-  // 上传前去重：目标位置 + 源文件名（带后缀）+ 内容 hash。三者全同才算重复；
-  // 同一内容改不同名字视为不同文件，都允许上传。已在传/已成功的不重复上传，失败的可重选。
-  const existing = new Set(
-    uploadTasks.value.filter((t) => t.status !== 'failed').map((t) => t.fingerprint),
-  )
-  let fresh: { file: File; fingerprint: string; uploadName: string }[] = []
-  let skipped = 0
-  for (const file of files) {
-    const hash = await hashFile(file)
-    const fp = fingerprintKey({ scope, name: file.name, size: file.size, hash })
-    if (existing.has(fp)) {
-      skipped += 1
-      continue
-    }
-    existing.add(fp) // 同一批内也去重
-    fresh.push({ file, fingerprint: fp, uploadName: resolveUploadName(file.name, hash, props.naming, props.conflict) })
-  }
-  if (skipped > 0) ElMessage.info(`已跳过 ${skipped} 个重复文件（同位置已上传或上传中）`)
-  if (fresh.length === 0) return
-
-  // 上传数量拦截：本次打开期间累计额度（进行中+成功，不含失败）；与 maxCount 独立，超出部分不发起上传
-  if (props.maxUploads > 0) {
-    const used = uploadTasks.value.filter((t) => t.status !== 'failed').length
-    const left = props.maxUploads - used
-    if (left <= 0) {
-      ElMessage.warning(`本次打开最多可上传 ${props.maxUploads} 个文件，额度已用完`)
-      return
-    }
-    if (fresh.length > left) {
-      ElMessage.warning(`本次打开最多可上传 ${props.maxUploads} 个文件，剩余额度 ${left} 个，超出部分已跳过`)
-      fresh = fresh.slice(0, left)
-    }
-  }
-
-  // 只启动本次新增的任务：绝不能对既有的 uploading 任务重新 runUpload（会把它们的进度清零并重传，
-  // 造成「新加进来的进度覆盖之前项」）。既有任务由它们各自的 Promise 继续跑，互不干扰。
-  const newTasks: UploadTask[] = []
-  for (const { file, fingerprint, uploadName } of fresh) {
-    // 必须建为响应式对象：runUpload 持有的是本局部引用，若传原始对象，runUpload 里改 status/percent
-    // 不会触发 uploadTasks 的 computed 依赖（已 success 却仍显示「上传中 1 / 3%」，2026-11-20 实证）。
-    // reactive 对象 push 进 ref 数组不会被二次代理，局部引用与数组元素共享同一代理，改动可触发刷新。
-    const task = reactive<UploadTask>({
-      id: ++uploadSeq, file, name: file.name, uploadName, status: 'uploading', percent: 0,
-      size: file.size, previewUrl: URL.createObjectURL(file), fingerprint,
-      scope, source, target: { ...target.value },
-    })
-    uploadTasks.value.push(task)
-    newTasks.push(task)
-  }
-  const results = await Promise.all(newTasks.map((t) => runUpload(t)))
-  // 仅当没有任何在途任务时才停表；否则可能有另一批 handleFiles 仍在跑
-  if (!uploadInProgress.value) stopProgressTimer()
-  // 上传中被用户主动移除的项既不算成功也不算失败，避免误报「上传失败」
-  const counted = results.filter((_, i) => !newTasks[i]!.cancelled)
-  const ok = counted.filter(Boolean).length
-  const failed = counted.length - ok
-  if (ok > 0) {
-    // 上传成功后重挂级联：清掉懒加载缓存，下次展开即可看到新目录
-    dirPanelKey.value++
-    ElMessage.success(`${ok} 个文件已上传并选中，切到列表页可继续挑选，最后一并确认`)
-  }
-  if (failed > 0) ElMessage.warning(`${failed} 个文件上传失败，可在上传列表中重试或删除`)
-}
-
 async function onFilesChosen(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -878,132 +339,11 @@ async function onFilesChosen(e: Event): Promise<void> {
   await handleFiles(files)
 }
 
-/** 拖拽投放上传：与点击选择走同一入口（dataTransfer.files） */
+/** 拖拽投放上传：与点击选择走同一入口（dataTransfer.files）；拖拽高亮态在 UploadTaskCards 内部 */
 async function onDrop(e: DragEvent): Promise<void> {
-  dropActive.value = false
   const files = Array.from(e.dataTransfer?.files ?? [])
   if (files.length === 0) return
   await handleFiles(files)
-}
-
-/** 重试单个失败任务（沿用原文件与来源/目录） */
-async function retryUpload(task: UploadTask): Promise<void> {
-  const ok = await runUpload(task)
-  if (!uploadInProgress.value) stopProgressTimer()
-  if (task.cancelled) return // 重试途中被用户移除，不再提示
-  if (ok) ElMessage.success(`「${task.name}」已重新上传并选中`)
-  else ElMessage.error(`「${task.name}」重试失败：${task.error}`)
-}
-
-/**
- * 删除单个上传项：先二次确认（禁遮罩/禁 ESC）。
- * 只清展示与选择池，不删除已上传到存储的文件；上传中的标记 cancelled，完成回调不再回填。
- */
-async function removeUploadTask(task: UploadTask): Promise<void> {
-  const detail = task.status === 'uploading'
-    ? '该文件正在上传。移除后它就不再出现在上传列表、完成后也不会加入「已选」；但底层传输已发出无法中断，文件仍会保存到目标存储。'
-    : task.status === 'success'
-      ? '这只是把上传项从列表和「已选」中移除，不会删除已上传到存储的文件。'
-      : '失败项将从上传列表移除。'
-  try {
-    await ElMessageBox.confirm(
-      `确定移除「${task.name}」？${detail}`,
-      '移除上传项',
-      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch {
-    return
-  }
-  if (task.status === 'uploading') task.cancelled = true
-  if (task.previewUrl) URL.revokeObjectURL(task.previewUrl)
-  uploadTasks.value = uploadTasks.value.filter((t) => t.id !== task.id)
-  if (task.status === 'success' && task.url) {
-    uploaded.value = uploaded.value.filter((i) => itemKey(i) !== task.url)
-    removePoolKey(task.url!)
-  }
-  if (!uploadInProgress.value) stopProgressTimer()
-}
-
-/**
- * 清除已结束（成功/失败）的上传任务，只保留上传中的。
- * 危险操作二次确认（禁遮罩/禁 ESC），并按项目铁律同步清理成功项的选择池与 objectURL。
- */
-async function clearFinishedTasks(): Promise<void> {
-  const finished = uploadTasks.value.filter((t) => t.status !== 'uploading')
-  if (finished.length === 0) return
-  try {
-    await ElMessageBox.confirm(
-      `将清除 ${finished.length} 个已结束的上传项（成功 ${finished.filter((t) => t.status === 'success').length} · 失败 ${finished.filter((t) => t.status === 'failed').length}），已上传成功的文件会一并从「已选」中移除。上传中的项不受影响。`,
-      '清除已结束的上传项',
-      { type: 'warning', confirmButtonText: '清除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch {
-    return
-  }
-  const finishedIds = new Set(finished.map((t) => t.id))
-  for (const t of finished) {
-    if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
-    if (t.status === 'success' && t.url) {
-      uploaded.value = uploaded.value.filter((i) => itemKey(i) !== t.url)
-      removePoolKey(t.url)
-    }
-  }
-  uploadTasks.value = uploadTasks.value.filter((t) => !finishedIds.has(t.id))
-}
-
-/**
- * 从 uploadTasks 同步移出给定的成功项（按 url 匹配，url 与 itemKey 同口径）。
- * uploadTasks 才是总体统计与「清除已结束」的计数源：只删 uploaded 而不动这里，
- * 会导致删了 2 项后「清除已结束」仍显示 3 个（2026-11-20 用户实证）。
- */
-function purgeUploadTasksByUrls(urls: Set<string>): void {
-  if (urls.size === 0) return
-  const matched = uploadTasks.value.filter((t) => t.status === 'success' && t.url && urls.has(t.url))
-  if (matched.length === 0) return
-  for (const t of matched) if (t.previewUrl) URL.revokeObjectURL(t.previewUrl)
-  const ids = new Set(matched.map((t) => t.id))
-  uploadTasks.value = uploadTasks.value.filter((t) => !ids.has(t.id))
-  if (!uploadInProgress.value) stopProgressTimer()
-}
-
-/**
- * 删除「本次上传」缩略图（右上角垃圾桶）：二次确认（禁遮罩/禁 ESC），且必须同步清 uploadTasks。
- * 同样只清展示与选择池，不删除存储中的文件。
- */
-async function removeUploaded(item: PoolItem): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确定移除「${item.name || item.key}」？这只是把上传项从列表和「已选」中移除，不会删除已上传到存储的文件。`,
-      '移除上传项',
-      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch {
-    return
-  }
-  const k = itemKey(item)
-  uploaded.value = uploaded.value.filter((i) => itemKey(i) !== k)
-  removePoolKey(k)
-  purgeUploadTasksByUrls(new Set([k]))
-}
-
-/** 只删除「本次上传且已选」的项，未选中的上传文件保留；二次确认 + 同步清 uploadTasks */
-async function removeSelectedUploaded(): Promise<void> {
-  const removed = uploaded.value.filter(isSelected)
-  if (removed.length === 0) return
-  try {
-    await ElMessageBox.confirm(
-      `确定移除选中的 ${removed.length} 个上传项？这只是从列表和「已选」中移除，不会删除已上传到存储的文件。`,
-      '移除上传项',
-      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch {
-    return
-  }
-  for (const i of removed) removePoolKey(itemKey(i))
-  const keys = new Set(removed.map(itemKey))
-  uploaded.value = uploaded.value.filter((i) => !keys.has(itemKey(i)))
-  purgeUploadTasksByUrls(keys)
-  ElMessage.success(`已删除 ${removed.length} 个未确认文件`)
 }
 
 /** 全选/全不选/反选作用于「当前可见集合」，不清空其他 tab / 目录 / 源已选的项 */
@@ -1018,91 +358,6 @@ function invertVisible(): void {
   for (const i of visible.value) togglePool(i)
 }
 
-/** 列表分页游标：非空表示来源侧还有剩余文件，可「加载更多」续拉 */
-const galleryCursor = ref<string | null>(null)
-const loadingMore = ref(false)
-
-/** ── 搜索跨页全量扫描：来源侧还有未加载页时自动分块续拉，保证关键词能命中后面页的文件 ── */
-const SEARCH_SCAN_CHUNK = 2000
-/** 扫描上限：防异常超大桶无限拉取（达到即提示「结果可能不全」） */
-const SEARCH_SCAN_MAX = 10_000
-const scanning = ref(false)
-const scanTotal = ref(0)
-const scanCapped = ref(false)
-let scanSeq = 0
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-
-function cancelScan(): void {
-  scanSeq++
-  scanning.value = false
-}
-
-/** 从已加载页的游标开始分块续拉，直到扫完/达上限/被新上下文取代；匹配结果随 items 增长即时过滤呈现 */
-async function runSearchScan(): Promise<void> {
-  const source = activeSource.value
-  if (!source || !keyword.value || !galleryCursor.value || scanning.value) return
-  const seq = ++scanSeq
-  scanning.value = true
-  scanTotal.value = items.value.length
-  scanCapped.value = false
-  try {
-    let cursor: string | null = galleryCursor.value
-    while (cursor && scanTotal.value < SEARCH_SCAN_MAX) {
-      const page = await props.library.list(source, target.value, { limit: SEARCH_SCAN_CHUNK, cursor, kind: props.mode })
-      if (seq !== scanSeq) return // 关键词/目录/来源已变，本轮结果丢弃
-      items.value = [...items.value, ...page.items]
-      scanTotal.value = items.value.length
-      cursor = page.nextCursor ?? null
-      galleryCursor.value = cursor
-    }
-    if (cursor) scanCapped.value = true
-  } catch (err) {
-    if (seq === scanSeq) ElMessage.error(`搜索扫描失败：${(err as Error).message}`)
-  } finally {
-    if (seq === scanSeq) scanning.value = false
-  }
-}
-
-async function loadGallery(): Promise<void> {
-  const source = activeSource.value
-  if (!source) return
-  scanSeq++ // 上下文重置：进行中的搜索扫描立即失效
-  scanning.value = false
-  loadingList.value = true
-  renderedCount.value = PAGE_SIZE
-  try {
-    // 不清空 pool：重选目录得到新列表后，此前已选仍保留，可继续累积
-    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, kind: props.mode })
-    items.value = page.items
-    galleryCursor.value = page.nextCursor ?? null
-  } catch (err) {
-    items.value = []
-    galleryCursor.value = null
-    ElMessage.error(`读取文件列表失败：${(err as Error).message}`)
-  } finally {
-    loadingList.value = false
-  }
-  // 带关键词进入/刷新列表：来源侧还有未加载页时自动续扫，保证搜索能命中后面页
-  if (keyword.value && galleryCursor.value) void runSearchScan()
-}
-
-/** 「加载更多」续拉下一页（大目录 1000/10000+ 个文件时按页取，不一次列爆） */
-async function loadMoreGallery(): Promise<void> {
-  const source = activeSource.value
-  if (!source || !galleryCursor.value || loadingMore.value) return
-  loadingMore.value = true
-  try {
-    const page = await props.library.list(source, target.value, { limit: FETCH_LIMIT, cursor: galleryCursor.value, kind: props.mode })
-    items.value = [...items.value, ...page.items]
-    galleryCursor.value = page.nextCursor ?? null
-    renderedCount.value += PAGE_SIZE
-  } catch (err) {
-    ElMessage.error(`加载更多失败：${(err as Error).message}`)
-  } finally {
-    loadingMore.value = false
-  }
-}
-
 /** 滚动到底追加下一批（一次性拉全，分批挂 DOM；图片本身再走 loading=lazy） */
 function onPaneScroll(e: Event): void {
   const el = e.target as HTMLElement
@@ -1110,6 +365,7 @@ function onPaneScroll(e: Event): void {
     renderedCount.value += PAGE_SIZE
   }
 }
+
 </script>
 
 <template>
@@ -1204,134 +460,34 @@ function onPaneScroll(e: Event): void {
 
     <div class="lib-pane" @scroll="onPaneScroll">
       <div v-if="tab === 'upload' || hasCards" class="thumb-grid">
-        <!-- 拖拽上传卡并入网格：空态即一张「添加」卡，有文件后与文件卡同排连成片（2026-11-20 用户反馈） -->
-        <div
+        <!-- 上传页专属：拖拽添加卡 + 任务卡（多根 fragment，直接作为网格单元参与布局） -->
+        <UploadTaskCards
           v-if="tab === 'upload'"
-          class="drop-cell"
-          :class="{ busy: uploadInProgress, active: dropActive }"
-          :title="uploadDropTip"
-          @click="pickFiles"
-          @dragover.prevent="dropActive = true"
-          @dragleave.prevent="dropActive = false"
-          @drop.prevent="onDrop"
-        >
-          <el-icon class="drop-cell-icon" :size="28"><UploadFilled /></el-icon>
-          <span class="drop-cell-main">{{ uploadHint }}</span>
-          <span class="drop-cell-sub">{{ uploadMultiple ? '可多选' : '单个' }}</span>
-        </div>
-        <!-- 上传中/失败任务：卡片上叠进度/状态，卡片底部放重试与删除 -->
-        <div
-          v-for="task in tab === 'upload' ? activeUploadTasks : []"
-          :key="'task-' + task.id"
-          class="thumb-cell task-cell"
-          :class="'st-' + task.status"
-          :title="task.status === 'failed' ? task.error : task.name"
-        >
-          <div class="task-thumb">
-            <img
-              v-if="isImage && task.previewUrl && !task.previewFailed"
-              :src="task.previewUrl"
-              :alt="task.name"
-              @error="task.previewFailed = true"
-            />
-            <div v-else-if="!isImage" class="file-tile">
-              <el-icon :size="26"><Document /></el-icon>
-              <span class="file-ext">{{ extOf(task.name) || 'FILE' }}</span>
-            </div>
-            <span v-else class="task-thumb-ph" title="图片预览不可用">
-              <el-icon :size="24"><Picture /></el-icon>
-            </span>
-            <span v-if="task.status === 'success'" class="task-thumb-state ok">✓</span>
-            <span v-else-if="task.status === 'failed'" class="task-thumb-state err">!</span>
-            <el-progress
-              v-if="task.status !== 'failed'"
-              class="task-thumb-progress"
-              :percentage="task.status === 'success' ? 100 : task.percent"
-              :status="task.status === 'success' ? 'success' : undefined"
-              :stroke-width="4"
-              :show-text="false"
-            />
-          </div>
-          <div class="thumb-name">{{ task.name }}</div>
-          <div class="task-meta">
-            <span class="task-status" :class="'st-' + task.status">
-              {{ task.status === 'uploading' ? `上传中 ${task.percent}%` : task.status === 'success' ? '上传完成' : '上传失败' }}
-            </span>
-          </div>
-          <div class="task-ops">
-            <el-button v-if="task.status === 'failed'" size="small" type="primary" link @click="retryUpload(task)">重试</el-button>
-            <el-button size="small" type="danger" link @click="removeUploadTask(task)">删除</el-button>
-          </div>
-        </div>
-        <div v-for="item in rendered" :key="itemKey(item)" class="thumb-cell" :class="{ picked: isSelected(item) }">
-          <el-checkbox :model-value="isSelected(item)" class="thumb-check" @change="togglePool(item)" @click.stop />
-          <!-- 图片模式：缩略图 + 大图预览；文件模式：类型图标卡片 -->
-          <el-image
-            v-if="isImage"
-            :src="resolveSrcOf(item.url)"
-            fit="cover"
-            loading="lazy"
-            class="thumb-img"
-            :preview-src-list="previewUrls"
-            :initial-index="visible.indexOf(item)"
-            :preview-teleported="true"
-            @click.stop
-          >
-            <template #placeholder>
-              <div class="img-placeholder" aria-hidden="true">
-                <el-icon class="img-placeholder-icon" :size="26"><Picture /></el-icon>
-              </div>
-            </template>
-            <template #error>
-              <div class="img-fallback" title="图片加载失败">
-                <svg class="img-fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="3" y="3" width="18" height="18" rx="2.5" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15.5 16 11 7 20" />
-                  <path d="M4 4 20 20" class="img-fallback-slash" />
-                </svg>
-                <span class="img-fallback-text">图片不可用</span>
-              </div>
-            </template>
-          </el-image>
-          <div v-else class="thumb-img file-tile" title="文件">
-            <el-icon :size="30"><Document /></el-icon>
-            <span class="file-ext">{{ extOf(item.name || item.key || '') || 'FILE' }}</span>
-            <span v-if="item.size" class="file-size">{{ formatSize(item.size) }}</span>
-          </div>
-          <div class="thumb-name" :title="item.url">
-            <span class="thumb-name-text">{{ item.name || item.key }}</span>
-            <button
-              type="button"
-              class="copy-link"
-              title="复制链接"
-              @click.stop="copyLink(item)"
-            >
-              <el-icon :size="12"><Link /></el-icon>
-            </button>
-          </div>
-          <span v-if="tab === 'selected'" class="thumb-badge" :title="scopeLabel(item.scope)">{{ scopeLabel(item.scope) }}</span>
-          <span v-else-if="item.origin === 'upload'" class="thumb-badge">本次上传</span>
-          <!-- 删除/移除改为右上角 icon 悬浮钮：删除(垃圾桶)=移出本次上传，移除(✕)=取消已选，图形区分避免歧义（2026-11-17 用户反馈） -->
-          <button
-            v-if="tab === 'selected'"
-            type="button"
-            class="thumb-del"
-            title="移除已选"
-            @click.stop="removePoolKey(itemKey(item))"
-          >
-            <el-icon :size="12"><Close /></el-icon>
-          </button>
-          <button
-            v-else-if="item.origin === 'upload'"
-            type="button"
-            class="thumb-del"
-            title="删除"
-            @click.stop="removeUploaded(item)"
-          >
-            <el-icon :size="12"><Delete /></el-icon>
-          </button>
-        </div>
+          :is-image="isImage"
+          :tasks="activeUploadTasks"
+          :upload-in-progress="uploadInProgress"
+          :upload-hint="uploadHint"
+          :upload-drop-tip="uploadDropTip"
+          :upload-multiple="uploadMultiple"
+          @pick="pickFiles"
+          @drop="onDrop"
+          @retry="retryUpload"
+          @remove-task="removeUploadTask"
+        />
+        <!-- 三页签共享条目网格：角标与右上角按钮随 tab 条件渲染 -->
+        <PickerThumbGrid
+          :tab="tab"
+          :items="rendered"
+          :visible-items="visible"
+          :preview-urls="previewUrls"
+          :is-image="isImage"
+          :is-selected="isSelected"
+          :resolve-src="resolveSrcOf"
+          :scope-label="scopeLabel"
+          @toggle="togglePool"
+          @remove-key="removePoolKey"
+          @remove-uploaded="removeUploaded"
+        />
       </div>
       <div v-else class="gallery-empty">{{ emptyStateText }}</div>
       <div v-if="scanning" class="load-more load-more--action">
@@ -1378,123 +534,10 @@ function onPaneScroll(e: Event): void {
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }
 .lib-count { font-size: 12px; opacity: 0.75; margin-right: 2px; }
-/* 拖拽上传卡并入网格：与文件卡同尺寸，空态即一张「添加」卡（2026-11-20 用户反馈） */
-.drop-cell {
-  min-height: 118px;
-  border: 1px dashed rgba(128, 128, 128, 0.45);
-  border-radius: 6px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; padding: 6px; text-align: center; cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.04) 0 6px, transparent 6px 12px);
-}
-.drop-cell:hover, .drop-cell.active { border-color: var(--el-color-primary); }
-.drop-cell.active { background: rgba(64, 158, 255, 0.1); }
-.drop-cell.busy { opacity: 0.6; cursor: wait; }
-.drop-cell-icon { color: var(--el-color-primary); opacity: 0.75; }
-.drop-cell-main { font-size: 12px; line-height: 1.3; }
-.drop-cell-sub { font-size: 10px; opacity: 0.6; }
 /* 上传总体进度条 */
 .upload-progress-bar { border: 1px solid var(--sshk-border, rgba(128, 128, 128, 0.25)); border-radius: 6px; padding: 8px 10px; margin-top: 10px; margin-bottom: 0; }
 .up-summary { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
-/* 上传中/失败任务卡片：与成功缩略图同网格，进度直接叠在图片上 */
-.task-cell { border-color: var(--sshk-border, rgba(128, 128, 128, 0.3)); }
-.task-cell.st-failed { border-color: var(--el-color-danger); }
-.task-thumb { position: relative; width: 100%; height: 80px; border-radius: 4px; overflow: hidden; background: rgba(128, 128, 128, 0.1); }
-.task-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.task-thumb-ph { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-text-color-placeholder); opacity: 0.4; }
-.task-thumb-state { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: grid; place-items: center; font-size: 12px; color: #fff; border-radius: 50%; }
-.task-thumb-state.ok { background: var(--el-color-success); }
-.task-thumb-state.err { background: var(--el-color-danger); }
-.task-thumb-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 3px 3px; }
-.task-meta { margin-top: 2px; }
-.task-status { font-size: 10px; }
-.task-status.st-uploading { color: var(--el-color-primary); }
-.task-status.st-success { color: var(--el-color-success); }
-.task-status.st-failed { color: var(--el-color-danger); }
-.task-ops { display: flex; justify-content: center; gap: 4px; margin-top: 2px; }
-.task-ops .el-button { padding: 2px 4px; height: auto; font-size: 11px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
-.thumb-cell {
-  position: relative;
-  border: 2px solid transparent;
-  border-radius: 6px;
-  padding: 3px;
-  text-align: center;
-}
-.thumb-cell.picked { border-color: var(--el-color-primary); background: rgba(64, 158, 255, 0.08); }
-/* 悬浮复选框：半透明暗色毛玻璃背板 + 白描边，避免纯白方块浮在深色/失败占位上突兀（明暗主题通用）。
-   EP 的 .el-checkbox 默认 height:32px（theme.css 又把内芯定为 15px）——背板会上下多出灰色，
-   必须让 wrapper 高度塌到内芯 + 2px padding（用户反馈 2026-11-17） */
-.thumb-check {
-  position: absolute; top: 5px; left: 5px; z-index: 2;
-  height: auto;
-  margin: 0; padding: 2px; line-height: 0;
-  background: rgba(0, 0, 0, 0.34);
-  border-radius: 5px;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-.thumb-check :deep(.el-checkbox__inner) {
-  width: 15px; height: 15px;
-  background-color: transparent;
-  border-color: rgba(255, 255, 255, 0.92);
-  border-radius: 3px;
-}
-.thumb-check :deep(.el-checkbox__inner:hover) { border-color: var(--el-color-primary); }
-.thumb-check.is-checked :deep(.el-checkbox__inner) {
-  background-color: var(--el-color-primary);
-  border-color: var(--el-color-primary);
-}
-.thumb-img { width: 100%; height: 80px; border-radius: 4px; display: block; cursor: zoom-in; }
-/* 文件模式卡片：类型图标 + 扩展名 + 大小（无缩略图/无大图预览） */
-.file-tile {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; color: var(--el-text-color-placeholder);
-  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.06) 0 6px, transparent 6px 12px);
-}
-.file-ext { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
-.file-size { font-size: 10px; opacity: 0.7; }
-/* 图片加载失败：统一柔和占位（替代 Element Plus 默认 FAILED 与生硬的「裂图」文案） */
-.img-fallback {
-  width: 100%; height: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 3px;
-  color: var(--el-text-color-placeholder);
-  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.06) 0 6px, transparent 6px 12px);
-}
-/* 图片尚未加载（懒加载未触发/加载中）：柔和淡图标占位，替代纯空白卡片 */
-.img-placeholder {
-  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  color: var(--el-text-color-placeholder);
-  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.04) 0 6px, transparent 6px 12px);
-}
-.img-placeholder-icon { width: 26px; height: 26px; opacity: 0.4; }
-.img-fallback-icon { width: 26px; height: 26px; opacity: 0.7; }
-.img-fallback-slash { opacity: 0.45; }
-.img-fallback-text { font-size: 11px; line-height: 1; }
-.thumb-name { font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; display: flex; align-items: center; gap: 4px; min-width: 0; }
-.thumb-name-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* 复制链接 icon：悬浮缩略图时浮现，点击复制完整 URL（title 已带完整链接可悬停查看） */
-.copy-link {
-  flex: none; display: none; align-items: center; justify-content: center;
-  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
-  background: transparent; color: inherit; cursor: pointer;
-}
-.thumb-cell:hover .copy-link { display: inline-flex; opacity: 0.85; }
-.thumb-cell:hover .thumb-name { opacity: 1; }
-.copy-link:hover { background: color-mix(in srgb, var(--sshk-accent, #4f8cff) 22%, transparent); color: var(--sshk-accent, #4f8cff); opacity: 1; }
-.thumb-badge { display: block; font-size: 10px; color: var(--el-color-primary); }
-/* 删除/移除 icon：右上角悬浮小钮（替代文字按钮），毛玻璃暗底与左上复选框呼应，hover 红色填充 */
-.thumb-del {
-  position: absolute; top: 5px; right: 5px; z-index: 2;
-  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
-  display: grid; place-items: center; cursor: pointer;
-  background: rgba(0, 0, 0, 0.34);
-  color: var(--el-color-danger);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-.thumb-del:hover { background: color-mix(in srgb, var(--el-color-danger) 30%, transparent); }
 .gallery-empty { text-align: center; padding: 28px 0; font-size: 13px; opacity: 0.6; }
 .load-more { text-align: center; padding: 10px 0 2px; font-size: 12px; opacity: 0.6; }
 .load-more--action { display: flex; align-items: center; justify-content: center; gap: 10px; }
