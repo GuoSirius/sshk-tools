@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { format } from '@sshk/shared'
 
 /**
  * 模板工具共享状态（模块级单例）：各页面共享调用通道与日志。
@@ -22,7 +23,7 @@ export function invoke(name: string, ...args: unknown[]): Promise<unknown> {
 export interface LogRow { t: string; ok: boolean; name: string; detail: string }
 export const logs = reactive<LogRow[]>([])
 function note(ok: boolean, name: string, detail: string): void {
-  logs.unshift({ t: new Date().toLocaleTimeString(), ok, name, detail: detail.slice(0, 240) })
+  logs.unshift({ t: format(undefined, 'HH:mm:ss'), ok, name, detail: detail.slice(0, 240) }) // P0-3：北京时间统一
   if (logs.length > 60) logs.pop()
 }
 

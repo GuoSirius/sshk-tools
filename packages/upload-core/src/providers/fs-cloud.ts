@@ -1,6 +1,6 @@
 import { createWriteStream } from 'node:fs'
 import { Readable, Transform } from 'node:stream'
-import { AppError } from '@sshk/shared'
+import { AppError, toMs } from '@sshk/shared'
 import type { FsEntry, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
 import { cloudKey, normalizeRootRel } from '../fs-paths'
 import { collectPrefixes } from '../directories'
@@ -147,8 +147,8 @@ function parseModified(o: unknown): number {
       const n = Number(s)
       return n > 1e14 ? Math.floor(n / 1e6) : n
     }
-    const t = Date.parse(s)
-    if (Number.isFinite(t)) return t
+    const t = toMs(s)
+    if (t !== null) return t
   }
   return 0
 }
@@ -717,7 +717,7 @@ export class CloudFsDriver implements FsDriver {
               uploadId: String(u.uploadId ?? ''),
               key: String(u.name ?? ''),
               initiatedAt: u.initiated instanceof Date ? u.initiated.getTime()
-                : u.initiated && Number.isFinite(Date.parse(String(u.initiated))) ? Date.parse(String(u.initiated)) : undefined,
+                : (u.initiated ? (toMs(String(u.initiated)) ?? undefined) : undefined),
             })
           }
           if (!r.isTruncated || r.isTruncated === 'false') break
@@ -742,7 +742,7 @@ export class CloudFsDriver implements FsDriver {
               uploadId: String(u.UploadId ?? ''),
               key: String(u.Key ?? ''),
               initiatedAt: u.Initiated instanceof Date ? u.Initiated.getTime()
-                : u.Initiated && Number.isFinite(Date.parse(String(u.Initiated))) ? Date.parse(String(u.Initiated)) : undefined,
+                : (u.Initiated ? (toMs(String(u.Initiated)) ?? undefined) : undefined),
             })
           }
           if (!r.IsTruncated || !r.NextKeyMarker) break

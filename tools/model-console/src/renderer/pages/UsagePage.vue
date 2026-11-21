@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { format, toFileName } from '@sshk/shared'
 import type { UsageStatsPayload, UsageRow } from '@sshk/shared'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
 import { Download } from '@element-plus/icons-vue'
@@ -27,7 +28,7 @@ async function refresh(): Promise<void> {
     // since 用北京时间 YYYY-MM-DD 00:00 前缀过滤（createdAt 字符串有序，前缀比较即时间过滤）
     const days = rangeDays.value
     const since = days > 0
-      ? `${new Date(Date.now() - (days - 1) * 86_400_000).toLocaleDateString('sv-SE')}T00:00:00`
+      ? `${format(Date.now() - (days - 1) * 86_400_000, 'YYYY-MM-DD')}T00:00:00`
       : null
     data.value = await host.usage.stats(since)
   } catch (err) {
@@ -61,7 +62,7 @@ const PURPOSE_LABEL: Record<string, string> = {
 const purposeLabel = (p: string): string => PURPOSE_LABEL[p] ?? p
 
 function fmtNum(n: number): string {
-  return n.toLocaleString('zh-CN')
+  return new Intl.NumberFormat('zh-CN').format(n) // P0-3：数字千分位走 Intl.NumberFormat（toLocaleString 已禁）
 }
 
 /** 导出 CSV（列含 BOM，Excel 直开不乱码） */
@@ -69,7 +70,7 @@ async function exportCsv(): Promise<void> {
   const rows: UsageRow[] = data.value?.records ?? []
   if (!rows.length) { ElMessage.warning('当前范围没有明细可导出'); return }
   const save = await host.os.pickSave({
-    fileName: `sshk-usage-${new Date().toLocaleDateString('sv-SE')}.csv`,
+    fileName: `sshk-usage-${toFileName()}.csv`,
     extensions: ['csv'],
   })
   if (!save) return

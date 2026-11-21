@@ -4,7 +4,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { IPC_CHANNELS, toFileName } from '@sshk/shared'
 import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
 import { useUpdater } from '../../composables/useUpdater'
 import { useToolCatalog } from '../../composables/useToolCatalog'
@@ -73,7 +73,7 @@ async function cleanLogs(): Promise<void> {
 const migrationPassphrase = ref('')
 async function exportBackup(): Promise<void> {
   const save = await window.api.os.pickSave({
-    fileName: `sshk-tools-backup-${new Date().toLocaleDateString('sv-SE')}.zip`,
+    fileName: `sshk-tools-backup-${toFileName()}.zip`,
     extensions: ['zip'],
   })
   if (!save) return
@@ -107,7 +107,7 @@ async function exportPresetFile(): Promise<void> {
     } catch { return }
   }
   const save = await window.api.os.pickSave({
-    fileName: `sshk-preset-${new Date().toLocaleDateString('sv-SE')}${presetIncludeSecrets.value ? '-含密钥' : ''}.json`,
+    fileName: `sshk-preset-${toFileName()}${presetIncludeSecrets.value ? '-含密钥' : ''}.json`,
     extensions: ['json'],
   })
   if (!save) return
@@ -241,7 +241,7 @@ async function openDiagnosis(): Promise<void> {
 }
 async function saveDiagnosis(): Promise<void> {
   const save = await window.api.os.pickSave({
-    fileName: `sshk-diagnosis-${new Date().toLocaleDateString('sv-SE')}.zip`,
+    fileName: `sshk-diagnosis-${toFileName()}.zip`,
     extensions: ['zip'],
   })
   if (!save) return

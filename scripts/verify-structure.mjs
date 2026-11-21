@@ -49,14 +49,17 @@ for (const file of all.filter((f) => /\.(mjs|cjs|js)$/.test(f))) {
   if (res.status !== 0) errors.push(`语法检查失败 ${relative(ROOT, file)}: ${res.stderr.trim()}`)
 }
 
-// 3. 时间规范：业务源码不得出现 UTC 序列化
-const forbidden = 'toISOString('
+// 3. 时间规范：业务源码不得出现 UTC 序列化 / toLocale* / Date.parse（P0-3 扩展）
+const forbiddenList = ['toISOString(', 'toLocaleString(', 'toLocaleDateString(', 'toLocaleTimeString(', 'Date.parse(']
 for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   const rel = relative(ROOT, file)
   if (!['apps', 'packages', 'tools'].includes(rel.split(sep)[0])) continue
   srcCount += 1
-  if (readFileSync(file, 'utf8').includes(forbidden)) {
-    errors.push(`时间规范违规 ${rel}: 禁止 ${forbidden}，请使用 @sshk/shared 的 time.ts`)
+  const content = readFileSync(file, 'utf8')
+  for (const forbidden of forbiddenList) {
+    if (content.includes(forbidden)) {
+      errors.push(`时间规范违规 ${rel}: 禁止 ${forbidden}，请使用 @sshk/shared 的 time.ts（数字千分位用 Intl.NumberFormat）`)
+    }
   }
 }
 

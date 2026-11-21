@@ -36,6 +36,17 @@ const rules = {
       selector: "CallExpression[callee.property.name='toISOString']",
       message: '禁止 toISOString()（输出 UTC），请使用 @sshk/shared 的 time.ts 北京时间工具',
     },
+    // P0-3（B5/B33）：时间格式化统一走 time.ts，禁 toLocale*（依赖宿主时区/环境）
+    {
+      selector:
+        "CallExpression[callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+      message: '禁止 toLocaleString/toLocaleDateString/toLocaleTimeString（依赖宿主时区），一律使用 @sshk/shared 的 time.ts（数字千分位用 Intl.NumberFormat）',
+    },
+    // P0-3（B33/CR-32）：时间解析统一走 time.ts 的 toMs()
+    {
+      selector: "CallExpression[callee.object.name='Date'][callee.property.name='parse']",
+      message: '禁止 Date.parse（散写时间解析），一律使用 @sshk/shared 的 toMs()',
+    },
     // dev 判据唯一化（P0-1 · D55）：全仓判 dev 只认 @sshk/shared 的 SSHK_DEV
     // （__SSHK_DEV__ 由 electron.vite.config.ts 构建期注入三端），禁止 import.meta.env 内建标志
     {

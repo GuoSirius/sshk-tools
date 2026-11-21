@@ -19,6 +19,7 @@ import {
   type ShareContentResolverResult,
   type ShareLogsQuery,
   type ShareAccessLog,
+  format,
 } from '@sshk/shared'
 import type { ConfigService, Repository, ShareLogDoc } from '@sshk/repository'
 import { handleOk } from './ipc-wrap'
@@ -337,7 +338,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
     for (const d of docs) {
       const r = routeMap.get(d.routeId)
       csvRows.push([
-        new Date(d.at).toLocaleString('zh-CN', { hour12: false }),
+        format(d.at), // P0-3：北京时间统一格式（禁 toLocale*）
         d.ip, d.path, String(d.status), d.routeId, r?.toolId ?? '', r?.label ?? '',
       ])
     }

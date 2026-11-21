@@ -4,7 +4,7 @@ import { snapdom } from '@zumer/snapdom'
 import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, sanitizeMetricKey, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo, ShareRouteInfo } from '@sshk/shared'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, format, toFileName } from '@sshk/shared'
 import { callHostApi, readShareTicket, type HostApiSpec } from '@sshk/ui-kit'
 import { host } from './host'
 
@@ -205,7 +205,7 @@ export async function fetchProviderModels(): Promise<void> {
 
 export async function rememberRecent(path: string): Promise<void> {
   const name = path.split(/[\\/]/).pop() ?? path
-  const next = [{ path, name, usedAt: new Date().toLocaleString('sv-SE') }, ...recentHtmls.value.filter((r) => r.path !== path)].slice(0, 10)
+  const next = [{ path, name, usedAt: format() }, ...recentHtmls.value.filter((r) => r.path !== path)].slice(0, 10)
   recentHtmls.value = next
   await host.config.set(configKey('recentHtmls'), next)
 }
@@ -483,7 +483,7 @@ export async function generate(): Promise<void> {
   }
   generating.value = true
   try {
-    const name = posterName.value.trim() || htmlPath.value.split(/[\\/]/).pop()?.replace(/\.html?$/i, '') || `海报 ${new Date().toLocaleString('sv-SE')}`
+    const name = posterName.value.trim() || htmlPath.value.split(/[\\/]/).pop()?.replace(/\.html?$/i, '') || `海报 ${toFileName()}`
     const res = await host.badge.generate({
       name,
       sourceHtml: pastedHtml.value,
@@ -601,7 +601,7 @@ export async function batchExportHtml(): Promise<void> {
   const rows = selectedPosters.value.filter((row) => row.outputs.badged)
   if (rows.length === 0) { ElMessage.warning('请先勾选要导出的海报')
     return }
-  const date = new Date().toLocaleDateString('sv-SE')
+  const date = toFileName()
   const posterDir = (await host.config.get(configKey('posterDir'))) as string | null
   const save = await host.os.pickSave({
     fileName: 'sshk-posters-' + date + '.zip',

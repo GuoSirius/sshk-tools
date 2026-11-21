@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, FormGrid } from '@sshk/ui-kit'
+import { format } from '@sshk/shared'
 import { applyFallbackModels } from '../model-fallback'
 import { host } from '../host'
 import {
@@ -189,9 +190,9 @@ async function testProvider(row: Provider): Promise<void> {
   testingId.value = row._id
   try {
     const result = await host.llm.healthCheck(row)
-    health.value[row._id] = { ...result, at: new Date().toLocaleString('sv-SE') }
+    health.value[row._id] = { ...result, at: format() }
   } catch (err) {
-    health.value[row._id] = { ok: false, message: (err as Error).message, at: new Date().toLocaleString('sv-SE') }
+    health.value[row._id] = { ok: false, message: (err as Error).message, at: format() }
   } finally {
     testingId.value = null
     await host.config.set('app.llm.health', JSON.parse(JSON.stringify(health.value)))

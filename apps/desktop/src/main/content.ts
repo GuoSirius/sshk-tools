@@ -6,7 +6,7 @@
  */
 import type { Repository, ContentDoc } from '@sshk/repository'
 import { countHtmlWords, htmlToPlainText, toDisplayHtml } from '@sshk/rich-text/pure'
-import { AppError, format, ISO_WITH_OFFSET } from '@sshk/shared'
+import { AppError, format, ISO_WITH_OFFSET, toMs } from '@sshk/shared'
 import type { ContentSaveInput, ContentRecord, ContentStatus, ShareContentResolverResult } from '@sshk/shared'
 
 const SUMMARY_MAX = 120
@@ -61,7 +61,8 @@ export async function contentSave(repo: Repository, input: ContentSaveInput): Pr
   if (status === 'scheduled') {
     // 兼容数字毫秒（历史调用）与 ISO 字符串两种入参；入库统一 ISO 带 +08:00（项目铁律，禁 toISOString）
     const raw = input.publishAt
-    const t = typeof raw === 'number' ? raw : Date.parse(String(raw ?? ''))
+    // P0-3：统一走 shared toMs（ISO 带 +08:00 / 数字毫秒均可解析；Date.parse 已 lint 禁用）
+    const t = typeof raw === 'number' ? raw : (toMs(String(raw ?? '')) ?? NaN)
     if (!Number.isFinite(t) || t <= Date.now()) throw new AppError('定时发布时间必须晚于当前时间', 'validation')
     publishAt = format(t, ISO_WITH_OFFSET)
   }
@@ -126,11 +127,11 @@ async function ensureScheduler(repo: Repository): Promise<void> {
     try {
       const now = Date.now()
       const rows = await repo.list<ContentDoc>('contents', { archived: false, status: 'scheduled' })
-      // publishAt 入库为 ISO 带 +08:00 字符串，必须 Date.parse 解析（Number() 对该格式恒 NaN，曾致定时器永不触发）
+      // publishAt 入库为 ISO 带 +08:00 字符串，统一走 shared toMs 解析（P0-3；Number() 对该格式恒 NaN，曾致定时器永不触发）
       const due = rows.filter((d) => {
         if (!d.publishAt) return false
-        const t = Date.parse(d.publishAt)
-        return Number.isFinite(t) && t <= now
+        const t = toMs(d.publishAt)
+        return t !== null && t <= now
       })
       for (const doc of due) {
         // 空串为「已清」哨兵（$set 不接受 undefined 清空）；toRecord 对 undefined/'' 统一视为无定时

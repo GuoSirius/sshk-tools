@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, TimeText, ShareDialog, useToolId } from '@sshk/ui-kit'
-import { inMsRange } from '@sshk/shared'
+import { inMsRange, toFileName } from '@sshk/shared'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
 import { api, confirmRemove, osApi, type MailRow } from '../shared'
 import MailEditor from '../MailEditor.vue'
@@ -133,7 +133,7 @@ async function batchExport(): Promise<void> {
   try {
     const rows = selectedMails.value.filter((row) => row.outputs?.final)
     if (rows.length === 0) { ElMessage.warning('请先勾选已生成产物的邮件'); return }
-    const date = new Date().toLocaleDateString('sv-SE')
+    const date = toFileName()
     const save = await osApi().pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
     if (!save) return
     const res = (await api('mail:export', { ids: rows.map((r) => r._id), outPath: save })) as { count: number; outPath: string }
