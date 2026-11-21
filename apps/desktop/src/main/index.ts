@@ -553,6 +553,9 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.updateCheck, async () => {
     if (autoUpdateDisabled) { pushUpdate({ phase: 'disabled' }); return { disabled: true } }
     if (isDev && !updateDevCheck) { pushUpdate({ phase: 'dev' }); return { dev: true } }
+    // P1-3（A11/Q-20）：检查互斥闸门——连点/并发触发只放行一次，避免状态机互相踩踏
+    if (updateCheckInFlight) return { checking: true }
+    updateCheckInFlight = true
     // dev 更新测试：每次检查前清 pending 缓存 → 每次都重新下载，进度条可反复观察（KEEP_CACHE=1 保留）
     if (updateDevCheck) resetDevUpdatePendingCache()
     try {
@@ -565,11 +568,15 @@ async function registerIpc(): Promise<void> {
       return { dev: false, updateAvailable, version }
     } catch (err) {
       return { error: (err as Error).message }
+    } finally {
+      updateCheckInFlight = false
     }
   })
   handleOk(IPC_CHANNELS.updateDownload, async () => {
     if (autoUpdateDisabled) return false
     if (isDev && !updateDevCheck) return false
+    // P1-3：下载单路径——autoDownload=true 下 available 即自动开下，手动重复触发不再叠加
+    if (updateState.phase === 'downloading' || updateState.phase === 'downloaded') return true
     await autoUpdater.downloadUpdate()
     return true
   })
@@ -996,6 +1003,8 @@ let latestVersion: string | undefined
 let progressLogMark = 0
 /** 下载阶段标记：error 事件无阶段上下文，用它区分「下载失败」与「检查失败」文案（渲染层横幅直接展示） */
 let downloadStarted = false
+/** P1-3：checkForUpdates 互斥闸门（手动检查 + 启动自动检查共用） */
+let updateCheckInFlight = false
 function pushUpdate(patch: Partial<UpdateState>): void {
   const prevPhase = updateState.phase
   updateState = { ...updateState, ...patch }
@@ -1054,7 +1063,12 @@ function wireAutoUpdater(): void {
   })
   autoUpdater.on('error', (err: Error) => {
     console.warn('[sshk] 更新出错：', err)
-    // error 事件不区分阶段；downloadStarted 区分「下载失败」（如 GitHub 挂起后超时）与「检查失败」
+    // P1-3：error 事件不区分阶段——下载进行中（downloading）的检查类错误不覆盖进度状态，
+    // 否则一次后台检查失败会把正在跑的下载进度条踩成 error
+    if (updateState.phase === 'downloading' && !downloadStarted) {
+      logger.warn('updater', `下载进行中，忽略检查类错误：${err.message}`)
+      return
+    }
     pushUpdate({ phase: 'error', error: (downloadStarted ? '下载失败：' : '检查失败：') + err.message })
   })
 }
@@ -1073,10 +1087,15 @@ function setupAutoUpdate(): void {
   if (auto !== false) {
     // dev 更新测试：启动自动检查同样先清 pending 缓存（与手动检查口径一致）
     if (updateDevCheck) resetDevUpdatePendingCache()
-    void autoUpdater.checkForUpdates().catch((err: unknown) => {
-      console.warn('[sshk] 自动更新检查失败：', err)
-      pushUpdate({ phase: 'error', error: (err as Error).message })
-    })
+    if (updateCheckInFlight) return
+    updateCheckInFlight = true
+    void autoUpdater.checkForUpdates()
+      .then(() => { updateCheckInFlight = false })
+      .catch((err: unknown) => {
+        updateCheckInFlight = false
+        console.warn('[sshk] 自动更新检查失败：', err)
+        pushUpdate({ phase: 'error', error: (err as Error).message })
+      })
   }
 }
 

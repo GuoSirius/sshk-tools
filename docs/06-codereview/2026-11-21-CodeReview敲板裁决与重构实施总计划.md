@@ -434,8 +434,8 @@ scripts/
 | **P0-7** ✅ 已完成（knip 入 verify（exports 审计按计划留 P2-6）；check-dialogs 补扫 ElMessageBox.confirm 双禁；CHANGELOG 结构校验；CR-23 A案接线 5 常量+删 3 无孪生僵尸+字面量门禁；CR-25 四组收敛（ID_PREFIX 删/logFront 上收 shared/configKey→toolConfigKey/verify-steps target 门禁）；CR-26 补导出；**P1-7 edm 三死页顺批删除**） | 门禁三件套 + 死代码 | knip 进 verify（与 check-env 并列）；check-dialogs 补扫 ElMessageBox.confirm 选项；CHANGELOG 结构校验；8 僵尸常量 A 案（硬编码点 import + 门禁禁产物文件名字面量）；CR-25 四组收敛（ID_PREFIX/logFront/configKey/verify-steps 工具 id） | B15/A9/Q-16/Q-21 | M |
 | **P0-8** ✅ 已完成（plain/plain-core.ts keepFunctions 参数化唯一核心 + preload 薄封装 + renderer ipc-plain/{install,to-plain}） | plain 收敛 | 抽 `plain-core.ts`（keepFunctions 参数化）；renderer `ipc-plain/`（install.ts+to-plain.ts）；preload 薄封装 | B7/B29/N3 | S |
 | **P1-1** ✅ 已完成（`__fs_conflict__:` 信号机制（upload/download/cross 三分支）+ FsTransferEngine 导出 + fs-engine.test.ts 状态机矩阵 5 测（conflict/pause/cancel/对照/下载）） | conflict 修复 | 冲突分支抛 `__fs_conflict__:` 信号，execute catch 识别置 conflict；补 FsRuntime 状态机单测（含 conflict/pause/cancel 矩阵） | A1/Q-01 | M |
-| **P1-2** | SecretsStore | 单一 SecretsStore 类：同步 cache 先行 + 写队列串行 + 失败 logger.error + 渲染层错误事件；三写入口收口 | A2/Q-02 | M |
-| **P1-3** | 更新竞态 | checkForUpdates 互斥闸门、下载单路径、catch 不覆盖 downloading | A11/Q-20 | S |
+| **P1-2** ✅ 已完成（secrets-store.ts 单一类：写队列串行 + 写前强制预载 + 快照拷贝 commit 语义 + 失败 logger.error 落盘；services 六写入口全部收口） | SecretsStore | 单一 SecretsStore 类：同步 cache 先行 + 写队列串行 + 失败 logger.error + 渲染层错误事件；三写入口收口 | A2/Q-02 | M |
+| **P1-3** ✅ 已完成（checkForUpdates 互斥闸门手动+自动共用 / updateDownload 下载单路径幂等 / error 事件不覆盖 downloading 进度） | 更新竞态 | checkForUpdates 互斥闸门、下载单路径、catch 不覆盖 downloading | A11/Q-20 | S |
 | **P1-4** | 其余健壮性 | CR-39 分片 gate 唤醒、CR-40 事件订阅统一返回退订函数、CR-41 媒体 Map 60s 自动移除、CR-45 shareHubLogs 游标分页 | A11/Q-20 | M |
 | **P1-5** | 分享硬鉴权 | share-hub 按 webContents 绑定可信 toolId，不信任渲染层参数 | A15/Q-13 | M |
 | **P1-6** | 杂项修复 | CR-23 常量（若 P0-7 未含）、editorMode/app.llm.health 双轨清（CR-36/37）、edm 现存页面守卫复核 | A10/A11 | S |

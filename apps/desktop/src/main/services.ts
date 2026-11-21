@@ -1,9 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { app } from 'electron'
+import { SecretsStore } from './secrets-store'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { app, safeStorage } from 'electron'
 import {
   ConfigService,
   DEFAULT_SETTINGS,
@@ -26,8 +25,8 @@ import { AppError, ACCESS_GRANT,
   type ToolHostCapabilities, } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
-import { logger } from './logger'
 import { recordUsage } from './usage'
+import { logger } from './logger'
 
 export interface AppServices {
   config: ConfigService
@@ -76,51 +75,14 @@ export function setupServices(): AppServices {
 
   const secretsPath = join(userData, 'secrets.bin')
 
-  let secretsCache: Record<string, string> | null = null
-  /** 启动时解密预载进内存缓存；之后同步读走缓存，写盘后即时更新（safeStorage 异步 API 迁移配套） */
-  async function loadSecrets(): Promise<Record<string, string>> {
-    if (secretsCache) return secretsCache
-    if (!existsSync(secretsPath)) { secretsCache = {}; return secretsCache }
-    try {
-      const raw = readFileSync(secretsPath)
-      if (!(await safeStorage.isAsyncEncryptionAvailable())) {
-        // 静默丢密钥会表现为「重启后配置失效」，必须把原因留在日志里
-        console.warn('[sshk] safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
-        secretsCache = {}
-        return secretsCache
-      }
-      // Electron 的 decryptStringAsync 解析为 { result, shouldReEncrypt } 对象（非 string/Buffer），
-      // 误用 plain.toString() 会得到 "[object Object]" 导致 JSON 解析失败。
-      const decrypted = await safeStorage.decryptStringAsync(raw)
-      const plain = typeof decrypted === 'string'
-        ? decrypted
-        : (decrypted as { result: string }).result
-      const parsed = JSON.parse(plain) as Record<string, string>
-      secretsCache = parsed
-      // 密钥已轮换：用当前密钥重新加密落盘，避免下次启动仍需重填
-      if ((decrypted as { shouldReEncrypt?: boolean })?.shouldReEncrypt) {
-        await saveSecrets(parsed)
-      }
-      return secretsCache
-    } catch (err) {
-      console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
-      secretsCache = {}
-      return secretsCache
-    }
-  }
+  // P1-2（A2/Q-02）：密钥读写单一收口 SecretsStore——写队列串行 + 写前强制预载 +
+  // mutate 作用于快照拷贝（落盘成功才 commit），消灭启动窗口丢密钥与并发覆盖
+  const secretsStore = new SecretsStore(secretsPath, (msg) => {
+    logger.error('secrets', `密钥保存失败：${msg}`)
+  })
 
-  /** 同步读缓存（启动预载后恒可用）；写路径必须走 saveSecrets */
-  function currentSecrets(): Record<string, string> { return secretsCache ?? {} }
-
-  async function saveSecrets(secrets: Record<string, string>): Promise<void> {
-    if (!(await safeStorage.isAsyncEncryptionAvailable())) {
-      throw new AppError('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
-    }
-    // encryptString 已弃用（Electron 45+ 警告）：改用 encryptStringAsync + 异步写盘
-    const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(secrets))
-    await writeFile(secretsPath, encrypted)
-    secretsCache = secrets
-  }
+  /** 同步读缓存（启动预载后恒可用）；写路径必须走 secretsStore.set */
+  function currentSecrets(): Record<string, string> { return secretsStore.snapshot() }
 
   /**
    * 应用级 Provider 是宿主能力，不属于任何工具：
@@ -210,10 +172,10 @@ export function setupServices(): AppServices {
     getToolSecret: (toolId, name) => currentSecrets()[toolSecretId(toolId, name)] ?? '',
     setToolSecret: (toolId, name, value) => {
       const id = toolSecretId(toolId, name)
-      const secrets = currentSecrets()
-      if (!value) delete secrets[id]
-      else secrets[id] = value
-      saveSecrets(secrets)
+      void secretsStore.set((secrets) => {
+        if (!value) delete secrets[id]
+        else secrets[id] = value
+      }).catch(() => { /* 失败已由 onError 落盘（logger.error），IPC 调用方以返回值判断 */ })
     },
     chat: async (req) => {
       const provider: LlmProvider = {
@@ -369,13 +331,13 @@ export function setupServices(): AppServices {
           delete secrets[key]
         }
       }
-      if (moved > 0) void saveSecrets(secrets)
+      if (moved > 0) void secretsStore.set((next) => { Object.assign(next, secrets) }).catch(() => { /* onError 已落盘 */ })
     } catch (err) {
       logger.error('upload', `工具改名迁移失败（不影响启动）：${(err as Error).message}`)
     }
   }
 
-  void loadSecrets().then(migrateToolRenames)
+  void secretsStore.load().then(migrateToolRenames)
 
   return {
     config,
@@ -387,26 +349,26 @@ export function setupServices(): AppServices {
     getUploadSecret: (profileId) => currentSecrets()[uploadSecretId(profileId)] ?? '',
     setUploadSecret: (profileId, value) => {
       const id = uploadSecretId(profileId)
-      const secrets = currentSecrets()
-      if (!value) delete secrets[id]
-      else secrets[id] = value
-      saveSecrets(secrets)
+      void secretsStore.set((secrets) => {
+        if (!value) delete secrets[id]
+        else secrets[id] = value
+      }).catch(() => { /* onError 已落盘 */ })
     },
-    ensureSecrets: async () => { await loadSecrets() },
+    ensureSecrets: async () => { await secretsStore.load() },
     setApiKey: (providerId, apiKey) => {
       if (!isProviderId(providerId)) throw new AppError(`非法 providerId: ${providerId}`)
-      const secrets = currentSecrets()
-      if (apiKey === '') delete secrets[providerId]
-      else secrets[providerId] = apiKey
-      saveSecrets(secrets)
+      void secretsStore.set((secrets) => {
+        if (apiKey === '') delete secrets[providerId]
+        else secrets[providerId] = apiKey
+      }).catch(() => { /* onError 已落盘 */ })
     },
     setAccessKey: (key) => {
-      const secrets = currentSecrets()
-      if (!key) delete secrets[ACCESS_KEY_SECRET_ID]
-      else secrets[ACCESS_KEY_SECRET_ID] = key
-      // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态
-      saveSecrets(secrets)
-      config.set('app.accessKeyHash', key ? sha256(key) : null)
+      // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态（P1-2：写成功后才设哈希）
+      void secretsStore.set((secrets) => {
+        if (!key) delete secrets[ACCESS_KEY_SECRET_ID]
+        else secrets[ACCESS_KEY_SECRET_ID] = key
+      }).then(() => { config.set('app.accessKeyHash', key ? sha256(key) : null) })
+        .catch(() => { /* onError 已落盘；哈希未动，渲染层拿到的失败结果与存储一致 */ })
     },
     getAccessKeyState: () => {
       const key = currentSecrets()[ACCESS_KEY_SECRET_ID] ?? ''
@@ -416,12 +378,14 @@ export function setupServices(): AppServices {
     },
     importSecretsJson: (json) => {
       const parsed = JSON.parse(json) as { providers?: { _id?: string; apiKey?: string }[] }
-      const secrets = currentSecrets()
+      const pending: [string, string][] = []
       for (const item of parsed.providers ?? []) {
         if (!item || typeof item._id !== 'string' || !isProviderId(item._id)) continue
-        if (typeof item.apiKey === 'string' && item.apiKey) secrets[item._id] = item.apiKey
+        if (typeof item.apiKey === 'string' && item.apiKey) pending.push([item._id, item.apiKey])
       }
-      saveSecrets(secrets)
+      void secretsStore.set((secrets) => {
+        for (const [id, apiKey] of pending) secrets[id] = apiKey
+      }).catch(() => { /* onError 已落盘 */ })
     },
     // app:* 前缀的工具密钥与访问密钥都不参与 provider 迁移
     exportSecretsJson: () => JSON.stringify({
