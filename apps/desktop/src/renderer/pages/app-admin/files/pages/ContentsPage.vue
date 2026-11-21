@@ -2,8 +2,9 @@
 /**
  * 内容管理列表页（plans/11）：8 列 + 行操作 + 顶部批量 + 分享(B/C) + 导出三件套 + 状态机。
  * P4-4 迁即重构：列表区接 ListPageShell/useTablePage/ListPagination/EmptyState（ui-kit 公共组件，
- * 布局 CSS 上收 theme.css .lp-*）；内容树与编辑器双壳 dialog/page 语义不动（editorMode 读写
- * tools.file-manager.editorMode 唯一键不变）。
+ * 布局 CSS 上收 theme.css .lp-*）；内容树与编辑器双壳 dialog/page 语义不动。
+ * P4-8c（C-3 · 台账#156）：editorMode 读写键一次性迁移 tools.file-manager.editorMode
+ * → app.modules.fileManager.editorMode（旧键弃用，不写运行时迁移代码）。
  * - 分享状态列：实时反查 shareHub.list()，自己(B)=primary / 公用(C)=warning + 可访问性
  * - 复制链接优先级：本行 B 票存活优先，否则回落 C 公用总链（与海报 copyPosterLink 同构，?ak= 口径）
  * - 危险操作（删除/批量删除/下线/撤回）一律 ConfirmDialog 二次确认
@@ -78,12 +79,13 @@ const tagDraft = computed({
 })
 
 /** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。
- *  配置属工具级：tools.file-manager.editorMode（工具设置页）；CR-36（P1-6）旧键 app.content.editorMode 双轨回落已清（迁移窗口已过）。 */
+ *  配置键（C-3 一次性迁移）：app.modules.fileManager.editorMode（文件管理>工具设置「内容编辑器」组）；
+ *  历史：CR-36（P1-6）清 app.content.editorMode 双轨；P4-8c 弃 tools.file-manager.editorMode（不迁移数据）。 */
 const pageMode = ref(false)
 async function loadEditorMode(): Promise<void> {
   const spec = { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取编辑器形态' } satisfies HostApiSpec
   try {
-    const mode = await callHostApi<unknown>(spec, 'tools.file-manager.editorMode')
+    const mode = await callHostApi<unknown>(spec, 'app.modules.fileManager.editorMode')
     pageMode.value = mode === 'page'
   } catch {
     pageMode.value = false

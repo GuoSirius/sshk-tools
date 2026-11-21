@@ -51,7 +51,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'A7', group: 'A', title: '密码框查看回填', guide: '点「查看」回填已保存口令；眼睛图标可切换显隐', entry: { type: 'route', target: 'file-manager' }, relates: 'N3' },
   { id: 'A8', group: 'A', title: '临时口令不落盘', guide: '改口令不保存直接测试 → 测试用临时值；「查看」仍是旧值', entry: { type: 'route', target: 'file-manager' }, relates: 'N3/N4' },
   { id: 'A9', group: 'A', title: '输入框与按钮对齐', guide: '等高、左右对齐，图标风格统一', entry: { type: 'route', target: 'file-manager' }, relates: 'N1/N2' },
-  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'file-manager' }, auto: { kind: 'catalogState', spec: 'file-manager' }, relates: 'N6' },
+  { id: 'A10', group: 'A', title: '统一列表新增下拉', guide: '可选远程/云，新增后落到同一张列表', entry: { type: 'route', target: 'file-manager' }, relates: 'N6' },
   { id: 'A11', group: 'A', title: '列表行操作', guide: '设为默认/编辑/删除；删除弹二次确认；删默认项后自动顺延第一条', entry: { type: 'route', target: 'file-manager' }, relates: 'N6' },
   { id: 'A12', group: 'A', title: '本地 profile 自动上传', guide: '本地 profile 设默认 → EDM 图片字段选图 → 自动上传 + 回填 URL；目录不存在自动创建', entry: { type: 'route', target: 'file-manager' }, relates: '4/V7' },
   { id: 'A13', group: 'A', title: '复制图片 URL', guide: '图片字段点「复制图片 URL」→ 剪贴板为刚回填的 URL', entry: { type: 'route', target: 'file-manager' }, relates: '4' },
@@ -114,7 +114,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'F/B-V2', group: 'F', title: '形态 2 页级隔离复验', guide: '「模型与调用」改字段保存 → 切「路径与输出」确认自己改动在且上页字段未被带过来 → 再切回双方均在', entry: { type: 'route', target: 'template-tool' }, relates: 'B-V2/D15/D16' },
   { id: 'F/C-V2', group: 'F', title: 'badge 四种数据源导入', guide: 'pickStats 用真实 xlsx/xls/csv/tsv/json 文件导入 → 三类解析齐备结果正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V2' },
   { id: 'F/C-V4', group: 'F', title: 'CodeEditor JSON 只读视图', guide: '海报页 JSON 视图按钮打开 → 内容与格式正确', entry: { type: 'route', target: 'badge-studio' }, relates: 'C-V4' },
-  { id: 'F/D-V3', group: 'F', title: '流式打字感核查', guide: '模型对话观察打字感；dev 日志查 chunk#n size gap；打字平滑开关默认开', entry: { type: 'route', target: 'model-console' }, relates: 'D-V3' },
+  { id: 'F/D-V3', group: 'F', title: '流式打字感核查', guide: '模型对话观察打字感；dev 日志查 chunk#n size gap；打字平滑开关默认开', entry: { type: 'route', target: 'model-manager' }, relates: 'D-V3' },
   { id: 'F/D-T2', group: 'F', title: '模型能力供工具调用', guide: 'badge/EDM 的 AI 能力均可用（badge 视觉已验；EDM AI 填充/润色走 D-Q2）', entry: { type: 'route', target: 'edm-studio' }, relates: 'D-T2/D-Q2' },
   { id: 'F/E-V1', group: 'F', title: '本地目录自检', guide: '文件管理工具自检按钮 + 本地 profile 上传回填', entry: { type: 'route', target: 'file-manager' }, relates: 'E-V1' },
   { id: 'F/E-V2', group: 'F', title: '真实 FTP/SFTP/OSS 连接', guide: '临时密钥不落盘；测试结构化不刷堆栈（N11 已修复验）', entry: { type: 'route', target: 'file-manager' }, relates: 'E-V2/N11' },
@@ -130,7 +130,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'G1', group: 'G', title: '图片库新弹框交互定稿', guide: '富文本「图片库」：继续上传/插入所选沉底与关闭同行（关闭最右）；缩略图右上角删除=垃圾桶、移除已选=✕（悬浮红色）；目录下拉首次展开即自动拉取（带 loading，不用先切源）', entry: { type: 'route', target: 'edm-studio' }, relates: 'E-T3/C2' },
   { id: 'G2', group: 'G', title: '弹框全局内缩口径', guide: '任开 2-3 个弹框（如模型控制台新增 Provider、富文本源码查看、图片库）：顶部 12px、左右 16px 单层内缩，header/body/footer 间距均匀，内容不贴灰边、footer 不与 body 出现双内缩错位', relates: 'E-T3' },
   { id: 'G3', group: 'G', title: '欢迎页卡片走查', guide: '回桌面首页：描述最少显示 3 行超出内部滚动（卡片等高不跳动）；超长工具名悬浮时往返滚动显示全名（未超长不动）；标签过多一行内横向滚动', relates: 'E-T3' },
-  { id: 'G4', group: 'G', title: '模型控制台表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-console' }, relates: 'E-T3' },
+  { id: 'G4', group: 'G', title: '模型控制台表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-manager' }, relates: 'E-T3' },
 
   // ── H 组：文件系统（X6 · plans/08 §八验收清单；只新增不改旧 id）──
   { id: 'H1', group: 'H', title: '进入工具默认文件系统页 + 通道浏览', guide: '打开「文件管理」工具默认落在「文件系统」菜单（文件管理退居第二菜单）；5 个通道均能浏览到与 oss-browser 一致的目录结构（云侧虚拟目录=公共前缀正确呈现）', entry: { type: 'route', target: 'file-manager' }, auto: { kind: 'hostCapability', spec: 'fs' }, relates: 'X6/F-5' },
@@ -221,7 +221,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'M11', group: 'M', title: 'contents 随备份 zip 进出', guide: '系统设置导出备份→zip 的 data/ 含 contents.db；清空后导入备份→文章恢复', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C10' },
   { id: 'M12', group: 'M', title: '单篇活链接 ?ak= 可达 + 删除后 404', guide: '行分享→手机/另一设备访问链接（带 ?ak=）可读到最新正文；设置口令时无 ak 返回 403；删除文章后同链接 404 不悬空', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C11/C13/H2' },
   { id: 'M13', group: 'M', title: '图片库单一实现三处共用', guide: '内容管理 / EDM / 模板工具的图片库来源与上传行为一致（同一份 @sshk/file-picker 桥接），无工具内重复实现', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 C14/S2' },
-  { id: 'M14', group: 'M', title: 'editorMode 双容器 + dev 铁律', guide: 'tools.file-manager.editorMode=dialog 用弹框壳、=page 用整页壳（工具设置页切换，2026-11-20 迁出应用设置），两壳共用 ContentEditorCore（切换只换容器）；dev 下两种模式代码路径全量可达，配置仅决定打包版默认', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 #8/S4' },
+  { id: 'M14', group: 'M', title: 'editorMode 双容器 + dev 铁律', guide: 'app.modules.fileManager.editorMode=dialog 用弹框壳、=page 用整页壳（文件管理>工具设置切换，P4-8c 键迁移），两壳共用 ContentEditorCore（切换只换容器）；dev 下两种模式代码路径全量可达，配置仅决定打包版默认', entry: { type: 'route', target: 'file-manager' }, relates: 'plans/11 #8/S4' },
   { id: 'M15', group: 'M', title: '定时发布 + 列表筛选 + 默认根目录（2026-11-19）', guide: '状态选「定时发布」仅当前以后可选时分秒；到点自动翻已发布；列表顶部搜索/时间/标签/分享/发布五重筛选；复制/移动/解压弹框默认根目录回显；分页信息中文展示', entry: { type: 'route', target: 'file-manager' }, relates: '2026-11-19 用户反馈 6 项' },
 ]
 

@@ -92,8 +92,10 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
 
 // 3a-2. verify-steps 工具 id 合法性门禁（CR-25④ · P0-7）：target 工具 id 必须在册，改名漏改即红
 {
-  // 'share' = 局域网分享预览页（share-manager 路由产物，非工具 id 但同为合法路由目标）
-  const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-console', 'file-manager', 'share-manager', 'share'])
+  // 'share' = 局域网分享预览页（分享管理路由产物，非工具 id 但同为合法路由目标）
+  // P4-8c（C-11）：file-manager/share-manager/model-manager = 应用模块 id（verify-steps 直达目标，
+  // VerifyGuidePage 映射到应用管理页）；原 model-console 工具 id 已退役
+  const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-manager', 'file-manager', 'share-manager', 'share'])
   const vsPath = join(ROOT, 'packages/shared/src/verify-steps.ts')
   if (existsSync(vsPath)) {
     const content = readFileSync(vsPath, 'utf8')

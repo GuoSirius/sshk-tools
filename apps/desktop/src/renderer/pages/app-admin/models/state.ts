@@ -1,20 +1,20 @@
 import { computed, ref, watch } from 'vue'
-import { toolConfigKey, entityId } from '@sshk/shared'
+import { entityId } from '@sshk/shared'
 import { host } from './host'
 import { createTypingSmoothener } from './typing-smoothener'
 
 /**
- * 模型控制台共享状态（模块级单例）：
- * - toolId 由壳注入（单一来源 = manifest.id → 宿主 :tool-id prop），config key 动态拼装，源码零硬编码；
+ * 模型管理模块共享状态（模块级单例，P4-8 由 model-console 工具随迁应用本体）：
+ * - 配置键固定前缀 app.modules.modelManager.*（C-3/C-11 · 台账#156）：原 tools.model-console.*
+ *   一次性迁移，不写运行时迁移代码（旧键弃用，对照见 P4-8c 提交说明）；
  * - providers/health/presets 供 Provider 页与对话页共享；
  * - 对话状态（messages 等）放这里而非组件内：菜单切换会卸载页面组件，
  *   模块单例保证「切走再切回，消息不丢」（与拆分前单文件行为一致）。
  */
-export const toolId = ref('')
 
-/** CR-25③（P0-7）：格式统一走 shared toolConfigKey，本包装只注入本工具 toolId */
+/** CR-25③ 前缀单一化：模块配置键统一自此前缀拼装（替代原 shared toolConfigKey(tools.<id>)） */
 export function configKey(key: string): string {
-  return toolConfigKey(toolId.value, key)
+  return `app.modules.modelManager.${key}`
 }
 
 export interface Provider {

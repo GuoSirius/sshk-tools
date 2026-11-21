@@ -173,10 +173,17 @@ export const DEFAULT_SETTINGS: Settings = {
     distribution: { includeTools: null },
     /** 工具元数据覆盖：app.toolOverrides.<id> = { name, description, category, icon } */
     toolOverrides: {},
-    /** 内容管理（plans/11）：编辑器容器形态，默认弹框；dev 下两种模式全量可切（AGENTS.md 开发铁律） */
-    },
+    /**
+     * 内置模块配置段（P4-8c · C-3 · 台账#156）：默认值由宿主 services.ts 经
+     * withAppModuleDefaults 并入（apps/main/modules/module-defaults.ts，应用本体不进本包）。
+     * 现有键：modules.fileManager.editorMode（内容编辑器形态，默认弹框）·
+     * modules.modelManager.{defaultProviderId,chatTimeoutMs,streamEnabled,modelPresets} ·
+     * modules.shareManager（空，服务参数在 app.shareHub.*）。
+     */
+    modules: {},
+  },
   /**
-   * 工具配置默认值不在这里硬编码：宿主启动时由
+   * 纯工具配置默认值不在这里硬编码：宿主启动时由
    * mergeToolDefaults(DEFAULT_SETTINGS, MANIFESTS) 把各工具包
    * tool.manifest.json 的 defaults 合并进来（应用不强依赖工具）。
    */

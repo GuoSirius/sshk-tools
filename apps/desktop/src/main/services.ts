@@ -25,6 +25,7 @@ import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
 import { recordUsage } from './usage'
 import { logger } from './logger'
 import { createLlmService } from './llm-service'
+import { withAppModuleDefaults } from './modules/module-defaults'
 
 export interface AppServices {
   config: ConfigService
@@ -66,7 +67,9 @@ export function setupServices(): AppServices {
   const userData = app.getPath('userData')
   const config = new ConfigService(
     defaultConfigPath(userData),
-    mergeToolDefaults(DEFAULT_SETTINGS, MANIFESTS),
+    // P4-8c（C-3）：app.modules.<moduleId>.* 模块默认值并入基线（三基础模块 manifest 已退役，
+    // 默认值随迁应用本体 modules/module-defaults.ts）；纯工具清单 defaults 照旧合并
+    mergeToolDefaults(withAppModuleDefaults(DEFAULT_SETTINGS), MANIFESTS),
   )
   const dbDir = join(userData, 'db')
   const repository = new Repository(dbDir)

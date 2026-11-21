@@ -24,12 +24,19 @@ import BadgeStylePreview from './components/BadgeStylePreview.vue'
  *
  * 配置键口径：字段 key 默认相对 tools.<toolId>；`app.` 前缀 = 应用级绝对键原样读写
  * （P4-4 文件管理「传输与分片」组 app.fs.multipart.*，主进程与图片库共用同一份）。
+ *
+ * P4-8c（C-3 · 台账#156）：三基础模块并入应用本体后 manifest 退役，其「工具设置」页改由调用方
+ * 传入页内声明分组（groups prop，键用 app.modules.* 绝对键）——引擎复用，目录裁决不再参与。
  */
 const props = defineProps<{
   toolId: string
   section?: string
   /** 兼容宿主传参：历史 tabs 由目录归一为 single */
   layout?: 'single' | 'menu' | 'tabs'
+  /** 页内声明分组（P4-8c）：传入后不再读目录 configGroups（模块页 fileconfig/modelconfig） */
+  groups?: ToolConfigGroup[]
+  /** 页脚配置路径展示（groups 内联时用，如 app.modules.fileManager） */
+  keyBase?: string
 }>()
 const { byId } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
@@ -54,8 +61,11 @@ const activePage = computed(() => (tool.value?.configPages ?? [])
   .find((page) => page.id === props.section) ?? (tool.value?.configPages[0] ?? null))
 const activePageLabel = computed(() => activePage.value?.label ?? '')
 
+/** 分组数据源：页内声明（P4-8c 模块页）优先，否则读目录 configGroups（纯工具清单驱动） */
+const declaredGroups = computed<ToolConfigGroup[]>(() => props.groups ?? tool.value?.configGroups ?? [])
+
 /** dev 下字段全量展示（AGENTS.md 铁律）；打包版隐藏 devOnly */
-const allGroups = computed(() => (tool.value?.configGroups ?? [])
+const allGroups = computed(() => declaredGroups.value
   .map((group) => ({
     ...group,
     fields: group.fields.filter((field) => !field.devOnly || isDev),
@@ -95,7 +105,7 @@ function pathFor(field: ToolConfigField): string {
 }
 /** 载入值用全量字段（含 devOnly / 其它页），切页无需重新拉取 */
 function manifestFields(): ToolConfigField[] {
-  return (tool.value?.configGroups ?? []).flatMap((group) => group.fields)
+  return declaredGroups.value.flatMap((group) => group.fields)
 }
 /** 保存 / 校验只作用于当前可见字段：形态 2 下仅保存本页，不碰其它页 */
 function currentFields(): ToolConfigField[] {
@@ -142,8 +152,9 @@ async function load(): Promise<void> {
     depValues[`${dep.toolId}.${dep.key}`] = await window.api.config.get(`tools.${dep.toolId}.${dep.key}`)
   }
 }
-// catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）
-watch(() => tool.value?.id, () => {
+// catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）；
+// 页内声明分组（P4-8c）无目录依赖，标识取固定哨兵，挂载即拉取一次
+watch(() => (props.groups ? '__inline__' : tool.value?.id), () => {
   void load().then(() => {
     dirty.value = false
     // 形态 2：section 是 page id，不是分组 id —— 定位到该页第一组
@@ -325,7 +336,7 @@ watch(() => props.section, (section) => {
         <!-- 固定保存条：不随右栏表单滚动，长表单填到底也能一键保存 -->
         <div class="split-foot">
           <span class="muted">
-            配置落盘路径：tools.{{ toolId }}.*
+            配置落盘路径：{{ props.groups ? `${props.keyBase ?? 'app.modules'}.*` : `tools.${toolId}.*` }}
             <template v-if="isMultiPage"> · 当前页「{{ activePageLabel }}」独立保存</template>
           </span>
           <div class="foot-actions">

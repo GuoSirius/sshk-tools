@@ -148,11 +148,24 @@ function settingsPageId(target: string): string {
   if (target.includes('常规')) return 'general'
   return 'system'
 }
+/**
+ * 应用模块 id → 应用管理直达路由（P4-8c · 台账#156）：三基础模块退役后不再是 /tool/<id> 工具宿主
+ * 目标（目录无此工具），verify-steps 的 route 直达改推应用管理对应默认页；纯工具照旧走 /tool/<id>。
+ */
+const APP_ADMIN_MODULE_ROUTES: Record<string, string> = {
+  'file-manager': '/app/files/files',
+  'model-manager': '/app/models/providers',
+  'share-manager': '/app/share/routes',
+}
 function goEntry(step: VerifyStep): void {
   if (!step.entry) return
   visible.value = false
   // 必须走 vue-router：手动改 location.hash 不触发 router 导航（曾因此按钮无反应）
-  if (step.entry.type === 'route') void router.push('/tool/' + step.entry.target)
+  if (step.entry.type === 'route') {
+    const moduleRoute = APP_ADMIN_MODULE_ROUTES[step.entry.target]
+    if (moduleRoute) void router.push(moduleRoute)
+    else void router.push('/tool/' + step.entry.target)
+  }
   else if (step.entry.target === 'share') void router.push('/app/share/service') // 分享服务配置在 分享管理 > 工具设置 > 服务配置
   else void router.push('/app/settings/' + settingsPageId(step.entry.target))
 }
@@ -272,7 +285,7 @@ watch(visible, (v) => {
               </el-tooltip>
               <el-tag v-if="s.requiresPackaged" size="small" type="warning">打包版</el-tag>
               <el-button v-if="s.entry" size="small" text type="primary" class="entry-btn" @click="goEntry(s)">
-                {{ s.entry.type === 'route' ? '打开工具 →' : `打开设置（${s.entry.target}）→` }}
+                {{ s.entry.type === 'route' ? (APP_ADMIN_MODULE_ROUTES[s.entry.target] ? '打开应用管理 →' : '打开工具 →') : `打开设置（${s.entry.target}）→` }}
               </el-button>
             </div>
             <div class="step-guide">{{ s.guide }}</div>

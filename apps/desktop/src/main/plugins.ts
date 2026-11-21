@@ -194,7 +194,7 @@ export function killUtilityTools(): void {
  * - 它的专属通道注册明确拒绝 handler，其它工具照常工作
  *
  * 加载策略（同 id 冲突一律源码优先）：
- * - 无 plugin.main：只消费宿主能力（如 model-console 用 llm/* IPC）
+ * - 无 plugin.main：只消费宿主能力（纯渲染工具形态；原 model-console/file-manager/share-manager 属此形态，P4-8b 已并入应用本体）
  * - 内置工具（有 MAIN_LOADERS）：一律走构建期入口，不被安装副本覆盖——dev 迭代已安装的
  *   外部包时始终消费 tools/ 源码、实时生效；沙箱/权限语义与打包版一致
  * - 已安装运行时包（readInstalled 有记录）：按 sandbox 选 utility 沙箱 或 主进程内加载
@@ -216,7 +216,7 @@ export async function loadToolPlugins(
 
   for (const tool of tools) {
     if (!tool.plugin?.main) {
-      // 无 main 入口的工具只消费宿主能力（如 model-console 用 llm/* IPC）
+      // 无 main 入口的工具只消费宿主能力（纯渲染工具；原三基础模块属此形态，P4-8b 已并入应用本体）
       status[tool.id] = { loaded: true }
       continue
     }

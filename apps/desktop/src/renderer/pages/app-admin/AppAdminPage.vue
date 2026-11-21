@@ -10,7 +10,7 @@
  *   文件管理三页（P4-4）/模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件
  *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，文件管理子树内页面经
  *   useToolId() inject）；fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage
- *   （P4-8c 起改页内声明分组，键 app.modules.*，不再依赖工具 manifest）；
+ *   （P4-8c 起页内声明分组，键 app.modules.*，不再依赖工具 manifest——P4-8b 后清单已退役）；
  * - P4-8a 三基础模块渲染层已物理搬迁至本目录 files/models/share/ 子目录（原 tools 各包 renderer 目录）：
  *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
  *   应用本体不再 import 工具代码（边界铁律 §五.1）。
@@ -39,18 +39,16 @@ import LogsPage from './share/pages/LogsPage.vue'
 import ServicePage from './share/pages/ServicePage.vue'
 import MountsPage from './share/pages/MountsPage.vue'
 import ProxiesPage from './share/pages/ProxiesPage.vue'
-import { toolId as modelManagerToolId } from './models/state'
+import { FILE_CONFIG_GROUPS, MODEL_CONFIG_GROUPS } from './module-config-groups'
 
 defineOptions({ name: 'AppAdminPage' })
 
 const emit = defineEmits<{ 'create-tool': [] }>()
 
 // 工具 id 注入上收本壳（P4-4，#129 铁律）：文件管理三页（FileExplorer/Contents/Profiles）经
-// useToolId() inject 读取；壳内直引的其余模块页不用 useToolId（模型走 state.toolId、分享页无注入需求）。
+// useToolId() inject 读取（模块 id = file-manager，P4-8c 后仍为本模块命名空间）；壳内直引的
+// 其余模块页不用 useToolId（模型配置键固定前缀 app.modules.modelManager、分享页无注入需求）。
 provideToolId('file-manager')
-
-// 模块 id 与 C-11 敲板一致（原 model-console 工具 id 存量沿用，P4-8 改 model-manager 时同批迁移）
-modelManagerToolId.value = 'model-console'
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
 const APP_MENUS: ToolMenu[] = [
@@ -226,14 +224,14 @@ function goBackDesktop(): void {
             <span class="muted" style="margin-left: 12px">{{ activeMeta.description }}</span>
           </div>
           <div class="admin-module-body">
-            <!-- 工具设置页：宿主 ToolSettingsPage（manifest configGroups 驱动；layout=single 与工具宿主一致）。
-                 P4-5 敲板（三轮复核）：模型「工具配置」（网关偏好）恢复独立页，不并入模型配置页 -->
+            <!-- 工具设置页（P4-8c 页内声明分组，C-3 键 app.modules.*；manifest 已随 P4-8b 退役）：
+                 fileconfig=「内容编辑器」+「传输与分片」，modelconfig=「网关偏好」（三轮复核独立页） -->
             <ToolSettingsPage
               v-if="activePage === 'fileconfig'"
               :key="'fileconfig'"
               tool-id="file-manager"
-              section="config"
-              layout="single"
+              :groups="FILE_CONFIG_GROUPS"
+              key-base="app.modules.fileManager"
             />
             <!-- 文件管理三页直引（P4-4 迁即重构；provideToolId 已在本壳显式注入） -->
             <FileExplorerPage v-else-if="activePage === 'files'" :key="'files'" />
@@ -246,9 +244,9 @@ function goBackDesktop(): void {
             <ToolSettingsPage
               v-else-if="activePage === 'modelconfig'"
               :key="'modelconfig'"
-              tool-id="model-console"
-              section="config"
-              layout="single"
+              tool-id="model-manager"
+              :groups="MODEL_CONFIG_GROUPS"
+              key-base="app.modules.modelManager"
             />
             <!-- 分享管理五页直引（P4-6 迁即重构；service 即收编 ShareTab 后的唯一分享服务页） -->
             <RoutesPage v-else-if="activePage === 'routes'" />
