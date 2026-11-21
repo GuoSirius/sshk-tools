@@ -17,6 +17,7 @@ import ToolIcon from './components/ToolIcon.vue'
 import AppHeader from './components/AppHeader.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
+import AppAdminPage from './pages/app-admin/AppAdminPage.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
 import VerifyGuidePage from './components/VerifyGuidePage.vue'
@@ -27,6 +28,8 @@ const { visibleTools: catalogTools, byId, accept: acceptCatalog, refresh: refres
 const route = useRoute()
 const router = useRouter()
 const activeToolId = computed(() => (route.params.toolId as string | undefined) ?? null)
+// 应用管理路由（P4-2）：/app/:module/:page? 独立于桌面与工具宿主的第三容器
+const isAdminRoute = computed(() => route.path === '/app' || route.path.startsWith('/app/'))
 const activeMenu = computed(() => {
   const menu = route.params.menu as string | undefined
   if (menu) return menu
@@ -359,7 +362,11 @@ onMounted(async () => {
       </aside>
 
       <main class="tool-content">
-        <template v-if="!currentTool">
+        <!-- 应用管理（P4-2）：左菜单 + 右内容区，create-tool 事件回抛壳层向导 -->
+        <template v-if="isAdminRoute">
+          <AppAdminPage @create-tool="createToolOpen = true" />
+        </template>
+        <template v-else-if="!currentTool">
           <div class="tool-page-head">
             <el-input v-model="query" placeholder="搜索工具" clearable style="max-width: 280px" />
             <span class="muted" style="margin-left: 12px">共 {{ visibleTools.length }} 个工具 · 可见性由应用设置统一管理</span>
