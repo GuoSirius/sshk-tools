@@ -770,8 +770,12 @@ export class FsTransferEngine {
 
   private releaseMultipartSlot(t: FsTransferTask): void {
     if (this.multipartGate.delete(t.id)) {
-      const next = this.multipartWaiters.shift()
-      if (next) next()
+      // CR-39（P1-4）：唤醒全部等待者——被唤醒者各自重查闸门/取消状态，抢不到的重新入队。
+      // 原实现只 shift 一个：若被唤醒者已暂停/取消（静默让位不占槽），这次唤醒被浪费，
+      // 队首之后的 waiter 全部滞留（有空槽却无人前进）。
+      const waiters = [...this.multipartWaiters]
+      this.multipartWaiters.length = 0
+      for (const w of waiters) w()
     }
   }
 
@@ -849,6 +853,17 @@ export class FsTransferEngine {
           this.sample(t, transferred)
         }
       })()))
+      // CR-39（P1-4）：暂停/取消落在两次采样之间的静默 return 路径——收尾时补一次终判，
+      // 否则「分片不完整」把本应 paused/canceled 的任务错记为 failed
+      if (this.pauseRequestedIds.has(t.id)) {
+        this.pauseRequestedIds.delete(t.id)
+        throw new AppError(`__fs_paused__:${t.id}`)
+      }
+      if (this.canceled.has(t.id)) {
+        this.canceled.delete(t.id)
+        await this.cleanupResumeArtifacts(t.id)
+        throw new AppError(`__fs_canceled__:${t.id}`)
+      }
       if (failures.length) throw failures[0]!
       if (done.size !== total) throw new AppError(`分片不完整（${done.size}/${total}），任务中止（检查点已保留，可重试续传）`)
       await mp.complete(remotePath, cp.uploadId, cp.parts.map((p) => ({ partNumber: p.partNumber, etag: p.etag })))

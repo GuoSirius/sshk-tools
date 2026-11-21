@@ -318,8 +318,9 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
     const total = await repo.count('shareLogs', query)
     const limit = Math.min(Math.max(Number(q?.limit) || 200, 1), 1000)
     const offset = Math.max(Number(q?.offset) || 0, 0)
-    const docs = await repo.list<ShareLogDoc>('shareLogs', query, { at: -1 })
-    const rows: ShareAccessLog[] = docs.slice(offset, offset + limit).map((d) => ({ id: d.id, at: d.at, ip: d.ip, path: d.path, status: d.status, routeId: d.routeId }))
+    // CR-45（P1-4）：skip/limit 下推 NeDB，翻页不再全表扫描 + 内存 slice
+    const docs = await repo.list<ShareLogDoc>('shareLogs', query, { at: -1 }, { skip: offset, limit })
+    const rows: ShareAccessLog[] = docs.map((d) => ({ id: d.id, at: d.at, ip: d.ip, path: d.path, status: d.status, routeId: d.routeId }))
     return { rows, total }
   })
 

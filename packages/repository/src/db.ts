@@ -87,8 +87,13 @@ export class Repository {
     name: StorageCollection,
     query: AnyDoc = {},
     sort: Record<string, 1 | -1> = { updatedAt: -1 },
+    /** CR-45（P1-4）：DB 级分页——大数据集翻页不再全表拉回内存 slice */
+    paging?: { skip?: number; limit?: number },
   ): Promise<T[]> {
-    const docs = await this.store(name).findAsync(query).sort(sort).execAsync()
+    let cursor = this.store(name).findAsync(query).sort(sort)
+    if (paging?.skip != null && paging.skip > 0) cursor = cursor.skip(paging.skip)
+    if (paging?.limit != null && paging.limit > 0) cursor = cursor.limit(paging.limit)
+    const docs = await cursor.execAsync()
     return docs as unknown as T[]
   }
 

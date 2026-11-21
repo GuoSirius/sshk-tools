@@ -10,6 +10,8 @@
  */
 
 export interface MediaDownloadState {
+  /** 终态落定时间（CR-41：TTL 回收依据） */
+  finishedAt?: number
   /** 临时文件绝对路径（与 readMedia 返回的 localres URL 对应） */
   key: string
   /** 预期总字节（stat.size） */
@@ -26,6 +28,18 @@ type Listener = (states: MediaDownloadState[]) => void
 
 const downloads = new Map<string, MediaDownloadState>()
 const listeners = new Set<Listener>()
+
+// CR-41（P1-4）：终态会话 60s 后自动移除——此前 finish 只置 done 从不回收，
+// Map 与 listeners 无界增长（长听歌/长视频会话累积泄漏）。30s 扫一次。
+const MEDIA_TTL_MS = 60_000
+setInterval(() => {
+  const cutoff = Date.now() - MEDIA_TTL_MS
+  let removed = false
+  for (const [key, st] of downloads) {
+    if (st.done && (st.finishedAt ?? 0) < cutoff) { downloads.delete(key); removed = true }
+  }
+  if (removed) emit()
+}, 30_000).unref?.()
 
 function emit(): void {
   if (!listeners.size) return
@@ -56,6 +70,7 @@ export function finishMediaDownload(key: string, error?: string): void {
   const st = downloads.get(key)
   if (!st) return
   st.done = true
+  st.finishedAt = Date.now()
   if (error) st.error = error
   else st.uploaded = st.total
   emit()
