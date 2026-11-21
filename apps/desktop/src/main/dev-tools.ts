@@ -13,8 +13,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { dirname, join } from 'node:path'
 import { AppError, IPC_CHANNELS } from '@sshk/shared'
 import { handleOk } from './ipc-wrap'
-import { buildSkeletonFiles } from '@sshk/shared'
-import type { CreateToolRequest, ToolDescriptor } from '@sshk/shared'
+import { buildSkeletonFiles, type CreateToolRequest } from '../../../../scripts/tool-skeleton/index'
+import type { ToolDescriptor } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/

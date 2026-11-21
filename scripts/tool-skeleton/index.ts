@@ -3,9 +3,8 @@
  * 磁盘写入由 dev-tools.ts 的 devToolCreate handler 完成（guard 源码仓库 + 目录冲突检查 + mkdir）。
  * 抽成纯函数便于单测，也保证「向导表单 → 骨架文件」逻辑只有一份。
  */
-import { TOOL_PACKAGE_SCHEMA_VERSION } from './trust'
-import { HOST_API_VERSION } from './trust'
-import type { ToolConfigFieldType, ToolConfigGroup, ToolConfigPage } from './types'
+import { HOST_API_VERSION, TOOL_PACKAGE_SCHEMA_VERSION } from '@sshk/shared'
+import type { ToolConfigFieldType, ToolConfigGroup, ToolConfigPage } from '@sshk/shared'
 
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/
 const MENU_ID_RE = /^[a-z][a-z0-9-]{0,31}$/

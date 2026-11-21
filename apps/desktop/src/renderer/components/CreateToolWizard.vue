@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { buildSkeletonFiles, pascalCase } from '@sshk/shared'
+import { buildSkeletonFiles, pascalCase } from '../../../../../scripts/tool-skeleton/index'
 import { useToolCatalog } from '../composables/useToolCatalog'
 import BasicInfoSection from './tool-form/BasicInfoSection.vue'
 import MenusSection from './tool-form/MenusSection.vue'
@@ -13,7 +13,7 @@ import { parseOptions } from './tool-form/types'
 /**
  * N16 创建工具向导（仅 dev 可见，入口：顶栏「更多」下拉 + 工具与权限页按钮）：
  * 分步表单（tool-form/ 共享组件，与清单编辑器同源）→ 提交主进程 dev:toolCreate 生成 tools/<id>/ 整套骨架。
- * 右侧实时 JSON 预览与主进程落盘共用 @sshk/shared 的 buildSkeletonFiles——所见即所得，无第二套逻辑。
+ * 右侧实时 JSON 预览与主进程落盘共用 scripts/tool-skeleton 的 buildSkeletonFiles——所见即所得，无第二套逻辑。
  */
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; created: [unknown] }>()

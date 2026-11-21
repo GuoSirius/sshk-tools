@@ -31,6 +31,9 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
       'apps/*/src/**/*.test.ts',
+      // P5-1（C-5）：tool-skeleton 迁 scripts/ 后测试随迁；backup-smoke 专属 smoke 配置仍排除在 verify 外
+      'scripts/**/*.test.ts',
     ],
+    exclude: ['scripts/backup-smoke.test.ts'],
   },
 })
