@@ -3,21 +3,10 @@
  * 不再有 SSHK_TOOLS_ALLOW_SECRET_MIGRATION 开关（见 main/index.ts:317）。此处不定义任何相关常量。
  */
 export const DEFAULT_THEME_MODE = 'dark'
+/** Badge 徽标属性 / 点击字段 / 海报宽度默认值（CR-23 A案：badge-studio 硬编码孪生全部改引此处） */
 export const DEFAULT_BADGE_ATTR = 'data-edm-badge'
 export const DEFAULT_CLICKS_FIELD = 'clicks'
 export const DEFAULT_POSTER_WIDTH = 680
-export const DEFAULT_CAPTURE_SEGMENT_HEIGHT = 4000
-
-export const ID_PREFIX = {
-  brand: 'brd',
-  template: 'tpl',
-  templateVersion: 'tplv',
-  fragment: 'frg',
-  fragmentVersion: 'frgv',
-  mail: 'mail',
-  poster: 'pst',
-  provider: 'prv',
-} as const
 
 export const TOOL_IDS = {
   edmStudio: 'edm-studio',
@@ -28,18 +17,13 @@ export const TOOL_IDS = {
   fileManager: 'file-manager',
 } as const
 
-export const CONFIG_NAMESPACE = {
-  app: 'app',
-  tools: 'tools',
-} as const
-
-/** 产物目录下应用自有的子目录（迁移时只处理这些，绝不递归删用户目录本身） */
-export const OUTPUT_SUBDIRS = {
-  outputs: 'outputs',
-  assets: 'assets',
-  manifest: '.storage-manifest.json',
-  staging: '.migrating',
-} as const
+/**
+ * 工具配置键统一拼接（CR-25③ · P0-7）：`tools.<toolId>.<key>`。
+ * 此前 badge-studio / model-console 各自重复实现同名 configKey()，格式漂移无门禁。
+ */
+export function toolConfigKey(toolId: string, key: string): string {
+  return `tools.${toolId}.${key}`
+}
 
 /** 三阶段邮件产物文件名（覆盖式，固定路径） */
 export const EDM_OUTPUT_FILES = {

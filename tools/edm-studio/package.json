@@ -33,7 +33,6 @@
     "vue": "latest"
   },
   "devDependencies": {
-    "@types/js-yaml": "latest",
     "@types/nunjucks": "latest",
     "typescript": "6",
     "vitest": "latest"

@@ -14,6 +14,15 @@ let jsonCount = 0
 let jsCount = 0
 let srcCount = 0
 
+function compareSemver(a, b) {
+  const pa = a.split(/[.-]/).map((x) => Number.isFinite(Number(x)) ? Number(x) : x)
+  const pb = b.split(/[.-]/).map((x) => Number.isFinite(Number(x)) ? Number(x) : x)
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0)
+  }
+  return String(pa[3] ?? '').localeCompare(String(pb[3] ?? ''))
+}
+
 function walk(dir, acc = []) {
   if (!existsSync(dir)) return acc
   for (const name of readdirSync(dir)) {
@@ -60,6 +69,59 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
     if (content.includes(forbidden)) {
       errors.push(`时间规范违规 ${rel}: 禁止 ${forbidden}，请使用 @sshk/shared 的 time.ts（数字千分位用 Intl.NumberFormat）`)
     }
+  }
+}
+
+// 3a-1. 产物文件名字面量禁令（CR-23 A案 · P0-7）：文件名契约唯一真相源 = shared/constants.ts
+{
+  const literals = [
+    /(['"])assembled\.html/, /(['"])inlined\.html/, /(['"])final\.html/,
+    /(['"])badged\.html/, /(['"])poster\.png/,
+  ]
+  for (const file of all.filter((f) => /\.(ts|tsx|vue)$/.test(f))) {
+    const rel = relative(ROOT, file)
+    if (!['apps', 'packages', 'tools'].includes(rel.split(sep)[0])) continue
+    if (rel.includes('constants.ts')) continue
+    if (rel.endsWith('.test.ts') || rel.endsWith('.test.vue')) continue
+    const content = readFileSync(file, 'utf8')
+    for (const re of literals) {
+      if (re.test(content)) errors.push(`产物文件名字面量违规 ${rel}: 命中 ${re} —— 请 import @sshk/shared 的 EDM_OUTPUT_FILES / POSTER_OUTPUT_FILES`)
+    }
+  }
+}
+
+// 3a-2. verify-steps 工具 id 合法性门禁（CR-25④ · P0-7）：target 工具 id 必须在册，改名漏改即红
+{
+  // 'share' = 局域网分享预览页（share-manager 路由产物，非工具 id 但同为合法路由目标）
+  const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-console', 'file-manager', 'share-manager', 'share'])
+  const vsPath = join(ROOT, 'packages/shared/src/verify-steps.ts')
+  if (existsSync(vsPath)) {
+    const content = readFileSync(vsPath, 'utf8')
+    for (const m of content.matchAll(/target: '([^']+)'/g)) {
+      const t = m[1]
+      // type: 'settings' 的 target 是设置抽屉分组名（常规/系统与数据/工具与权限），route 的 target 是工具 id
+      const settingsNames = new Set(['常规', '系统与数据', '工具与权限', '分享服务', '关于应用', '常规设置'])
+      if (!KNOWN.has(t) && !settingsNames.has(t) && !t.startsWith('app.') && !t.startsWith('tools.')) {
+        errors.push(`verify-steps target 违规：'${t}' 不是在册工具 id 也非设置键（KNOWN 白名单见 verify-structure.mjs）`)
+      }
+    }
+  }
+}
+
+// 3a-3. CHANGELOG 结构校验（P0-7）：release 流程产物结构守门，AI 手写/顺序破坏即红
+{
+  const clPath = join(ROOT, 'CHANGELOG.md')
+  if (existsSync(clPath)) {
+    const cl = readFileSync(clPath, 'utf8')
+    const lines = cl.split('\n')
+    if (!/^# Changelog/.test(lines[0] ?? '')) errors.push('CHANGELOG.md 首行必须是 "# Changelog"（release 流程产物结构）')
+    const versions = [...cl.matchAll(/^## \[(\d+\.\d+\.\d+[^\]]*)\]/gm)].map((m) => m[1])
+    for (let i = 1; i < versions.length; i++) {
+      const cmp = compareSemver(versions[i], versions[i - 1])
+      if (cmp >= 0) errors.push(`CHANGELOG.md 版本顺序违规：${versions[i]} 应早于（小于）${versions[i - 1]}`)
+    }
+    const dup = versions.find((v, i) => versions.indexOf(v) !== i)
+    if (dup) errors.push(`CHANGELOG.md 重复版本段：${dup}`)
   }
 }
 

@@ -4,7 +4,7 @@ import { snapdom } from '@zumer/snapdom'
 import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, sanitizeMetricKey, toStatRows } from '@sshk/badge-studio'
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo, ShareRouteInfo } from '@sshk/shared'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, format, toFileName } from '@sshk/shared'
+import { DEFAULT_BADGE_ATTR, DEFAULT_CLICKS_FIELD, DEFAULT_POSTER_WIDTH, IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, format, toFileName, toolConfigKey } from '@sshk/shared'
 import { callHostApi, readShareTicket, type HostApiSpec } from '@sshk/ui-kit'
 import { host } from './host'
 
@@ -16,8 +16,9 @@ import { host } from './host'
  */
 export const toolId = ref('')
 
+/** CR-25③（P0-7）：格式统一走 shared toolConfigKey，本包装只注入本工具 toolId */
 export function configKey(key: string): string {
-  return `tools.${toolId.value}.${key}`
+  return toolConfigKey(toolId.value, key)
 }
 
 export interface RecentHtml {
@@ -27,7 +28,7 @@ export interface RecentHtml {
 }
 
 // ── 角标 / URL 归一 / 海报尺寸：全部来自工具配置，生成页不写死 ──
-export const badgeAttr = ref('data-edm-badge')
+export const badgeAttr = ref(DEFAULT_BADGE_ATTR)
 export const badgeStyle = reactive({ background: '#e60012', color: '#fff', size: 18, offsetY: 0, offsetX: 0 })
 /** 角标样式覆盖（工具配置 → 角标样式覆盖）：common 公共 + 九位置单独，留空 = 内置默认 */
 export const badgeStyleCss = reactive({
@@ -43,10 +44,10 @@ export const badgePositionOptions = [
   { label: '左下', value: 'bottom-left' }, { label: '下中', value: 'bottom-center' }, { label: '右下', value: 'bottom-right' },
 ]
 export const urlNorm = reactive({ stripUtm: true, stripHash: true, stripTrailingSlash: true, sortQuery: true, lowercaseHost: true })
-export const posterWidth = ref(680)
+export const posterWidth = ref(DEFAULT_POSTER_WIDTH)
 export const captureScale = ref(2)
 /** 角标取值列：可填 clicks / totalClicks / 任意自定义数值列名 */
-export const clicksField = ref('clicks')
+export const clicksField = ref(DEFAULT_CLICKS_FIELD)
 
 // ── HTML 输入：选择文件 / 粘贴源码（二选一）；最近使用是持久化在本机配置里的历史记录 ──
 export const htmlPath = ref('')
@@ -129,8 +130,8 @@ async function textConfig(key: string, fallback: string): Promise<string> {
 }
 
 export async function loadConfigAndRecent(): Promise<void> {
-  badgeAttr.value = await textConfig('badgeAttr', 'data-edm-badge')
-  clicksField.value = await textConfig('clicksField', 'clicks')
+  badgeAttr.value = await textConfig('badgeAttr', DEFAULT_BADGE_ATTR)
+  clicksField.value = await textConfig('clicksField', DEFAULT_CLICKS_FIELD)
   const savedStyle = (await host.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
   // 2026-11-16 定位改造一次性迁移：旧出厂偏移 (-9,-11) 是 margin 语义的外飘值，
@@ -152,7 +153,7 @@ export async function loadConfigAndRecent(): Promise<void> {
   badgePositionImage.value = await textConfig('badgePositionImage', 'center')
   const savedNorm = (await host.config.get(configKey('urlNorm'))) as Partial<typeof urlNorm> | null
   if (savedNorm && typeof savedNorm === 'object') Object.assign(urlNorm, savedNorm)
-  posterWidth.value = Number(await host.config.get(configKey('posterWidth'))) || 680
+  posterWidth.value = Number(await host.config.get(configKey('posterWidth'))) || DEFAULT_POSTER_WIDTH
   captureScale.value = Number(await host.config.get(configKey('scale'))) || 2
   const recent = (await host.config.get(configKey('recentHtmls'))) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
@@ -372,7 +373,7 @@ export function removeMetric(key: string): void {
     const { [key]: _, ...rest } = row.metrics
     row.metrics = Object.keys(rest).length ? rest : undefined
   }
-  if (clicksField.value === key) clicksField.value = 'clicks'
+  if (clicksField.value === key) clicksField.value = DEFAULT_CLICKS_FIELD
   syncCsvFromRows()
 }
 export function metricOf(row: StatRow, key: string): number {

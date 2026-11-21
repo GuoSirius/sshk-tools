@@ -3,7 +3,7 @@ import { zipSync, type Zippable } from 'fflate'
 import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { app } from 'electron'
-import { AppError, IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
+import { DEFAULT_BADGE_ATTR, DEFAULT_CLICKS_FIELD, DEFAULT_POSTER_WIDTH, AppError, IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
   posterOutputRel,
@@ -414,9 +414,9 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       source: { type: 'upload', htmlPath: '' },
       datasources: [],
       configSnapshot: {
-        badgeAttr: payload.configSnapshot?.badgeAttr ?? 'data-edm-badge',
-        clicksField: payload.configSnapshot?.clicksField ?? 'clicks',
-        posterWidth: payload.configSnapshot?.posterWidth ?? 680,
+        badgeAttr: payload.configSnapshot?.badgeAttr ?? DEFAULT_BADGE_ATTR,
+        clicksField: payload.configSnapshot?.clicksField ?? DEFAULT_CLICKS_FIELD,
+        posterWidth: payload.configSnapshot?.posterWidth ?? DEFAULT_POSTER_WIDTH,
         scale: payload.configSnapshot?.scale ?? 2,
         badgePositionText: payload.configSnapshot?.badgePositionText,
         badgePositionImage: payload.configSnapshot?.badgePositionImage,

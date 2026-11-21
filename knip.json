@@ -1,0 +1,52 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "exclude": [
+    "exports",
+    "types",
+    "nsExports",
+    "nsTypes"
+  ],
+  "ignoreBinaries": [
+    "net"
+  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.mjs"
+      ],
+      "ignore": [
+        "examples/**"
+      ],
+      "ignoreDependencies": [
+        "@commitlint/cli",
+        "vue-tsc",
+        "electron"
+      ]
+    },
+    "apps/desktop": {
+      "ignore": [
+        "src/renderer/**"
+      ],
+      "ignoreDependencies": [
+        "@sshk/badge-studio",
+        "@sshk/edm-studio",
+        "@sshk/model-console",
+        "dayjs",
+        "electron-builder"
+      ]
+    },
+    "packages/shared": {
+      "entry": [
+        "src/preload-shared.ts"
+      ]
+    },
+    "tools/*": {
+      "ignore": [
+        "src/renderer/**"
+      ],
+      "ignoreDependencies": [
+        "electron"
+      ]
+    }
+  }
+}

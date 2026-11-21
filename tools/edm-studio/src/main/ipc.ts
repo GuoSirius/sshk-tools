@@ -4,7 +4,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
 import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { AppError, IPC_CHANNELS, TOOL_IDS, now, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
+import { AppError, EDM_OUTPUT_FILES, IPC_CHANNELS, TOOL_IDS, now, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
 import { seedSystemContent, seedCustomContent, versionNumberOf } from './edm-seed.js'
 import {
@@ -485,9 +485,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const enc = (s: string): Uint8Array => new TextEncoder().encode(s)
         const files: Record<string, Uint8Array> = {}
         for (const it of items) {
-          if (it.assembled) files[`${safe(it.name)}.assembled.html`] = enc(it.assembled)
-          if (it.inlined) files[`${safe(it.name)}.inlined.html`] = enc(it.inlined)
-          if (it.final) files[`${safe(it.name)}.final.html`] = enc(it.final)
+          if (it.assembled) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.assembled}`] = enc(it.assembled)
+          if (it.inlined) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.inlined}`] = enc(it.inlined)
+          if (it.final) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.final}`] = enc(it.final)
         }
         await fs.writeFile(outPath, zipSync(files, { level: 6 }))
         return { count: items.length, outPath }

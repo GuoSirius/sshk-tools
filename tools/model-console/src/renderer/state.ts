@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import { entityId } from '@sshk/shared'
+import { toolConfigKey, entityId } from '@sshk/shared'
 import { host } from './host'
 import { createTypingSmoothener } from './typing-smoothener'
 
@@ -12,8 +12,9 @@ import { createTypingSmoothener } from './typing-smoothener'
  */
 export const toolId = ref('')
 
+/** CR-25③（P0-7）：格式统一走 shared toolConfigKey，本包装只注入本工具 toolId */
 export function configKey(key: string): string {
-  return `tools.${toolId.value}.${key}`
+  return toolConfigKey(toolId.value, key)
 }
 
 export interface Provider {

@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "latest",
-    "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "dompurify": "latest",

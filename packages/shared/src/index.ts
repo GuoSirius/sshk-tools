@@ -2,6 +2,8 @@ export * from './time'
 export * from './id'
 /** dev 判据唯一真相源（SSHK_DEV，P0-1 · D55） */
 export * from './dev-flag'
+/** H3 前端日志上报唯一口径（CR-25② · P0-7） */
+export * from './front-log'
 /** 构建期烤入 env + 覆盖白名单（getEnv 统一取值入口） */
 export * from './baked-env'
 export * from './constants'

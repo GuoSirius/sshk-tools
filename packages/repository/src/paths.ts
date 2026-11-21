@@ -1,3 +1,4 @@
+import { EDM_OUTPUT_FILES, POSTER_OUTPUT_FILES } from '@sshk/shared'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -97,10 +98,10 @@ export function readOutput(root: string, rel: string): string {
 
 /** 邮件产物固定路径（覆盖式，无时间戳） */
 export function edmOutputRel(mailId: string, stage: 'assembled' | 'inlined' | 'final'): string {
-  return `outputs/edm/${mailId}/${stage}.html`
+  return `outputs/edm/${mailId}/${EDM_OUTPUT_FILES[stage]}`
 }
 
 /** 海报产物固定路径 */
 export function posterOutputRel(posterId: string, kind: 'badged' | 'poster'): string {
-  return `outputs/poster/${posterId}/${kind === 'badged' ? 'badged.html' : 'poster.png'}`
+  return `outputs/poster/${posterId}/${kind === 'badged' ? POSTER_OUTPUT_FILES.badged : POSTER_OUTPUT_FILES.poster}`
 }

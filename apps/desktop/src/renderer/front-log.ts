@@ -1,19 +1,15 @@
 import type { App } from 'vue'
+import { createLogFront, type FrontLogLevel } from '@sshk/shared'
 
 /**
  * H3 渲染层日志捕获（plans/04 §一）：
  * - Vue errorHandler / window.onerror / unhandledrejection 三处兜底捕获 → 主进程落盘
  * - console.error 镜像转发（保留原终端输出）
- * - logFront 供页面/工具主动上报（ui-kit 另有工具版）
+ * - logFront 供页面主动上报（实现唯一口径在 shared/createLogFront，CR-25② · P0-7）
  * 红线：日志绝不写密钥明文（主进程侧还有一道脱敏）；本模块任何失败都静默。
  */
-export type FrontLogLevel = 'debug' | 'info' | 'warn' | 'error'
-
-export function logFront(level: FrontLogLevel, msg: string, detail?: unknown): void {
-  try {
-    window.api?.logs?.logFront({ level, scope: 'renderer', msg, detail })
-  } catch { /* 日志永不反向影响业务 */ }
-}
+export type { FrontLogLevel }
+export const logFront = createLogFront('renderer')
 
 function safeText(value: unknown): string {
   if (typeof value === 'string') return value

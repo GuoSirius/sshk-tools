@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, TimeText, ShareDialog, useToolId } from '@sshk/ui-kit'
-import { inMsRange, toFileName } from '@sshk/shared'
+import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
 import { api, confirmRemove, osApi, type MailRow } from '../shared'
 import MailEditor from '../MailEditor.vue'
@@ -115,7 +115,7 @@ async function duplicateMail(row: MailRow): Promise<void> {
 }
 
 async function openOutput(row: MailRow): Promise<void> {
-  if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/final.html`)
+  if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/${EDM_OUTPUT_FILES.final}`)
 }
 
 // ── 导出（单封 .html(final) / 批量 .zip 含各形态 html） ──

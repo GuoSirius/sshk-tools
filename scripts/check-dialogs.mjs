@@ -27,6 +27,7 @@ function walk(dir, acc = []) {
 const files = ['apps', 'tools', 'packages'].flatMap((d) => walk(join(ROOT, d)))
 const errors = []
 let dialogCount = 0
+let messageBoxCount = 0
 
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
@@ -41,6 +42,20 @@ for (const file of files) {
     }
     if (!/close-on-press-escape="false"/.test(tag)) {
       errors.push(`${where} <${kind}> 未禁用 ESC 关闭`)
+    }
+  }
+  // Q-21（P0-7 补强）：ElMessageBox.confirm 同守两禁——简单确认走 MessageBox，漏配禁遮罩/ESC 会误触取消
+  for (const match of text.matchAll(/ElMessageBox\.confirm\s*\(/g)) {
+    messageBoxCount += 1
+    const line = text.slice(0, match.index).split('\n').length
+    const where = `${relative(ROOT, file)}:${line}`
+    // 抓取调用后 600 字符窗口（足以覆盖 options 对象；跨行 options 也在其中）
+    const window = text.slice(match.index, match.index + 600)
+    if (!/closeOnClickModal\s*:\s*false/.test(window)) {
+      errors.push(`${where} ElMessageBox.confirm 未配 closeOnClickModal: false`)
+    }
+    if (!/closeOnPressEscape\s*:\s*false/.test(window)) {
+      errors.push(`${where} ElMessageBox.confirm 未配 closeOnPressEscape: false`)
     }
   }
 }
@@ -71,6 +86,7 @@ function matchOpeningTags(text) {
 console.log('弹框行为检查（禁遮罩 / 禁 ESC，主动按钮或成功动作才关闭）')
 console.log(`  扫描 .vue 文件   : ${files.length}`)
 console.log(`  检查弹框         : ${dialogCount}`)
+console.log(`  ElMessageBox.confirm : ${messageBoxCount}（Q-21 补强：选项守门）`)
 if (errors.length) {
   console.error('\n发现违规：')
   for (const e of errors) console.error(`  ${e}`)

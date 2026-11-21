@@ -12,8 +12,7 @@
   },
   "dependencies": {
     "@sshk/shared": "workspace:*",
-    "@seald-io/nedb": "latest",
-    "ulid": "latest"
+    "@seald-io/nedb": "latest"
   },
   "devDependencies": {
     "typescript": "6",
