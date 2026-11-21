@@ -169,7 +169,7 @@ async function openShare(): Promise<void> {
   finally { shareDialog.loading = false }
 }
 
-// ── 操作列（TableOpsColumn：≤3 内联 + 更多▾；语义配色 §2.5）──
+// ── 操作列（TableOpsColumn：≤3 内联 + 更多下拉；语义配色 §2.5）──
 // 行内「生成」的 per-row loading 态以 disabled 兜底（TableOpsColumn 无 per-row loading；
 // 生成期间禁用全部行生成按钮防并发，完成即恢复）。
 const ops = computed(() => [

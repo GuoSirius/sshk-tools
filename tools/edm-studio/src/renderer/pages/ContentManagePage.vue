@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
-import { EmptyState, useToolId } from '@sshk/ui-kit'
+import { EmptyState, FormHint, useToolId } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../SampleForm.vue'
 import FieldSchemaDesigner from '../FieldSchemaDesigner.vue'
@@ -1229,7 +1229,7 @@ async function confirmSaveAs(): Promise<void> {
             </el-tabs>
             <template v-if="activeTab">
               <div class="editor-toolbar">
-                <span class="hint">外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</span>
+                <FormHint inline>外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</FormHint>
                 <el-button size="small" type="primary" class="push-right" @click="saveCss(activeTab!)">保存</el-button>
                 <el-button size="small" type="success" plain :disabled="!cssTabs.some((x) => x.dirty)" @click="saveAllCss">保存全部</el-button>
               </div>
@@ -1290,7 +1290,7 @@ async function confirmSaveAs(): Promise<void> {
               </el-radio-group>
               <el-tag v-if="sampleMode !== 'design' && !sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
               <el-tag v-else-if="sampleMode === 'design' && !sampleSchema.length" size="small" type="warning">尚无字段，点「新增字段」开始设计</el-tag>
-              <span v-if="sampleMode === 'design'" class="hint">拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</span>
+              <FormHint v-if="sampleMode === 'design'" inline>拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</FormHint>
               <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
               <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
             </div>
@@ -1303,7 +1303,7 @@ async function confirmSaveAs(): Promise<void> {
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
               <el-button size="small" type="primary" plain :disabled="!canEdit" @click="composeOpen = true">片段布局配置</el-button>
-              <span class="hint">布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</span>
+              <FormHint inline>布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</FormHint>
               <el-button size="small" type="success" plain :loading="previewing" class="push-right" @click="renderComposePreview">刷新预览</el-button>
             </div>
             <iframe v-if="previewHtml" class="preview" :srcdoc="previewHtml" />
@@ -1315,14 +1315,14 @@ async function confirmSaveAs(): Promise<void> {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码">
             <div class="editor-toolbar">
-              <span class="hint">内联 css 也可直接写在 njk 的 &lt;style&gt; 内</span>
+              <FormHint inline>内联 css 也可直接写在 njk 的 &lt;style&gt; 内</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
             <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式">
             <div class="editor-toolbar">
-              <span class="hint">内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</span>
+              <FormHint inline>内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>
             </div>
             <CodeEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
@@ -1358,10 +1358,10 @@ async function confirmSaveAs(): Promise<void> {
             </el-radio-group>
           </el-form-item>
           <el-form-item v-if="saveAsState.origin === 'custom' && saveAsState.node?.data.source === 'system'" label="携带内容">
-            <span class="hint">派生为自定义副本：整棵内容（meta/源码/示例/css）写入自定义文件根，可在邮件编辑器直接使用</span>
+            <FormHint>派生为自定义副本：整棵内容（meta/源码/示例/css）写入自定义文件根，可在邮件编辑器直接使用</FormHint>
           </el-form-item>
           <el-form-item v-if="saveAsState.node?.kind === 'version'" label="携带内容">
-            <span class="hint">版本内全部文件 + 版本级 css 目录（品牌/族级 css 与元数据不跟）</span>
+            <FormHint>版本内全部文件 + 版本级 css 目录（品牌/族级 css 与元数据不跟）</FormHint>
           </el-form-item>
         </template>
         <template v-else>
@@ -1377,7 +1377,7 @@ async function confirmSaveAs(): Promise<void> {
             </el-select>
           </el-form-item>
           <el-form-item v-if="saveAsIsCssFile" label="新文件名"><el-input clearable v-model="saveAsState.name" /></el-form-item>
-          <el-form-item v-else label="携带内容"><span class="hint">目录下全部 css 文件（目录名恒为 css，文件名不变，冲突时询问）</span></el-form-item>
+          <el-form-item v-else label="携带内容"><FormHint>目录下全部 css 文件（目录名恒为 css，文件名不变，冲突时询问）</FormHint></el-form-item>
         </template>
       </el-form>
       <template #footer>
@@ -1399,7 +1399,7 @@ async function confirmSaveAs(): Promise<void> {
     <!-- 片段布局配置弹框（R22：宿主模板选择 + 组合编辑器收进弹框，预览页只留预览） -->
     <el-dialog v-model="composeOpen" title="片段布局配置" width="720px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div v-if="selected?.data.cat === 'fragment'" class="editor-toolbar" style="padding-bottom: 10px">
-        <span class="hint">宿主模板</span>
+        <FormHint inline>宿主模板</FormHint>
         <el-select
           size="small"
           filterable
@@ -1410,10 +1410,10 @@ async function confirmSaveAs(): Promise<void> {
         >
           <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
         </el-select>
-        <span class="hint">拖拽 = 区块内排序；次数 = 重复渲染</span>
+        <FormHint inline>拖拽 = 区块内排序；次数 = 重复渲染</FormHint>
       </div>
       <div v-else class="editor-toolbar" style="padding-bottom: 10px">
-        <span class="hint">拖入片段布局，模板 css + 片段 css 就近合并看真实效果</span>
+        <FormHint inline>拖入片段布局，模板 css + 片段 css 就近合并看真实效果</FormHint>
       </div>
       <ComposeEditor
         v-if="composeSlotDefs.length"
@@ -1469,7 +1469,6 @@ async function confirmSaveAs(): Promise<void> {
 .editor-toolbar :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
   border-color: var(--el-color-primary) !important;
 }
-.hint { font-size: 12px; opacity: .6; }
 .meta-form { overflow: auto; }
 /* #2 表单 label 防换行：长 label（如「code（目录名）」）不再折行破坏行对齐 */
 .meta-form :deep(.el-form-item__label),

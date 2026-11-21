@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RichTextEditor } from '@sshk/rich-text'
+import { FormHint } from '@sshk/ui-kit'
 import { toolId } from '../state'
 import { createTemplateImageLibrary } from '../image-library'
 
@@ -38,11 +39,11 @@ function reset(): void {
     <div class="rt-bar">
       <el-checkbox v-model="readonly">两实例只读</el-checkbox>
       <el-button size="small" @click="reset">重置内容</el-button>
-      <span class="rt-hint">
+      <FormHint inline>
         验证 B7：只全屏实例 A → 实例 B 不受影响；退出后各归各位。
         工具栏「图片库」可上传/从图床选图插入（来源在「上传配置」里维护）；
         「查看源码」可查看/编辑 HTML；底部为字数统计。
-      </span>
+      </FormHint>
     </div>
     <div class="rt-label">实例 A</div>
     <RichTextEditor v-model="htmlA" :readonly="readonly" :image-library="library" state-key="template:a" />
@@ -54,6 +55,5 @@ function reset(): void {
 <style scoped>
 .rt-page { display: flex; flex-direction: column; gap: 10px; }
 .rt-bar { display: flex; align-items: center; gap: 12px; }
-.rt-hint { font-size: 12px; opacity: 0.6; }
 .rt-label { font-size: 13px; font-weight: 600; opacity: 0.8; margin-top: 4px; }
 </style>

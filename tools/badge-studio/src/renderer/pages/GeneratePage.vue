@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CodeEditor, formatHtml, compactHtml } from '@sshk/code-editor'
+import { FormHint } from '@sshk/ui-kit'
 import { Document, Delete } from '@element-plus/icons-vue'
 import {
   recentHtmls, clearRecent, htmlPath, useRecent, removeRecent, clearHtmlSelection, type RecentHtml,
@@ -215,7 +216,7 @@ function askRemoveRecent(item: RecentHtml): void {
       <div class="panel">
         <div class="panel-title">点击统计 · 三种来源统一进可编辑表格</div>
         <CodeEditor v-model="pastedStats" language="csv" height="110px" />
-        <div class="hint" style="margin-top: 4px">格式：url,clicks,…；粘贴后点「解析文本」进表格。CSV 高亮为共享编辑器 csv 语言。</div>
+        <FormHint class="csv-hint">格式：url,clicks,…；粘贴后点「解析文本」进表格。CSV 高亮为共享编辑器 csv 语言。</FormHint>
         <!-- 项5：按钮精简文案一行 + 彩色化 + 间距收紧；清空带行数并二次确认 -->
         <div class="stats-toolbar">
           <el-button size="small" type="primary" plain @click="parsePastedStats">解析文本</el-button>
@@ -308,7 +309,7 @@ function askRemoveRecent(item: RecentHtml): void {
           <el-button size="small" @click="addMetric">新增数值列</el-button>
           <span class="muted">表格改动会同步回上方 CSV 文本</span>
         </div>
-        <div class="hint">识别结果可能把 5 认成 S、0 认成 O；请在表格里逐格核对后再生成，识别结果不会自动生效。</div>
+        <FormHint>识别结果可能把 5 认成 S、0 认成 O；请在表格里逐格核对后再生成，识别结果不会自动生效。</FormHint>
       </div>
 
       <div class="panel">
@@ -354,9 +355,9 @@ function askRemoveRecent(item: RecentHtml): void {
             </el-form-item>
           </template>
 
-          <div v-else class="hint">
+          <FormHint v-else>
             仅人工校对：直接在上方粘贴 CSV，或点「新增一行 / 新增数值列」在表格里录入。
-          </div>
+          </FormHint>
 
           <el-form-item v-if="vision.provider !== 'manual'" class="vision-cfg-save">
             <span class="muted">不保存则本次会话内有效</span>
@@ -404,7 +405,7 @@ function askRemoveRecent(item: RecentHtml): void {
                 </el-form-item>
               </div>
               <el-form-item label=" " class="pos-hint-item">
-                <span class="muted">生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</span>
+                <FormHint>生成时写入 data-badge-position；&lt;a&gt; 上手写的属性优先</FormHint>
               </el-form-item>
               <el-form-item label="数值列">
                 <el-select
@@ -554,6 +555,7 @@ function askRemoveRecent(item: RecentHtml): void {
   gap: 8px;
   min-height: 240px;
 }
+.csv-hint { margin-top: 4px; }
 .preview-empty-title { font-size: 14px; font-weight: 600; opacity: 0.85; }
 .preview-empty-hint { font-size: 12px; opacity: 0.6; }
 .stats-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-top: 8px; }
@@ -634,12 +636,6 @@ function askRemoveRecent(item: RecentHtml): void {
 .muted {
   opacity: 0.6;
   font-size: 12px;
-}
-.hint {
-  font-size: 12px;
-  opacity: 0.6;
-  line-height: 1.5;
-  margin-top: 6px;
 }
 .raw {
   max-height: 180px;

@@ -18,6 +18,7 @@ export interface PlacementItem {
 import { computed, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Rank } from '@element-plus/icons-vue'
+import { FormHint } from '@sshk/ui-kit'
 
 /**
  * 统一组合编辑器（R19/R20）：区块布局 + 片段摆放 —— 拖拽排序 / 重复次数 / 移动区块。
@@ -97,7 +98,7 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
         <el-option v-for="s in slots" :key="s.key" :value="s.key" :label="s.label || s.key" />
       </el-select>
       <el-button size="small" type="primary" plain :disabled="readonly || !pickFragment" @click="addPlacement">添加</el-button>
-      <span class="hint">拖拽 ≡ 区块内排序；次数 = 重复渲染</span>
+      <FormHint inline>拖拽 ≡ 区块内排序；次数 = 重复渲染</FormHint>
     </div>
     <div class="blocks">
       <div v-for="s in slots" :key="s.key" class="block">
@@ -146,7 +147,6 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
 .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; }
 .pick { width: 220px; }
 .pick-sm { width: 130px; }
-.hint { font-size: 12px; opacity: .6; }
 .blocks { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
 .block { border: 1px solid rgba(128,128,128,.2); border-radius: 6px; overflow: hidden; }
 .block-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(128,128,128,.08); font-size: 13px; }

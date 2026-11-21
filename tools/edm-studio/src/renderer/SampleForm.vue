@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { validateModel, type FieldDef } from './sample-schema'
 import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
 import { CodeEditor } from '@sshk/code-editor'
-import { useToolId } from '@sshk/ui-kit'
+import { FormHint, useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
 import { createImageLibrary, createImageUploader } from './upload.js'
 import { llmApi, type LlmProviderLite } from './shared'
@@ -186,7 +186,7 @@ function acceptPolish(): void {
       >
         AI 填充
       </el-button>
-      <span class="ai-hint">{{ noProvider ? '需在「模型控制台」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</span>
+      <FormHint inline>{{ noProvider ? '需在「模型控制台」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</FormHint>
     </div>
     <template v-for="{ f, showGroup } in rows" :key="f.key">
       <div v-if="showGroup" class="group-divider"><span>{{ f.group }}</span></div>
@@ -222,7 +222,7 @@ function acceptPolish(): void {
           <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
           <div v-if="f.type === 'richtext' && !readonly" class="ai-polish-row">
             <el-button size="small" text type="primary" :loading="aiLoading" @click="aiPolish(f)">AI 润色</el-button>
-            <span class="ai-hint">保持标签结构与链接不变，仅改写文字；预览确认后才写回</span>
+            <FormHint inline>保持标签结构与链接不变，仅改写文字；预览确认后才写回</FormHint>
           </div>
           <!-- 单选 -->
           <el-radio-group
@@ -285,7 +285,7 @@ function acceptPolish(): void {
           </template>
           <!-- 动态列表（递归渲染行内字段） -->
           <template v-else-if="f.type === 'list'">
-            <div v-if="!canNest(f) && (f.itemFields?.length ?? 0) > 0" class="hint">嵌套层级已达上限（3 层）</div>
+            <FormHint v-if="!canNest(f) && (f.itemFields?.length ?? 0) > 0">嵌套层级已达上限（3 层）</FormHint>
             <div v-for="(row, i) in arrVal(f.key)" :key="i" class="list-row" :class="{ 'row-error': Object.keys(errors).some((k) => k.startsWith(`${f.key}.${i}.`)) }">
               <div class="list-row-head">
                 <span>第 {{ i + 1 }} 行</span>
@@ -381,11 +381,9 @@ function acceptPolish(): void {
 .list-row.row-error { border-color: var(--el-color-danger); }
 .list-row-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: .7; padding-bottom: 6px; }
 .error-text { font-size: 12px; color: var(--el-color-danger); }
-.hint { font-size: 12px; opacity: .6; }
 
 /* D-Q2 AI 文案助手 */
 .ai-bar { display: flex; align-items: center; gap: 10px; }
-.ai-hint { font-size: 12px; opacity: .6; }
 .ai-polish-row { display: flex; align-items: center; gap: 8px; }
 .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .diff-cap { font-size: 12px; opacity: .7; margin-bottom: 4px; }

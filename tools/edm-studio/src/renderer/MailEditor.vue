@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { FormHint } from '@sshk/ui-kit'
 import SampleForm from './SampleForm.vue'
 import { CodeEditor } from '@sshk/code-editor'
 import ComposeEditor from './ComposeEditor.vue'
@@ -257,11 +258,11 @@ function savePlacementData(): void {
           </el-form-item>
           <el-form-item label="区块">
             <el-tag v-for="s in templateSlots" :key="s.key" size="small" class="slot-tag">{{ s.label || s.key }}</el-tag>
-            <span v-if="!templateSlots.length" class="hint">该模板未声明 slots 区块</span>
+            <FormHint v-if="!templateSlots.length" inline>该模板未声明 slots 区块</FormHint>
           </el-form-item>
           <el-form-item label="模板数据">
             <CodeEditor :model-value="mailDataText" language="json" height="160px" @update:model-value="(v: string) => (mailDataText = v)" />
-            <div class="hint">模板级数据（片段未单独填数据时的回落，Q12）</div>
+            <FormHint>模板级数据（片段未单独填数据时的回落，Q12）</FormHint>
           </el-form-item>
         </el-form>
 
@@ -286,7 +287,7 @@ function savePlacementData(): void {
       <!-- 右栏实时预览（步骤 3/4） -->
       <div v-if="step >= 3" class="right">
         <div class="pv-bar">
-          <span class="hint">草稿渲染（不落库）</span>
+          <FormHint inline>草稿渲染（不落库）</FormHint>
           <el-button size="small" type="success" plain :loading="previewing" class="push-right" @click="refreshPreview">刷新预览</el-button>
         </div>
         <iframe v-if="previewHtml" class="pv" :srcdoc="previewHtml" />
@@ -326,7 +327,6 @@ function savePlacementData(): void {
 /* 刷新预览居右，描述居左 */
 .pv-bar .push-right { margin-left: auto; }
 .pv { flex: 1; width: 100%; border: none; background: #fff; border-radius: 4px; }
-.hint { font-size: 12px; opacity: .6; }
 .slot-tag { margin-right: 6px; }
 .preview-tip { padding-top: 8px; }
 .footer { display: flex; align-items: center; }
