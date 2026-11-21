@@ -22,7 +22,6 @@
     "@sshk/badge-studio": "workspace:*",
     "@sshk/edm-studio": "workspace:*",
     "@sshk/llm-gateway": "workspace:*",
-    "@sshk/model-console": "workspace:*",
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",

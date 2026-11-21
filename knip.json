@@ -30,7 +30,6 @@
       "ignoreDependencies": [
         "@sshk/badge-studio",
         "@sshk/edm-studio",
-        "@sshk/model-console",
         "dayjs",
         "electron-builder"
       ]

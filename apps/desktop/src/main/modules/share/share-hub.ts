@@ -48,6 +48,22 @@ function resolveToolId(raw: unknown): string {
 }
 
 /**
+ * 分享路由归属白名单（P4-8b · D53 · 台账#156）：
+ * 三基础模块并入应用本体后不再是目录在册工具（MANIFESTS 只剩纯工具），但其页面仍会以
+ * 模块 id 创建分享路由（如 FileExplorerPage 安全分享），存量路由/日志数据也可能带旧 id——
+ * 校验口径 = 在册工具（纯工具 manifest）∪ 内置模块 id ∪ 旧 id（历史数据兼容，不写数据迁移）。
+ */
+const SHARE_MODULE_IDS = ['file-manager', 'model-manager', 'share-manager'] as const
+/** 旧 id 兼容（C-11 改名 model-manager 前的模块 id；存量数据不动，仅放行归属校验） */
+const SHARE_LEGACY_OWNER_IDS = ['model-console'] as const
+
+export function isKnownShareOwner(toolId: string, manifests: ReadonlyArray<{ id: string }>): boolean {
+  return manifests.some((m) => m.id === toolId)
+    || (SHARE_MODULE_IDS as readonly string[]).includes(toolId)
+    || (SHARE_LEGACY_OWNER_IDS as readonly string[]).includes(toolId)
+}
+
+/**
  * hub-state.json 工具改名迁移（2026-11-19 上传管理→文件管理，幂等）：
  * 路由的 toolId 是撤销/续期的记账鉴权依据（内核 handle 校验 route.toolId === caller），
  * 不迁移的话改名后工具对自己的旧分享路由「无权操作」且列表查不到（复用原则被破坏）。

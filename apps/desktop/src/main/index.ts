@@ -44,7 +44,7 @@ import { registerToolsIpc } from './ipc/tools'
 import { registerUpdateIpc } from './ipc/update'
 import { registerUploadIpc } from './ipc/upload'
 import type { FsRuntime } from './modules/file/runtime'
-import { createShareHubHost, registerShareHubIpc, type ShareHubGuards, type ShareHubHost } from './modules/share/share-hub'
+import { createShareHubHost, isKnownShareOwner, registerShareHubIpc, type ShareHubGuards, type ShareHubHost } from './modules/share/share-hub'
 
 /** 必须在 app ready 前注册：localres:// 预览协议 + app:// 渲染层加载协议（特权一次性注册） */
 registerPrivilegedSchemes()
@@ -146,10 +146,12 @@ void app.whenReady().then(async () => {
     contentResolver: makeContentResolver(services.repository),
     contentListResolver: makeContentListResolver(services.repository),
   })
-  // P1-5（A15/Q-13）：分享硬鉴权守卫——sender 绑定主窗口 + toolId 在册校验
+  // P1-5（A15/Q-13）：分享硬鉴权守卫——sender 绑定主窗口 + toolId 在册校验。
+  // P4-8b：在册口径扩为「纯工具 manifest ∪ 内置模块 id ∪ 旧 id」——三基础模块并入应用本体后
+  // 不在 MANIFESTS，但其页面以模块 id 建路由、存量数据可能带旧 id（口径见 share-hub.ts 头注释）
   shareHubGuards = {
     isTrustedSender: (sender) => Boolean(sender) && sender === getMainWindow()?.webContents,
-    isKnownTool: (id) => allManifests().some((m) => m.id === id),
+    isKnownTool: (id) => isKnownShareOwner(id, allManifests()),
   }
   await shareHubHost.init()
   seedDefaultProviders(services)

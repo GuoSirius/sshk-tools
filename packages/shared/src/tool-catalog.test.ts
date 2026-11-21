@@ -13,7 +13,7 @@ import {
 } from './tool-catalog'
 import type { ToolDescriptor } from './types'
 
-// 直接拿三个真实工具包的清单做夹具：清单格式不合法这里就会失败。
+// 真实纯工具清单做夹具：清单格式不合法这里就会失败。
 // 用文件读取而非 import，避免测试夹具被分层规则当成「packages 反向依赖 tools」的代码引用。
 function readManifest(id: string): ToolDescriptor {
   const file = fileURLToPath(new URL(`../../../tools/${id}/tool.manifest.json`, import.meta.url))
@@ -21,7 +21,27 @@ function readManifest(id: string): ToolDescriptor {
 }
 const edmManifest = readManifest('edm-studio')
 const badgeManifest = readManifest('badge-studio')
-const modelManifest = readManifest('model-console')
+// P4-8b（D53 · 台账#156）：model-console 清单已随三基础模块并入应用本体而退役，
+// 其清单形态改为内联最小夹具（fixture-model，桌面 desktop + single 布局等价形态）；
+// 原 manifest 的 defaultProviders/modelPresets 数据搬 apps/main/modules/llm/presets-data.ts，
+// 数据断言随迁 apps/desktop/src/main/modules/llm/presets-data.test.ts。
+const modelManifest: ToolDescriptor = {
+  id: 'fixture-model',
+  name: '模型夹具',
+  description: 'P4-8b 后替代 model-console 清单的内联夹具',
+  category: 'AI 能力',
+  icon: 'auto',
+  entryRoute: 'providers',
+  enabled: true,
+  visibility: 'desktop',
+  configLayout: 'single',
+  plugin: { source: 'builtin', renderer: 'src/renderer/FixtureModelPage.vue' },
+  menus: [{ id: 'providers', label: '模型 Provider' }, { id: 'config', label: '工具配置' }],
+  configGroups: [{ id: 'config-gateway', label: '网关', fields: [] }],
+  defaults: {},
+  dependsOn: [],
+  configDeps: [],
+} as unknown as ToolDescriptor
 // 形态 2 模板示例单独作夹具，不进 MANIFESTS（避免影响其它用例的 desktop 基准与数量断言）
 const templateManifest = readManifest('template-tool')
 // edm 的 visibility:hidden 是发布策略，裁决单测保持 desktop 基准
@@ -91,12 +111,12 @@ describe('工具插件清单（自包含 manifest）', () => {
   })
 
   it('X5-A：forcedHidden（依赖闭包拉入）工具任何位置不可见，但能力保留可被依赖', () => {
-    // 依赖链：badge 依赖 model-console；model-console 被「拉入」→ 强制不可见+不可管理，但 badge 保持可见
+    // 依赖链：badge 依赖 fixture-model；fixture-model 被「拉入」→ 强制不可见+不可管理，但 badge 保持可见
     const result = resolveToolCatalog(MANIFESTS, baseInput({
-      dependsOn: { 'badge-studio': ['model-console'] },
-      forcedHidden: ['model-console'],
+      dependsOn: { 'badge-studio': ['fixture-model'] },
+      forcedHidden: ['fixture-model'],
     }))
-    const model = result.tools.find((tool) => tool.id === 'model-console')!
+    const model = result.tools.find((tool) => tool.id === 'fixture-model')!
     const badge = result.tools.find((tool) => tool.id === 'badge-studio')!
     expect(model.visible).toBe(false)
     expect(model.manageable).toBe(false)
@@ -125,11 +145,11 @@ describe('工具插件清单（自包含 manifest）', () => {
   })
 
   it('访问密钥权限：未持有 grant 时隐藏，持有后可见', () => {
-    const grants = { 'model-console': ACCESS_GRANT }
+    const grants = { 'fixture-model': ACCESS_GRANT }
     expect(resolveToolCatalog(MANIFESTS, baseInput({ grants }))
-      .tools.find((t) => t.id === 'model-console')?.reason).toBe('需要访问密钥')
+      .tools.find((t) => t.id === 'fixture-model')?.reason).toBe('需要访问密钥')
     expect(resolveToolCatalog(MANIFESTS, baseInput({ grants, heldGrants: [ACCESS_GRANT], hasAccessKey: true }))
-      .tools.find((t) => t.id === 'model-console')?.visible).toBe(true)
+      .tools.find((t) => t.id === 'fixture-model')?.visible).toBe(true)
   })
 
   it('分发白名单只放行指定工具', () => {
@@ -208,21 +228,10 @@ describe('工具插件清单（自包含 manifest）', () => {
     }
   })
 
-  it('模型预设由工具包自带：含常用端点与可选模型，且不含任何密钥字段', () => {
-    type Preset = { id: string; name: string; baseURL: string; models: string[]; defaultModel: string }
-    const presets = ((modelManifest as unknown as { defaults?: { modelPresets?: Preset[] } })
-      .defaults?.modelPresets ?? [])
-    expect(presets.length).toBeGreaterThanOrEqual(4)
-    const agnes = presets.find((preset) => preset.id === 'agnes')
-    expect(agnes?.baseURL).toBe('https://apihub.agnes-ai.com/v1')
-    expect(agnes?.models).toContain('agnes-3.0-flash')
-    expect(agnes?.models).toContain('agnes-3.0-pro')
-    for (const preset of presets) {
-      expect(preset.baseURL).toMatch(/^https?:\/\//)
-      for (const field of Object.keys(preset)) {
-        expect(['apiKey', 'token', 'secret', 'password']).not.toContain(field)
-      }
-    }
+  it('模型预设数据断言已随 P4-8b 搬迁：见 apps/main/modules/llm/presets-data.test.ts（shared 只留纯函数）', () => {
+    // 原「模型预设由工具包自带」断言随 model-console 清单退役迁至应用本体数据文件测试；
+    // collectDefaultProviders 的行为校验由下方播种纯函数用例覆盖（内联夹具）。
+    expect(modelManifest.defaults).toBeTruthy()
   })
 
   it('新工具包零改动接入：加进清单即出现在目录并自动合并默认配置', () => {
@@ -248,8 +257,17 @@ describe('工具插件清单（自包含 manifest）', () => {
 })
 
 describe('默认 Provider 播种（应用级共享）', () => {
-  it('从工具包 manifest 收集公开端点，默认就是 Agnes AI 且不含任何密钥', () => {
-    const seeds = collectDefaultProviders(MANIFESTS)
+  it('从 manifest defaults.defaultProviders 收集公开端点（内联夹具），不含任何密钥字段', () => {
+    // P4-8b：真实播种数据已搬 apps/main/modules/llm/presets-data.ts，此处只验纯函数行为
+    const tool = {
+      id: 'fixture-model',
+      defaults: {
+        defaultProviders: [
+          { _id: 'prv_agnesai', name: 'Agnes AI', kind: 'remote', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', enabled: true },
+        ],
+      },
+    } as unknown as ToolDescriptor
+    const seeds = collectDefaultProviders([tool])
     expect(seeds[0]).toMatchObject({
       _id: 'prv_agnesai',
       baseURL: 'https://apihub.agnes-ai.com/v1',

@@ -51,10 +51,10 @@ describe('resolveBuiltinSelection（依赖闭包）', () => {
 })
 
 describe('collectBuiltinToolInfo', () => {
-  it('真实仓库扫描：id 与目录一致、dependsOn 为字符串数组；损坏清单跳过', () => {
+  it('真实仓库扫描：只剩纯工具（P4-8b 三基础模块退役），id 与目录一致、dependsOn 为字符串数组', () => {
     const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
     const info = collectBuiltinToolInfo(repoRoot)
-    expect(info.length).toBeGreaterThanOrEqual(5)
+    expect(info.map((m) => m.id).sort()).toEqual(['badge-studio', 'edm-studio', 'template-tool'])
     expect(info.every((m) => typeof m.id === 'string' && m.id.length > 0)).toBe(true)
     expect(info.every((m) => Array.isArray(m.dependsOn))).toBe(true)
   })
