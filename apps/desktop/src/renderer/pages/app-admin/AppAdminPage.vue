@@ -7,13 +7,15 @@
  * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
  *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
- *   模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件（模型 toolId 注入与幂等加载职责上收本壳），
- *   文件模块过渡直引工具壳组件（provideToolId 在壳内已处理，最少侵入），
- *   fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动）。
+ *   文件管理三页（P4-4）/模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件
+ *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，与 P4-5 模型 state.toolId 显式
+ *   赋值同一口径；文件管理子树内页面经 useToolId() inject），fileconfig / modelconfig 两个
+ *   「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动，fs-transfer 新组自动出现）。
  */
 import { computed, ref, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Expand, Fold } from '@element-plus/icons-vue'
+import { provideToolId } from '@sshk/ui-kit'
 import type { ToolMenu } from '@sshk/shared'
 import SidebarMenu from '../../components/SidebarMenu.vue'
 import ToolSettingsPage from '../../SettingsPage.vue'
@@ -22,10 +24,13 @@ import SystemDataPage from './settings/SystemDataPage.vue'
 import ToolsPermissionPage from './settings/ToolsPermissionPage.vue'
 import AboutPage from './settings/AboutPage.vue'
 // 三模块页直引（过渡）：相对路径与 discovery.ts 同一跨包引用先例（apps → tools 方向合法）。
+// P4-4 起文件管理分发到各页面组件（不再整壳直引 FileManagerPage 壳——壳保留给工具宿主清单入口）。
 // P4-5 起模型管理分发到各页面组件（不再整壳直引）——壳的 toolId 注入职责上收本壳：
 // state.toolId 是 config key 拼装（modelPresets/chat.*）的单一来源，AppAdminPage 以模块 id 显式赋值。
 // P4-6 起分享管理同样直引五页组件（Routes/Logs/Service/Mounts/Proxies）。
-import FileManagerPage from '../../../../../../tools/file-manager/src/renderer/FileManagerPage.vue'
+import FileExplorerPage from '../../../../../../tools/file-manager/src/renderer/pages/FileExplorerPage.vue'
+import ContentsPage from '../../../../../../tools/file-manager/src/renderer/pages/ContentsPage.vue'
+import ProfilesPage from '../../../../../../tools/file-manager/src/renderer/pages/ProfilesPage.vue'
 import ProvidersPage from '../../../../../../tools/model-console/src/renderer/pages/ProvidersPage.vue'
 import ChatPage from '../../../../../../tools/model-console/src/renderer/pages/ChatPage.vue'
 import UsagePage from '../../../../../../tools/model-console/src/renderer/pages/UsagePage.vue'
@@ -39,6 +44,10 @@ import { toolId as modelManagerToolId } from '../../../../../../tools/model-cons
 defineOptions({ name: 'AppAdminPage' })
 
 const emit = defineEmits<{ 'create-tool': [] }>()
+
+// 工具 id 注入上收本壳（P4-4，#129 铁律）：文件管理三页（FileExplorer/Contents/Profiles）经
+// useToolId() inject 读取；壳内直引的其余模块页不用 useToolId（模型走 state.toolId、分享页无注入需求）。
+provideToolId('file-manager')
 
 // 模块 id 与 C-11 敲板一致（原 model-console 工具 id 存量沿用，P4-8 改 model-manager 时同批迁移）
 modelManagerToolId.value = 'model-console'
@@ -130,7 +139,7 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
   files: { title: '文件系统', description: '本地 / 远端 / 云存储浏览管理与上传下载传输队列' },
   contents: { title: '内容管理', description: '内容库管理与编辑（编辑器形态随「工具设置」切换）' },
   profiles: { title: '通道配置', description: '上传通道 Profile 管理，密钥经 safeStorage 加密' },
-  fileconfig: { title: '工具设置 · 文件管理', description: '内容编辑器形态等工具偏好' },
+  fileconfig: { title: '工具设置 · 文件管理', description: '内容编辑器形态、传输与分片参数等工具偏好' },
   providers: { title: '模型配置', description: 'Provider 增删改、内置预设与连接测试' },
   chat: { title: '对话调试', description: '按 Provider 试聊，验证网关与流式输出' },
   usage: { title: '用量统计', description: '对话调用量与 Token 用量' },
@@ -226,12 +235,10 @@ function goBackDesktop(): void {
               section="config"
               layout="single"
             />
-            <FileManagerPage
-              v-else-if="activeModule === 'files'"
-              :key="'file-manager'"
-              :menu="activePage"
-              tool-id="file-manager"
-            />
+            <!-- 文件管理三页直引（P4-4 迁即重构；provideToolId 已在本壳显式注入） -->
+            <FileExplorerPage v-else-if="activePage === 'files'" :key="'files'" />
+            <ContentsPage v-else-if="activePage === 'contents'" :key="'contents'" />
+            <ProfilesPage v-else-if="activePage === 'profiles'" :key="'profiles'" />
             <!-- 模型管理三页直引（P4-5 迁即重构；页头由本壳 tool-page-head 提供，页面自管留白） -->
             <ProvidersPage v-else-if="activePage === 'providers'" />
             <ChatPage v-else-if="activePage === 'chat'" />

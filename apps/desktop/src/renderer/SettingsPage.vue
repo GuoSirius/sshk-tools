@@ -22,7 +22,8 @@ import BadgeStylePreview from './components/BadgeStylePreview.vue'
  *   形态 2（layout=menu）：section 是 configPages[].id，一个二级菜单 = 一个真实页面，
  *     左栏只列该页声明的分组，页内继续复用同一套左右布局；切二级菜单即换页。
  *
- * 注意：文件管理工具 manifest 没有 configGroups，走独立的 FileManagerPage，不受本页影响。
+ * 配置键口径：字段 key 默认相对 tools.<toolId>；`app.` 前缀 = 应用级绝对键原样读写
+ * （P4-4 文件管理「传输与分片」组 app.fs.multipart.*，主进程与图片库共用同一份）。
  */
 const props = defineProps<{
   toolId: string
@@ -86,8 +87,11 @@ async function pickPath(field: ToolConfigField): Promise<void> {
     : (await window.api.os.pickFile({}))[0] ?? ''
   if (picked) values[field.key] = picked
 }
+/** 配置键解析：相对键 → tools.<toolId>.<key>；`app.` 前缀 = 应用级绝对键，原样读写
+ *  （P4-4 文件管理「传输与分片」组：app.fs.multipart.* 与主进程 readFsTransferSettings /
+ *  FilePicker 图片库共用同一份配置，FS_TRANSFER_CONFIG_KEYS 单一事实源）。 */
 function pathFor(field: ToolConfigField): string {
-  return `tools.${props.toolId}.${field.key}`
+  return field.key.startsWith('app.') ? field.key : `tools.${props.toolId}.${field.key}`
 }
 /** 载入值用全量字段（含 devOnly / 其它页），切页无需重新拉取 */
 function manifestFields(): ToolConfigField[] {

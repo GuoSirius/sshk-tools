@@ -68,6 +68,52 @@
           "default": "dialog"
         }
       ]
+    },
+    {
+      "id": "fs-transfer",
+      "label": "传输与分片",
+      "fields": [
+        {
+          "key": "app.fs.multipart.thresholdMb",
+          "label": "分片阈值 (MB)",
+          "type": "number",
+          "min": 1,
+          "max": 1024,
+          "default": 50,
+          "hint": "上传/下载超过该大小的文件走分片 + 断点续传（1~1024，默认 50）；由文件系统传输与图片库上传（FilePicker）共用同一份配置",
+          "full": true
+        },
+        {
+          "key": "app.fs.multipart.partSizeMb",
+          "label": "单片大小 (MB)",
+          "type": "number",
+          "min": 5,
+          "max": 100,
+          "default": 5,
+          "hint": "每个分片的大小（5~100，默认 5）；分片数超上限时自动上调单片大小",
+          "full": true
+        },
+        {
+          "key": "app.fs.multipart.partsConcurrency",
+          "label": "分片并发数",
+          "type": "number",
+          "min": 1,
+          "max": 8,
+          "default": 3,
+          "hint": "单任务同时传输的分片数（1~8，默认 3）",
+          "full": true
+        },
+        {
+          "key": "app.fs.multipart.requestTimeoutSec",
+          "label": "请求超时 (秒)",
+          "type": "number",
+          "min": 30,
+          "max": 3600,
+          "default": 300,
+          "hint": "云上传/下载单请求超时（30~3600 秒，默认 300）；弱网或大文件 ACK 慢可调大。超时后自动复核服务端是否已落盘，已落盘不会误报失败",
+          "full": true
+        }
+      ]
     }
   ],
   "defaults": {},

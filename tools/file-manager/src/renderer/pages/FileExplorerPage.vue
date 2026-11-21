@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
   Box,
@@ -60,7 +60,6 @@ import { useFsSelection } from '../composables/useFsSelection'
 import { useFsShareMarks } from '../composables/useFsShareMarks'
 import { useFsTransfer } from '../composables/useFsTransfer'
 import { useFsView } from '../composables/useFsView'
-import { friendlyError } from '../composables/useFsListing'
 
 /**
  * X6 文件系统页（plans/08 §3）：进入文件管理工具默认展示。
@@ -74,6 +73,8 @@ import { friendlyError } from '../composables/useFsListing'
  *   FsPlayerDialog/FsFavoritesDrawer/FsNoteDialog/FsContextMenu）；
  * - 跨域联动走注册回调（useFsListing.onListStart/onDirReload/onLocate）+ 页面级闭包注入，
  *   注册顺序 = 原页面执行顺序（搜索会话作废 → 清空选中；备注/分享状态随目录重载）。
+ * - C-8 终审：原「更多▾ → 传输设置…」面板入口删除，分片参数迁「工具设置 > 传输与分片」
+ *   （app.fs.multipart.*，manifest configGroups 驱动）；遗留分片清理保留在全局传输面板。
  */
 
 /** #129 铁律：工具 id 单一来源=根组件 provideToolId 注入，renderer 禁字面量/常量表直取 */
@@ -297,49 +298,9 @@ function runCtx(cmd: string): void {
   if (entry) rowMoreCommand(cmd, entry)
 }
 
-// ── plans/10 传输设置（分片开关/阈值/片大小/并发实时生效；遗留分片清理，二次确认）──
-const transferCfgOpen = ref(false)
-const transferCfgForm = ref({ enabled: true, thresholdMb: 50, partSizeMb: 5, partsConcurrency: 3, requestTimeoutSec: 300 })
-const transferCfgSaving = ref(false)
-const transferCfgOrphans = ref(0)
-async function openTransferConfig(): Promise<void> {
-  try {
-    const s = await window.api.fs.transferMultipart()
-    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency, requestTimeoutSec: s.requestTimeoutSec }
-    transferCfgOrphans.value = s.orphans
-  } catch { transferCfgOrphans.value = 0 }
-  transferCfgOpen.value = true
-}
-async function submitTransferConfig(): Promise<void> {
-  transferCfgSaving.value = true
-  try {
-    const s = await window.api.fs.setTransferMultipart({
-      enabled: transferCfgForm.value.enabled,
-      thresholdMb: transferCfgForm.value.thresholdMb,
-      partSizeMb: transferCfgForm.value.partSizeMb,
-      partsConcurrency: transferCfgForm.value.partsConcurrency,
-      requestTimeoutSec: transferCfgForm.value.requestTimeoutSec,
-    })
-    transferCfgForm.value = { enabled: s.enabled, thresholdMb: s.thresholdMb, partSizeMb: s.partSizeMb, partsConcurrency: s.partsConcurrency, requestTimeoutSec: s.requestTimeoutSec }
-    ElMessage.success('传输设置已保存（实时生效）')
-    transferCfgOpen.value = false
-  } catch (err) { ElMessage.error(friendlyError(err)) }
-  finally { transferCfgSaving.value = false }
-}
-async function cleanOrphansInCfg(): Promise<void> {
-  if (!transferCfgOrphans.value) return
-  const ok = await ElMessageBox.confirm(
-    `清理服务端遗留的 ${transferCfgOrphans.value} 个分片上传？正在别处进行的同名上传会被中止。`,
-    '遗留分片清理',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
-  ).then(() => true, () => false)
-  if (!ok) return
-  try {
-    const n = await window.api.fs.cleanOrphanUploads()
-    ElMessage.success(n ? `已清理 ${n} 个遗留分片` : '没有可清理的遗留分片')
-    transferCfgOrphans.value = (await window.api.fs.transferMultipart()).orphans
-  } catch (err) { ElMessage.error(friendlyError(err)) }
-}
+// ── plans/10 传输设置（C-8 终审 2026-11-21）：分片参数入口已迁「工具设置 > 传输与分片」分组
+//    （app.fs.multipart.*，manifest configGroups 驱动）；本页不再保留任何传输设置入口；
+//    遗留分片清理保留在全局传输面板（TransferPanel 展示 + 手动清理）。
 
 // ── 打开：预览 / 编辑 / 下载 的行入口 ──
 function rowOpen(entry: FsEntry): void {
@@ -359,7 +320,6 @@ function moreCommand(cmd: unknown): void {
     case 'cols': colsOpen.value = true; return
     case 'ziplimits': void openZipLimits(); return
     case 'transfercaps': void openTransferCaps(); return
-    case 'transferconfig': void openTransferConfig(); return
     case 'note': openNote(selectedEntries.value); return
     case 'favorite': void addFavorites(selectedEntries.value); return
     case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
@@ -474,7 +434,6 @@ onMounted(() => {
             <el-dropdown-item command="cols" :icon="Grid">列设置…</el-dropdown-item>
             <el-dropdown-item command="ziplimits" :icon="Setting">压缩上限设置…</el-dropdown-item>
             <el-dropdown-item command="transfercaps" :icon="Setting">上限设置…</el-dropdown-item>
-            <el-dropdown-item command="transferconfig" :icon="Setting">传输设置…</el-dropdown-item>
             <el-dropdown-item command="refresh" :icon="Refresh">刷新（F5）</el-dropdown-item>
             <el-dropdown-item command="downloaddir" :icon="MenuIcon">下载目录设置…</el-dropdown-item>
             <el-dropdown-item command="opendir" :icon="Folder">打开本地下载目录</el-dropdown-item>
@@ -833,44 +792,6 @@ onMounted(() => {
 
     <!-- P4-7：传输队列悬浮面板已全局化（App.vue 根层挂载），本页仅保留状态条唤起入口 -->
 
-    <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
-    <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <!-- label-width="auto"：EP 自动取所有 label 最宽者统一右对齐、输入框同列（用户 2026-11-19 纠正：用 form 的 auto，不用写死 px） -->
-      <el-form label-width="auto" size="small">
-        <!-- 开关类控件一行布局（用户铁律：文字与开关同排，长说明放 detail 悬浮） -->
-        <el-form-item label="大文件分片传输">
-          <el-switch v-model="transferCfgForm.enabled" data-autofocus />
-          <FormHint inline detail="上传/下载超过阈值的大文件走分片 + 断点续传；上传分片仅 OSS / S3，下载分片覆盖本地 / SFTP / OSS / S3。阈值/片大小/并发/超时由文件系统传输与图片库上传共用同一份配置" />
-        </el-form-item>
-        <el-form-item label="分片阈值" required>
-          <el-input-number v-model="transferCfgForm.thresholdMb" :min="1" :max="1024" :step="5" :controls="false" style="width: 150px" />
-          <span class="fs-ziplimits-unit">MB（超过该大小走分片）</span>
-        </el-form-item>
-        <el-form-item label="单片大小" required>
-          <el-input-number v-model="transferCfgForm.partSizeMb" :min="5" :max="100" :step="5" :controls="false" style="width: 150px" />
-          <span class="fs-ziplimits-unit">MB（5~100）</span>
-        </el-form-item>
-        <el-form-item label="分片并发" required>
-          <el-input-number v-model="transferCfgForm.partsConcurrency" :min="1" :max="8" :step="1" :controls="false" style="width: 150px" />
-          <span class="fs-ziplimits-unit">个/任务（1~8）</span>
-        </el-form-item>
-        <el-form-item label="请求超时" required>
-          <el-input-number v-model="transferCfgForm.requestTimeoutSec" :min="30" :max="3600" :step="30" :controls="false" style="width: 150px" />
-          <span class="fs-ziplimits-unit">秒（默认 300）</span>
-          <el-tooltip content="云上传/下载单请求超时；弱网或大文件 ACK 慢可调大（30~3600 秒）。超时后自动复核服务端是否已落盘，已落盘不会误报失败" placement="top"><el-icon class="fs-cfg-help"><InfoFilled /></el-icon></el-tooltip>
-        </el-form-item>
-        <el-form-item v-if="transferCfgOrphans > 0" label="遗留分片">
-          <span class="fs-ziplimits-unit">服务端残留 {{ transferCfgOrphans }} 个</span>
-          <el-button size="small" type="danger" plain @click="cleanOrphansInCfg">清理…</el-button>
-        </el-form-item>
-      </el-form>
-      <div class="hint" style="margin-top: 8px">暂停为协作式：当前分片/块写完即停（最多一个分片延迟），服务端不留碎片、可无损续传；源文件变更后续传会自动废弃旧检查点重传。</div>
-      <template #footer>
-        <el-button @click="transferCfgOpen = false">取消</el-button>
-        <el-button type="primary" :loading="transferCfgSaving" @click="submitTransferConfig">保存</el-button>
-      </template>
-    </el-dialog>
-
     <!-- ShareHub 安全分享（plans/09 S15）：本地通道文件的 TTL/可撤销分享 -->
     <ShareDialog
       v-model:open="shareDialog.open"
@@ -1137,8 +1058,6 @@ onMounted(() => {
 .fs-move-body { display: flex; flex-direction: column; }
 
 /* plans/10：传输队列抽屉已删，悬浮面板样式在 TransferPanel.vue 内自管 */
-/* 传输设置弹框：必填红星 + 行内说明（label auto+nowrap，铁律） */
-.fs-cfg-help { font-size: 14px; margin-left: 4px; color: var(--el-text-color-secondary); cursor: help; }
 
 /* ── §十一：编辑权限 / 属性 / 转换 / 列设置 ── */
 .fs-perm-grid { display: grid; grid-template-columns: 64px repeat(3, 1fr); justify-items: center; gap: 6px 0; align-items: center; }
