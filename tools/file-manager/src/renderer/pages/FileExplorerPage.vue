@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
-  Back,
   Box,
   ChatDotRound,
   CollectionTag,
@@ -18,1946 +17,284 @@ import {
   FolderOpened,
   Grid,
   InfoFilled,
-  Link,
   Loading,
   Lock,
   MagicStick,
   Menu as MenuIcon,
-  DocumentCopy,
-  Picture,
   Plus,
   Rank,
   Refresh,
-  Search,
   Setting,
   Star,
   StarFilled,
   TrendCharts,
   Upload,
-  VideoCamera,
 } from '@element-plus/icons-vue'
 import {
-  FS_IMAGE_PREVIEW_LIMIT,
-  FS_MEDIA_PLAY_LIMIT,
-  FS_PDF_PREVIEW_LIMIT,
-  FS_TEXT_EDIT_LIMIT,
   fsFormatSize,
   fsModeToRwx,
-  isFsImageName,
-  isFsMediaName,
   isFsTextName,
-  isFsVideoName,
   isFsZipName,
-  normalizeUploadConfig,
-  type FsChannelInfo,
   type FsEntry,
-  type FsFavorite,
-  type FsListPage,
-  type ShareRouteInfo,
 } from '@sshk/shared'
-import { CodeEditor } from '@sshk/code-editor'
-import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/ui-kit'
-import { useToolId } from '@sshk/ui-kit'
+import { FormHint, ShareDialog, useToolId } from '@sshk/ui-kit'
+import FsChannelBar from '../components/FsChannelBar.vue'
+import FsContextMenu from '../components/FsContextMenu.vue'
+import FsEditorDialog from '../components/FsEditorDialog.vue'
+import FsFavoritesDrawer from '../components/FsFavoritesDrawer.vue'
+import FsNoteDialog from '../components/FsNoteDialog.vue'
+import FsPathBar from '../components/FsPathBar.vue'
+import FsPlayerDialog from '../components/FsPlayerDialog.vue'
+import FsPreviewDialog from '../components/FsPreviewDialog.vue'
+import { useFsAnnotations } from '../composables/useFsAnnotations'
+import { useFsArchive } from '../composables/useFsArchive'
+import { useFsClipboardMove } from '../composables/useFsClipboardMove'
+import { useFsContextMenu } from '../composables/useFsContextMenu'
+import { useFsDirPicker } from '../composables/useFsDirPicker'
+import { useFsEntryOps } from '../composables/useFsEntryOps'
+import { useFsFavorites } from '../composables/useFsFavorites'
+import { useFsListing } from '../composables/useFsListing'
+import { useFsMedia } from '../composables/useFsMedia'
+import { useFsSearch } from '../composables/useFsSearch'
+import { useFsSelection } from '../composables/useFsSelection'
+import { useFsShareMarks } from '../composables/useFsShareMarks'
+import { useFsTransfer } from '../composables/useFsTransfer'
+import { useFsView } from '../composables/useFsView'
+import { friendlyError } from '../composables/useFsListing'
 
 /**
  * X6 文件系统页（plans/08 §3）：进入文件管理工具默认展示。
  * 布局三段：通道切换条 / 路径区（面包屑 + 可编辑路径）+ 工具栏 / 文件列表（列表·网格双视图）
  * + 状态条 + 传输队列唤起入口（面板本体 P4-7 全局化挂 App.vue 根层，跨容器悬浮）。
  * 通道 = 文件管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
+ *
+ * P4-4 结构拆分（行为保真）：本页收缩为「状态装配 + 布局编排」——
+ * - 领域状态与行为在各 useFs* composable（composables/，装配顺序即原页面初始化顺序）；
+ * - 自包含模板块拆到 components/（FsChannelBar/FsPathBar/FsPreviewDialog/FsEditorDialog/
+ *   FsPlayerDialog/FsFavoritesDrawer/FsNoteDialog/FsContextMenu）；
+ * - 跨域联动走注册回调（useFsListing.onListStart/onDirReload/onLocate）+ 页面级闭包注入，
+ *   注册顺序 = 原页面执行顺序（搜索会话作废 → 清空选中；备注/分享状态随目录重载）。
  */
 
 /** #129 铁律：工具 id 单一来源=根组件 provideToolId 注入，renderer 禁字面量/常量表直取 */
 const TOOL_ID = useToolId()
 
-// ── 通道与目录状态 ──
-const channels = ref<FsChannelInfo[]>([])
-const outputRoot = ref('')
-const profileId = ref('')
-const path = ref('/') // 内部规范：根 = '/'，子路径 = /a/b/c
-const pathInput = ref('')
-const pathEditing = ref(false)
-const entries = ref<FsEntry[]>([])
-const cursor = ref<string | null>(null)
-const loading = ref(false)
-const loadingMore = ref(false)
-const pageError = ref('')
-
-// ── 选择 / 剪贴板 / 视图 ──
-const selection = ref(new Set<string>())
-const shiftAnchor = ref(-1)
-interface Clipboard { op: 'copy' | 'cut'; profileId: string; items: { path: string; kind: 'dir' | 'file' }[] }
-const clipboard = ref<Clipboard | null>(null)
-const viewMode = ref<'list' | 'grid'>((localStorage.getItem('sshk.fs.view') as 'list' | 'grid' | null) ?? 'list')
-const sortKey = ref<'name' | 'size' | 'time'>('name')
-const sortDir = ref<'asc' | 'desc'>('asc')
-const filter = ref('')
-/** 类型/链接下拉过滤（用户 2026-11-19）：仅影响显示，不影响选中集合语义 */
-const kindFilter = ref<'all' | 'file' | 'dir'>('all')
-const linkFilter = ref<'all' | 'linked' | 'unlinked'>('all')
-
-// ── 弹框 ──
-const mkdirOpen = ref(false)
-const mkdirName = ref('')
-const mkdirInputRef = ref<{ focus: () => void } | null>(null)
-// 打开即聚焦（页面级兜底，与全局机制双保险）
-watch(mkdirOpen, (v) => { if (v) void nextTick(() => mkdirInputRef.value?.focus()) })
-const renameOpen = ref(false)
-const renameTarget = ref<FsEntry | null>(null)
-const renameName = ref('')
-const renameInputRef = ref<{ focus: () => void; select: () => void } | null>(null)
-const moveOpen = ref(false)
-const moveMode = ref<'copy' | 'move'>('copy')
-const moveDirInput = ref('')
-/** 复制目标通道（跨通道互拷二期；move 模式不支持跨通道） */
-const moveDestProfile = ref('')
-const deleteOpen = ref(false)
-const deleteTargets = ref<FsEntry[]>([])
-const deleteInput = ref('')
-
-// ── 预览 / 编辑 / 播放 ──
-const preview = ref({ open: false, name: '', src: '', pdfUrl: '', scale: 1 })
-/** 关闭预览：PDF 的 Blob URL 释放内存（图片走 data URI 无需释放） */
-function onPreviewClose(): void {
-  if (preview.value.pdfUrl) { URL.revokeObjectURL(preview.value.pdfUrl); preview.value.pdfUrl = '' }
-  preview.value.src = ''
-  preview.value.scale = 1
-}
-const editor = ref({
-  open: false, path: '', name: '', content: '', readonly: false, saving: false,
-  etag: '', modified: 0, size: 0, conflict: false,
-})
-/** 音视频播放器：source=direct 走直链（服务端 Range，无下载进度）；=stream 走主进程边下边播。
- *  dlUploaded/dlTotal/dlDone 仅 stream 模式有意义，来自主进程 fs:media:event。 */
-const player = ref({
-  open: false, name: '', src: '', video: false, loading: false,
-  source: 'stream' as 'direct' | 'stream',
-  entry: null as FsEntry | null,
-  mediaKey: '',
-  dlUploaded: 0, dlTotal: 0, dlDone: false,
-})
-/** 订阅媒体下载进度：只更新当前正在播放的 mediaKey，避免多播放器串台 */
-let unsubMediaEvent: (() => void) | null = null
-function initMediaProgress(): void {
-  if (unsubMediaEvent) return
-  unsubMediaEvent = window.api.fs.onMediaEvent((e) => {
-    if (!player.value.open || e.key !== player.value.mediaKey) return
-    player.value.dlUploaded = e.uploaded
-    player.value.dlTotal = e.total
-    player.value.dlDone = e.done
-  })
-}
-const dlPercent = computed(() => {
-  if (!player.value.dlTotal) return 0
-  return Math.min(100, Math.round((player.value.dlUploaded / player.value.dlTotal) * 100))
-})
-
-// ── 递归搜索（二期）──
-const searchActive = ref(false)
-const searchLoading = ref(false)
-const searchEntries = ref<FsEntry[]>([])
-const searchTruncated = ref(false)
-const searchScannedDirs = ref(0)
-/** 当前搜索会话 id：切换目录/退出搜索/新搜索时置空，在途批次与结果一律丢弃 */
-let activeSearchId = ''
-
-// ── 容量统计（二期）──
-/** 统计中的目录路径集合（支持多个目录并行统计，行内显示 loading） */
-const usageLoadingPaths = ref(new Set<string>())
-function isUsageLoading(p: string): boolean { return usageLoadingPaths.value.has(p) }
-/** 已统计的目录容量（path → 结果），直接显示在列表「类型/大小」列 */
-const usageResults = ref(new Map<string, { size: number; files: number; truncated: boolean }>())
-
-// ── §十一：扩展列（创建时间/权限/用户组/备注）与列设置 ──
-type ColKey = 'createdAt' | 'mode' | 'owner' | 'note'
-/** 列显隐配置（localStorage 记忆）；默认显示备注，其余按 plans/08 §11.1 默认隐藏 */
-const colsVisible = ref<Record<ColKey, boolean>>(initColsVisible())
-function initColsVisible(): Record<ColKey, boolean> {
-  try {
-    const raw = JSON.parse(localStorage.getItem('sshk.fs.cols') ?? '') as Partial<Record<ColKey, boolean>>
-    return {
-      createdAt: raw.createdAt === true,
-      mode: raw.mode === true,
-      owner: raw.owner === true,
-      note: raw.note !== false, // 缺省 true（向后兼容：无配置也显示备注列）
-    }
-  } catch {
-    return { createdAt: false, mode: false, owner: false, note: true }
-  }
-}
-watch(colsVisible, (v) => localStorage.setItem('sshk.fs.cols', JSON.stringify(v)), { deep: true })
-/** 通道是否具备该列数据：本地 birthtime / mode / uid；SFTP mode / uid；FTP 与云一律「—」（列隐藏） */
-const hasCreated = computed(() => activeChannel.value?.type === 'local')
-const hasMode = computed(() => activeChannel.value?.type === 'local' || activeChannel.value?.protocol === 'sftp')
-const hasOwner = computed(() => activeChannel.value?.type === 'local' || activeChannel.value?.protocol === 'sftp')
-const colsOpen = ref(false)
-/** 实际显示的列（用户开关 ∩ 通道具备数据）：无数据的列整列隐藏，不出「—」竖排 */
-const colShown = computed(() => ({
-  createdAt: colsVisible.value.createdAt && hasCreated.value,
-  mode: colsVisible.value.mode && hasMode.value,
-  owner: colsVisible.value.owner && hasOwner.value,
-  note: colsVisible.value.note,
-}))
-/** 列表 grid 模板列（表头与数据行共用，§十一 动态列） */
-const listGridCols = computed(() => {
-  const cols = ['34px', 'minmax(0, 1fr)', '130px', '150px']
-  if (colShown.value.createdAt) cols.push('150px')
-  if (colShown.value.mode) cols.push('64px')
-  if (colShown.value.owner) cols.push('110px')
-  if (colShown.value.note) cols.push('150px')
-  cols.push('max-content')
-  return cols.join(' ')
-})
-
-// ── §十一：压缩/解压上限设置（持久到 app 配置，main 侧钳制合法区间）──
-const zipLimitsOpen = ref(false)
-const zipLimitsForm = ref({ fileCap: 3000, bytesCapMb: 500 })
-const zipLimitsSaving = ref(false)
-async function openZipLimits(): Promise<void> {
-  try {
-    const cur = await window.api.fs.zipLimits()
-    zipLimitsForm.value = { fileCap: cur.fileCap, bytesCapMb: cur.bytesCapMb }
-  } catch { /* 读取失败按缺省值打开 */ }
-  zipLimitsOpen.value = true
-}
-async function submitZipLimits(): Promise<void> {
-  zipLimitsSaving.value = true
-  try {
-    const r = await window.api.fs.setZipLimits({ fileCap: zipLimitsForm.value.fileCap, bytesCapMb: zipLimitsForm.value.bytesCapMb })
-    zipLimitsForm.value = { fileCap: r.fileCap, bytesCapMb: r.bytesCapMb }
-    ElMessage.success('压缩上限已更新')
-    zipLimitsOpen.value = false
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  } finally {
-    zipLimitsSaving.value = false
-  }
-}
-
-// ── 上限设置（上传 / 下载分开可配；0=不限；搜索扫描页数默认 500、0=不限；在线预览 MB 默认 100、0=不限）──
-const transferCapsOpen = ref(false)
-// 默认（用户 2026-11-18 定版）：上传 10000、下载 0 不限制
-const transferCapsForm = ref({ uploadCap: 10000, downloadCap: 0, searchMaxPages: 500, mediaLimitMb: 100, previewDirectLink: true })
-const transferCapsSaving = ref(false)
-async function openTransferCaps(): Promise<void> {
-  try { transferCapsForm.value = await window.api.fs.transferCaps() } catch { /* 读取失败按缺省值 */ }
-  transferCapsOpen.value = true
-}
-async function submitTransferCaps(): Promise<void> {
-  transferCapsSaving.value = true
-  try {
-    const r = await window.api.fs.setTransferCaps({
-      uploadCap: transferCapsForm.value.uploadCap,
-      downloadCap: transferCapsForm.value.downloadCap,
-      searchMaxPages: transferCapsForm.value.searchMaxPages,
-      mediaLimitMb: transferCapsForm.value.mediaLimitMb,
-      previewDirectLink: transferCapsForm.value.previewDirectLink,
-    })
-    transferCapsForm.value = r
-    mediaLimitBytes.value = r.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : r.mediaLimitMb * 1024 * 1024
-    previewDirectLink.value = r.previewDirectLink !== false
-    ElMessage.success('上限设置已更新')
-    transferCapsOpen.value = false
-  } catch (err) { ElMessage.error(friendlyError(err)) }
-  finally { transferCapsSaving.value = false }
-}
-
-/** 音视频在线预览上限（字节，可配 app.fs.mediaLimitMb；Infinity=不限）——页面加载时拉一次 */
-const mediaLimitBytes = ref<number>(FS_MEDIA_PLAY_LIMIT)
-/** 预览优先用直链（默认开）：从 transferCaps 读取，与上限设置弹框同一开关 */
-const previewDirectLink = ref(true)
-async function loadMediaLimit(): Promise<void> {
-  try {
-    const caps = await window.api.fs.transferCaps()
-    mediaLimitBytes.value = caps.mediaLimitMb === 0 ? Number.POSITIVE_INFINITY : caps.mediaLimitMb * 1024 * 1024
-    previewDirectLink.value = caps.previewDirectLink !== false
-  } catch { /* 失败用共享常量缺省 */ }
-}
-const mediaLimitText = computed(() => mediaLimitBytes.value === Number.POSITIVE_INFINITY ? '不限' : fsFormatSize(mediaLimitBytes.value))
-
-// ── §十一：目录备注（应用侧 fsAnnotations）──
-const annotations = ref(new Map<string, string>())
-async function loadAnnotations(): Promise<void> {
-  if (!profileId.value) return
-  try { annotations.value = new Map(Object.entries(await window.api.fs.annotationList(profileId.value))) }
-  catch { annotations.value = new Map() }
-}
-const noteOpen = ref(false)
-const noteTargets = ref<FsEntry[]>([])
-const noteInput = ref('')
-const noteSaving = ref(false)
-
-// ── §十一：收藏夹（应用侧 fsFavorites）──
-const favorites = ref<FsFavorite[]>([])
-const favDrawerOpen = ref(false)
-async function loadFavorites(): Promise<void> {
-  try { favorites.value = await window.api.fs.favoriteList() } catch { favorites.value = [] }
-}
-function isFavorited(path: string): boolean { return favorites.value.some((f) => f.profileId === profileId.value && f.path === path) }
-/** 收藏跳转：跨通道先切通道（watch 会清路径重列），再消费 pendingNavPath 进入目标目录；
-    文件条目进入其父目录（用户 2026-11-19：当目录进入会报错），到达后选中该文件便于定位 */
-let pendingNavPath: string | null = null
-let pendingNavSelect: string | null = null
-function gotoFavorite(f: FsFavorite): void {
-  if (f.kind === 'file') {
-    pendingNavPath = f.path.slice(0, Math.max(1, f.path.lastIndexOf('/'))) || '/'
-    pendingNavSelect = f.path
-  } else {
-    pendingNavPath = f.path
-    pendingNavSelect = null
-  }
-  if (f.profileId !== profileId.value) profileId.value = f.profileId
-  else { path.value = pendingNavPath; void list() }
-  favDrawerOpen.value = false
-}
-
-// ── §十一：编辑权限 / 属性 / 转换格式 / 压缩解压 ──
-const permOpen = ref(false)
-const permTarget = ref<FsEntry | null>(null)
-const permOctal = ref('0644')
-const permSaving = ref(false)
-const propsOpen = ref(false)
-const propsLoading = ref(false)
-const propsEntry = ref<FsEntry | null>(null)
-const propsStat = ref<{ size?: number; modified?: number; isDir?: boolean } | null>(null)
-const convertOpen = ref(false)
-const convertTarget = ref<FsEntry | null>(null)
-const convertForm = ref<{ from: 'auto' | 'utf-8' | 'gbk' | 'big5'; to: 'utf-8' | 'gbk'; newline: 'keep' | 'lf' | 'crlf' }>({ from: 'auto', to: 'utf-8', newline: 'keep' })
-const convertSaving = ref(false)
-const zipSaving = ref(false)
-
-/** 选中态派生（§十一 动态启用：按所选数量/类型/通道实时判定，避免误操作） */
-const selSingle = computed(() => (selectedEntries.value.length === 1 ? selectedEntries.value[0]! : null))
-const selSingleFile = computed(() => (selSingle.value?.kind === 'file' ? selSingle.value : null))
-const selSingleDir = computed(() => (selSingle.value?.kind === 'dir' ? selSingle.value : null))
-/** 编辑权限可用：单选 + 本地/SFTP 通道 + 有当前权限值（无值 = 列表没给，无从改起） */
-const canPerm = computed(() => selSingle.value != null && hasMode.value && Boolean(selSingle.value.mode))
-const canZip = computed(() => hasWritable.value && activeChannel.value?.type === 'local' && selectedEntries.value.length > 0)
-const canUnzip = computed(() => hasWritable.value && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
-const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
-
-// ── 传输队列（plans/10 悬浮面板；P4-7 全局化：面板挂 App.vue 根层，本页只留唤起入口与进行中计数）──
-// 工具页禁止反向 import apps（check-boundaries 铁律），经 App.vue provide 的控制器 inject 消费：
-// 注入键 'sshk:transfer-panel' 与 apps/desktop/src/renderer/composables/useTransferPanel.ts 成对维护；
-// 缺省兜底 = 空实现（组件单测/孤立挂载不崩），面板不可用时静默降级。
-interface TransferPanelControl { show: () => void; runningCount: import('vue').ComputedRef<number> }
-const transferPanelCtrl = inject<TransferPanelControl>(
-  'sshk:transfer-panel',
-  { show: () => { /* App 层未挂载全局面板（兜底不触发） */ }, runningCount: computed(() => 0) },
-)
-const runningCount = transferPanelCtrl.runningCount
-function openTransferPanel(): void {
-  transferPanelCtrl.show()
-}
-
 const themeDark = ref(true)
 void window.api.config.get('app.themeMode').then((v) => { themeDark.value = String(v ?? 'dark') !== 'light' })
 
-// ── 派生 ──
-const activeChannel = computed(() => channels.value.find((c) => c.id === profileId.value) ?? null)
-/** 带链接判定：本地=分享路由三态标记（own/inherited）；远程/云=有「链接」按钮的文件行（可复制 baseUrl 外链） */
-function hasLink(entry: FsEntry): boolean {
-  return activeChannel.value?.type === 'local'
-    ? shareMarkOf(entry).kind !== 'none'
-    : entry.kind === 'file'
-}
-/** 类型/链接下拉过滤：'all' 不动 */
-function applyDropdownFilters(list: FsEntry[]): FsEntry[] {
-  let out = list
-  if (kindFilter.value !== 'all') out = out.filter((e) => e.kind === kindFilter.value)
-  if (linkFilter.value === 'linked') out = out.filter(hasLink)
-  else if (linkFilter.value === 'unlinked') out = out.filter((e) => !hasLink(e))
-  return out
-}
-const filteredEntries = computed(() => {
-  const kw = filter.value.trim().toLowerCase()
-  const nameMatch = (e: FsEntry): boolean => !kw || e.name.toLowerCase().includes(kw)
-  // 递归搜索态：结果已按名称排序，只叠加过滤不重排
-  if (searchActive.value) return applyDropdownFilters(searchEntries.value.filter(nameMatch))
-  const list = applyDropdownFilters(entries.value.filter(nameMatch))
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  return [...list].sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
-    if (sortKey.value === 'size') return (((a.size ?? 0) - (b.size ?? 0)) || a.name.localeCompare(b.name)) * dir
-    if (sortKey.value === 'time') return (((a.modified ?? 0) - (b.modified ?? 0)) || a.name.localeCompare(b.name)) * dir
-    return a.name.localeCompare(b.name, 'zh-Hans-CN') * dir
-  })
+// ── 装配：核心列表（通道/目录/分页/导航/容量统计）──
+const listing = useFsListing()
+const {
+  channels, outputRoot, profileId, path, pathInput, pathEditing,
+  entries, cursor, loading, loadingMore, pageError, listEl,
+  pendingNavPath, pendingNavSelect,
+  activeChannel, hasWritable, crumbs, crumbItems, collapsedCrumbPath,
+  isUsageLoading, showUsage, sizeCell,
+  loadChannels, list, loadMore, enterDir, goUp, gotoCrumb, submitPathInput, refresh, fmtTime,
+} = listing
+
+// ── 装配：目标目录级联工具（移动/复制 与 解压到 共用）──
+const dirPicker = useFsDirPicker({ profileId: () => profileId.value })
+
+// ── 装配：ShareHub 分享（三态标记/分享弹框/媒体直链）──
+const share = useFsShareMarks({
+  toolId: () => TOOL_ID.value,
+  profileId: () => profileId.value,
+  activeChannel: () => activeChannel.value,
 })
-const selectedEntries = computed(() => filteredEntries.value.filter((e) => selection.value.has(e.path)))
-const crumbs = computed(() => path.value === '/' ? [] : path.value.split('/').filter(Boolean))
-/** Windows 式路径折叠：层级 >3 时中间段收成「…」（title 显示被折叠的完整路径），始终保留末 2 段 */
-const CRUMB_TAIL = 2
-const crumbItems = computed(() => {
-  const all = crumbs.value
-  if (all.length <= CRUMB_TAIL + 1) return all.map((seg, i) => ({ seg, i }))
-  return all.slice(-CRUMB_TAIL).map((seg, j) => ({ seg, i: all.length - CRUMB_TAIL + j }))
+const { shareMarkOf, shareMarkTip, copyShareLink, shareDialog, canShareEntry, rowShare, loadShareRoutes } = share
+
+// ── 装配：递归搜索（filter 由装配层持有，视图过滤与搜索共用同一输入框）──
+const filter = ref('')
+const search = useFsSearch({
+  profileId: () => profileId.value,
+  path: () => path.value,
+  entries: () => entries.value,
+  filter,
 })
-const collapsedCrumbPath = computed(() => {
-  const all = crumbs.value
-  if (all.length <= CRUMB_TAIL + 1) return ''
-  return '/' + all.slice(0, all.length - CRUMB_TAIL).join('/')
+const {
+  searchActive, searchLoading, searchEntries, searchTruncated, searchScannedDirs,
+  runSearch, exitSearch, invalidateSession, bindResetSelection, searchDirHint, copyEntryDir,
+} = search
+
+// ── 装配：视图（视图切换/排序/过滤/列设置/过滤结果集）──
+const view = useFsView({
+  entries: () => entries.value,
+  searchActive: () => searchActive.value,
+  searchEntries: () => searchEntries.value,
+  activeChannel: () => activeChannel.value,
+  shareMarkOf,
+  filter,
 })
-const hasWritable = computed(() => activeChannel.value?.writable === true)
+const {
+  viewMode, sortKey, sortDir, kindFilter, linkFilter,
+  filteredEntries, colsVisible, hasCreated, hasMode, hasOwner, colsOpen, colShown, listGridCols, fileIcon,
+} = view
 
-function fmtTime(ts: number | undefined): string {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// ── 装配：选择（单击/Ctrl/Shift/全选/派生启用态）──
+const selectionApi = useFsSelection(() => filteredEntries.value)
+const {
+  selection, selectedEntries, selSingle, selSingleFile, selSingleDir,
+  reset: resetSelection, selectOnly, rowClick, toggleCheck, selectAll, copySelectedPaths,
+} = selectionApi
 
-// ── 数据加载 ──
-async function loadChannels(): Promise<void> {
-  try {
-    const payload = await window.api.fs.profiles()
-    channels.value = payload.channels
-    outputRoot.value = payload.outputRoot
-    const saved = localStorage.getItem('sshk.fs.profileId') ?? ''
-    const ok = payload.channels.find((c) => c.id === saved) ?? payload.channels[0]
-    profileId.value = ok?.id ?? ''
-  } catch (err) {
-    pageError.value = (err as Error).message
-  }
-}
-
-let listSeq = 0 // 列表请求序号：切目录/切通道后丢弃过期响应（2026-11-19 用户实测本地慢目录与切换竞态）
-let lastListPath = '' // 上次列取的目录：目录变更时列表回到顶部（定位文件场景除外）
-const listEl = ref<HTMLElement | null>(null)
-
-async function list(resetCursor = true): Promise<void> {
-  if (!profileId.value) return
-  const seq = ++listSeq
-  if (resetCursor) { cursor.value = null; entries.value = [] }
-  activeSearchId = '' // 在途搜索会话作废（切换目录/刷新时丢弃晚到的流式批次）
-  searchActive.value = false
-  searchEntries.value = []
-  searchTruncated.value = false
-  loading.value = true
-  pageError.value = ''
-  selection.value = new Set()
-  shiftAnchor.value = -1
-  try {
-    const page: FsListPage = await window.api.fs.list({ profileId: profileId.value, path: path.value })
-    if (seq !== listSeq) return // 期间用户已切目录/切通道：过期响应直接丢弃
-    entries.value = page.entries
-    cursor.value = page.nextCursor ?? null
-    pathInput.value = path.value
-    // 清掉已不在列表里的统计缓存（目录被删后同路径新目录不显示旧统计）
-    const valid = new Set(page.entries.map((e) => e.path))
-    usageResults.value = new Map([...usageResults.value].filter(([p]) => valid.has(p)))
-    if (resetCursor) { void loadAnnotations(); void loadShareRoutes() } // 备注/分享状态跟随目录重载
-    // 目录切换：列表回到顶部（用户 2026-11-19：进目录不定位，仅收藏定位文件时滚动）
-    if (lastListPath !== path.value) {
-      lastListPath = path.value
-      listEl.value?.scrollTo({ top: 0 })
-    }
-    // 收藏文件跳转：进入父目录后选中该文件（未列到则忽略）
-    if (pendingNavSelect) {
-      const target = pendingNavSelect
-      pendingNavSelect = null
-      if (entries.value.some((e) => e.path === target)) {
-        selection.value = new Set([target])
-        // 仅定位文件时滚动到视口居中（目录进入不滚动，见上）
-        void nextTick(() => {
-          document.querySelector(`[data-entry-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: 'center' })
-        })
-      }
-    }
-  } catch (err) {
-    if (seq !== listSeq) return
-    entries.value = []
-    cursor.value = null
-    pageError.value = friendlyError(err)
-  } finally {
-    if (seq === listSeq) loading.value = false
-  }
-}
-
-async function loadMore(): Promise<void> {
-  if (!cursor.value || loadingMore.value || !profileId.value) return
-  const seq = listSeq
-  loadingMore.value = true
-  try {
-    const page = await window.api.fs.list({ profileId: profileId.value, path: path.value, cursor: cursor.value })
-    if (seq !== listSeq) return // 期间已切目录/切通道：过期分页不追加
-    entries.value = [...entries.value, ...page.entries]
-    cursor.value = page.nextCursor ?? null
-  } catch (err) {
-    if (seq === listSeq) ElMessage.error('加载更多失败：' + friendlyError(err))
-  } finally {
-    loadingMore.value = false
-  }
-}
-
-function friendlyError(err: unknown): string {
-  const msg = (err as Error).message ?? String(err)
-  // 移动部分完成的主进程提示已含处置建议，原样展示，别被下面的通用权限文案覆盖
-  if (/移动未完成/.test(msg)) return msg
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(msg)) return '连接失败：无法连通主机（检查地址/端口/网络）'
-  if (/530|532|认证|Authentication|password|All authentication/i.test(msg)) return '认证失败：检查用户名与密码/密钥'
-  if (/NoSuchBucket|The specified bucket|not exist/i.test(msg)) return '路径不存在：检查 Bucket 与目录'
-  if (/no right to access|bucket acl|AccessDenied|403|permission|Forbidden|无权|权限/i.test(msg)) {
-    return '权限不足：当前密钥无此操作权限，请到云控制台检查 Bucket ACL 与子账号授权'
-  }
-  if (/密钥|Secret/i.test(msg)) return '密钥未配置：请到「文件管理 · 通道配置」填写并保存'
-  return msg
-}
-
-watch(profileId, () => {
-  localStorage.setItem('sshk.fs.profileId', profileId.value)
-  path.value = '/'
-  usageResults.value = new Map()
-  usageLoadingPaths.value = new Set()
-  if (!profileId.value) return
-  // 收藏夹跨通道跳转：watch 已把路径清空重列，这里消费 pendingNavPath 再进目标目录
-  if (pendingNavPath !== null) {
-    const target = pendingNavPath
-    pendingNavPath = null
-    path.value = target
-  }
-  void list()
+// ── 装配：收藏夹 ──
+const favorites = useFsFavorites({
+  profileId, path, pendingNavPath, pendingNavSelect,
+  list: (resetCursor?: boolean) => list(resetCursor),
 })
-watch(viewMode, (v) => localStorage.setItem('sshk.fs.view', v))
-// 分享路由变更（创建/撤销/重新生成）由 ShareDialog 的 changed 事件即时通知刷新（见模板 @changed）
+const {
+  favorites: favoriteList, favDrawerOpen,
+  loadFavorites, isFavorited, gotoFavorite, addFavorites, removeFavorite, removeFavoriteById, toggleFav,
+} = favorites
 
-// ── 导航 ──
-function enterDir(entry: FsEntry): void {
-  if (entry.kind !== 'dir') return
-  path.value = entry.path
-  void list()
-}
-function goUp(): void {
-  if (path.value === '/') return
-  const i = path.value.lastIndexOf('/')
-  path.value = i <= 0 ? '/' : path.value.slice(0, i)
-  void list()
-}
-function gotoCrumb(index: number): void {
-  path.value = index < 0 ? '/' : `/${crumbs.value.slice(0, index + 1).join('/')}`
-  void list()
-}
-function submitPathInput(): void {
-  pathEditing.value = false
-  // 内部规范 `/a/b/c`：输入兼容 a/b 与 /a/b/，统一补前导 /、去尾 /；根输入 '' 或 '/' 都是 '/'
-  const raw = pathInput.value.trim().replace(/\\/g, '/')
-  const segs = raw.split('/').map((s) => s.trim()).filter(Boolean)
-  if (segs.some((p) => p === '.' || p === '..')) {
-    ElMessage.warning('路径不允许包含 . / ..')
-    pathInput.value = path.value
-    return
-  }
-  path.value = `/${segs.join('/')}`
-  void list()
-}
-function refresh(): void {
-  void list()
-}
+// ── 装配：备注 ──
+const annotationsApi = useFsAnnotations({ profileId: () => profileId.value })
+const {
+  annotations, loadAnnotations, noteOpen, noteTargets, noteInput, noteSaving, openNote, submitNote,
+} = annotationsApi
 
-// ── 递归搜索（二期）：回车触发，扫当前路径前缀（根 = 整个通道）──
-// 流式：主进程每攒 20 条/完成一层就推一批，第一批到达即进入列表视图；不再等全量扫完白屏。
-async function runSearch(): Promise<void> {
-  const kw = filter.value.trim()
-  if (!kw) { searchActive.value = false; searchEntries.value = []; return }
-  if (!profileId.value) return
-  const reqId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  activeSearchId = reqId
-  searchLoading.value = true
-  searchActive.value = true // 立刻进入搜索态，横幅显示「扫描中…」
-  // 先把当前目录（已加载）的命中作为首批结果——保证「不回车能看到的，回车后也一定在」
-  // （用户 2026-11-18：输入 tool 有 6 个，回车递归只剩 1 个，因云扫描上限截断漏掉当前目录）
-  const localHits = entries.value.filter((e) => e.name.toLowerCase().includes(kw.toLowerCase()))
-  searchEntries.value = localHits.slice()
-  searchScannedDirs.value = 0
-  searchTruncated.value = false
-  selection.value = new Set()
-  const off = window.api.fs.onSearchEvent((e) => {
-    if (activeSearchId !== reqId || e.reqId !== reqId) return // 旧会话批次一律丢弃
-    if (e.entries.length) {
-      // 与当前目录首批命中按 path 去重后合并；边收边排序，与最终全量结果顺序一致避免跳动
-      const seen = new Set(searchEntries.value.map((x) => x.path))
-      const merged = [...searchEntries.value, ...e.entries.filter((x) => !seen.has(x.path))]
-      searchEntries.value = merged.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
-    }
-    searchScannedDirs.value = e.scannedDirs
-    if (e.done) searchLoading.value = false
-  })
-  try {
-    const r = await window.api.fs.search({ profileId: profileId.value, path: path.value, keyword: kw, reqId })
-    if (activeSearchId !== reqId) return // 期间已退出或被新搜索取代
-    // 最终全量结果与当前目录首批命中合并（递归截断时仍保留当前目录命中）
-    const seen = new Set(r.entries.map((x) => x.path))
-    searchEntries.value = [...r.entries, ...localHits.filter((x) => !seen.has(x.path))]
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
-    searchTruncated.value = r.truncated
-    if (!r.entries.length) ElMessage.info('递归搜索没有结果')
-  } catch (err) {
-    if (activeSearchId === reqId) ElMessage.error('递归搜索失败：' + friendlyError(err))
-  } finally {
-    off()
-    if (activeSearchId === reqId) searchLoading.value = false
-  }
-}
-function exitSearch(): void {
-  activeSearchId = '' // 在途批次/结果全部作废
-  searchActive.value = false
-  searchLoading.value = false
-  searchEntries.value = []
-  searchTruncated.value = false
-  searchScannedDirs.value = 0
-  filter.value = ''
-}
-
-// ── 目录容量统计（二期）：结果直接写入列表「类型/大小」列 ──
-async function showUsage(entry: FsEntry): Promise<void> {
-  if (!profileId.value || usageLoadingPaths.value.has(entry.path)) return
-  usageLoadingPaths.value = new Set(usageLoadingPaths.value).add(entry.path)
-  try {
-    const r = await window.api.fs.usage({ profileId: profileId.value, path: entry.path })
-    usageResults.value = new Map(usageResults.value).set(entry.path, { size: r.size, files: r.files, truncated: r.truncated })
-    ElMessage.success(`${entry.name || '根目录'}：${fsFormatSize(r.size)} · ${r.files} 个文件${r.truncated ? '（已达扫描上限）' : ''}，已显示在列表`)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  } finally {
-    const next = new Set(usageLoadingPaths.value)
-    next.delete(entry.path)
-    usageLoadingPaths.value = next
-  }
-}
-
-/** 「类型/大小」列文案：文件=大小；目录=类型（统计过则附容量与文件数，统计中显示 loading 文案） */
-function sizeCell(entry: FsEntry): string {
-  if (entry.kind === 'file') return fsFormatSize(entry.size)
-  if (isUsageLoading(entry.path)) return '目录 · 统计中…'
-  const u = usageResults.value.get(entry.path)
-  if (!u) return '目录'
-  return `目录 · ${fsFormatSize(u.size)} / ${u.files} 文件${u.truncated ? ' ∗' : ''}`
-}
-
-/** 搜索结果态命中子目录文件时的所在目录（用户 2026-11-19：不再内联灰字，改为名称后 icon——hover 查看完整目录、点击复制目录） */
-function searchDirHint(entry: FsEntry): string {
-  if (!searchActive.value || entry.kind !== 'file') return ''
-  return entry.path.slice(0, entry.path.lastIndexOf('/'))
-}
-
-/** 复制搜索命中文件的完整路径（含文件名，用户 2026-11-19） */
-async function copyEntryDir(entry: FsEntry): Promise<void> {
-  if (!searchDirHint(entry)) return
-  await window.api.os.clipboardWrite(entry.path)
-  ElMessage.success('路径已复制')
-}
-
-// ── 选择 ──
-function rowClick(entry: FsEntry, event: MouseEvent): void {
-  const index = filteredEntries.value.findIndex((e) => e.path === entry.path)
-  if (event.shiftKey && shiftAnchor.value >= 0) {
-    const [a, b] = [Math.min(shiftAnchor.value, index), Math.max(shiftAnchor.value, index)]
-    const next = new Set(selection.value)
-    for (let i = a; i <= b; i++) next.add(filteredEntries.value[i]!.path)
-    selection.value = next
-    return
-  }
-  if (event.ctrlKey || event.metaKey) {
-    const next = new Set(selection.value)
-    if (next.has(entry.path)) next.delete(entry.path)
-    else next.add(entry.path)
-    selection.value = next
-  } else {
-    selection.value = new Set([entry.path])
-  }
-  shiftAnchor.value = index
-}
-function toggleCheck(entry: FsEntry): void {
-  const next = new Set(selection.value)
-  if (next.has(entry.path)) next.delete(entry.path)
-  else next.add(entry.path)
-  selection.value = next
-  shiftAnchor.value = filteredEntries.value.findIndex((e) => e.path === entry.path)
-}
-function selectAll(): void {
-  selection.value = selection.value.size === filteredEntries.value.length ? new Set() : new Set(filteredEntries.value.map((e) => e.path))
-}
-function rowOpen(entry: FsEntry): void {
-  if (entry.kind === 'dir') enterDir(entry)
-  else void openFile(entry)
-}
-
-// ── 打开：预览 / 编辑 / 下载 ──
-function fileIcon(entry: FsEntry): typeof Document {
-  if (entry.kind === 'dir') return Folder
-  if (isFsImageName(entry.name)) return Picture
-  if (isFsMediaName(entry.name)) return VideoCamera
-  return Document
-}
-
-/** 音视频播放（2026-11-19 重构）：
- *  直链优先（开关默认开）：有域名/分享直链则 <video src=直链>，服务端 Range、零下载；
- *  直链播放失败（签名过期/403/编码问题）→ onMediaError 自动回退到「主进程边下边播」；
- *  无直链或开关关 → 直接边下边播：readMedia 立即返回 localres URL，后台边下边写，进度可查。 */
-function openPlayer(entry: FsEntry): void {
-  player.value = {
-    open: true, name: entry.name, src: '', video: isFsVideoName(entry.name), loading: true,
-    source: 'stream', entry, mediaKey: '', dlUploaded: 0, dlTotal: 0, dlDone: false,
-  }
-  // 直链决策（用户 2026-11-19 定版）：本地分享直链走本机 ShareHub 服务、零外网流量，
-  // 不受「预览优先用直链」开关牵连、恒优先；开关只管控云/远程域名直链（流量/隐私针对外部域名）
-  void mediaDirectUrl(entry).then((url) => {
-    // 弹框可能已被关闭 / 用户切了别的条目
-    if (!player.value.open || player.value.entry !== entry) return
-    const directOk = Boolean(url) && (previewDirectLink.value || activeChannel.value?.type === 'local')
-    if (directOk) startDirectPlay(url as string)
-    else startStreamPlay(entry)
-  }).catch(() => { if (player.value.open && player.value.entry === entry) startStreamPlay(entry) })
-}
-
-/** 直链播放：不动本地下载上限（不落盘）；失败由 onMediaError 回退 */
-function startDirectPlay(url: string): void {
-  player.value.source = 'direct'
-  player.value.src = url
-  player.value.loading = false
-}
-
-/** 边下边播：超限仍走「下载后本地播放」确认；否则 readMedia 立即拿 URL，进度走事件 */
-function startStreamPlay(entry: FsEntry): void {
-  if ((entry.size ?? 0) > mediaLimitBytes.value) {
-    player.value.open = false
-    confirmDownload(entry, `文件 ${fsFormatSize(entry.size)} 超过在线播放上限（${mediaLimitText.value}）`, '文件过大')
-    return
-  }
-  player.value.source = 'stream'
-  player.value.src = '' // 清掉可能残留的坏直链 src，避免 <video> 对旧源重复 error 误报
-  player.value.loading = true
-  player.value.dlUploaded = 0
-  player.value.dlTotal = entry.size ?? 0
-  player.value.dlDone = false
-  void window.api.fs.readMedia({ profileId: profileId.value, path: entry.path })
-    .then((r) => {
-      if (!player.value.open || player.value.entry !== entry) return
-      player.value.mediaKey = r.mediaKey
-      player.value.dlTotal = r.size || player.value.dlTotal
-      player.value.src = r.fileUrl
-    })
-    .catch((err) => {
-      player.value.open = false
-      const msg = (err as Error).message ?? ''
-      if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
-      else ElMessage.warning(friendlyError(err))
-    })
-    .finally(() => { if (player.value.entry === entry) player.value.loading = false })
-}
-
-/** 媒体加载失败：直链失败 → 自动回退边下边播；边下边播失败 → 引导下载。
- *  MediaError code 便于定位：1=中断 2=网络（localres 403/503 等） 3=解码 4=源不支持（多为 CSP/URL 无效） */
-function onMediaError(e?: Event): void {
-  const code = (e?.target as HTMLVideoElement | null)?.error?.code
-  console.warn('[fs-player] media error code =', code, 'src =', player.value.src)
-  const entry = player.value.entry
-  if (player.value.source === 'direct' && entry) {
-    startStreamPlay(entry) // 签名过期/403 等：静默回退，不打扰用户
-    return
-  }
-  player.value.loading = false
-  ElMessage.warning(`视频加载失败（code=${code ?? '?'}，可能是不支持的编码格式或下载中断），请下载后本地播放`)
-}
-
-/** 引导下载确认框（打开/预览失败、文件过大等场景统一入口，用户决定是否下载） */
-function confirmDownload(entry: FsEntry, message: string, title: string): void {
-  ElMessageBox.confirm(`${message}。是否下载到本地？`, title, {
-    type: 'warning', confirmButtonText: '下载', cancelButtonText: '取消',
-    closeOnClickModal: false, closeOnPressEscape: false,
-  }).then(() => { void downloadEntries([entry]) }).catch(() => { /* 取消 */ })
-}
-
-/** PDF 在线预览：base64 → Blob URL，交给 Chromium 内置 PDF viewer（上限 FS_PDF_PREVIEW_LIMIT） */
-async function openPdf(entry: FsEntry): Promise<void> {
-  if (!profileId.value) return
-  try {
-    const r = await window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_PDF_PREVIEW_LIMIT })
-    const bytes = Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0))
-    onPreviewClose()
-    preview.value = { open: true, name: entry.name, src: '', pdfUrl: URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), scale: 1 }
-  } catch (err) {
-    const msg = (err as Error).message ?? ''
-    if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
-    else ElMessage.warning(friendlyError(err))
-  }
-}
-
-async function openFile(entry: FsEntry): Promise<void> {
-  if (!profileId.value) return
-  if (/\.pdf$/i.test(entry.name)) { void openPdf(entry); return }
-  if (isFsImageName(entry.name)) {
-    try {
-      const r = await window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_IMAGE_PREVIEW_LIMIT })
-      preview.value = { open: true, name: entry.name, src: dataUriOf(entry.name, r.contentBase64), pdfUrl: '', scale: 1 }
-    } catch (err) {
-      ElMessage.warning(friendlyError(err))
-    }
-    return
-  }
-  if (isFsTextName(entry.name)) {
-    try {
-      const r = await window.api.fs.read({ profileId: profileId.value, path: entry.path, maxBytes: FS_TEXT_EDIT_LIMIT })
-      editor.value = {
-        open: true, path: entry.path, name: entry.name,
-        content: new TextDecoder().decode(Uint8Array.from(atob(r.contentBase64), (c) => c.charCodeAt(0))),
-        etag: r.etag ?? '', modified: r.modified ?? 0, size: r.size,
-        readonly: false, saving: false, conflict: false,
-      }
-    } catch (err) {
-      const msg = (err as Error).message ?? ''
-      // 仅「超阈值」引导下载；其余错误（网络/权限等）原样提示
-      if (/过大|超过/.test(msg)) confirmDownload(entry, msg, '文件过大')
-      else ElMessage.warning(friendlyError(err))
-    }
-    return
-  }
-  if (isFsMediaName(entry.name)) {
-    openPlayer(entry)
-    return
-  }
-  // 二进制 / 未知扩展：能打开的直接打开做不到，先告知用户再由其决定是否下载
-  confirmDownload(entry, '该文件类型暂不支持在线预览，需要下载到本地查看', '无法在线预览')
-}
-
-function dataUriOf(name: string, base64: string): string {
-  const mime = isFsImageName(name)
-    ? (/\.svg$/i.test(name) ? 'image/svg+xml' : `image/${(/\.jpe?g$/i.test(name) ? 'jpeg' : (/\.ico$/i.test(name) ? 'x-icon' : (/\.bmp$/i.test(name) ? 'bmp' : (/\.gif$/i.test(name) ? 'gif' : (/\.webp$/i.test(name) ? 'webp' : 'png')))))}`)
-    : 'application/octet-stream'
-  return `data:${mime};base64,${base64}`
-}
-
-// ── 上传（文件 / 文件夹 / EDM 产物） ──
-/** 展平 + 入队统一容错：flattenLocal 抛错（如旧版反斜杠问题）必须有可见提示，不许静默 */
-async function flattenAndEnqueue(paths: string[], label: string): Promise<void> {
-  try {
-    const files = await window.api.fs.flattenLocal(paths)
-    await enqueueUploads(files)
-  } catch (err) {
-    ElMessage.error(`${label}失败：${friendlyError(err)}`)
-  }
-}
-async function uploadFiles(): Promise<void> {
-  const paths = await window.api.fs.pickUpload({ type: 'file' })
-  if (!paths.length || !profileId.value) return
-  await flattenAndEnqueue(paths, '上传')
-}
-async function uploadDirs(): Promise<void> {
-  const paths = await window.api.fs.pickUpload({ type: 'dir' })
-  if (!paths.length || !profileId.value) return
-  await flattenAndEnqueue(paths, '上传')
-}
-async function uploadFromOutput(): Promise<void> {
-  if (!outputRoot.value) { ElMessage.info('未找到 EDM 产物目录'); return }
-  const paths = await window.api.os.pickFile({ multi: true, defaultPath: outputRoot.value })
-  if (!paths.length || !profileId.value) return
-  await flattenAndEnqueue(paths, '上传')
-}
-
-// ── 上传重名预检（用户 2026-11-19）──
-/** 时间戳（同批共用同一值）：YYYYMMDDHHmmss */
-function uploadStamp(): string {
-  const d = new Date()
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
-}
-/** 扩展名前插入时间戳（下划线分隔）：a/b/favicon.ico → a/b/favicon_20261119084512.ico；无扩展名直接尾部追加 */
-function stampRelPath(relPath: string, stamp: string): string {
-  const dot = relPath.lastIndexOf('.')
-  const slash = relPath.lastIndexOf('/')
-  if (dot > slash && dot > 0) return `${relPath.slice(0, dot)}_${stamp}${relPath.slice(dot)}`
-  return `${relPath}_${stamp}`
-}
-/** 扩展名前插入序号（同批重命名去重兜底）：favicon_20261119084512.ico → favicon_20261119084512_2.ico */
-function seqRelPath(relPath: string, n: number): string {
-  const dot = relPath.lastIndexOf('.')
-  const slash = relPath.lastIndexOf('/')
-  const stem = dot > slash && dot > 0 ? relPath.slice(0, dot) : relPath
-  const ext = stem === relPath ? '' : relPath.slice(dot!)
-  return `${stem}_${n}${ext}`
-}
-
-type UploadAction = 'overwrite' | 'skip' | 'rename'
-/** 重名确认弹框状态：三选一（取消 / 保留重命名 / 全部覆盖）；文件名限高滚动，单次多选也不撑爆弹框 */
-const dupDialogOpen = ref(false)
-const dupList = ref<string[]>([])
-let dupResolve: ((action: UploadAction) => void) | null = null
-function askDupAction(names: string[]): Promise<UploadAction> {
-  dupList.value = names
-  dupDialogOpen.value = true
-  return new Promise((resolve) => { dupResolve = resolve })
-}
-/** 三按钮统一收口：关闭/取消 = skip（忽略重名，其余照传）；关闭时先 resolve 再置空，避免悬挂 */
-function resolveDupAction(action: UploadAction): void {
-  dupDialogOpen.value = false
-  dupResolve?.(action)
-  dupResolve = null
-}
-
-/** 同通道同目标目录的重名检测与处置：①本批内映射到同一目标路径（保留首个，后续计重名）；
- *  ②与目标目录已有条目重名（仅直传该目录的文件；带子目录结构的深层冲突仍由引擎运行时确认）。
- *  命中时弹框三选一：取消（忽略重名文件，其余照传）/ 保留（自动重命名 原名_YYYYMMDDHHmmss+原后缀，同批同一时间戳）/ 全部覆盖。 */
-async function resolveUploadDuplicates(
-  files: { name: string; localPath: string; relPath: string; size: number }[],
-): Promise<{ files: typeof files; overwritePaths: Set<string> }> {
-  // ① 本批内重复：同一 relPath 第二次及以后出现计入重名（首个正常上传）
-  const seen = new Set<string>()
-  const dupKeys = new Set<string>()
-  for (const f of files) {
-    const key = f.relPath.toLowerCase()
-    if (seen.has(key)) dupKeys.add(key)
-    else seen.add(key)
-  }
-  // ② 与目标目录已有条目重名（含后缀）
-  const direct = files.filter((f) => !f.relPath.includes('/'))
-  if (direct.length) {
-    try {
-      const page = await window.api.fs.list({ profileId: profileId.value, path: path.value || '/' })
-      const remoteNames = new Set(page.entries.map((e) => e.name.toLowerCase()))
-      for (const f of direct) {
-        if (remoteNames.has(f.name.toLowerCase())) dupKeys.add(f.relPath.toLowerCase())
-      }
-    } catch { /* 目标目录列取失败：不阻断上传，退化为引擎运行时冲突确认 */ }
-  }
-  if (!dupKeys.size) return { files, overwritePaths: new Set() }
-
-  const dupNames = files.filter((f) => dupKeys.has(f.relPath.toLowerCase())).map((f) => f.relPath)
-  const action = await askDupAction(dupNames)
-  if (action === 'skip') return { files: [], overwritePaths: new Set() }
-
-  if (action === 'rename') {
-    const stamp = uploadStamp()
-    // 已占用名 = 本批全部目标名（重命名结果不得与本批任何文件/已改出的名字相撞）
-    const used = new Set(files.map((f) => f.relPath.toLowerCase()))
-    for (const f of files) {
-      if (!dupKeys.has(f.relPath.toLowerCase())) continue
-      let rel = stampRelPath(f.relPath, stamp)
-      let n = 2
-      while (used.has(rel.toLowerCase())) rel = seqRelPath(rel, n++)
-      used.add(rel.toLowerCase())
-      f.relPath = rel
-      f.name = rel.split('/').pop() || rel
-    }
-    return { files, overwritePaths: new Set() }
-  }
-  // 覆盖：仅对检出的重名项预授权（入队即覆盖，不再逐个挂起确认）；深层结构冲突仍走运行时确认
-  return { files, overwritePaths: new Set(dupNames.map((p) => p.toLowerCase())) }
-}
-
-/** 本地展平结果 → 传输队列上传任务（relPath 保留目录结构；入队前做重名预检） */
-async function enqueueUploads(files: { name: string; localPath: string; relPath: string; size: number }[]): Promise<void> {
-  if (!files.length) { ElMessage.warning('没有可上传的文件（目录为空或文件无效）'); return }
-  if (!profileId.value) { ElMessage.warning('请先选择上传通道'); return }
-  const resolved = await resolveUploadDuplicates(files)
-  files = resolved.files
-  if (!files.length) { ElMessage.info('重名文件已全部忽略，没有需要上传的文件'); return }
-  const inputs = files.map((f) => ({
-    kind: 'upload' as const,
-    profileId: profileId.value,
-    name: f.name,
-    // 根路径（'/'）不能再拼 '/'，否则得到 //1560.mp4（2026-11-20 用户反馈双斜杠）
-    remotePath: path.value && path.value !== '/' ? `${path.value}/${f.relPath}` : `/${f.relPath}`,
-    localPath: f.localPath,
-    size: f.size,
-    overwrite: resolved.overwritePaths.has(f.relPath.toLowerCase()) ? true : undefined,
-  }))
-  const { taskIds } = await window.api.fs.transferStart(inputs)
-  if (taskIds.length) {
-    openTransferPanel()
-    ElMessage.success(`已加入传输队列：${taskIds.length} 个文件`)
-    // 上传完成后列表要能看到新文件：延迟刷新一次（完成后事件里也会刷）
-    setTimeout(() => { if (runningCount.value === 0) void list(false) }, 2500)
-  } else {
-    ElMessage.warning('没有可上传的文件（通道不可用或文件无效）')
-  }
-}
-
-// ── 拖拽上传（window 级 capture 监听 + 全窗口 preventDefault）──
-// 关键（2026-11-17 三修）：HTML5 DnD 规范要求 dragenter **和** dragover 都 preventDefault，
-// 缺一不可——此前只有 dragover preventDefault，dragenter 放过 → Chromium 判定「不接受放置」，
-// 鼠标显示圆圈加横杠的禁放光标，drop 事件根本不触发。同时必须设 dropEffect='copy' 才是复制光标。
-// 管理员模式（2026-11-18 用户实测）：Windows UIPI 拦截「普通权限资源管理器 → 提权进程」的拖放消息，
-// 拖拽事件根本不进应用——这是系统安全边界，代码无法绕过；页面用提示条引导改用「上传文件」按钮。
-const elevated = ref(false)
-/** 管理员拖放提示：用户可关闭，关闭后记忆不再打扰（localStorage） */
-const adminTipDismissed = ref(localStorage.getItem('sshk.fs.adminTipDismissed') === '1')
-function dismissAdminTip(): void {
-  adminTipDismissed.value = true
-  localStorage.setItem('sshk.fs.adminTipDismissed', '1')
-}
-const dragOver = ref(false)
-let dragDepth = 0
-/** 拖拽上传隔离（plans/10 §3）：事件目标位于传输面板内时忽略，避免拖面板误触发上传遮罩/入队 */
-function inTransferPanel(e: Event): boolean {
-  const el = e.target as HTMLElement | null
-  return Boolean(el?.closest?.('.fs-tpanel'))
-}
-function isFileDrag(e: DragEvent): boolean {
-  const types = e.dataTransfer?.types
-  return Boolean(types && Array.from(types).includes('Files'))
-}
-function onWindowDragEnter(e: DragEvent): void {
-  // 任何拖入都 preventDefault（保证 drop 会触发）；只有文件拖拽才显示上传遮罩
-  e.preventDefault()
-  if (inTransferPanel(e)) return
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
-  if (!isFileDrag(e)) return
-  dragDepth++
-  dragOver.value = true
-}
-function onWindowDragOver(e: DragEvent): void {
-  e.preventDefault()
-  if (inTransferPanel(e)) return
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
-  if (isFileDrag(e)) dragOver.value = true
-}
-function onWindowDragLeave(e: DragEvent): void {
-  if (inTransferPanel(e)) return
-  if (!isFileDrag(e)) return
-  dragDepth = Math.max(0, dragDepth - 1)
-  if (dragDepth === 0) dragOver.value = false
-}
-async function onWindowDrop(e: DragEvent): Promise<void> {
-  e.preventDefault()
-  if (inTransferPanel(e)) return
-  dragDepth = 0
-  dragOver.value = false
-  const dt = e.dataTransfer
-  // 文件拖到窗口任意位置（顶栏/侧栏/空白）都接受——工具页本身占满主体，严格限制 target 只会漏拖。
-  // files 优先；个别 Chromium 场景 files 为空但 items 里带 kind='file'，兜底用 getAsFile()。
-  let files = [...(dt?.files ?? [])]
-  if (!files.length && dt?.items?.length) {
-    for (const it of dt.items) {
-      if (it.kind === 'file') {
-        const f = it.getAsFile()
-        if (f) files.push(f)
-      }
-    }
-  }
-  // 全链路诊断（用户验收项4：drop 后无任何动静——以前 flattenLocal/transferStart 抛错会静默吞掉）
-  console.info(`[fs-drop] drop 收到：files=${files.length} items=${dt?.items?.length ?? 0} types=${dt ? Array.from(dt.types).join(',') : '-'}`)
-  try {
-    if (!files.length) {
-      ElMessage.warning('未从系统拖拽事件中拿到文件（拖的是网页元素/纯文本，或拖放消息被系统拦截）；文件请从资源管理器拖入，或用工具栏「上传文件」')
-      return
-    }
-    // webUtils.getPathForFile 为主，File.path 兜底（个别 Electron 版本 contextBridge 传 File 后 webUtils 取不到）
-    const paths: string[] = []
-    const nameFor: string[] = []
-    for (const f of files) {
-      let p = ''
-      try { p = window.api.fs.pathForFile(f) } catch { p = '' }
-      if (!p) {
-        const legacy = (f as File & { path?: string }).path
-        if (typeof legacy === 'string' && legacy) p = legacy
-      }
-      if (p) { paths.push(p); nameFor.push(f.name) }
-      else console.warn(`[fs-drop] 取不到本地路径：name=${f.name} size=${f.size}`)
-    }
-    if (!paths.length) { ElMessage.warning('未能获取拖拽文件的本地路径（可能来自压缩包或虚拟文件），请改用「上传文件」按钮选择'); return }
-    if (!profileId.value) { ElMessage.warning('请先在上方选择上传通道，再拖入文件'); return }
-    const flat = await window.api.fs.flattenLocal(paths)
-    console.info(`[fs-drop] flattenLocal：输入 ${paths.length} 项 → 展开 ${flat.length} 个文件`)
-    await enqueueUploads(flat)
-  } catch (err) {
-    console.error('[fs-drop] 拖拽上传链路异常：', err)
-    ElMessage.error(`拖拽上传失败：${(err as Error).message ?? err}`)
-  }
-}
-
-// ── 下载 ──
-/** 行内复制外链：baseUrl + 编码后的文件路径（与 EDM 上传回填同一拼接规则）；
- *  仅远程/云通道可用（本地通道改用 ShareHub「分享链接」）。未配 baseUrl 给出引导。 */
-async function rowLink(entry: FsEntry): Promise<void> {
-  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
-  const p = [...cfg.remote.profiles, ...cfg.cloud.profiles].find((x) => x.id === profileId.value)
-  const base = p?.baseUrl?.trim().replace(/\/+$/, '')
-  if (!base) { ElMessage.warning('当前通道未配置 baseUrl（外链域名前缀），无法生成链接；请到「通道配置」填写后再试'); return }
-  const url = `${base}/${entry.path.split('/').map(encodeURIComponent).join('/')}`
-  await window.api.os.clipboardWrite(url)
-  ElMessage.success(`链接已复制：${url}`)
-}
-
-// ── ShareHub 安全分享（plans/09 S15）：本地通道文件/目录统一走此入口（有 TTL、可撤销）──
-// 仅本地通道可用（文件真实落在本地目录，ShareHub 才能 serve）；远程/云通道走上面的 baseUrl「链接」。
-// 方案 C（用户 2026-11-19 定版）：每个条目各自生成独立分享（独立 TTL/撤销）；分享目录时
-// ShareDialog 内可勾选「允许访问目录」，勾选后该目录即树 token，访客进入后子目录/文件复用父 token 路径浏览。
-const shareDialog = ref({
-  open: false, root: '', entry: '', label: '',
+// ── 装配：传输（上传/下载/拖拽/上限设置/传输面板唤起；media 依赖 downloadEntries，故先建 transfer）──
+const transfer = useFsTransfer({
+  profileId: () => profileId.value,
+  path: () => path.value,
+  outputRoot: () => outputRoot.value,
+  channels: () => channels.value,
+  list: (resetCursor?: boolean) => list(resetCursor),
 })
-/** 本地通道的文件/目录都可分享（allowIndex 由 ShareDialog 内勾选，不再全局门控） */
-function canShareEntry(): boolean {
-  return activeChannel.value?.type === 'local'
-}
-function rowShare(entry: FsEntry): void {
-  if (activeChannel.value?.type !== 'local') {
-    ElMessage.warning('ShareHub 安全分享仅支持本地通道；远程/云通道请使用「链接」（裸外链）')
-    return
-  }
-  void loadConfigForShare(entry)
-}
-async function loadConfigForShare(entry: FsEntry): Promise<void> {
-  const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
-  const root = cfg.local.defaultDir?.trim()
-  if (!root) { ElMessage.warning('本地通道未配置默认目录，请到「上传配置」填写'); return }
-  Object.assign(shareDialog.value, {
-    root,
-    entry: entry.path,
-    label: `${entry.kind === 'dir' ? '目录' : '文件'}：${entry.name}`,
-    open: true,
-  })
-}
+const {
+  runningCount, openTransferPanel,
+  uploadFiles, uploadDirs, uploadFromOutput,
+  dupDialogOpen, dupList, resolveDupAction,
+  elevated, adminTipDismissed, dismissAdminTip, dragOver,
+  downloadEntries, rowLink, openDownloadDir, changeDownloadDir,
+  transferCapsOpen, transferCapsForm, transferCapsSaving, openTransferCaps, submitTransferCaps, bindApplyCaps,
+} = transfer
 
-// ── 分享状态标记（用户 2026-11-19）：名称列内小图标区分「自己分享 / 随父级 / 未分享」──
-// 数据源：本工具的有效分享路由（内核 list 自带 entry/allowIndex/expiresAt），无需读 localStorage 判定。
-const shareRoutes = ref<ShareRouteInfo[]>([])
-async function loadShareRoutes(): Promise<void> {
-  try {
-    shareRoutes.value = await window.api.shareHub.list(TOOL_ID.value)
-    // 工具改名（upload-manager→file-manager）后凭证缓存键失配：按路由反查迁移，保证旧链接继续复用
-    migrateShareTickets(TOOL_ID.value, shareRoutes.value)
-  }
-  catch { shareRoutes.value = [] }
-}
-/** 路径归一：FsEntry.path 带前导 /，route.entry 已去前导 /，统一去前导/尾斜杠后比较 */
-function normSharePath(p: string): string {
-  return String(p ?? '').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '')
-}
-type ShareMark = 'none' | 'own' | 'inherited'
-interface ShareMarkInfo { kind: ShareMark; route?: ShareRouteInfo; parent?: ShareRouteInfo }
-/** 三态：自身有路由=own；否则祖先路由覆盖=inherited（取最长匹配=最近父级）；否则 none。
- *  allowIndex=false 的父目录路由：目录条目不可浏览→跳过（文件夹无链接，用户认可）；
- *  文件条目仍算 inherited——内核文件直达不受 allowIndex 限制（分享主要就是为分享文件）。 */
-function shareMarkOf(entry: FsEntry): ShareMarkInfo {
-  if (!shareRoutes.value.length || activeChannel.value?.type !== 'local') return { kind: 'none' }
-  const rel = normSharePath(entry.path)
-  const own = shareRoutes.value.find((r) => normSharePath(r.entry) === rel)
-  if (own) return { kind: 'own', route: own }
-  let best: ShareRouteInfo | undefined
-  for (const r of shareRoutes.value) {
-    // 目录条目 + 父未开目录浏览 → 该父路由不覆盖（子目录/孙目录不显示链接）
-    if (r.allowIndex === false && entry.kind === 'dir') continue
-    const dir = normSharePath(r.entry)
-    if (dir && rel.startsWith(dir + '/')) {
-      if (!best || dir.length > normSharePath(best.entry).length) best = r
-    }
-  }
-  return best ? { kind: 'inherited', parent: best } : { kind: 'none' }
-}
-/** 悬浮说明文案（图标统一 Connection，靠文案区分三态来源） */
-function shareMarkTip(entry: FsEntry): string {
-  const m = shareMarkOf(entry)
-  if (m.kind === 'own') {
-    const r = m.route!
-    const life = r.expiresAt <= 0 || r.expiresAt > 8e15 ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
-    return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击复制自己的链接`
-  }
-  if (m.kind === 'inherited') {
-    return `无自己的分享，随父目录「${m.parent!.label}」的分享可访问 · 点击复制本项链接（父级链接 + 本项路径）`
-  }
-  return '未分享 · 点行操作「分享链接」创建'
-}
-/** 点击分享图标：own=自己的链接；inherited=父级 token 链接 + 本项相对 root 路径（直达本项，文件/目录统一）。均按 route.id 反查 ticket。 */
-async function copyShareLink(entry: FsEntry): Promise<void> {
-  const m = shareMarkOf(entry)
-  const route = m.kind === 'own' ? m.route : m.parent
-  if (!route) return
-  const ticket = findShareTicketById(route.id)
-  const base = ticket?.urls?.[0]
-  if (!base) { ElMessage.warning('分享凭证读取失败，请重新打开分享弹框刷新链接'); return }
-  // 继承项统一：base(父级 token 链接) + 本项相对 root 路径 → 直达本项（内层文件/子目录）
-  const url = m.kind === 'inherited' ? shareFileDirectUrl(base, entry.path) : base
-  await window.api.os.clipboardWrite(url)
-  ElMessage.success(m.kind === 'own' ? '已复制自己的分享链接' : '已复制本项分享链接（父级链接+本项路径）')
-}
+// ── 装配：媒体（预览/编辑/播放/在线上限；transfer 已先行建立，downloadEntries 直引）──
+const media = useFsMedia({
+  profileId: () => profileId.value,
+  downloadEntries: (list0) => transfer.downloadEntries(list0),
+  mediaDirectUrl: (entry) => share.mediaDirectUrl(entry),
+  channelType: () => activeChannel.value?.type,
+  refreshList: () => { void list(false) },
+})
+const {
+  preview, onPreviewClose,
+  editor, saveEditor,
+  player, onMediaError,
+  mediaLimitText, loadMediaLimit,
+  openFile,
+} = media
 
-/** 媒体预览直链（用户 2026-11-19）：
- *  本地 = 有效分享 ticket（own 直用 base / inherited 拼本项路径）；
- *  远端/云 = baseUrl + 文件路径，若配了签名模板则用 {url} 占位符套签名。
- *  返回空串表示无可用直链 → openPlayer 回退到边下边播。 */
-async function mediaDirectUrl(entry: FsEntry): Promise<string> {
-  const chType = activeChannel.value?.type
-  if (chType === 'local') {
-    const m = shareMarkOf(entry)
-    const route = m.kind === 'own' ? m.route : m.parent
-    if (!route) return ''
-    const ticket = findShareTicketById(route.id)
-    if (!isTicketAlive(ticket)) return ''
-    const base = ticket?.urls?.[0]
-    if (!base) return ''
-    return m.kind === 'inherited' ? shareFileDirectUrl(base, entry.path) : base
-  }
-  // 远端 / 云：读 profile 的 baseUrl + 签名模板
-  try {
-    const cfg = normalizeUploadConfig(await window.api.upload.getConfig())
-    const p = [...cfg.remote.profiles, ...cfg.cloud.profiles].find((x) => x.id === profileId.value)
-    return buildDirectUrl(p?.baseUrl ?? '', entry.path, p?.signUrlTemplate)
-  } catch { return '' }
-}
+// ── 装配：剪贴板与复制/移动 ──
+const clipboardMove = useFsClipboardMove({
+  profileId: () => profileId.value,
+  path: () => path.value,
+  hasWritable: () => hasWritable.value,
+  selectedEntries: () => selectedEntries.value,
+  resetSelection,
+  selectOnly,
+  list: (resetCursor?: boolean) => list(resetCursor),
+  channels: () => channels.value,
+  openTransferPanel,
+  dirPicker,
+})
+const {
+  clipboard,
+  clipCopy, clearClipboard, paste, rowPaste,
+  moveOpen, moveMode, moveDirInput, moveDestProfile, moveDirProps, moveCascaderRef, moveCascaderPicked,
+  openMove, onMoveDirPicked, submitMove, rowCopy, rowMove,
+} = clipboardMove
 
-/** 下载（oss-browser / 1panel 式）：单文件走系统「另存为」对话框（自带替换确认）；
- *  多文件选目标目录（默认通道下载落点），同名冲突仍由传输队列逐个确认 */
-async function downloadEntries(list0: FsEntry[]): Promise<void> {
-  const targets = list0.filter((e) => e.kind === 'file' || e.kind === 'dir')
-  if (!targets.length || !profileId.value) return
-  // 目录递归展开为文件（保留相对结构），下载上限从配置读取（默认 0 = 不限制）
-  let cap = 0
-  try { cap = (await window.api.fs.transferCaps()).downloadCap } catch { /* 失败用默认 */ }
-  const files: { entry: FsEntry; relDir: string }[] = []
-  let truncated = false
-  const full = (): boolean => cap > 0 && files.length >= cap // cap=0 不限
-  const expand = async (entry: FsEntry, rel: string): Promise<void> => {
-    if (full()) { truncated = true; return }
-    if (entry.kind === 'file') { files.push({ entry, relDir: rel }); return }
-    const collect = async (dirPath: string, dirRel: string): Promise<void> => {
-      let cursor: string | null = null
-      do {
-        const page = await window.api.fs.list({ profileId: profileId.value, path: dirPath, cursor })
-        for (const child of page.entries) {
-          if (full()) { truncated = true; return }
-          if (child.kind === 'file') files.push({ entry: child, relDir: dirRel })
-          else await collect(child.path, dirRel ? `${dirRel}/${child.name}` : child.name)
-          if (truncated) return
-        }
-        cursor = page.nextCursor ?? null
-      } while (cursor)
-    }
-    await collect(entry.path, rel)
-  }
-  for (const t of targets) {
-    await expand(t, t.kind === 'dir' ? t.name : '')
-    if (truncated) break
-  }
-  if (!files.length) { ElMessage.warning('所选目录中没有可下载的文件'); return }
-  const base = await window.api.fs.downloadDir(profileId.value)
-  const single = files.length === 1 && targets.length === 1 && targets[0]!.kind === 'file'
-  let destDir = base
-  let singleDestPath = ''
-  if (single) {
-    const picked = await window.api.os.pickSave({ fileName: files[0]!.entry.name, defaultPath: base })
-    if (!picked) return
-    singleDestPath = picked
-  } else {
-    const dir = await window.api.os.pickDir({ defaultPath: base })
-    if (!dir) return
-    destDir = dir
-  }
-  const cleanDest = destDir.replace(/[\\/]+$/, '')
-  const inputs = files.map(({ entry, relDir }) => ({
-    kind: 'download' as const,
-    profileId: profileId.value!,
-    name: entry.name,
-    remotePath: entry.path,
-    destPath: single ? singleDestPath : (relDir ? `${cleanDest}/${relDir}/${entry.name}` : `${cleanDest}/${entry.name}`),
-    ...(single ? { overwrite: true } : {}),
-    size: entry.size ?? 0,
-  }))
-  const { taskIds } = await window.api.fs.transferStart(inputs)
-  if (taskIds.length) openTransferPanel()
-  ElMessage.success(`已入队下载 ${files.length} 个文件${truncated ? `（已达 ${cap} 个上限，结果可能不全）` : ''}`)
-}
+// ── 装配：条目操作（新建/重命名/删除/权限/属性/转换）──
+const entryOps = useFsEntryOps({
+  profileId: () => profileId.value,
+  path: () => path.value,
+  hasMode: () => hasMode.value,
+  list: (resetCursor?: boolean) => list(resetCursor),
+  resetSelection,
+  selSingle: () => selSingle.value,
+  selSingleFile: () => selSingleFile.value,
+  selectOnly,
+  openTransferPanel,
+  openFile: (entry) => openFile(entry),
+})
+const {
+  mkdirOpen, mkdirName, mkdirInputRef, submitMkdir,
+  renameOpen, renameName, renameInputRef, openRename, submitRename,
+  deleteOpen, deleteTargets, openDelete, confirmDelete,
+  newFile,
+  canPerm, permOpen, permTarget, permOctal, permSaving, openPerm, permBits, togglePermBit, submitPerm,
+  propsOpen, propsEntry, propsStat, openProps, openPropsFor,
+  canConvert, convertOpen, convertTarget, convertForm, convertSaving, openConvert, submitConvert,
+} = entryOps
 
-// ── 新建 / 重命名 / 删除 ──
-async function submitMkdir(): Promise<void> {
-  const name = mkdirName.value.trim()
-  if (!name || /[\\/]/.test(name)) { ElMessage.warning('目录名不能为空且不含斜杠'); return }
-  try {
-    await window.api.fs.mkdir({ profileId: profileId.value, path: path.value === '/' ? `/${name}` : `${path.value}/${name}` })
-    mkdirOpen.value = false
-    mkdirName.value = ''
-    ElMessage.success('目录已创建')
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
+// ── 装配：压缩/解压 ──
+const archive = useFsArchive({
+  profileId: () => profileId.value,
+  path: () => path.value,
+  hasWritable: () => hasWritable.value,
+  activeChannel: () => activeChannel.value,
+  selectedEntries: () => selectedEntries.value,
+  selSingleFile: () => selSingleFile.value,
+  list: (resetCursor?: boolean) => list(resetCursor),
+  dirPicker,
+})
+const {
+  zipLimitsOpen, zipLimitsForm, zipLimitsSaving, openZipLimits, submitZipLimits,
+  doZip, canZip, canUnzip,
+  unzipOpen, unzipSaving, unzipEntry, unzipDestProfile, unzipDirInput, unzipCascaderRef, unzipCascaderPicked,
+  unzipDirProps, openUnzip, onUnzipDirPicked, submitUnzip,
+} = archive
 
-function openRename(entry: FsEntry): void {
-  renameTarget.value = entry
-  renameName.value = entry.name
-  renameOpen.value = true
-  // 页面级兜底聚焦（用户 2026-11-19：全局机制对部分弹框时序不稳）；重命名全选便于直接输入新名
-  void nextTick(() => { renameInputRef.value?.focus(); renameInputRef.value?.select() })
-}
-async function submitRename(): Promise<void> {
-  const target = renameTarget.value
-  const name = renameName.value.trim()
-  if (!target || !name || /[\\/]/.test(name) || name === target.name) { renameOpen.value = false; return }
-  const parent = target.path.includes('/') ? target.path.slice(0, target.path.lastIndexOf('/')) : ''
-  try {
-    await window.api.fs.mv({ profileId: profileId.value, sources: [{ path: target.path, kind: target.kind }], destDir: parent, renameTo: name })
-    renameOpen.value = false
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
+// ── 跨域联动接线（注册顺序 = 原页面行为顺序）──
+// 模板 ref 绑定（ref="..." 按 setup 绑定名查找，滚动/聚焦/级联收起用）；TS noUnusedLocals 要求 script 侧有引用
+void [listEl, mkdirInputRef, renameInputRef, moveCascaderRef, unzipCascaderRef]
+listing.onListStart(() => {
+  invalidateSession() // 在途搜索会话作废（切换目录/刷新时丢弃晚到的流式批次）
+  resetSelection()
+})
+listing.onDirReload(() => {
+  void loadAnnotations() // 备注/分享状态跟随目录重载
+  void loadShareRoutes()
+})
+listing.onLocate((target) => {
+  // 收藏文件跳转：进入父目录后选中该文件（未列到则忽略），仅定位文件时滚动到视口居中
+  if (!entries.value.some((e) => e.path === target)) return
+  selectOnly([target])
+  listing.scrollEntryIntoView(target)
+})
+bindResetSelection(resetSelection)
+bindApplyCaps((caps) => media.applyCaps(caps)) // 上限保存后同步媒体上限/直链开关
 
-function openDelete(list0: FsEntry[]): void {
-  if (!list0.length) return
-  const dirs = list0.filter((e) => e.kind === 'dir')
-  deleteTargets.value = list0
-  deleteInput.value = ''
-  // 递归删大目录：输目录名确认（§六）
-  if (dirs.length) {
-    ElMessageBox.prompt(
-      `将删除 ${list0.length} 项（含 ${dirs.length} 个目录及其全部内容），不可恢复。大目录会走传输队列分批删除。`,
-      '删除确认',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消',
-        inputPlaceholder: `输入 ${dirs.length === 1 ? dirs[0]!.name : 'YES'} 以确认`,
-        closeOnClickModal: false, closeOnPressEscape: false, type: 'warning' },
-    ).then(({ value }) => {
-      const expected = dirs.length === 1 ? dirs[0]!.name : 'YES'
-      if ((value ?? '').trim() !== expected) { ElMessage.warning('确认文字不匹配，已取消'); return }
-      void doDelete(list0)
-    }).catch(() => { /* 取消 */ })
-  } else {
-    deleteOpen.value = true
-  }
-}
-async function confirmDelete(): Promise<void> {
-  deleteOpen.value = false
-  await doDelete(deleteTargets.value)
-}
-async function doDelete(list0: FsEntry[]): Promise<void> {
-  if (!profileId.value) return
-  try {
-    const { taskIds } = await window.api.fs.rm({
-      profileId: profileId.value,
-      paths: list0.map((e) => ({ path: e.path, kind: e.kind })),
-    })
-    selection.value = new Set()
-    if (taskIds.length) {
-      openTransferPanel()
-      ElMessage.info(`递归删除已入队：${taskIds.length} 个目录`)
-    } else {
-      ElMessage.success('已删除')
-    }
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
+// ── 网格视图右键菜单 ──
+const ctxMenu = useFsContextMenu((cmd, entry) => rowMoreCommand(cmd, entry))
+const { ctxMenu: ctxMenuState, openCtxMenu, closeCtxMenu } = ctxMenu
 
-// ── 复制 / 剪切 / 粘贴 / 移动 ──
-function clipCopy(op: 'copy' | 'cut'): void {
-  if (!selectedEntries.value.length) return
-  clipboard.value = { op, profileId: profileId.value, items: selectedEntries.value.map((e) => ({ path: e.path, kind: e.kind })) }
-  ElMessage.success(op === 'copy' ? `已复制 ${clipboard.value.items.length} 项` : `已剪切 ${clipboard.value.items.length} 项`)
+// ── 弹框关闭 glue（组件只发意图，状态收口在页面，行为与原页面一致）──
+function closePreview(): void {
+  preview.value.open = false
+  onPreviewClose() // PDF 的 Blob URL 释放内存（图片走 data URI 无需释放）
 }
-/** 上次成功选定/提交的目标目录（项18）：EP cascader 关闭弹框不清内部显示，手输框必须同步回显同一个值 */
-const lastMoveDir = ref('')
-function openMove(mode: 'copy' | 'move'): void {
-  if (!selectedEntries.value.length) return
-  moveMode.value = mode
-  // 默认回填根目录「/」（用户 2026-11-19：除打开时指定/非首次复用上传位置）；非首次才用 lastMoveDir
-  moveDirInput.value = lastMoveDir.value || '/'
-  moveDestProfile.value = profileId.value
-  // cascader 仅在输入框为根目录时回显「/」，其余保持未选，避免与输入框显示不一致
-  moveCascaderPicked.value = moveDirInput.value === '/' ? '/' : ''
-  moveOpen.value = true
+function onPreviewScale(value: number): void {
+  preview.value.scale = value
 }
-
-/** 目标目录级联（移动/复制/解压共用）：逐级懒加载只列目录，点圈选中回填手输框。
- *  props 用工厂生成（各弹框目标通道来源不同）；通道切换靠模板 :key 重挂载刷新。
- *  坑（同 file-picker）：不写 leaf 字段——EP 对「已加载且无子」自动推断叶子，显式 leaf 会钉死非叶子。
- *  层级（用户 2026-11-19 定版）：首列 = 根目录「/」独立节点（点圈直接选根），展开子级列一级目录。 */
-function dirLazyProps(getPid: () => string) {
-  return {
-    lazy: true,
-    checkStrictly: true,
-    emitPath: false,
-    lazyLoad: async (node: { level: number; value?: string | number | null }, resolve: (nodes: unknown[]) => void) => {
-      const pid = getPid()
-      if (!pid) { resolve([]); return }
-      // 根 label 置空 + 级联 separator="/" → 回显 /a/b/c（若根 label 为 '/' 会拼出 //a/b 双斜杠）；
-      // 面板首列根节点的 "/" 由 CSS 伪元素补显示
-      if (node.level === 0) { resolve([{ value: '/', label: '' }]); return } // 根目录独立首级
-      const parent = String(node.value ?? '/')
-      try {
-        const page = await window.api.fs.list({ profileId: pid, path: parent })
-        resolve(page.entries.filter((e) => e.kind === 'dir').map((e) => ({ value: e.path, label: e.name })))
-      } catch { resolve([]) }
-    },
-  }
+function closeEditor(): void {
+  editor.value.open = false
 }
-const moveDirProps = dirLazyProps(() => moveDestProfile.value || profileId.value)
-const moveCascaderRef = ref<{ togglePopperVisible: (visible: boolean) => void } | null>(null)
-/** 级联自身选中值（仅 @change 驱动）：用于「只选根」回显 / 的 class 判断。
- *  不能绑手输框值——用户手输改 / 时不该影响级联框的显示（用户 2026-11-19） */
-const moveCascaderPicked = ref('')
-// 通道切换 → 级联 :key 重建、内部选中态清空，镜像 ref 同步清空（不碰 lastMoveDir，手输回填不受影响）
-watch(moveDestProfile, () => { moveCascaderPicked.value = '' })
-/** 点单选圈：路径回填手输框并收起面板（checkStrictly 下 EP 不会自动收起） */
-function onMoveDirPicked(v: unknown): void {
-  moveDirInput.value = String(v ?? '')
-  moveCascaderPicked.value = String(v ?? '')
-  if (moveDirInput.value) lastMoveDir.value = moveDirInput.value
-  moveCascaderRef.value?.togglePopperVisible(false)
+function closePlayer(): void {
+  // 与原 @close 一致：清 src/mediaKey/entry，避免串台与旧源重复 error
+  player.value.open = false
+  player.value.src = ''
+  player.value.mediaKey = ''
+  player.value.entry = null
 }
-/** 行内直达（§3.2 行操作列）：单选该条目后走「复制到/移动到」弹框 */
-function rowCopy(entry: FsEntry): void {
-  selection.value = new Set([entry.path])
-  openMove('copy')
-}
-function rowMove(entry: FsEntry): void {
-  selection.value = new Set([entry.path])
-  openMove('move')
-}
-/** 目标目录输入 → 内部规范（`/a/b`；空串与 `/` = 根）。返回 null 表示非法 */
-function normalizeDestInput(raw: string): string | null {
-  const s = String(raw ?? '').trim().replace(/\\/g, '/')
-  const segs = s.split('/').map((p) => p.trim()).filter(Boolean)
-  if (segs.some((p) => p === '.' || p === '..')) return null
-  return `/${segs.join('/')}`
-}
-/** 目标路径是否已存在（用于同目录复制/移动的重名检查） */
-async function destExists(destPath: string): Promise<boolean> {
-  try {
-    const parent = destPath.lastIndexOf('/') <= 0 ? '/' : destPath.slice(0, destPath.lastIndexOf('/'))
-    const page = await window.api.fs.list({ profileId: profileId.value, path: parent })
-    return page.entries.some((e) => e.path === destPath)
-  } catch { return false }
-}
-/** 同源同目录的重命名循环（用户 2026-11-18）：确认后仍重名就继续弹，取消才终止 */
-async function askRenameForConflict(src: FsEntry, destDir: string): Promise<string | null> {
-  while (true) {
-    let value: string | null = null
-    try {
-      const r = await ElMessageBox.prompt(
-        `「${src.name}」在目标目录中已存在（同源同目录不允许直接覆盖）。请输入新名称后确认；若仍重名会再次提示。`,
-        '重命名以避免覆盖',
-        {
-          inputValue: src.name, confirmButtonText: '确认', cancelButtonText: '取消',
-          inputPattern: /^[^\\/:]+$/, inputErrorMessage: '名称不能含斜杠',
-          closeOnClickModal: false, closeOnPressEscape: false,
-        },
-      )
-      value = r.value?.trim() ?? ''
-    } catch { return null } // 用户取消 → 整个操作终止
-    if (!value || value === src.name) continue
-    const destPath = destDir === '/' ? `/${value}` : `${destDir}/${value}`
-    if (!(await destExists(destPath))) return value
-    ElMessage.warning('该名称已存在，请换一个')
-  }
-}
-
-async function submitMove(): Promise<void> {
-  const dest = normalizeDestInput(moveDirInput.value)
-  if (dest === null) { ElMessage.warning('目标目录不合法（不允许 . / .. 或反斜杠）'); return }
-  const sources = selectedEntries.value.map((e) => ({ path: e.path, kind: e.kind }))
-  const cross = Boolean(moveDestProfile.value && moveDestProfile.value !== profileId.value)
-
-  // 同源同目录复制/移动：目标与源同名会覆盖自身 → 弹重命名框循环直到不重名或取消
-  let renameTo = ''
-  if (!cross && sources.length === 1) {
-    const src = sources[0]!
-    const srcParent = src.path.lastIndexOf('/') <= 0 ? '/' : src.path.slice(0, src.path.lastIndexOf('/'))
-    if (srcParent === dest) {
-      const destPath = dest === '/' ? src.path : `${dest}${src.path.slice(srcParent.length)}`
-      if (await destExists(destPath)) {
-        const renamed = await askRenameForConflict(selectedEntries.value[0]!, dest)
-        if (renamed === null) return // 用户取消：操作终止，保持弹框打开
-        renameTo = renamed
-      }
-    }
-  }
-
-  moveOpen.value = false
-  try {
-    if (cross) {
-      // 跨通道（项20）：复制/移动都走 crossCopy，move=true 时目标写成功即删源
-      const r = await window.api.fs.crossCopy({
-        srcProfileId: profileId.value, destProfileId: moveDestProfile.value,
-        sources, destDir: dest, move: moveMode.value === 'move',
-      })
-      openTransferPanel()
-      ElMessage.info(`跨通道${moveMode.value === 'move' ? '移动' : '复制'}已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
-    } else if (moveMode.value === 'move') {
-      await window.api.fs.mv({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
-      ElMessage.success('已移动')
-    } else {
-      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources, destDir: dest, renameTo: renameTo || undefined })
-      if (taskIds.length) { openTransferPanel(); ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
-      else ElMessage.success(renameTo ? `已复制为 ${renameTo}` : '已复制')
-    }
-    selection.value = new Set()
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
-async function paste(): Promise<void> {
-  await pasteInto(path.value)
-}
-
-/** §十一 行级粘贴：目录行的「粘贴」落点为该目录（复制/剪切语义与顶部粘贴一致） */
-async function rowPaste(entry: FsEntry): Promise<void> {
-  await pasteInto(entry.path)
-}
-/** 粘贴完成后询问是否清空剪贴板（用户 2026-11-18：避免用户不知是否完成而重复粘贴；保留=可能还要粘到别处） */
-async function askClipboardAfterPaste(): Promise<void> {
-  try {
-    await ElMessageBox.confirm('粘贴指令已完成。是否清空剪贴板？', '粘贴完成', {
-      type: 'info', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
-      confirmButtonText: '清空剪贴板', cancelButtonText: '保留（还要粘到别处）',
-    })
-    clipboard.value = null
-    ElMessage.success('剪贴板已清空')
-  } catch { /* 保留剪贴板 */ }
-}
-
-async function pasteInto(destDir: string): Promise<void> {
-  const clip = clipboard.value
-  if (!clip || !profileId.value || !hasWritable.value) return
-  // 跨通道粘贴（二期）：复制语义走 crossCopy；剪切跨通道降级为复制（源保留，避免半删风险）
-  if (clip.profileId !== profileId.value) {
-    if (!hasWritable.value) { ElMessage.warning('当前通道不支持写操作，无法作为粘贴目标'); return }
-    try {
-      const r = await window.api.fs.crossCopy({ srcProfileId: clip.profileId, destProfileId: profileId.value, sources: clip.items, destDir })
-      if (clip.op === 'cut') ElMessage.info('跨通道剪切按复制执行（源文件保留）')
-      openTransferPanel()
-      ElMessage.info(`跨通道复制已入队：${r.files} 个文件${r.truncated ? '（目录超过 1500 个文件，已截断）' : ''}`)
-      void list(false)
-      await askClipboardAfterPaste()
-    } catch (err) {
-      ElMessage.error(friendlyError(err))
-    }
-    return
-  }
-  try {
-    // 用户 2026-11-19：顶部粘贴与弹框/行级同流程——单源且「同源同目录」（复制后原地粘贴，
-    // mv/cp 会因 dest===src 报错）或粘进自身子目录时，弹重命名循环；无冲突保持原行为。
-    // 多源保持原行为（主进程逐项校验）。重命名取消=整个粘贴终止，剪贴板保留。
-    let renameTo: string | undefined
-    if (clip.items.length === 1) {
-      const src = clip.items[0]!.path
-      const name = src.split('/').pop() || src
-      const srcParent = src.lastIndexOf('/') <= 0 ? '/' : src.slice(0, src.lastIndexOf('/'))
-      const dest = destDir === '/' ? `/${name}` : `${destDir}/${name}`
-      if (srcParent === destDir || dest.startsWith(`${src}/`)) {
-        const renamed = await askRenameForConflict({ name } as FsEntry, destDir)
-        if (renamed === null) return // 用户取消：终止粘贴，剪贴板保留
-        renameTo = renamed
-      }
-    }
-    if (clip.op === 'cut') {
-      await window.api.fs.mv({ profileId: profileId.value, sources: clip.items, destDir, renameTo })
-      clipboard.value = null
-      ElMessage.success('已粘贴（移动）')
-    } else {
-      const { taskIds } = await window.api.fs.cp({ profileId: profileId.value, sources: clip.items, destDir, renameTo })
-      if (taskIds.length) { openTransferPanel(); ElMessage.info(`复制任务已入队：${taskIds.length} 个`) }
-      else ElMessage.success(renameTo ? `已粘贴为 ${renameTo}` : '已粘贴（复制）')
-      await askClipboardAfterPaste()
-    }
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
-
-/** 用户 2026-11-19：清空剪贴板（误触复制后取消，不必粘贴）；「清空」属主动放弃操作，二次确认 */
-async function clearClipboard(): Promise<void> {
-  const n = clipboard.value?.items.length ?? 0
-  try {
-    await ElMessageBox.confirm(`清空剪贴板中的 ${n} 项？清空后需重新复制才能粘贴。`, '清空剪贴板', {
-      type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false,
-      confirmButtonText: '清空', cancelButtonText: '保留',
-    })
-  } catch { return }
-  clipboard.value = null
-  ElMessage.success('剪贴板已清空')
-}
-
-// ── 新建文件 ──
-/** 工具栏「更多▾」分发（§3.1 + §十一 分组化：全部按选中态实时判定，避免误操作） */
-function moreCommand(cmd: unknown): void {
-  switch (String(cmd)) {
-    case 'refresh': refresh(); return
-    case 'usage': if (selSingleDir.value) void showUsage(selSingleDir.value); return
-    case 'copyto': openMove('copy'); return
-    case 'newfile': void newFile(); return
-    case 'downloaddir': void changeDownloadDir(); return
-    case 'opendir': void openDownloadDir(); return
-    case 'cols': colsOpen.value = true; return
-    case 'ziplimits': void openZipLimits(); return
-    case 'transfercaps': void openTransferCaps(); return
-    case 'transferconfig': void openTransferConfig(); return
-    case 'note': openNote(selectedEntries.value); return
-    case 'favorite': void addFavorites(selectedEntries.value); return
-    case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
-    case 'copypath': void copySelectedPaths(); return
-    case 'zip': void doZip(); return
-    case 'unzip': if (canUnzip.value) openUnzip(selSingleFile.value!); return
-    case 'convert': openConvert(); return
-    case 'perm': openPerm(); return
-    case 'props': openProps(); return
-  }
-}
-
-/** 行「更多 ▾」/ 网格右键 共用分发（§11.4 定版 + 行外显操作全集） */
-function rowMoreCommand(cmd: string, entry: FsEntry): void {
-  switch (cmd) {
-    case 'open': rowOpen(entry); return
-    case 'download': void downloadEntries([entry]); return
-    case 'link': void rowLink(entry); return
-    case 'paste': void rowPaste(entry); return
-    case 'copy': rowCopy(entry); return
-    case 'move': rowMove(entry); return
-    case 'rename': openRename(entry); return
-    case 'delete': openDelete([entry]); return
-    case 'usage': if (entry.kind === 'dir') void showUsage(entry); return
-    case 'note': openNote([entry]); return
-    case 'favorite': if (isFavorited(entry.path)) void removeFavorite(entry); else void addFavorites([entry]); return
-    case 'copypath': void window.api.os.clipboardWrite(entry.path).then(() => ElMessage.success('路径已复制')); return
-    case 'zip': void doZip([entry]); return
-    case 'unzip': openUnzip(entry); return
-    case 'convert': selection.value = new Set([entry.path]); openConvert(); return
-    case 'perm': selection.value = new Set([entry.path]); openPerm(); return
-    case 'props': void openPropsFor(entry); return
-    case 'share': selection.value = new Set([entry.path]); rowShare(entry); return
-  }
-}
-
-// ── 网格视图右键菜单（用户 2026-11-18：卡片展示同所有行操作）──
-const ctxMenu = ref<{ x: number; y: number; entry: FsEntry } | null>(null)
-function openCtxMenu(entry: FsEntry, e: MouseEvent): void {
-  // 简单钳制：避免菜单溢出视口右/下边缘
-  ctxMenu.value = {
-    x: Math.min(e.clientX, window.innerWidth - 200),
-    y: Math.min(e.clientY, window.innerHeight - 360),
-    entry,
-  }
-}
-function ctxRun(cmd: string): void {
-  const entry = ctxMenu.value?.entry
-  ctxMenu.value = null
+/** 右键菜单命令分发：先关菜单再执行（原 ctxRun） */
+function runCtx(cmd: string): void {
+  const entry = ctxMenuState.value?.entry
+  closeCtxMenu()
   if (entry) rowMoreCommand(cmd, entry)
-}
-/** 事件委托：原生菜单从 li 的 data-command 读取命令（不走 el-dropdown 的 command 分发） */
-function ctxClick(e: MouseEvent): void {
-  const item = (e.target as HTMLElement | null)?.closest?.('.fs-ctx-menu li')
-  if (!item || item.classList.contains('is-disabled')) return
-  const cmd = item.getAttribute('data-command')
-  if (cmd) ctxRun(cmd)
-}
-function onWindowCtxMaybeClose(e: Event): void {
-  // 右键另一个卡片时由其自身 handler 重新开菜单，不先关
-  if (e.type === 'contextmenu' && (e.target as HTMLElement | null)?.closest?.('.fs-cell')) return
-  ctxMenu.value = null
-}
-
-// ── §十一：设置备注（遵守确认后生效；多选批量同备注）──
-function openNote(targets: FsEntry[]): void {
-  if (!targets.length) return
-  noteTargets.value = targets
-  noteInput.value = targets.length === 1 ? (annotations.value.get(targets[0]!.path) ?? '') : ''
-  noteOpen.value = true
-}
-async function submitNote(): Promise<void> {
-  if (!profileId.value || noteSaving.value) return
-  noteSaving.value = true
-  try {
-    for (const t of noteTargets.value) {
-      await window.api.fs.annotationSet({ profileId: profileId.value, path: t.path, note: noteInput.value })
-    }
-    noteOpen.value = false
-    ElMessage.success(noteInput.value.trim() ? `已设置备注（${noteTargets.value.length} 项）` : '已清除备注')
-    await loadAnnotations()
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  } finally { noteSaving.value = false }
-}
-
-// ── §十一：收藏夹 ──
-async function addFavorites(targets: FsEntry[]): Promise<void> {
-  if (!profileId.value || !targets.length) return
-  try {
-    let added = 0
-    for (const t of targets.slice(0, 20)) {
-      if (isFavorited(t.path)) continue
-      await window.api.fs.favoriteAdd({ profileId: profileId.value, path: t.path, kind: t.kind, name: t.name })
-      added++
-    }
-    await loadFavorites()
-    ElMessage.success(added ? `已收藏 ${added} 项` : '所选项目均已在收藏夹')
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
-async function removeFavorite(entry: FsEntry): Promise<void> {
-  const hit = favorites.value.find((f) => f.profileId === profileId.value && f.path === entry.path)
-  if (!hit) return
-  // 取消收藏需二次确认（用户 2026-11-18：危险操作一律确认，禁遮罩禁 ESC）
-  try {
-    await ElMessageBox.confirm(`确定取消收藏「${hit.name}」吗？`, '取消收藏', { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '取消收藏', cancelButtonText: '保留' })
-  } catch { return }
-  try {
-    await window.api.fs.favoriteRemove(hit._id)
-    await loadFavorites()
-    ElMessage.success('已取消收藏')
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
-/** 行末星标快捷收藏：已收藏=取消，未收藏=添加；复用同一状态与提示 */
-function toggleFav(entry: FsEntry): void {
-  if (isFavorited(entry.path)) void removeFavorite(entry)
-  else void addFavorites([entry])
-}
-async function removeFavoriteById(f: FsFavorite): Promise<void> {
-  // 收藏夹内单项移除同样二次确认（禁遮罩禁 ESC）
-  try {
-    await ElMessageBox.confirm(`确定移除收藏「${f.name}」吗？`, '移除收藏', { type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留' })
-  } catch { return }
-  try {
-    await window.api.fs.favoriteRemove(f._id)
-    await loadFavorites()
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  }
-}
-async function copySelectedPaths(): Promise<void> {
-  const list0 = selectedEntries.value
-  if (!list0.length) return
-  await window.api.os.clipboardWrite(list0.map((e) => e.path).join('\n'))
-  ElMessage.success(`已复制 ${list0.length} 条路径`)
-}
-
-// ── §十一：编辑权限（本地 / SFTP；先读后改、确认后生效）──
-function openPerm(): void {
-  const t = selSingle.value
-  if (!t || !canPerm.value) return
-  permTarget.value = t
-  permOctal.value = t.mode ?? '0644'
-  permOpen.value = true
-}
-function permBits(): { owner: [boolean, boolean, boolean]; group: [boolean, boolean, boolean]; other: [boolean, boolean, boolean] } {
-  const bits = parseInt(permOctal.value.replace(/^0?(?=[0-7]{3})/, '0'), 8) & 0o777
-  const g = (shift: number): [boolean, boolean, boolean] => [Boolean((bits >> shift) & 4), Boolean((bits >> shift) & 2), Boolean((bits >> shift) & 1)]
-  return { owner: g(6), group: g(3), other: g(0) }
-}
-/** rwx 勾选 ↔ 八进制输入双向联动（输入框仍是权威，勾选实时重算） */
-function togglePermBit(group: 'owner' | 'group' | 'other', idx: 0 | 1 | 2): void {
-  const b = permBits()
-  b[group][idx] = !b[group][idx]
-  const g = (t: [boolean, boolean, boolean]): number => (t[0] ? 4 : 0) | (t[1] ? 2 : 0) | (t[2] ? 1 : 0)
-  permOctal.value = '0' + g(b.owner) + g(b.group) + g(b.other)
-}
-async function submitPerm(): Promise<void> {
-  const t = permTarget.value
-  if (!t || !profileId.value || permSaving.value) return
-  const octal = permOctal.value.trim()
-  if (!/^0?[0-7]{3}$/.test(octal)) { ElMessage.warning('权限须为 3-4 位八进制（如 0644）'); return }
-  try {
-    await ElMessageBox.confirm(
-      `将把「${t.name}」的权限改为 ${octal}（${fsModeToRwx(octal)}）。确认修改吗？`,
-      '编辑权限',
-      { confirmButtonText: '确认修改', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch { return }
-  permSaving.value = true
-  try {
-    await window.api.fs.chmod({ profileId: profileId.value, path: t.path, modeOctal: octal })
-    permOpen.value = false
-    ElMessage.success('权限已修改')
-    void list(false)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  } finally { permSaving.value = false }
-}
-
-// ── §十一：属性弹框（只读展示 + 编辑入口）──
-async function openProps(): Promise<void> {
-  const t = selSingle.value
-  if (!t) return
-  await openPropsFor(t)
-}
-async function openPropsFor(entry: FsEntry): Promise<void> {
-  propsEntry.value = entry
-  propsStat.value = null
-  propsLoading.value = true
-  propsOpen.value = true
-  try {
-    const st = await window.api.fs.stat({ profileId: profileId.value, path: entry.path })
-    propsStat.value = st.exists ? { size: st.size, modified: st.modified, isDir: st.isDir } : null
-  } catch { propsStat.value = null }
-  finally { propsLoading.value = false }
-}
-
-// ── §十一：转换格式 A（文本编码/换行符，全通道；仅文本扩展启用）──
-function openConvert(): void {
-  const t = selSingleFile.value
-  if (!t || !canConvert.value) return
-  convertTarget.value = t
-  convertForm.value = { from: 'auto', to: 'utf-8', newline: 'keep' }
-  convertOpen.value = true
-}
-async function submitConvert(): Promise<void> {
-  const t = convertTarget.value
-  if (!t || !profileId.value || convertSaving.value) return
-  const f = convertForm.value
-  const nlText = f.newline === 'keep' ? '保持换行符不变' : `换行符统一为 ${f.newline === 'lf' ? 'LF (\\n)' : 'CRLF (\\r\\n)'}`
-  try {
-    await ElMessageBox.confirm(
-      `将读取「${t.name}」并按（${f.from === 'auto' ? '自动检测编码' : f.from} → ${f.to}，${nlText}）转换后写回原文件。转换前建议下载备份，确认执行吗？`,
-      '转换文本编码 / 换行符',
-      { confirmButtonText: '确认转换', cancelButtonText: '取消', type: 'warning', closeOnClickModal: false, closeOnPressEscape: false },
-    )
-  } catch { return }
-  convertSaving.value = true
-  try {
-    const r = await window.api.fs.convertText({ profileId: profileId.value, path: t.path, fromEncoding: f.from, toEncoding: f.to, newline: f.newline })
-    convertOpen.value = false
-    if (!r.encodingChanged && !r.newlineChanged) ElMessage.info(`内容已是 ${r.detected} 编码且换行符符合要求，未做修改`)
-    else ElMessage.success(`已转换：${r.detected} → ${f.to}${r.newlineChanged ? ' + 换行符' : ''}（${fsFormatSize(r.bytes)}）`)
-  } catch (err) {
-    ElMessage.error(friendlyError(err))
-  } finally { convertSaving.value = false }
-}
-
-// ── §十一：压缩 / 解压（仅本地通道，fflate）──
-async function doZip(targets?: FsEntry[]): Promise<void> {
-  if (!hasWritable.value || activeChannel.value?.type !== 'local') { ElMessage.warning('压缩仅支持可写的本地目录通道'); return }
-  const list0 = targets ?? selectedEntries.value
-  if (!list0.length) return
-  const first = list0[0]!
-  const defaultName = list0.length === 1 ? `${first.name}.zip` : `选中${list0.length}项.zip`
-  try {
-    const { value } = await ElMessageBox.prompt('在当前目录创建 zip 压缩包，输入文件名', '压缩', {
-      confirmButtonText: '压缩', cancelButtonText: '取消',
-      inputValue: defaultName,
-      inputPattern: /^[^\\/:]+\.zip$/i, inputErrorMessage: '文件名不能含斜杠且须以 .zip 结尾',
-      closeOnClickModal: false, closeOnPressEscape: false,
-    })
-    const name = String(value ?? '').trim()
-    if (!name) return
-    zipSaving.value = true
-    const zipPath = path.value === '/' ? `/${name}` : `${path.value}/${name}`
-    const r = await window.api.fs.zip({
-      profileId: profileId.value,
-      zipPath,
-      sources: list0.map((e) => ({ path: e.path, kind: e.kind })),
-    })
-    ElMessage.success(`已压缩 ${r.files} 个文件 → ${name}（${fsFormatSize(r.size)}）`)
-    void list(false)
-  } catch (err) {
-    if ((err as Error).message !== 'cancel' && err !== 'cancel') ElMessage.error(friendlyError(err))
-  } finally { zipSaving.value = false }
-}
-// ── 解压到…（用户 2026-11-19 定版）：目标通道可选（跨源解压）+ 目录手输/级联
-//    （不存在自动创建）+ 目标已有同名条目时覆盖确认。zip 从源通道读入内存后写入目标通道。 ──
-const unzipOpen = ref(false)
-const unzipSaving = ref(false)
-const unzipEntry = ref<FsEntry | null>(null)
-const unzipDestProfile = ref('')
-const unzipDirInput = ref('')
-const unzipCascaderRef = ref<{ togglePopperVisible: (v: boolean) => void } | null>(null)
-const unzipCascaderPicked = ref('') // 级联自身选中值，仅 @change 驱动（同 move，不绑手输框）
-watch(unzipDestProfile, () => { unzipCascaderPicked.value = '' })
-const unzipDirProps = dirLazyProps(() => unzipDestProfile.value)
-
-function openUnzip(entry: FsEntry): void {
-  if (!hasWritable.value) { ElMessage.warning('当前没有可写的目标通道，无法解压'); return }
-  if (!isFsZipName(entry.name)) { ElMessage.warning('仅支持 .zip 压缩包'); return }
-  unzipEntry.value = entry
-  unzipDestProfile.value = profileId.value
-  const base = entry.name.replace(/\.zip$/i, '')
-  const parent = entry.path.lastIndexOf('/') <= 0 ? '/' : entry.path.slice(0, entry.path.lastIndexOf('/'))
-  unzipDirInput.value = parent === '/' ? `/${base}` : `${parent}/${base}`
-  // 输入框默认 = zip 所在目录下以 zip 名新建（根目录不可解压，属「打开时已指定」特例）；cascader 不预选，避免与输入框显示不一致
-  unzipCascaderPicked.value = ''
-  unzipOpen.value = true
-}
-function onUnzipDirPicked(v: unknown): void {
-  unzipDirInput.value = String(v ?? '')
-  unzipCascaderPicked.value = String(v ?? '')
-  unzipCascaderRef.value?.togglePopperVisible(false)
-}
-async function submitUnzip(overwrite = false): Promise<void> {
-  const entry = unzipEntry.value
-  if (!entry || unzipSaving.value) return
-  const destDir = normalizeDestInput(unzipDirInput.value)
-  if (destDir === null) { ElMessage.warning('目录路径非法（不能含 . / .. 段）'); return }
-  if (!destDir || destDir === '/') { ElMessage.warning('目标目录不能为根目录，请填写具体目录（不存在会自动创建）'); return }
-  unzipSaving.value = true
-  try {
-    const r = await window.api.fs.unzip({ profileId: profileId.value, path: entry.path, destProfileId: unzipDestProfile.value, destDir, overwrite })
-    unzipOpen.value = false
-    ElMessage.success(`已解压 ${r.files} 个文件 → ${unzipDestProfile.value === profileId.value ? r.destDir : `${unzipDestProfile.value}:${r.destDir}`}`)
-    if (unzipDestProfile.value === profileId.value) void list(false)
-  } catch (err) {
-    const msg = (err as Error).message ?? ''
-    if (msg.startsWith('__UNZIP_CONFLICT__:')) {
-      // 目标目录已有同名条目：覆盖确认（用户拍板三选收敛为 覆盖/取消，改目录回弹框改）
-      try {
-        await ElMessageBox.confirm(`目标目录已存在同名条目：${msg.slice('__UNZIP_CONFLICT__:'.length)}。覆盖解压（同名文件将被覆盖）？`, '目标已有同名条目', {
-          type: 'warning', confirmButtonText: '覆盖解压', cancelButtonText: '取消',
-          closeOnClickModal: false, closeOnPressEscape: false,
-        })
-        // 递归重试前放行保存守卫（本次调用尚未走出 catch，finally 尚未复位）
-        unzipSaving.value = false
-        await submitUnzip(true)
-      } catch { /* 取消：留在弹框可改目录 */ }
-    } else {
-      ElMessage.error(friendlyError(err))
-    }
-  } finally { unzipSaving.value = false }
-}
-async function newFile(): Promise<void> {
-  try {
-    const { value } = await ElMessageBox.prompt('新建空白文本文件，输入文件名（如 page.html）', '新建文件', {
-      confirmButtonText: '创建并编辑', cancelButtonText: '取消',
-      inputPattern: /^[^\\/:]+$/, inputErrorMessage: '文件名不能含斜杠',
-      closeOnClickModal: false, closeOnPressEscape: false,
-    })
-    const name = String(value ?? '').trim()
-    if (!name) return
-    const full = path.value === '/' ? `/${name}` : `${path.value}/${name}`
-    await window.api.fs.write({ profileId: profileId.value, path: full, contentBase64: '' })
-    void list(false)
-    await openFile({ kind: 'file', name, path: full })
-  } catch { /* 取消 */ }
-}
-
-// ── 编辑保存（冲突检测 §四） ──
-async function saveEditor(): Promise<void> {
-  const ed = editor.value
-  if (ed.readonly || ed.saving || !profileId.value) return
-  ed.saving = true
-  ed.conflict = false
-  const bytes = new TextEncoder().encode(ed.content)
-  let b = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    b += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)))
-  }
-  const contentBase64 = btoa(b)
-  try {
-    await window.api.fs.write({ profileId: profileId.value, path: ed.path, contentBase64, expect: { etag: ed.etag, size: ed.size, modified: ed.modified } })
-    ElMessage.success('已保存到远端')
-    ed.open = false
-    void list(false)
-  } catch (err) {
-    const msg = (err as Error).message ?? ''
-    if (msg.includes('已变化')) {
-      ed.conflict = true
-      ElMessageBox.confirm('远端文件在你编辑期间已被修改。覆盖远端内容，还是放弃本次修改？', '保存冲突', {
-        confirmButtonText: '覆盖远端', cancelButtonText: '放弃修改', type: 'warning',
-        closeOnClickModal: false, closeOnPressEscape: false,
-      }).then(async () => {
-        try {
-          await window.api.fs.write({ profileId: profileId.value, path: ed.path, contentBase64, force: true })
-          ElMessage.success('已覆盖保存')
-          ed.open = false
-          void list(false)
-        } catch (err2) { ElMessage.error(friendlyError(err2)) }
-      }).catch(() => { /* 放弃 */ })
-    } else {
-      ElMessage.error(friendlyError(err))
-    }
-  } finally {
-    ed.saving = false
-  }
 }
 
 // ── plans/10 传输设置（分片开关/阈值/片大小/并发实时生效；遗留分片清理，二次确认）──
@@ -2004,65 +341,64 @@ async function cleanOrphansInCfg(): Promise<void> {
   } catch (err) { ElMessage.error(friendlyError(err)) }
 }
 
-async function openDownloadDir(): Promise<void> {
-  if (!profileId.value) return
-  const dir = await window.api.fs.downloadDir(profileId.value)
-  await window.api.os.shellOpen(dir)
-}
-async function changeDownloadDir(): Promise<void> {
-  const dir = await window.api.os.pickDir()
-  if (!dir) return
-  await window.api.fs.setDownloadDir(dir)
-  ElMessage.success('下载目录已更新')
+// ── 打开：预览 / 编辑 / 下载 的行入口 ──
+function rowOpen(entry: FsEntry): void {
+  if (entry.kind === 'dir') enterDir(entry)
+  else void openFile(entry)
 }
 
-// ── 传输事件订阅 + 完成自动刷新 ──
-let refreshTimer: number | undefined
-function scheduleRefresh(): void {
-  if (refreshTimer !== undefined) return
-  refreshTimer = window.setTimeout(() => {
-    refreshTimer = undefined
-    if (runningCount.value === 0) void list(false)
-  }, 1200)
+// ── 工具栏「更多▾」分发（§3.1 + §十一 分组化：全部按选中态实时判定，避免误操作）──
+function moreCommand(cmd: unknown): void {
+  switch (String(cmd)) {
+    case 'refresh': refresh(); return
+    case 'usage': if (selSingleDir.value) void showUsage(selSingleDir.value); return
+    case 'copyto': openMove('copy'); return
+    case 'newfile': void newFile(); return
+    case 'downloaddir': void changeDownloadDir(); return
+    case 'opendir': void openDownloadDir(); return
+    case 'cols': colsOpen.value = true; return
+    case 'ziplimits': void openZipLimits(); return
+    case 'transfercaps': void openTransferCaps(); return
+    case 'transferconfig': void openTransferConfig(); return
+    case 'note': openNote(selectedEntries.value); return
+    case 'favorite': void addFavorites(selectedEntries.value); return
+    case 'favorites': void loadFavorites().then(() => { favDrawerOpen.value = true }); return
+    case 'copypath': void copySelectedPaths(); return
+    case 'zip': void doZip(); return
+    case 'unzip': if (canUnzip.value) openUnzip(selSingleFile.value!); return
+    case 'convert': openConvert(); return
+    case 'perm': openPerm(); return
+    case 'props': openProps(); return
+  }
 }
-// 传输完成自动刷新订阅退订（任务数据本体已归全局面板单例 useTransferPanel，本页只关心完成后的列表刷新）
-let offTransferEvent: (() => void) | null = null
-onMounted(() => {
-  offTransferEvent = window.api.fs.onTransferEvent((task) => {
-    if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy' || task.kind === 'cross')) scheduleRefresh()
-  })
-  // 管理员模式提示：Windows UIPI 会拦截「低权限资源管理器 → 高权限应用」的拖放（系统级，代码无法绕过）
-  void window.api.os.isElevated().then((v) => { elevated.value = v })
-  // 网格右键菜单：点击任意处 / 在非卡片处右键 / Escape 关闭
-  window.addEventListener('click', onWindowCtxMaybeClose)
-  window.addEventListener('contextmenu', onWindowCtxMaybeClose)
-  void loadChannels().then(() => { if (profileId.value) void list() })
-  void loadFavorites() // §十一 收藏夹
-  void loadMediaLimit() // 在线预览上限（可配）
-  initMediaProgress() // 媒体边下边播进度订阅
-  // 拖拽上传：window 级监听（见 onWindowDrop 注释）；capture 相位保证先于任何子元素拿到事件
-  window.addEventListener('dragenter', onWindowDragEnter, { capture: true })
-  window.addEventListener('dragover', onWindowDragOver, { capture: true })
-  window.addEventListener('dragleave', onWindowDragLeave, { capture: true })
-  window.addEventListener('drop', onWindowDrop, { capture: true })
-})
-onBeforeUnmount(() => {
-  offTransferEvent?.()
-  offTransferEvent = null
-  unsubMediaEvent?.()
-  unsubMediaEvent = null
-  window.removeEventListener('click', onWindowCtxMaybeClose)
-  window.removeEventListener('contextmenu', onWindowCtxMaybeClose)
-  if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
-  window.removeEventListener('dragenter', onWindowDragEnter, { capture: true } as EventListenerOptions)
-  window.removeEventListener('dragover', onWindowDragOver, { capture: true } as EventListenerOptions)
-  window.removeEventListener('dragleave', onWindowDragLeave, { capture: true } as EventListenerOptions)
-  window.removeEventListener('drop', onWindowDrop, { capture: true } as EventListenerOptions)
-})
+
+/** 行「更多 ▾」/ 网格右键 共用分发（§11.4 定版 + 行外显操作全集） */
+function rowMoreCommand(cmd: string, entry: FsEntry): void {
+  switch (cmd) {
+    case 'open': rowOpen(entry); return
+    case 'download': void downloadEntries([entry]); return
+    case 'link': void rowLink(entry); return
+    case 'paste': void rowPaste(entry); return
+    case 'copy': rowCopy(entry); return
+    case 'move': rowMove(entry); return
+    case 'rename': openRename(entry); return
+    case 'delete': openDelete([entry]); return
+    case 'usage': if (entry.kind === 'dir') void showUsage(entry); return
+    case 'note': openNote([entry]); return
+    case 'favorite': if (isFavorited(entry.path)) void removeFavorite(entry); else void addFavorites([entry]); return
+    case 'copypath': void window.api.os.clipboardWrite(entry.path).then(() => ElMessage.success('路径已复制')); return
+    case 'zip': void doZip([entry]); return
+    case 'unzip': openUnzip(entry); return
+    case 'convert': selectOnly([entry.path]); openConvert(); return
+    case 'perm': selectOnly([entry.path]); openPerm(); return
+    case 'props': void openPropsFor(entry); return
+    case 'share': selectOnly([entry.path]); rowShare(entry); return
+  }
+}
 
 // ── 键盘（§3.3） ──
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && ctxMenu.value) { ctxMenu.value = null; return }
+  if (event.key === 'Escape' && ctxMenuState.value) { closeCtxMenu(); return }
   if (preview.value.open || editor.value.open || player.value.open || mkdirOpen.value || renameOpen.value || moveOpen.value || deleteOpen.value) return
   const target = event.target as HTMLElement
   if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return
@@ -2077,30 +413,19 @@ function onKeydown(event: KeyboardEvent): void {
   else if (event.key === 'x' || event.key === 'X') { event.preventDefault(); clipCopy('cut') }
   else if (event.key === 'v' || event.key === 'V') { event.preventDefault(); void paste() }
 }
+
+// ── 传输面板 P4-7 全局化：任务数据/显隐由 App 层单例承载，本页只关心唤起入口与完成刷新（在 useFsTransfer 内订阅）──
+onMounted(() => {
+  void loadChannels().then(() => { if (profileId.value) void list() })
+  void loadFavorites() // §十一 收藏夹
+  void loadMediaLimit() // 在线预览上限（可配）
+})
 </script>
 
 <template>
   <div class="fs-page" tabindex="0" @keydown="onKeydown">
     <!-- 通道切换条 -->
-    <div class="fs-channel-bar">
-      <el-select v-model="profileId" size="small" class="fs-channel-select" placeholder="选择上传通道" filterable>
-        <el-option v-for="c in channels" :key="c.id" :value="c.id" :label="c.name">
-          <span class="fs-channel-opt">
-            <el-tag size="small" :type="c.type === 'cloud' ? 'success' : c.type === 'local' ? 'info' : 'warning'" class="fs-opt-tag">
-              {{ c.type === 'cloud' ? '云' : c.type === 'local' ? '本地' : (c.protocol ?? '远端').toUpperCase() }}
-            </el-tag>
-            <span class="fs-opt-name">{{ c.name }}</span>
-            <span class="fs-opt-detail">{{ c.detail }}</span>
-            <el-tag v-if="c.isDefault" size="small" type="primary" effect="plain" class="fs-opt-tag">默认</el-tag>
-          </span>
-        </el-option>
-      </el-select>
-      <span v-if="activeChannel" class="fs-channel-meta">
-        <span v-if="!activeChannel.hasSecret" class="fs-warn">密钥未配置，去「通道配置」填写</span>
-        <span v-else-if="!hasWritable" class="fs-warn">该厂商仅支持浏览（写操作支持阿里云 OSS / AWS S3）</span>
-        <span v-else class="fs-ok">已连接 · {{ activeChannel.detail }}</span>
-      </span>
-    </div>
+    <FsChannelBar v-model:profile-id="profileId" :channels="channels" :active-channel="activeChannel" />
 
     <!-- 工具栏（§3.1 并集：常用操作外置，仅次要项进「更多▾」）；路径区紧随其下（用户 2026-11-19：路径单独一行，位于上传/下载下方） -->
     <div class="fs-toolbar">
@@ -2159,55 +484,23 @@ function onKeydown(event: KeyboardEvent): void {
     </div>
 
     <!-- 路径区（独立一行，位于上传/下载工具栏下方）：导航 + 面包屑 + 过滤下拉 + 搜索 + 视图切换 -->
-    <div class="fs-path-bar">
-      <!-- 导航：图标+文字（纯图标易被误读成历史后退/前进，实际只有「上一级」语义） -->
-      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Back" title="回到上一级目录 (Backspace)" @click="goUp">上一级</el-button>
-      <el-button size="small" type="primary" plain class="fs-nav-btn" :icon="Refresh" title="刷新当前目录 (F5)" @click="refresh">刷新</el-button>
-      <div v-if="!pathEditing" class="fs-crumbs" @dblclick="pathEditing = true">
-        <span class="fs-crumb fs-crumb-root" @click="gotoCrumb(-1)">{{ activeChannel?.name ?? '通道' }}</span>
-        <template v-if="crumbs.length > crumbItems.length">
-          <span class="fs-crumb-sep">/</span>
-          <span class="fs-crumb fs-crumb-ellipsis" :title="`展开：${collapsedCrumbPath}`" @click="gotoCrumb(crumbs.length - crumbItems.length - 1)">…</span>
-        </template>
-        <template v-for="c in crumbItems" :key="c.i">
-          <span class="fs-crumb-sep">/</span>
-          <span class="fs-crumb" :title="c.seg" @click="gotoCrumb(c.i)">{{ c.seg }}</span>
-        </template>
-      </div>
-      <el-input clearable
-        v-else
-        v-model="pathInput"
-        size="small"
-        class="fs-path-input"
-        placeholder="输入路径回车直达（oss:// 风格可省前缀，'..' 会被拒绝）"
-        autofocus
-        @keyup.enter="submitPathInput"
-        @blur="pathEditing = false"
-      />
-      <el-select v-model="kindFilter" size="small" class="fs-dd-filter" title="按类型过滤">
-        <el-option label="全部" value="all" />
-        <el-option label="文件" value="file" />
-        <el-option label="文件夹" value="dir" />
-      </el-select>
-      <el-select v-model="linkFilter" size="small" class="fs-dd-filter" title="按分享链接过滤">
-        <el-option label="全部" value="all" />
-        <el-option label="带链接" value="linked" />
-        <el-option label="不带链接" value="unlinked" />
-      </el-select>
-      <el-input
-        v-model="filter"
-        size="small"
-        class="fs-filter"
-        :prefix-icon="Search"
-        placeholder="当前目录内搜索；回车 = 递归搜索"
-        clearable
-        @keyup.enter="runSearch"
-      />
-      <el-button-group class="fs-view-toggle">
-        <el-button size="small" :type="viewMode === 'list' ? 'primary' : 'default'" :icon="MenuIcon" title="列表视图" @click="viewMode = 'list'" />
-        <el-button size="small" :type="viewMode === 'grid' ? 'primary' : 'default'" :icon="Grid" title="网格视图" @click="viewMode = 'grid'" />
-      </el-button-group>
-    </div>
+    <FsPathBar
+      v-model:path-editing="pathEditing"
+      v-model:path-input="pathInput"
+      v-model:filter="filter"
+      v-model:kind-filter="kindFilter"
+      v-model:link-filter="linkFilter"
+      v-model:view-mode="viewMode"
+      :active-channel-name="activeChannel?.name ?? '通道'"
+      :crumbs="crumbs"
+      :crumb-items="crumbItems"
+      :collapsed-crumb-path="collapsedCrumbPath"
+      @go-up="goUp"
+      @refresh="refresh"
+      @goto-crumb="gotoCrumb"
+      @submit-path="submitPathInput"
+      @run-search="runSearch"
+    />
 
     <!-- 文件列表 -->
     <el-alert
@@ -2492,92 +785,26 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- 图片预览 -->
-    <el-dialog v-model="preview.open" :title="preview.name" width="720px" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-preview-dialog" @close="onPreviewClose">
-      <div class="fs-preview-body">
-        <iframe v-if="preview.pdfUrl" :src="preview.pdfUrl" class="fs-preview-pdf" title="PDF 预览" />
-        <img v-else :src="preview.src" :style="{ transform: `scale(${preview.scale})` }" alt="preview" />
-      </div>
-      <template #footer>
-        <template v-if="!preview.pdfUrl">
-          <el-button size="small" type="primary" plain @click="preview.scale = Math.max(0.2, preview.scale - 0.2)">缩小</el-button>
-          <el-button size="small" type="primary" plain @click="preview.scale = 1">复位</el-button>
-          <el-button size="small" type="primary" plain @click="preview.scale = Math.min(5, preview.scale + 0.2)">放大</el-button>
-        </template>
-        <el-button size="small" @click="preview.open = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <!-- 图片/PDF 预览 -->
+    <FsPreviewDialog :preview="preview" @close="closePreview" @scale="onPreviewScale" />
 
     <!-- 文本编辑器（文件名 · 大小 统计信息置顶，用户 2026-11-18） -->
-    <el-dialog v-model="editor.open" width="900px" top="4vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-editor-dialog">
-      <template #header>
-        <span class="fs-editor-title">{{ editor.name }}<span class="fs-editor-meta">{{ fsFormatSize(editor.size) }}</span></span>
-      </template>
-      <div class="fs-editor-body">
-        <CodeEditor v-model="editor.content" :path="editor.path" :readonly="editor.readonly" :height="'100%'" :dark="themeDark" :minimap="true" />
-      </div>
-      <template #footer>
-        <span v-if="editor.conflict" class="fs-conflict-hint">远端已变化，可覆盖保存</span>
-        <el-button @click="editor.open = false">关闭</el-button>
-        <el-button type="primary" :loading="editor.saving" :disabled="editor.readonly" @click="saveEditor">保存到远端</el-button>
-      </template>
-    </el-dialog>
+    <FsEditorDialog v-model:content="editor.content" :editor="editor" :theme-dark="themeDark" @close="closeEditor" @save="saveEditor" />
 
-    <!-- 网格视图右键菜单（与行操作全集一致，Teleport 到 body 防被列表容器裁切）。
-         注意：不能用裸 el-dropdown-menu——它 inject(DROPDOWN_INJECTION_KEY, undefined) 后解构即抛错，
-         菜单项完全不渲染（用户 2026-11-18 截图「只出现小黑框」根因）。这里用原生 ul/li + 事件委托。 -->
-    <Teleport to="body">
-      <div v-if="ctxMenu" class="fs-ctx" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @click="ctxClick">
-        <ul class="fs-ctx-menu">
-          <li data-command="open"><el-icon><FolderOpened /></el-icon>打开</li>
-          <li v-if="ctxMenu.entry.kind === 'file'" data-command="download"><el-icon><Download /></el-icon>下载</li>
-          <li v-if="ctxMenu.entry.kind === 'file' && activeChannel?.type !== 'local'" data-command="link"><el-icon><Link /></el-icon>链接</li>
-          <li v-if="canShareEntry()" data-command="share"><el-icon><Link /></el-icon>分享链接</li>
-          <li v-if="ctxMenu.entry.kind === 'dir' && clipboard && hasWritable" data-command="paste"><el-icon><DocumentCopy /></el-icon>粘贴</li>
-          <li v-if="hasWritable" data-command="copy" class="is-divided"><el-icon><CopyDocument /></el-icon>复制</li>
-          <li v-if="hasWritable" data-command="move"><el-icon><Rank /></el-icon>移动</li>
-          <li v-if="hasWritable" data-command="rename"><el-icon><EditPen /></el-icon>重命名</li>
-          <li v-if="hasWritable" data-command="delete"><el-icon><Delete /></el-icon>删除</li>
-          <!-- 信息组 -->
-          <li data-command="props" class="is-divided"><el-icon><InfoFilled /></el-icon>属性</li>
-          <li v-if="ctxMenu.entry.kind === 'dir'" data-command="usage"><el-icon><TrendCharts /></el-icon>统计</li>
-          <li data-command="note"><el-icon><ChatDotRound /></el-icon>设置备注…</li>
-          <li data-command="favorite"><el-icon><CollectionTag /></el-icon>{{ isFavorited(ctxMenu.entry.path) ? '取消收藏' : '添加收藏' }}</li>
-          <li data-command="copypath"><el-icon><CopyDocument /></el-icon>复制路径</li>
-          <!-- 工具组（按通道与文件类型实时显隐） -->
-          <template v-if="activeChannel?.type === 'local'">
-            <li data-command="zip" class="is-divided"><el-icon><Box /></el-icon>压缩为 zip…</li>
-            <li v-if="isFsZipName(ctxMenu.entry.name)" data-command="unzip"><el-icon><FolderOpened /></el-icon>解压到…</li>
-          </template>
-          <li v-if="ctxMenu.entry.kind === 'file' && isFsTextName(ctxMenu.entry.name)" data-command="convert" class="is-divided"><el-icon><MagicStick /></el-icon>转换编码 / 换行符…</li>
-          <!-- 权限组 -->
-          <li v-if="hasMode" data-command="perm" class="is-divided" :class="{ 'is-disabled': !ctxMenu.entry.mode }"><el-icon><Lock /></el-icon>编辑权限…</li>
-        </ul>
-      </div>
-    </Teleport>
+    <!-- 网格视图右键菜单（与行操作全集一致，Teleport 到 body 防被列表容器裁切） -->
+    <FsContextMenu
+      :menu="ctxMenuState"
+      :has-writable="hasWritable"
+      :has-mode="hasMode"
+      :has-clipboard="Boolean(clipboard)"
+      :channel-type="activeChannel?.type"
+      :is-favorited="isFavorited"
+      :can-share="canShareEntry()"
+      @run="runCtx"
+    />
 
     <!-- 音视频播放：直链(src=域名/分享链接) 或边下边播(src=localres://)；右上 × 关闭 -->
-    <el-dialog v-model="player.open" :title="player.name" width="760px" top="6vh" :close-on-click-modal="false" :close-on-press-escape="false" class="fs-player-dialog" @close="player.src = ''; player.mediaKey = ''; player.entry = null">
-      <div class="fs-player-body">
-        <span v-if="player.loading && !player.src" class="hint">加载中…</span>
-        <video v-else-if="player.video && player.src" :src="player.src" controls autoplay style="max-width: 100%; max-height: 58vh" @error="onMediaError" />
-        <audio v-else-if="player.src" :src="player.src" controls autoplay style="width: 100%" @error="onMediaError" />
-      </div>
-      <!-- 播放来源 + 边下边播下载进度（直链无下载进度，服务端 Range） -->
-      <div class="fs-player-status">
-        <el-tag size="small" :type="player.source === 'direct' ? 'success' : 'primary'" effect="plain">
-          {{ player.source === 'direct' ? '直链播放（免下载）' : '边下边播' }}
-        </el-tag>
-        <template v-if="player.source === 'stream' && player.dlTotal > 0">
-          <el-progress :percentage="dlPercent" :stroke-width="6" style="flex: 1" :status="player.dlDone ? 'success' : undefined" />
-          <span class="hint">{{ fsFormatSize(player.dlUploaded) }} / {{ fsFormatSize(player.dlTotal) }}</span>
-        </template>
-        <span v-else class="hint">{{ player.source === 'direct' ? '使用访问域名 / 分享链接，拖动进度条走服务端' : '正在准备下载…' }}</span>
-      </div>
-      <template #footer>
-        <div class="hint">在线播放上限 {{ mediaLimitText }}（仅本地下载模式生效；可在「更多▾ → 上限设置」调整并切换「预览优先直链」，0=不限）</div>
-      </template>
-    </el-dialog>
+    <FsPlayerDialog :player="player" :media-limit-text="mediaLimitText" @close="closePlayer" @media-error="onMediaError" />
 
     <!-- 上传重名确认：三选一（取消/保留重命名/全部覆盖）；文件名限高滚动，单次多选也不撑爆弹框 -->
     <el-dialog
@@ -2655,14 +882,7 @@ function onKeydown(event: KeyboardEvent): void {
     />
 
     <!-- §十一：设置备注（确认后生效；多选批量同备注） -->
-    <el-dialog v-model="noteOpen" :title="`设置备注${noteTargets.length > 1 ? `（${noteTargets.length} 项）` : ''}`" width="440px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-input clearable v-model="noteInput" data-autofocus maxlength="200" placeholder="备注（留空清除；最多 200 字）" @keyup.enter="submitNote" />
-      <div class="hint" style="margin-top: 8px">备注保存在本机应用数据，跨通道可用；重命名/移动后自动跟随。</div>
-      <template #footer>
-        <el-button @click="noteOpen = false">取消</el-button>
-        <el-button type="primary" :loading="noteSaving" @click="submitNote">保存备注</el-button>
-      </template>
-    </el-dialog>
+    <FsNoteDialog v-model:open="noteOpen" v-model:input="noteInput" :targets="noteTargets" :saving="noteSaving" @submit="submitNote" />
 
     <!-- §十一：编辑权限（本地 / SFTP；rwx 勾选 ↔ 八进制双向联动，确认后生效） -->
     <el-dialog v-model="permOpen" title="编辑权限" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
@@ -2818,19 +1038,7 @@ function onKeydown(event: KeyboardEvent): void {
     </el-dialog>
 
     <!-- §十一：收藏夹（跨通道直达） -->
-    <el-drawer v-model="favDrawerOpen" title="收藏夹" size="380px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div v-if="!favorites.length" class="fs-empty"><p>还没有收藏</p><p class="fs-empty-hint">选中文件/目录后在「更多 ▾」里添加收藏</p></div>
-      <div v-else class="fs-fav-list">
-        <div v-for="f in favorites" :key="f._id" class="fs-fav-item">
-          <el-icon class="fs-icon" :class="{ 'is-dir': f.kind === 'dir' }"><component :is="f.kind === 'dir' ? Folder : Document" /></el-icon>
-          <span class="fs-fav-name" :title="`${f.profileName ?? f.profileId}/${f.path}`">{{ f.name }}</span>
-          <span class="fs-fav-meta">{{ f.profileName ?? f.profileId }} · {{ f.path }}</span>
-          <span class="fs-spacer" />
-          <el-button size="small" text type="primary" @click="gotoFavorite(f)">前往</el-button>
-          <el-button size="small" text type="danger" @click="removeFavoriteById(f)">删除</el-button>
-        </div>
-      </div>
-    </el-drawer>
+    <FsFavoritesDrawer v-model:open="favDrawerOpen" :favorites="favoriteList" @goto="gotoFavorite" @remove="removeFavoriteById" />
   </div>
 </template>
 
@@ -2838,32 +1046,6 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; gap: 8px; padding: 10px 20px 14px; }
 .fs-spacer { flex: 1; }
 .hint { font-size: 12px; opacity: .6; line-height: 1.5; }
-
-.fs-channel-bar { display: flex; align-items: center; gap: 10px; }
-.fs-channel-select { width: 260px; }
-.fs-channel-opt { display: flex; align-items: center; gap: 8px; }
-.fs-opt-name { font-weight: 600; }
-.fs-opt-detail { font-size: 12px; opacity: .6; }
-.fs-channel-meta { font-size: 12px; opacity: .75; }
-.fs-warn { color: var(--el-color-warning); }
-.fs-ok { color: var(--el-color-success); }
-
-.fs-path-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fs-crumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; flex: 1; white-space: nowrap; }
-.fs-crumb { cursor: pointer; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
-.fs-crumb:hover { background: var(--el-fill-color); }
-.fs-crumb-root { font-weight: 600; }
-.fs-crumb-sep { opacity: .4; margin: 0 2px; }
-/* Windows 式路径折叠：长路径中间段收成「…」，crumb 自身截断防超长段撑爆路径栏 */
-.fs-crumb { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
-.fs-crumb-ellipsis { opacity: .65; letter-spacing: 1px; }
-.fs-path-input { flex: 1; max-width: 560px; }
-.fs-filter { width: 200px; margin-left: auto; }
-/* 类型/链接下拉过滤（用户 2026-11-19）：紧跟搜索框左侧 */
-.fs-dd-filter { width: 92px; margin-left: auto; }
-.fs-dd-filter + .fs-dd-filter { margin-left: 8px; }
-.fs-dd-filter + .fs-filter { margin-left: 8px; }
-.fs-view-toggle { margin-left: 4px; }
 
 .fs-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -2904,10 +1086,6 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-dir-hint:hover { color: var(--el-color-primary); transform: scale(1.15); }
 .fs-icon.is-dir { color: var(--el-color-warning); }
 .fs-col-size, .fs-col-time, .fs-col-mode { font-size: 12px; opacity: .7; }
-/* 导航图标（后退/刷新）：small 按钮默认图标 12px 太细小，放大加主色 */
-/* 上一级/刷新：图标+文字按钮（2026-11-17 用户反馈纯图标不明显） */
-.fs-path-bar .fs-nav-btn { font-weight: 600; }
-.fs-path-bar .fs-nav-btn .el-icon { font-size: 15px; }
 /* 统计 loading：目录名旁旋转图标（成功色） */
 .fs-usage-spin { color: var(--el-color-success); margin-left: 2px; font-size: 13px; }
 /* 操作列：表头居中（用户 2026-11-17），行内按钮靠右且间距收紧 */
@@ -2925,9 +1103,6 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-search-info { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .fs-search-spin { color: var(--el-color-primary); animation: fs-search-rotate 1s linear infinite; }
 @keyframes fs-search-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.fs-player-body { display: flex; align-items: center; justify-content: center; min-height: 260px; background: var(--el-fill-color-dark); border-radius: 8px; padding: 12px; }
-.fs-player-status { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 24px; }
-.fs-player-status .el-progress { min-width: 120px; }
 .fs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; }
 .fs-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 8px; cursor: default; border: 1px solid transparent; }
 .fs-cell:hover { background: var(--el-fill-color-light); }
@@ -2954,37 +1129,18 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-drop-box { background: var(--el-bg-color); border: 2px dashed var(--el-color-primary); border-radius: 12px; padding: 24px 40px; font-size: 15px; }
 
 .fs-delete-list { font-size: 12px; opacity: .7; max-height: 120px; overflow: auto; word-break: break-all; }
-.fs-preview-body { display: flex; align-items: center; justify-content: center; min-height: 320px; overflow: auto; background: var(--el-fill-color-dark); border-radius: 8px; }
-.fs-preview-body img { max-width: 100%; max-height: 60vh; transition: transform .15s; }
-/* PDF：Chromium 内置 viewer，iframe 撑满弹框可视区 */
-.fs-preview-body .fs-preview-pdf { width: 100%; height: 60vh; border: none; border-radius: 8px; background: var(--el-bg-color); }
-.fs-editor-body { height: 60vh; }
+.fs-admin-tip { margin-bottom: 8px; }
 /* 收藏星标（用户 2026-11-18 定版）：固定在名称列末尾同一位置；未收藏 hover 才显，已收藏常显黄色实心星 */
 .fs-fav-toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); opacity: 0; transition: opacity .12s; padding: 0 2px; margin: 0; height: 22px; color: var(--el-text-color-secondary); }
 .fs-row:hover .fs-fav-toggle, .fs-fav-toggle.is-fav { opacity: 1; }
 .fs-fav-toggle.is-fav { color: var(--el-color-warning); }
-/* 编辑器标题行：文件名 · 大小（统计信息自 footer 移到顶部，用户 2026-11-18） */
-.fs-editor-title { display: inline-flex; align-items: baseline; gap: 10px; font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
-.fs-editor-meta { font-size: 12px; font-weight: 400; opacity: .6; }
-.fs-admin-tip { margin-bottom: 8px; }
-/* 网格视图右键菜单（Teleport 到 body，fixed 定位；原生 ul/li 避免 el-dropdown 裸用注入崩溃） */
-.fs-ctx { position: fixed; z-index: 3000; min-width: 156px; padding: 5px 0; background: var(--el-bg-color-overlay); border: 1px solid var(--el-border-color-light); border-radius: 6px; box-shadow: var(--el-box-shadow-light); }
-.fs-ctx-menu { list-style: none; margin: 0; padding: 0; }
-.fs-ctx-menu li { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 14px; font-size: 13px; color: var(--el-text-color-regular); white-space: nowrap; cursor: pointer; }
-.fs-ctx-menu li .el-icon { font-size: 14px; color: var(--el-text-color-secondary); }
-.fs-ctx-menu li:hover { background: var(--el-fill-color-light); color: var(--el-color-primary); }
-.fs-ctx-menu li:hover .el-icon { color: inherit; }
-.fs-ctx-menu li.is-divided { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--el-border-color-lighter); }
-.fs-ctx-menu li.is-disabled { color: var(--el-text-color-disabled); cursor: not-allowed; }
-.fs-conflict-hint { color: var(--el-color-warning); font-size: 12px; margin-right: 12px; }
 .fs-move-body { display: flex; flex-direction: column; }
 
 /* plans/10：传输队列抽屉已删，悬浮面板样式在 TransferPanel.vue 内自管 */
 /* 传输设置弹框：必填红星 + 行内说明（label auto+nowrap，铁律） */
-.fs-req { color: var(--el-color-danger); font-style: normal; margin-right: 2px; }
 .fs-cfg-help { font-size: 14px; margin-left: 4px; color: var(--el-text-color-secondary); cursor: help; }
 
-/* ── §十一：编辑权限 / 属性 / 转换 / 列设置 / 收藏夹 ── */
+/* ── §十一：编辑权限 / 属性 / 转换 / 列设置 ── */
 .fs-perm-grid { display: grid; grid-template-columns: 64px repeat(3, 1fr); justify-items: center; gap: 6px 0; align-items: center; }
 .fs-perm-head { font-size: 12px; opacity: .6; }
 .fs-perm-label { font-size: 13px; justify-self: start; }
@@ -3005,10 +1161,6 @@ function onKeydown(event: KeyboardEvent): void {
 .fs-dup-list li { word-break: break-all; }
 .fs-cols { display: flex; flex-direction: column; gap: 4px; }
 .fs-ziplimits-unit { flex: none; margin-left: 10px; font-size: 13px; opacity: .7; }
-.fs-fav-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; height: 100%; }
-.fs-fav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
-.fs-fav-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
-.fs-fav-meta { font-size: 12px; opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 
 <!-- 非 scoped：级联 popper 经 teleport 挂在 body，scoped 属性选择器打不到。
