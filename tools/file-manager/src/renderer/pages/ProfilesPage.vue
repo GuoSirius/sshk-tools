@@ -291,7 +291,7 @@ async function doRemove(): Promise<void> {
 async function clearSecret(id: string): Promise<void> {
   await host.upload.setSecret(id, '')
   secretInputs.value[id] = ''
-  secretState.value = await window.api.upload.secretState()
+  secretState.value = await host.upload.secretState()
   ElMessage.success('密钥已清除')
 }
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Connection, Delete, View } from '@element-plus/icons-vue'
-import { FormHint, FormGrid } from '@sshk/ui-kit'
+import { FormHint, FormGrid, SecretField, ConnectivityField, SIGN_URL_HINT } from '@sshk/ui-kit'
 import type { UploadRemoteProfile } from '@sshk/shared'
 
-/** 远程 profile 编辑表单：profile 是响应式数组内的对象，直接改属性即可回写父级 */
+/** 远程 profile 编辑表单：profile 是响应式数组内的对象，直接改属性即可回写父级。
+ *  P4-4 迁即重构：密钥 combo/连通性区块替换为 ui-kit SecretField/ConnectivityField（P2-4 组件），
+ *  签名 URL 说明改用 SIGN_URL_HINT 常量（CR-31）；表单行为/校验/密钥读写流不变。 */
 const props = defineProps<{
   profile: UploadRemoteProfile
   hasSecret: boolean
@@ -42,19 +43,14 @@ const emit = defineEmits<{
       <el-form-item label="用户名" required><el-input clearable v-model="profile.username" /></el-form-item>
       <el-form-item label="远端位置"><el-input clearable v-model="profile.remoteDir" placeholder="/edm/out" /></el-form-item>
       <el-form-item label="密码 / 口令">
-        <div class="combo">
-          <el-input
-            :model-value="secretValue"
-            type="password"
-            show-password
-            :placeholder="hasSecret ? '点击查看可回显已存口令；留空保持不变' : '加密存储，可点眼睛查看 / 直接输入'"
-            @update:model-value="(v: unknown) => emit('updateSecret', props.profile.id, String(v ?? ''))"
-          />
-          <el-tooltip content="查看 / 回显已保存的口令" placement="top">
-            <el-button :icon="View" :disabled="!hasSecret" @click="emit('revealSecret', props.profile.id)">查看</el-button>
-          </el-tooltip>
-          <el-button :icon="Delete" :disabled="!hasSecret" @click="emit('clearSecret', props.profile.id)">清除</el-button>
-        </div>
+        <SecretField
+          :model-value="secretValue"
+          :has-secret="hasSecret"
+          :placeholder="hasSecret ? '点击查看可回显已存口令；留空保持不变' : '加密存储，可点眼睛查看 / 直接输入'"
+          @update:model-value="(v: string) => emit('updateSecret', props.profile.id, v)"
+          @reveal="emit('revealSecret', props.profile.id)"
+          @clear="emit('clearSecret', props.profile.id)"
+        />
       </el-form-item>
       <el-form-item label="访问域名"><el-input clearable v-model="profile.baseUrl" placeholder="https://cdn.example.com" /></el-form-item>
       <el-form-item label="被动模式">
@@ -63,16 +59,15 @@ const emit = defineEmits<{
       </el-form-item>
       <el-form-item label="签名URL模板">
         <el-input clearable v-model="profile.signUrlTemplate" placeholder="留空=裸链；如 https://cdn/sign?src={url}&token=..." />
-        <FormHint inline detail="视频/音频预览优先用「访问域名 + 文件路径」直链，免下载。若直链需签名鉴权，在此填模板，用 {url} 占位符代表拼好的原始直链（如 https://cdn/x?token=abc&src={url}）。留空则直接用裸链。签名过期导致播放失败时会自动回退为下载后播放。" />
+        <FormHint inline :detail="SIGN_URL_HINT" />
       </el-form-item>
       <el-form-item label="连通性" class="full">
-        <div class="combo">
-          <el-button type="primary" plain :icon="Connection" :loading="testing" @click="emit('test', props.profile.id)">
-            测试连接
-          </el-button>
-          <span v-if="testResult" class="test-result" :class="{ 'is-error': testResult.startsWith('✗') }">{{ testResult }}</span>
-          <span v-else class="hint-inline">验证主机 / 端口 / 用户名 / 口令 / 远端位置，只连不写</span>
-        </div>
+        <ConnectivityField
+          :testing="testing"
+          :result="testResult"
+          hint="验证主机 / 端口 / 用户名 / 口令 / 远端位置，只连不写"
+          @test="emit('test', props.profile.id)"
+        />
       </el-form-item>
     </FormGrid>
   </el-form>
@@ -80,6 +75,5 @@ const emit = defineEmits<{
 
 <style scoped>
 .hint-inline { display: inline; font-size: 12px; opacity: .6; }
-.test-result { margin-left: 0; font-size: 12px; color: var(--el-color-success); }
-.test-result.is-error { color: var(--el-color-danger); }
+/* 主机/端口 combo 样式由 FormGrid 全局类（.sshk-form-grid .combo）提供，与原状一致 */
 </style>

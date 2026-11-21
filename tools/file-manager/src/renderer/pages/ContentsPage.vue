@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
  * 内容管理列表页（plans/11）：8 列 + 行操作 + 顶部批量 + 分享(B/C) + 导出三件套 + 状态机。
+ * P4-4 迁即重构：列表区接 ListPageShell/useTablePage/ListPagination/EmptyState（ui-kit 公共组件，
+ * 布局 CSS 上收 theme.css .lp-*）；内容树与编辑器双壳 dialog/page 语义不动（editorMode 读写
+ * tools.file-manager.editorMode 唯一键不变）。
  * - 分享状态列：实时反查 shareHub.list()，自己(B)=primary / 公用(C)=warning + 可访问性
  * - 复制链接优先级：本行 B 票存活优先，否则回落 C 公用总链（与海报 copyPosterLink 同构，?ak= 口径）
  * - 危险操作（删除/批量删除/下线/撤回）一律 ConfirmDialog 二次确认
+ * - 筛选沿用「草稿/生效分离」：控件绑 useTablePage.draft，点查询才生效（search）；重置=清空并立即生效（reset）
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
 import { callHostApi, type HostApiSpec, useToolId } from '@sshk/ui-kit'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, inMsRange, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
 import { host } from '../host'
@@ -22,8 +26,6 @@ const COMMON_LABEL = '内容：公用总链'
 
 const rows = ref<ContentRecord[]>([])
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(10)
 const selected = ref<ContentRecord[]>([])
 const routes = ref<ShareRouteInfo[]>([])
 
@@ -36,27 +38,27 @@ const STATUS_META: Record<ContentStatus, { label: string; type: 'info' | 'succes
   retracted: { label: '已下线', type: 'warning' },
 }
 
-// ── 列表筛选（2026-11-20 三轮定版：筛选栏统一「查询+重置」两按钮——控件绑草稿态，点查询才生效；重置=清空并立即生效）──
-const kw = ref('')
-const dateRange = ref<[string, string] | null>(null)
-const tagFilter = ref<string[]>([])
-const shareFilter = ref<string>('all')
-const statusFilter = ref<string>('all')
-/** 生效态（真正参与过滤的快照），与草稿态分离 */
-const applied = ref({
-  kw: '', dateRange: null as [string, string] | null, tagFilter: [] as string[], shareFilter: 'all', statusFilter: 'all',
+// ── 列表状态（P4-4：useTablePage 统一承载 草稿/生效筛选 + 分页；2026-11-20 三轮定版口径不变）──
+const table = useTablePage<ContentRecord, { kw: string; dateRange: [string, string] | null; tagFilter: string[]; shareFilter: string; statusFilter: string }>({
+  // 数据源：load() 拉全量写 rows 镜像；fetch 直返镜像（客户端过滤/分页由 useTablePage 承载）
+  fetch: async () => rows.value,
+  rowKey: (r) => r._id,
+  filters: () => ({ kw: '', dateRange: null, tagFilter: [], shareFilter: 'all', statusFilter: 'all' }),
+  clientFilter: (list, f) => {
+    const k = f.kw.trim().toLowerCase()
+    return list.filter((row) => {
+      if (k && !(row.name.toLowerCase().includes(k) || (row.description ?? '').toLowerCase().includes(k))) return false
+      // 时间范围：毫秒闭区间（shared 统一封装，2026-11-20 列表页规范精确到秒）
+      if (!inMsRange(row.updatedAt, f.dateRange?.[0], f.dateRange?.[1])) return false
+      if (f.tagFilter.length && !(row.tags ?? []).some((t) => f.tagFilter.includes(t))) return false
+      if (f.statusFilter !== 'all' && row.status !== f.statusFilter) return false
+      if (f.shareFilter !== 'all' && shareState(row).type !== f.shareFilter) return false
+      return true
+    })
+  },
+  pageSize: 10,
 })
-function doSearch(): void {
-  applied.value = {
-    kw: kw.value.trim(), dateRange: dateRange.value, tagFilter: [...tagFilter.value],
-    shareFilter: shareFilter.value, statusFilter: statusFilter.value,
-  }
-  currentPage.value = 1
-}
-function resetFilters(): void {
-  kw.value = ''; dateRange.value = null; tagFilter.value = []; shareFilter.value = 'all'; statusFilter.value = 'all'
-  doSearch()
-}
+
 const statusOptions = [
   { label: '草稿', value: 'draft' },
   { label: '已发布', value: 'published' },
@@ -69,22 +71,11 @@ const allTags = computed(() => {
   for (const r of rows.value) for (const t of r.tags ?? []) set.add(t)
   return [...set]
 })
-const filteredRows = computed(() => {
-  const f = applied.value
-  const k = f.kw.toLowerCase()
-  return rows.value.filter((row) => {
-    if (k && !(row.name.toLowerCase().includes(k) || (row.description ?? '').toLowerCase().includes(k))) return false
-    // 时间范围：毫秒闭区间（shared 统一封装，2026-11-20 列表页规范精确到秒）
-    if (!inMsRange(row.updatedAt, f.dateRange?.[0], f.dateRange?.[1])) return false
-    if (f.tagFilter.length && !(row.tags ?? []).some((t) => f.tagFilter.includes(t))) return false
-    if (f.statusFilter !== 'all' && row.status !== f.statusFilter) return false
-    if (f.shareFilter !== 'all' && shareState(row).type !== f.shareFilter) return false
-    return true
-  })
+/** 标签多选草稿：setter 换新数组（EP multiple 内部可能原地改，草稿/生效分离的快照语义必须稳定） */
+const tagDraft = computed({
+  get: () => table.draft.value.tagFilter,
+  set: (v: string[]) => { table.draft.value.tagFilter = [...v] },
 })
-watch(filteredRows, () => { currentPage.value = 1 })
-
-const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 
 /** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。
  *  配置属工具级：tools.file-manager.editorMode（工具设置页）；CR-36（P1-6）旧键 app.content.editorMode 双轨回落已清（迁移窗口已过）。 */
@@ -108,6 +99,9 @@ async function load(): Promise<void> {
     ])
     rows.value = list
     routes.value = Array.isArray(rs) ? rs : []
+    await table.refresh()
+    // 原行为：filteredRows 变化即回第一页（增删改后不滞留越界页）
+    table.page.value = 1
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -296,25 +290,24 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
 </script>
 
 <template>
-  <div class="contents-page">
-    <ContentEditorPage
-      v-if="pageMode && editorOpen"
-      :record="editRecord"
-      :copy-source="copySource"
-      @save="onSave"
-      @cancel="editorOpen = false"
-    />
-    <template v-else>
-    <!-- 筛选栏（2026-11-20 四轮定版：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置） -->
-    <div class="filter-bar">
+  <ContentEditorPage
+    v-if="pageMode && editorOpen"
+    :record="editRecord"
+    :copy-source="copySource"
+    @save="onSave"
+    @cancel="editorOpen = false"
+  />
+  <ListPageShell v-else :loading="loading || table.loading.value">
+    <!-- 筛选栏（2026-11-20 四轮定版：label+控件包 .f-item 整体换行不错开；末尾统一 查询+重置；草稿/生效分离） -->
+    <template #filter>
       <div class="f-item">
         <span class="f-label">搜索</span>
-        <el-input v-model="kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" @keyup.enter="doSearch" />
+        <el-input v-model="table.draft.value.kw" size="small" clearable placeholder="标题 / 描述" style="width: 180px" @keyup.enter="table.search" />
       </div>
       <div class="f-item">
         <span class="f-label">时间</span>
         <el-date-picker
-          v-model="dateRange"
+          v-model="table.draft.value.dateRange"
           size="small"
           type="datetimerange"
           range-separator="至"
@@ -327,13 +320,13 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       </div>
       <div class="f-item">
         <span class="f-label">标签</span>
-        <el-select v-model="tagFilter" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
+        <el-select v-model="tagDraft" size="small" multiple clearable filterable placeholder="全部" style="width: 180px" collapse-tags collapse-tags-tooltip>
           <el-option v-for="t in allTags" :key="t" :label="t" :value="t" />
         </el-select>
       </div>
       <div class="f-item">
         <span class="f-label">分享状态</span>
-        <el-select v-model="shareFilter" size="small" style="width: 180px">
+        <el-select v-model="table.draft.value.shareFilter" size="small" style="width: 180px">
           <el-option label="全部" value="all" />
           <el-option label="私有" value="own" />
           <el-option label="共用" value="common" />
@@ -342,17 +335,17 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
       </div>
       <div class="f-item">
         <span class="f-label">发布状态</span>
-        <el-select v-model="statusFilter" size="small" style="width: 180px">
+        <el-select v-model="table.draft.value.statusFilter" size="small" style="width: 180px">
           <el-option label="全部" value="all" />
           <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </div>
-      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
-      <el-button size="small" @click="resetFilters">重置</el-button>
-    </div>
+      <el-button size="small" type="primary" @click="table.search">查询</el-button>
+      <el-button size="small" @click="table.reset">重置</el-button>
+    </template>
 
     <!-- 操作栏：筛选栏下方，居右显示 -->
-    <div class="toolbar">
+    <template #ops>
       <el-button size="small" type="primary" plain @click="openCreate">新建内容</el-button>
       <el-button size="small" type="success" plain @click="openCommonShare">分享内容</el-button>
       <el-divider direction="vertical" />
@@ -369,118 +362,92 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-    </div>
+    </template>
 
-    <div class="table-wrap" v-loading="loading">
-      <el-table v-if="rows.length > 0" :data="pagedRows" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
-        <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
-        <el-table-column type="selection" width="38" reserve-selection />
-        <el-table-column prop="name" label="标题" min-width="200" show-overflow-tooltip />
-        <el-table-column label="标签" min-width="120">
-          <template #default="{ row }">
-            <div v-if="(row.tags ?? []).length" class="tags-cell">
-              <el-tag v-for="t in (row.tags ?? []).slice(0, 2)" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag>
-              <el-tag v-if="(row.tags ?? []).length > 2" size="small" type="info">+{{ (row.tags ?? []).length - 2 }}</el-tag>
-            </div>
-            <span v-else style="opacity:.5">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="96" align="center">
-          <template #default="{ row }">
-            <el-tooltip :content="row.status === 'scheduled' && row.publishAt ? `定时发布于 ${row.publishAt}` : ''" :disabled="!(row.status === 'scheduled' && row.publishAt)">
-              <el-tag size="small" :type="STATUS_META[row.status as ContentStatus].type">{{ STATUS_META[row.status as ContentStatus].label }}</el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="创建时间" width="150"><template #default="{ row }"><TimeText :value="row.createdAt" /></template></el-table-column>
-        <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
-        <!-- 分享状态列（2026-11-20 定版措辞：共用/私有/未分享）：单 tag 显示类型，点击复制；未分享显示操作入口 -->
-        <el-table-column label="分享状态" width="110">
-          <template #default="{ row }">
-            <div class="share-cell">
-              <template v-if="shareState(row).type !== 'none'">
-                <el-tooltip :content="shareState(row).type === 'own' ? '私有链接（点击复制）' : '共用总链接（点击复制）'">
-                  <el-tag
-                    size="small"
-                    :type="shareState(row).type === 'own' ? 'primary' : 'warning'"
-                    effect="plain"
-                    class="share-click"
-                    @click="copyLink(row)"
-                  >
-                    {{ shareState(row).type === 'own' ? '私有' : '共用' }}{{ shareState(row).alive ? '' : '·已失效' }}
-                  </el-tag>
-                </el-tooltip>
+    <el-table v-if="rows.length > 0" :data="table.data.value" size="small" row-key="_id" height="100%" @selection-change="onSelectionChange">
+      <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
+      <el-table-column type="selection" width="38" reserve-selection />
+      <el-table-column prop="name" label="标题" min-width="200" show-overflow-tooltip />
+      <el-table-column label="标签" min-width="120">
+        <template #default="{ row }">
+          <div v-if="(row.tags ?? []).length" class="tags-cell">
+            <el-tag v-for="t in (row.tags ?? []).slice(0, 2)" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag>
+            <el-tag v-if="(row.tags ?? []).length > 2" size="small" type="info">+{{ (row.tags ?? []).length - 2 }}</el-tag>
+          </div>
+          <span v-else style="opacity:.5">—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="96" align="center">
+        <template #default="{ row }">
+          <el-tooltip :content="row.status === 'scheduled' && row.publishAt ? `定时发布于 ${row.publishAt}` : ''" :disabled="!(row.status === 'scheduled' && row.publishAt)">
+            <el-tag size="small" :type="STATUS_META[row.status as ContentStatus].type">{{ STATUS_META[row.status as ContentStatus].label }}</el-tag>
+          </el-tooltip>
+        </template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="150"><template #default="{ row }"><TimeText :value="row.createdAt" /></template></el-table-column>
+      <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
+      <!-- 分享状态列（2026-11-20 定版措辞：共用/私有/未分享）：单 tag 显示类型，点击复制；未分享显示操作入口 -->
+      <el-table-column label="分享状态" width="110">
+        <template #default="{ row }">
+          <div class="share-cell">
+            <template v-if="shareState(row).type !== 'none'">
+              <el-tooltip :content="shareState(row).type === 'own' ? '私有链接（点击复制）' : '共用总链接（点击复制）'">
+                <el-tag
+                  size="small"
+                  :type="shareState(row).type === 'own' ? 'primary' : 'warning'"
+                  effect="plain"
+                  class="share-click"
+                  @click="copyLink(row)"
+                >
+                  {{ shareState(row).type === 'own' ? '私有' : '共用' }}{{ shareState(row).alive ? '' : '·已失效' }}
+                </el-tag>
+              </el-tooltip>
+            </template>
+            <template v-else>
+              <el-button size="small" type="success" plain @click="openShare(row)">分享</el-button>
+            </template>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="240" align="center" fixed="right">
+        <template #default="{ row }">
+          <div class="op-row">
+            <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" type="success" plain @click="copyLink(row)">复制链接</el-button>
+            <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
+              <el-button size="small" plain>更多▾</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="copy">复制（另存为）</el-dropdown-item>
+                  <el-dropdown-item command="share" @click="openShare(row)">分享</el-dropdown-item>
+                  <el-dropdown-item command="triple" divided>导出（三件套）</el-dropdown-item>
+                  <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
+                  <el-dropdown-item command="md">导出 MD</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status !== 'published'" command="publish" @click="changeStatus(row, 'published')">发布</el-dropdown-item>
+                  <el-dropdown-item v-else-if="row.status !== 'scheduled'" command="retract" @click="changeStatus(row, 'retracted')">下线</el-dropdown-item>
+                </el-dropdown-menu>
               </template>
-              <template v-else>
-                <el-button size="small" type="success" plain @click="openShare(row)">分享</el-button>
-              </template>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="240" align="center" fixed="right">
-          <template #default="{ row }">
-            <div class="op-row">
-              <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" type="success" plain @click="copyLink(row)">复制链接</el-button>
-              <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
-              <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                <el-button size="small" plain>更多▾</el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="copy">复制（另存为）</el-dropdown-item>
-                    <el-dropdown-item command="share" @click="openShare(row)">分享</el-dropdown-item>
-                    <el-dropdown-item command="triple" divided>导出（三件套）</el-dropdown-item>
-                    <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
-                    <el-dropdown-item command="md">导出 MD</el-dropdown-item>
-                    <el-dropdown-item v-if="row.status !== 'published'" command="publish" @click="changeStatus(row, 'published')">发布</el-dropdown-item>
-                    <el-dropdown-item v-else-if="row.status !== 'scheduled'" command="retract" @click="changeStatus(row, 'retracted')">下线</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      <EmptyState v-else description="还没有内容；新建一篇开始写作，可发布并用分享链接给访客阅读" action-text="新建内容" @action="openCreate" />
-    </div>
-
-    <div class="foot">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="filteredRows.length"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        small
-      />
-    </div>
+            </el-dropdown>
+          </div>
+        </template>
+      </el-table-column>
+    </el-table>
+    <EmptyState v-else description="还没有内容；新建一篇开始写作，可发布并用分享链接给访客阅读" action-text="新建内容" @action="openCreate" />
 
     <ContentEditorDialog v-if="!pageMode" ref="editorDialogRef" v-model="editorOpen" :record="editRecord" :copy-source="copySource" @save="onSave" @update:minimized="editorMinimized = $event" />
 
     <ShareDialog :open="shareOpen" :tool-id="toolId" :label="shareLabel" :default-root="CONTENT_ROOT" :default-entry="shareEntry" :content-id="shareContentId" route-kind="content" @update:open="shareOpen = $event" @changed="load" />
 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" :confirm-text="confirmText" @confirm="onConfirmed" />
+
+    <template #footer>
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
     </template>
-  </div>
+  </ListPageShell>
 </template>
 
 <style scoped>
-/* 页面留白规范（2026-11-19）：根容器四周留白，页内区块用统一间距 token，禁止贴边 */
-.contents-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
-.filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
-/* #128：查询/重置互相间距与控件一致（归零 EP 兄弟 12px margin 走 gap），查询与控件之间加大间隔 */
-.filter-bar .el-button + .el-button { margin-left: 0; }
-.filter-bar > .el-button:first-of-type { margin-left: 16px; }
-/* label+控件包一体（2026-11-20 用户反馈：换行时不错开），.f-item 内不允许折行 */
-.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
-/* 操作栏紧凑口径（2026-11-20 用户反馈：内边距/间距缩小）——归零 EP 兄弟 margin，改用 gap 4px */
-.toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-button + .el-dropdown, .toolbar .el-dropdown + .el-button { margin-left: 0; }
-.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
-/* 筛选栏 label（2026-11-20 列表页规范：label+控件形式，明确搜索对象） */
-.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
-.table-wrap { flex: 1; min-height: 0; }
-.foot { flex: none; display: flex; justify-content: flex-end; }
 .op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .op-row .el-button + .el-button { margin-left: 0; }
 .tags-cell { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
