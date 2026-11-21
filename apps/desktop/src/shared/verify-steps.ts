@@ -67,7 +67,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'B7', group: 'B', title: '双实例互不影响', guide: '「富文本双实例」页只全屏实例 A → 实例 B 不受影响，退出后各归各位；切换两实例编辑焦点后引用/代码块/网络图片按钮不再假死禁用', entry: { type: 'route', target: 'template-tool' }, relates: 'N12/V8' },
   { id: 'B8', group: 'B', title: '图片库上传与插入', guide: '工具栏「图片库」→ 默认源按云→远程→本地；选来源（桶可输入、目录逐级展开可选任意层级或手输不存在目录）→ 上传后缩略图预览（点图放大/删除/全选/反选）→ 切到图库页仍能看到本次上传且选中状态一致；切目录/源/桶已选持续累积，同 URL 的图不重复计数；展开「已选清单」可查看各来源并逐项移除或清空；最后一并插入；搜索文件名快速定位；图过多分批渲染滚动加载、图片懒加载；设置切页/重启回显、多实例隔离', entry: { type: 'route', target: 'edm-studio' }, relates: 'C2/R28' },
   { id: 'B9', group: 'B', title: '查看源码', guide: '工具栏「</>」按钮 → Monaco 代码编辑器（高度受控），打开即格式化展示；「格式化」「压缩」按钮生效且 pre/code 空白不被破坏；修改后「应用修改」写回编辑器；复制源码到剪贴板正常', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
-  { id: 'B10', group: 'B', title: '底部字数状态栏', guide: '编辑器底部显示 字数/字符（含空格数）/段落；选中文字时显示「已选 X 字」；全屏时状态栏沉底不丢', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
+  { id: 'B10', group: 'B', title: '底部字数状态栏', guide: '编辑器底部显示 字数/字符（空格数）/段落；选中文字时显示「已选 X 字符」（字符口径计空格，与「字数」非空白口径不同）；全屏时状态栏沉底不丢', entry: { type: 'route', target: 'template-tool' }, relates: 'R28' },
 
   // ── C 组：开发者模式 / 密钥体系（验证清单 C1-C6）──
   { id: 'C1', group: 'C', title: '开发者模式口令弹框（打包版）', guide: '打包版开「开发者模式」→ 弹口令输入框；不填/填错开关回弹', entry: { type: 'settings', target: '系统与数据' }, requiresPackaged: true, relates: '10' },
@@ -125,12 +125,12 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'F/F-T1', group: 'F', title: '打包资源路径验证', guide: '安装目录 resources/edm-studio/assets/edm/ 存在且有品牌内容', requiresPackaged: true, auto: { kind: 'fileExists', spec: 'edm-assets' }, relates: 'F-T1' },
   { id: 'F/F-T2', group: 'F', title: '自定义根跨平台路径', guide: '正式包里自定义内容新建/编辑一次（落 userData/custom-edm）+ dev 同样操作一次（落源码旁）两边正常', requiresPackaged: true, relates: 'F-T2' },
 
-  // ── G 组：2026-11-17 弹框/欢迎页走查（file-picker 通用化 + 全局弹框口径 + 欢迎页卡片 + model-console 表单）──
+  // ── G 组：2026-11-17 弹框/欢迎页走查（file-picker 通用化 + 全局弹框口径 + 欢迎页卡片 + 模型管理表单）──
   // kind 五类（image/document/code/video/all）暂不设项：EDM 图片字段尚未接入 FilePickerDialog（总账 E-T4），接入时随接入项一并新增
   { id: 'G1', group: 'G', title: '图片库新弹框交互定稿', guide: '富文本「图片库」：继续上传/插入所选沉底与关闭同行（关闭最右）；缩略图右上角删除=垃圾桶、移除已选=✕（悬浮红色）；目录下拉首次展开即自动拉取（带 loading，不用先切源）', entry: { type: 'route', target: 'edm-studio' }, relates: 'E-T3/C2' },
-  { id: 'G2', group: 'G', title: '弹框全局内缩口径', guide: '任开 2-3 个弹框（如模型控制台新增 Provider、富文本源码查看、图片库）：顶部 12px、左右 16px 单层内缩，header/body/footer 间距均匀，内容不贴灰边、footer 不与 body 出现双内缩错位', relates: 'E-T3' },
+  { id: 'G2', group: 'G', title: '弹框全局内缩口径', guide: '任开 2-3 个弹框（如模型管理新增 Provider、富文本源码查看、图片库）：顶部 12px、左右 16px 单层内缩，header/body/footer 间距均匀，内容不贴灰边、footer 不与 body 出现双内缩错位', relates: 'E-T3' },
   { id: 'G3', group: 'G', title: '欢迎页卡片走查', guide: '回桌面首页：描述最少显示 3 行超出内部滚动（卡片等高不跳动）；超长工具名悬浮时往返滚动显示全名（未超长不动）；标签过多一行内横向滚动', relates: 'E-T3' },
-  { id: 'G4', group: 'G', title: '模型控制台表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-manager' }, relates: 'E-T3' },
+  { id: 'G4', group: 'G', title: '模型管理表单走查', guide: '重试次数为带加减的整数数字框（0=不重试、上限 5、手输小数收整）；新增 Provider 弹框 680px 双列布局，表单区定高随视口、超长内滚动，新增/编辑切换高度不跳', entry: { type: 'route', target: 'model-manager' }, relates: 'E-T3' },
 
   // ── H 组：文件系统（X6 · plans/08 §八验收清单；只新增不改旧 id）──
   { id: 'H1', group: 'H', title: '进入工具默认文件系统页 + 通道浏览', guide: '打开「文件管理」工具默认落在「文件系统」菜单（文件管理退居第二菜单）；5 个通道均能浏览到与 oss-browser 一致的目录结构（云侧虚拟目录=公共前缀正确呈现）', entry: { type: 'route', target: 'file-manager' }, auto: { kind: 'hostCapability', spec: 'fs' }, relates: 'X6/F-5' },

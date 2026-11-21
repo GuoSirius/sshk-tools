@@ -181,7 +181,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
 
     if (input.provider === 'cloud') {
       if (!input.providerId?.trim()) {
-        throw new AppError('请先在「模型控制台」配置 Provider，再在图片识别里选择')
+        throw new AppError('请先在「模型管理」配置 Provider，再在图片识别里选择')
       }
       // 复用应用级 Provider：端点、密钥一律由主进程注入，工具侧不再存 baseURL / apiKey
       text = await host.chatByProvider({

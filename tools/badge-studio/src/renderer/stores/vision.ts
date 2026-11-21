@@ -57,7 +57,7 @@ export function onProviderChange(): void {
 
 export async function fetchProviderModels(): Promise<void> {
   if (!visionProviderId.value) {
-    ElMessage.warning('请先在「模型控制台」新增 Provider')
+    ElMessage.warning('请先在「模型管理」新增 Provider')
     return
   }
   modelsLoading.value = true

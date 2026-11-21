@@ -237,7 +237,7 @@ docs/
 |---|---|---|---|---|
 | `edm-studio` | 已落 | shared / repository / ui-kit / llm-gateway（经宿主能力） | `tool.manifest.json`、`src/main/index.ts` 默认注册入口 | 无 |
 | `badge-studio` | 已落 + 图片识别 | shared / repository / ui-kit + 宿主 `chat` / `runLocalOcr` / safeStorage | `core/vision.ts`、`scripts/paddleocr_adapter.py` | 无：云端与本机 OCR 共用 `parseVisionResult()` |
-| `model-console` | 已落 | shared / repository / ui-kit / llm-gateway | `tool.manifest.json` | 无 |
+| `model-console` | 已落 → P4-8 起并入应用本体（模型管理模块，模块 id `model-manager`） | shared / repository / ui-kit / llm-gateway | `tool.manifest.json`（随三工具退役） | 无 |
 
 > 判定：同一逻辑出现 ≥2 处即必须提取；`check-boundaries.mjs` + ESLint `no-restricted-imports` 卡住 `tools/*` 之间直接 import。
 

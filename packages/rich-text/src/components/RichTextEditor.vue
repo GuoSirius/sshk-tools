@@ -255,6 +255,8 @@ onMounted(() => {
   const refreshStats = (): void => {
     stats.value = countText(editor.getText())
     const sel = editor.getSelectionText()
+    // 口径=「字符」字段（计空格、不含换行 = TextStats.chars），非「字数」（非空白字符数）——
+    // 故状态栏文案为「已选 X 字符」（P8-3/A6 核对修正，避免与字数口径混淆）
     selectedLen.value = sel ? sel.replace(/\n/g, '').length : 0
   }
   refreshStats()
@@ -325,7 +327,7 @@ onBeforeUnmount(() => {
         <span>字数 {{ stats.words }}</span>
         <span>字符 {{ stats.chars }}（空格 {{ stats.chars - stats.charsNoSpace }}）</span>
         <span>段落 {{ stats.paragraphs }}</span>
-        <span v-if="selectedLen > 0" class="rich-status-sel">已选 {{ selectedLen }} 字</span>
+        <span v-if="selectedLen > 0" class="rich-status-sel">已选 {{ selectedLen }} 字符</span>
         <span v-if="readonly" class="rich-status-ro">只读</span>
       </div>
     </div>

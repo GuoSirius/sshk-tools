@@ -110,7 +110,7 @@ async function ensureProvider(): Promise<boolean> {
 onMounted(() => { void ensureProvider() })
 
 async function chat(messages: ChatMessage[]): Promise<string> {
-  if (!provider) throw new Error('请先在「模型控制台」配置并启用模型 Provider')
+  if (!provider) throw new Error('请先在「模型管理」配置并启用模型 Provider')
   const res = await llmApi().chat(provider, messages)
   return res.content
 }
@@ -120,7 +120,7 @@ const aiPreview = ref<{ open: boolean; prev: string; next: Record<string, unknow
 async function aiFill(): Promise<void> {
   if (props.readonly || props.depth !== 0) return
   if (!(await ensureProvider())) {
-    ElMessage.warning('未配置可用模型 Provider：请先在「模型控制台」配置并启用')
+    ElMessage.warning('未配置可用模型 Provider：请先在「模型管理」配置并启用')
     return
   }
   aiLoading.value = true
@@ -151,7 +151,7 @@ async function aiPolish(f: FieldDef): Promise<void> {
     return
   }
   if (!(await ensureProvider())) {
-    ElMessage.warning('未配置可用模型 Provider：请先在「模型控制台」配置并启用')
+    ElMessage.warning('未配置可用模型 Provider：请先在「模型管理」配置并启用')
     return
   }
   aiLoading.value = true
@@ -181,12 +181,12 @@ function acceptPolish(): void {
         plain
         :loading="aiLoading"
         :disabled="readonly"
-        :title="noProvider ? '未配置可用模型 Provider：请先在「模型控制台」配置并启用' : '按字段 schema 生成一版示例数据（预览确认后写入）'"
+        :title="noProvider ? '未配置可用模型 Provider：请先在「模型管理」配置并启用' : '按字段 schema 生成一版示例数据（预览确认后写入）'"
         @click="aiFill"
       >
         AI 填充
       </el-button>
-      <FormHint inline>{{ noProvider ? '需在「模型控制台」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</FormHint>
+      <FormHint inline>{{ noProvider ? '需在「模型管理」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</FormHint>
     </div>
     <template v-for="{ f, showGroup } in rows" :key="f.key">
       <div v-if="showGroup" class="group-divider"><span>{{ f.group }}</span></div>

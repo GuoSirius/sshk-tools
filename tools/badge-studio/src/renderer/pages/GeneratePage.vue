@@ -334,7 +334,7 @@ function askRemoveRecent(item: RecentHtml): void {
                 />
               </el-select>
               <el-tag size="small" :type="activeProvider?.hasApiKey ? 'success' : 'info'">
-                {{ activeProvider?.hasApiKey ? '密钥已从模型控制台复用' : '请先到模型控制台填 API Key' }}
+                {{ activeProvider?.hasApiKey ? '密钥已从模型管理复用' : '请先到模型管理填 API Key' }}
               </el-tag>
             </el-form-item>
             <el-form-item label="模型">
@@ -351,7 +351,7 @@ function askRemoveRecent(item: RecentHtml): void {
                 <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
               </el-select>
               <el-button size="small" :loading="modelsLoading" @click="fetchProviderModels">拉取模型列表</el-button>
-              <span class="muted">端点与密钥来自「模型控制台」的同一份 Provider</span>
+              <span class="muted">端点与密钥来自「模型管理」的同一份 Provider</span>
             </el-form-item>
           </template>
 

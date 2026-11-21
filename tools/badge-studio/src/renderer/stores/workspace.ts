@@ -305,7 +305,7 @@ export async function recognizeImages(): Promise<void> {
     return
   }
   if (!visionProviderId.value) {
-    ElMessage.warning('请先在「模型控制台」配置 Provider，再在这里选择')
+    ElMessage.warning('请先在「模型管理」配置 Provider，再在这里选择')
     return
   }
   recognizing.value = true

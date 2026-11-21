@@ -31,7 +31,7 @@ export function findProvider(config: ConfigService, providerId: string): LlmProv
   if (!isProviderId(providerId)) throw new AppError(`非法 Provider ID：${providerId}`)
   const provider = readProviders(config).find((p) => p._id === providerId)
   if (!provider) {
-    throw new AppError(`未找到 Provider「${providerId}」，请先在「模型控制台」新增或启用`)
+    throw new AppError(`未找到 Provider「${providerId}」，请先在「模型管理」新增或启用`)
   }
   return provider
 }
@@ -67,7 +67,7 @@ export function createLlmService(deps: LlmServiceDeps): LlmService {
         model: p.model,
         fallbackModel: p.fallbackModel,
         enabled: p.enabled,
-        // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型控制台填 Key」
+        // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型管理填 Key」
         hasApiKey: Boolean(currentSecrets()[p._id]),
       }))
     },

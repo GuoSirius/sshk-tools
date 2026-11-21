@@ -12,7 +12,7 @@ export function registerLlmIpc(ctx: IpcContext): void {
     // 禁用拦截（2026-11-18）：应用级 Provider 被禁用后，即使渲染层缓存了元数据直连调用也拒绝
     const stored = ctx.services.host.listProviders().find((s) => s._id === p._id)
     if (stored && stored.enabled === false) {
-      throw new AppError(`Provider「${stored.name}」已禁用，请先在「模型控制台」启用后再调用`)
+      throw new AppError(`Provider「${stored.name}」已禁用，请先在「模型管理」启用后再调用`)
     }
     const apiKey = ctx.services.getApiKey(p._id)
     // 模型链优先级：options.model（工具自选）→ provider.model（默认）→ provider.fallbackModel（回退）
