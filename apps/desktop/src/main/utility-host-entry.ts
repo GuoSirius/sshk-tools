@@ -7,6 +7,7 @@
  */
 
 import { pathToFileURL } from 'node:url'
+import { AppError } from '@sshk/shared'
 import { asUtilityMessage, parseChildArgv } from './utility-protocol.js'
 
 const { toolId, packageDir, mainFile } = parseChildArgv(process.argv)
@@ -67,7 +68,7 @@ process.parentPort.on('message', async (e: { data: unknown }) => {
     if (!p) return
     pendingHost.delete(msg.reqId)
     if (msg.ok) p.resolve(msg.data)
-    else p.reject(new Error(msg.error ?? '宿主能力调用失败'))
+    else p.reject(new AppError(msg.error ?? '宿主能力调用失败'))
   }
 })
 
@@ -76,7 +77,7 @@ void (async () => {
   const mod = (await import(url)) as Record<string, unknown>
   const candidate = mod['default'] ?? mod['register']
   if (typeof candidate !== 'function') {
-    throw new Error(`外部 main 入口 ${mainFile} 未默认导出注册函数`)
+    throw new AppError(`外部 main 入口 ${mainFile} 未默认导出注册函数`)
   }
   ;(candidate as (deps: unknown) => void)({
     toolId,

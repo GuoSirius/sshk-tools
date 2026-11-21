@@ -44,6 +44,8 @@ export function resolveBuiltinSelection(roots: string[] | 'all', manifests: Buil
   const byId = new Map(manifests.map((m) => [m.id, m]))
   const missing = roots.filter((id) => !byId.has(id))
   if (missing.length) {
+    // 构建期模块（electron.vite.config 加载路径）：native ESM 下不能引入 @sshk/shared 运行时 barrel（扩展名解析失败），保持 Error
+    // eslint-disable-next-line no-restricted-syntax
     throw new Error(
       `SSHK_BUILD_TOOLS 含未知工具 id：${missing.join('、')}（可用：${manifests.map((m) => m.id).join('、') || '无'}）`,
     )

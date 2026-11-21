@@ -11,7 +11,7 @@ import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { AppError, IPC_CHANNELS } from '@sshk/shared'
 import { handleOk } from './ipc-wrap'
 import { buildSkeletonFiles } from '@sshk/shared'
 import type { CreateToolRequest, ToolDescriptor } from '@sshk/shared'
@@ -61,7 +61,7 @@ function run(cmd: string, args: string[], cwd: string): Promise<DevCommandResult
 
 function assertId(raw: unknown): string {
   const value = String(raw ?? '')
-  if (!ID_RE.test(value)) throw new Error(`工具 id 非法：${value}`)
+  if (!ID_RE.test(value)) throw new AppError(`工具 id 非法：${value}`)
   return value
 }
 
@@ -70,7 +70,7 @@ function manifestPath(root: string, id: string): string {
     const file = join(root, base, id, 'tool.manifest.json')
     if (existsSync(file)) return file
   }
-  throw new Error(`未找到工具 ${id} 的 tool.manifest.json（期望 tools/${id}/ 或 examples/${id}/）`)
+  throw new AppError(`未找到工具 ${id} 的 tool.manifest.json（期望 tools/${id}/ 或 examples/${id}/）`)
 }
 
 /** 写回前的最小契约校验：id 必须等于目录名、必填字段齐全 */
@@ -79,13 +79,13 @@ function validateManifest(raw: string, id: string): string {
   try {
     obj = JSON.parse(raw) as Record<string, unknown>
   } catch (err) {
-    throw new Error(`manifest 不是合法 JSON：${(err as Error).message}`)
+    throw new AppError(`manifest 不是合法 JSON：${(err as Error).message}`)
   }
-  if (obj.id !== id) throw new Error(`manifest.id 必须等于目录名 ${id}（当前 ${String(obj.id)}）`)
+  if (obj.id !== id) throw new AppError(`manifest.id 必须等于目录名 ${id}（当前 ${String(obj.id)}）`, 'io')
   for (const key of ['name', 'description']) {
-    if (typeof obj[key] !== 'string' || !(obj[key] as string).trim()) throw new Error(`${key} 不能为空`)
+    if (typeof obj[key] !== 'string' || !(obj[key] as string).trim()) throw new AppError(`${key} 不能为空`)
   }
-  if (!Array.isArray(obj.menus) || obj.menus.length === 0) throw new Error('menus 至少需要一项')
+  if (!Array.isArray(obj.menus) || obj.menus.length === 0) throw new AppError('menus 至少需要一项')
   return JSON.stringify(obj, null, 2) + '\n'
 }
 
@@ -96,7 +96,7 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
     : { available: false, repoRoot: null, reason: '当前为打包版或未找到源码仓库，开发者工具不可用' }
 
   const guard = (): string => {
-    if (!root) throw new Error(state.reason)
+    if (!root) throw new AppError(state.reason)
     return root
   }
 
@@ -151,7 +151,7 @@ export function registerDevTools(onManifestSaved?: (file: string) => unknown): D
     const repo = guard()
     const req = rawReq as CreateToolRequest
     const dir = join(repo, 'tools', assertId(req?.id))
-    if (existsSync(dir)) throw new Error(`目录已存在，请换一个工具 id：${dir}`)
+    if (existsSync(dir)) throw new AppError(`目录已存在，请换一个工具 id：${dir}`, 'io')
     const files = buildSkeletonFiles(req) // 内部做完整契约校验（id / 菜单 / 分组 / 配置页）
     for (const file of files) {
       const target = join(repo, file.path)

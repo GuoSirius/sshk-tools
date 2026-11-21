@@ -1,13 +1,10 @@
 import type { IpcMain } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import {
-  type ToolDescriptor,
+import { AppError, type ToolDescriptor,
   type ToolHostCapabilities,
-  type ToolPluginStatus,
-} from '@sshk/shared'
+  type ToolPluginStatus, } from '@sshk/shared'
 import type { Repository } from '@sshk/repository'
-import { AppError } from '@sshk/shared'
 import { MAIN_LOADERS, MANIFESTS } from './discovery'
 import { wrapIpcHandler } from './ipc-wrap'
 import { readInstalled, runtimeRoot } from './runtime-installer.js'
@@ -101,11 +98,11 @@ function rejectAll(ipcMain: IpcMain, tool: ToolDescriptor, message: string): voi
  */
 function forwardHost(host: ToolHostCapabilities, method: string, args: unknown[]): Promise<unknown> {
   if (!ALLOWED_HOST_METHODS.has(method as keyof ToolHostCapabilities)) {
-    return Promise.reject(new Error(`不允许的宿主能力调用：${method}`))
+    return Promise.reject(new AppError(`不允许的宿主能力调用：${method}`))
   }
   const fn = host[method as keyof ToolHostCapabilities]
   if (typeof fn !== 'function') {
-    return Promise.reject(new Error(`宿主能力 ${method} 不存在`))
+    return Promise.reject(new AppError(`宿主能力 ${method} 不存在`, 'io'))
   }
   return Promise.resolve((fn as (...a: unknown[]) => unknown)(...args))
 }
@@ -168,7 +165,7 @@ function loadExternalInMain(
   return import(pathToFileURL(mainFile).href).then((mod) => {
     const candidate = (mod as Record<string, unknown>)['default'] ?? (mod as Record<string, unknown>)['register']
     if (typeof candidate !== 'function') {
-      throw new Error(`外部 main 入口 ${mainFile} 未默认导出注册函数`)
+      throw new AppError(`外部 main 入口 ${mainFile} 未默认导出注册函数`)
     }
     ;(candidate as ExternalRegisterFn)({
       toolId: tool.id,
@@ -232,7 +229,7 @@ export async function loadToolPlugins(
         // 只认明确的 default / register 导出，契约不清晰就判加载失败。
         const candidate = mod['default'] ?? mod['register']
         if (typeof candidate !== 'function') {
-          throw new Error(`插件 main 入口 ${tool.plugin?.main ?? ''} 未默认导出注册函数`)
+          throw new AppError(`插件 main 入口 ${tool.plugin?.main ?? ''} 未默认导出注册函数`)
         }
         ;(candidate as BuiltinRegisterFn)(guardedIpcMain(host.ipcMain, tool.id, host.isActive), {
           toolId: tool.id,

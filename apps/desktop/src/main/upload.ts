@@ -1,10 +1,11 @@
 import path from 'node:path'
+import { registerErrorClassifier } from './ipc-wrap'
 import {
+  uploadErrorClassifier,
   UploadService,
   LocalUploadProvider,
   RemoteUploadProvider,
-  CloudUploadProvider,
-} from '@sshk/upload-core'
+  CloudUploadProvider } from '@sshk/upload-core'
 import type {
   UploadedImagePage,
   UploadContext,
@@ -15,8 +16,7 @@ import type {
   UploadTargetType,
   UploadValidation,
 } from '@sshk/upload-core'
-import {
-  listUploadProfiles,
+import { AppError, listUploadProfiles,
   normalizeUploadConfig,
   pickCloudProfile,
   pickRemoteProfile,
@@ -26,9 +26,11 @@ import {
   type UploadGlobalConfig,
   type UploadProfileOption,
   type FileKind,
-  normalizeFileKind,
-} from '@sshk/shared'
+  normalizeFileKind, } from '@sshk/shared'
 import type { AppServices } from './services'
+
+// B16（P0-4）：云 SDK 错误归类器注册制——upload-core 自我申报，ipc-wrap 只调度
+registerErrorClassifier(uploadErrorClassifier)
 
 /**
  * R26 应用级上传运行时（宿主 main 进程持有，工具经 IPC 只传文件与工具级覆盖项）。
@@ -97,12 +99,12 @@ interface Prepared {
 
 function toUploadFile(req: UploadRequest): UploadFile {
   const name = path.basename(String(req?.name ?? '')).trim()
-  if (!name) throw new Error('上传文件名不能为空')
+  if (!name) throw new AppError('上传文件名不能为空', 'io')
   const file: UploadFile = { name, size: Number(req.size) || 0, mime: req.mime }
   if (req.source) file.source = String(req.source)
   const matched = req.dataUrl ? DATA_URL_RE.exec(String(req.dataUrl)) : null
   if (matched) file.data = Buffer.from(matched[1] ?? '', 'base64')
-  if (!file.source && !file.data) throw new Error(`上传请求缺少文件内容：${name}`)
+  if (!file.source && !file.data) throw new AppError(`上传请求缺少文件内容：${name}`, 'io')
   if (file.size === 0 && file.data) file.size = file.data.byteLength
   return file
 }
@@ -163,7 +165,7 @@ export class UploadRuntime {
 
     if (ctx.targetType === 'remote') {
       const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到远程上传 profile：请先在「文件管理」中添加并选择')
+      if (!p) throw new AppError('未找到远程上传 profile：请先在「文件管理」中添加并选择', 'io')
       const password = services.getUploadSecret(p.id)
       service.register(new RemoteUploadProvider({
         protocol: p.protocol,
@@ -179,7 +181,7 @@ export class UploadRuntime {
     }
     if (ctx.targetType === 'cloud') {
       const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到云上传 profile：请先在「文件管理」中添加并选择')
+      if (!p) throw new AppError('未找到云上传 profile：请先在「文件管理」中添加并选择', 'io')
       const accessKeySecret = services.getUploadSecret(p.id)
       service.register(new CloudUploadProvider({
         provider: p.provider,
@@ -226,7 +228,7 @@ export class UploadRuntime {
     service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
     if (ctx.targetType === 'remote') {
       const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到远程上传 profile：请先在「文件管理」中添加并选择')
+      if (!p) throw new AppError('未找到远程上传 profile：请先在「文件管理」中添加并选择', 'io')
       service.register(new RemoteUploadProvider({
         protocol: p.protocol,
         host: p.host,
@@ -241,7 +243,7 @@ export class UploadRuntime {
     }
     if (ctx.targetType === 'cloud') {
       const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new Error('未找到云上传 profile：请先在「文件管理」中添加并选择')
+      if (!p) throw new AppError('未找到云上传 profile：请先在「文件管理」中添加并选择', 'io')
       service.register(new CloudUploadProvider({
         provider: p.provider,
         sdk: uploadVendorMeta(p.provider).sdk,
@@ -296,7 +298,7 @@ export class UploadRuntime {
   /** 密钥只写入 safeStorage；空串表示清除 */
   setSecret(profileId: string, value: string): boolean {
     const id = String(profileId ?? '').trim()
-    if (!PROFILE_ID_RE.test(id)) throw new Error(`非法上传 profile ID：${id}`)
+    if (!PROFILE_ID_RE.test(id)) throw new AppError(`非法上传 profile ID：${id}`)
     this.opts.services.setUploadSecret(id, String(value ?? ''))
     return true
   }
@@ -314,7 +316,7 @@ export class UploadRuntime {
   /** N3：用户主动点「查看」时才按 id 回传明文（复用 llm:getApiKey 范式），不随列表下发 */
   getSecret(profileId: string): string {
     const id = String(profileId ?? '').trim()
-    if (!PROFILE_ID_RE.test(id)) throw new Error(`非法上传 profile ID：${id}`)
+    if (!PROFILE_ID_RE.test(id)) throw new AppError(`非法上传 profile ID：${id}`)
     return this.opts.services.getUploadSecret(id)
   }
 
@@ -347,14 +349,14 @@ export class UploadRuntime {
     })
     if (type === 'remote') {
       const p = pickRemoteProfile(cfg, id)
-      if (!p) throw new Error('远程配置不完整：名称 / ID / 主机不能为空')
+      if (!p) throw new AppError('远程配置不完整：名称 / ID / 主机不能为空')
       return await new RemoteUploadProvider({
         protocol: p.protocol, host: p.host, port: p.port, username: p.username,
         password: secret, remoteDir: p.remoteDir, passive: p.passive, baseUrl: p.baseUrl,
       }).testConnection()
     }
     const p = pickCloudProfile(cfg, id)
-    if (!p) throw new Error('云配置不完整：ID / Bucket 不能为空')
+    if (!p) throw new AppError('云配置不完整：ID / Bucket 不能为空')
     return await new CloudUploadProvider({
       provider: p.provider, sdk: uploadVendorMeta(p.provider).sdk, region: p.region,
       endpoint: p.endpoint, bucket: p.bucket, accessKeyId: p.accessKeyId,

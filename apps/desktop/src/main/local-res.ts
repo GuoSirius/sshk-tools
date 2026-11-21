@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { AppError } from '@sshk/shared'
 import { closeSync, existsSync, openSync, readSync, readFileSync, statSync } from 'node:fs'
 import { protocol } from 'electron'
 import { collectResRoots, isAllowedResPath, parseByteRange, RES_MIME_BY_EXT } from './local-res-rules'
@@ -86,7 +87,7 @@ function createMediaStream(p: string, start: number, end: number, stallTimeoutMs
           }
           const st = getMediaDownload(p)
           if (!st || st.done || st.error) {
-            if (st?.error) throw new Error(`媒体下载失败：${st.error}`)
+            if (st?.error) throw new AppError(`媒体下载失败：${st.error}`, 'io')
             controller.close() // 已终态：磁盘有的都给完（正常完成时 pos 应已达 end）
             return
           }
@@ -97,7 +98,7 @@ function createMediaStream(p: string, start: number, end: number, stallTimeoutMs
             lastSig = sig
             lastProgressAt = Date.now()
           } else if (Date.now() - lastProgressAt >= stallTimeoutMs) {
-            throw new Error('媒体下载停滞超时')
+            throw new AppError('媒体下载停滞超时', 'timeout')
           }
           await sleep(50)
         }

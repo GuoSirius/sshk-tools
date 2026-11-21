@@ -4,6 +4,7 @@
  * 自动判定四类中 main 侧负责三类：fileExists / catalogState / logScan（hostCapability 渲染层自判）。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { AppError } from '@sshk/shared'
 import { dirname, join } from 'node:path'
 import type { VerifySession } from '@sshk/shared'
 
@@ -74,7 +75,7 @@ export function listSessions(dir: string): string[] {
 
 /** 保存会话（按日期落盘，同日覆盖 = 同一工作日的持续进度） */
 export function saveSession(dir: string, session: VerifySession): string {
-  if (!isValidSession(session)) throw new Error('会话结构非法，拒绝写入')
+  if (!isValidSession(session)) throw new AppError('会话结构非法，拒绝写入', 'permission')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, `${session.date}.json`)
   writeFileSync(path, JSON.stringify(session, null, 2))

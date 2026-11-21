@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { app, screen } from 'electron'
 import { zipSync, type Zippable } from 'fflate'
 import { listOutputFiles } from '@sshk/repository'
-import { getEnvHas } from '@sshk/shared'
+import { AppError, getEnvHas } from '@sshk/shared'
 import {
   format,
   normalizeUploadConfig,
@@ -225,7 +225,7 @@ export function buildReportMd(d: DiagnosisData): string {
 /** 产出 zip：report.md + 近 3 天完整日志；路径必须来自用户保存对话框 */
 export function exportDiagnosisZip(d: DiagnosisData, outZipPath: string): { file: string; logs: number } {
   const target = String(outZipPath ?? '')
-  if (!/\.zip$/i.test(target)) throw new Error('保存路径必须是 .zip')
+  if (!/\.zip$/i.test(target)) throw new AppError('保存路径必须是 .zip', 'io')
   const entries: Zippable = {
     'report.md': new TextEncoder().encode(buildReportMd(d)),
   }

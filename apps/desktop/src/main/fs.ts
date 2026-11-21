@@ -17,8 +17,7 @@ import {
 import { beginMediaDownload, finishMediaDownload, updateMediaDownload } from './media-stream'
 import type { FsDriver, FsSearchBatchFn } from '@sshk/upload-core'
 import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
-import {
-  fsFormatSize,
+import { AppError, fsFormatSize,
   isFsZipName,
   normalizeUploadConfig,
   uploadVendorMeta,
@@ -59,8 +58,7 @@ import {
   fsTransferEffectivelyDone,
   FS_TRANSFER_CONFIG_KEYS,
   FS_TRANSFER_DEFAULTS,
-  readFsTransferSettings,
-} from '@sshk/shared'
+  readFsTransferSettings, } from '@sshk/shared'
 import type { AppServices } from './services'
 import { logger } from './logger'
 
@@ -424,7 +422,7 @@ class FsTransferEngine {
         this.schedulePersist()
         return true
       }
-      default: throw new Error(`未知传输控制动作：${String(req?.action)}`)
+      default: throw new AppError(`未知传输控制动作：${String(req?.action)}`)
     }
   }
 
@@ -635,12 +633,12 @@ class FsTransferEngine {
   }
 
   private assertNotCanceled(t: FsTransferTask): void {
-    if (this.canceled.delete(t.id)) throw new Error(`__fs_canceled__:${t.id}`)
+    if (this.canceled.delete(t.id)) throw new AppError(`__fs_canceled__:${t.id}`)
   }
 
   /** 协作检查点（暂停优先于取消：先暂停后取消，plans/10 §4） */
   private assertNotPaused(t: FsTransferTask): void {
-    if (this.pauseRequestedIds.delete(t.id)) throw new Error(`__fs_paused__:${t.id}`)
+    if (this.pauseRequestedIds.delete(t.id)) throw new AppError(`__fs_paused__:${t.id}`)
   }
 
   /** 进度采样：更新 transferred/speed 并节流推送；随后过暂停/取消检查点 */
@@ -697,9 +695,9 @@ class FsTransferEngine {
 
   private async runUpload(t: FsTransferTask, driver: FsDriver): Promise<void> {
     const localPath = String(t.localPath ?? '')
-    if (!localPath || !existsSync(localPath)) throw new Error(`本地文件不存在：${localPath}`)
+    if (!localPath || !existsSync(localPath)) throw new AppError(`本地文件不存在：${localPath}`, 'io')
     const st = statSync(localPath)
-    if (!st.isFile()) throw new Error('只能上传文件（目录请先展平）')
+    if (!st.isFile()) throw new AppError('只能上传文件（目录请先展平）', 'io')
     t.size = st.size
     // 冲突：远端已有同名文件 → 挂起等确认
     const stat = await driver.stat(String(t.remotePath ?? ''))
@@ -846,7 +844,7 @@ class FsTransferEngine {
         }
       })()))
       if (failures.length) throw failures[0]!
-      if (done.size !== total) throw new Error(`分片不完整（${done.size}/${total}），任务中止（检查点已保留，可重试续传）`)
+      if (done.size !== total) throw new AppError(`分片不完整（${done.size}/${total}），任务中止（检查点已保留，可重试续传）`)
       await mp.complete(remotePath, cp.uploadId, cp.parts.map((p) => ({ partNumber: p.partNumber, etag: p.etag })))
       this.deleteCheckpoint(t.id)
       t.resumable = false
@@ -884,9 +882,9 @@ class FsTransferEngine {
   private async runDownload(t: FsTransferTask, driver: FsDriver): Promise<void> {
     const remotePath = String(t.remotePath ?? '')
     const destPath = String(t.destPath ?? '')
-    if (!destPath) throw new Error('缺少下载落点')
+    if (!destPath) throw new AppError('缺少下载落点')
     const stat = await driver.stat(remotePath)
-    if (!stat.exists || stat.isDir) throw new Error('远端文件不存在或为目录')
+    if (!stat.exists || stat.isDir) throw new AppError('远端文件不存在或为目录', 'io')
     t.size = stat.size ?? 0
     if (existsSync(destPath) && !this.overwrite.has(t.id)) {
       this.setStatus(t, 'conflict', { error: '本地已有同名文件：任务已暂停、尚未写入。点「覆盖」=覆盖本地文件；点「停止」=跳过此文件' })
@@ -954,7 +952,7 @@ class FsTransferEngine {
         this.sample(t, Math.min(fp.size, writtenBytes(meta.ranges)))
       }
       const st1 = await fh.stat()
-      if (st1.size !== fp.size) throw new Error(`下载校验失败：本地 ${st1.size} 字节 ≠ 远端 ${fp.size} 字节`)
+      if (st1.size !== fp.size) throw new AppError(`下载校验失败：本地 ${st1.size} 字节 ≠ 远端 ${fp.size} 字节`)
     } finally {
       await fh.close()
     }
@@ -997,9 +995,9 @@ class FsTransferEngine {
   private async runCopy(t: FsTransferTask, driver: FsDriver): Promise<void> {
     const src = String(t.remotePath ?? '')
     const dest = String(t.destRemotePath ?? '')
-    if (!src || !dest) throw new Error('复制任务缺少源/目标路径')
+    if (!src || !dest) throw new AppError('复制任务缺少源/目标路径', 'io')
     const stat = await driver.stat(src)
-    if (!stat.exists) throw new Error('远端源文件不存在')
+    if (!stat.exists) throw new AppError('远端源文件不存在', 'io')
     t.size = stat.size ?? 0
     await driver.cp(src, dest)
     t.transferred = t.size
@@ -1012,11 +1010,11 @@ class FsTransferEngine {
     const src = String(t.remotePath ?? '')
     const dest = String(t.destRemotePath ?? '')
     const destProfileId = String(t.destProfileId ?? '')
-    if (!src || !dest || !destProfileId) throw new Error('跨通道复制缺少源/目标信息')
+    if (!src || !dest || !destProfileId) throw new AppError('跨通道复制缺少源/目标信息')
     const { driver: destDriver, channel: destChannel } = this.opts.getDriver(destProfileId)
-    if (!destDriver.writable) throw new Error(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (!destDriver.writable) throw new AppError(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const stat = await srcDriver.stat(src)
-    if (!stat.exists || stat.isDir) throw new Error('源文件不存在或为目录')
+    if (!stat.exists || stat.isDir) throw new AppError('源文件不存在或为目录', 'io')
     t.size = stat.size ?? 0
     // 冲突：目标通道已有同名文件 → 挂起等确认
     const destStat = await destDriver.stat(dest)
@@ -1087,9 +1085,9 @@ export class FsRuntime {
   async readMedia(req: { profileId: string; path: string }): Promise<FsReadMediaResult> {
     const { driver, channel } = this.resolve(req?.profileId)
     const p = this.assertPath(req?.path)
-    if (p === '/') throw new Error('目录没有可读内容')
+    if (p === '/') throw new AppError('目录没有可读内容', 'io')
     const stat = await driver.stat(p)
-    if (!stat.exists || stat.isDir) throw new Error('文件不存在（可能已被删除）')
+    if (!stat.exists || stat.isDir) throw new AppError('文件不存在（可能已被删除）', 'io')
     const total = stat.size ?? 0
     const safeName = fsBasename(p).replace(/[\\/:*?"<>|]+/g, '_')
     const dir = join(os.tmpdir(), 'sshk-media')
@@ -1132,7 +1130,7 @@ export class FsRuntime {
 
   private assertProfileId(id: string): string {
     const v = String(id ?? '').trim()
-    if (!PROFILE_ID_RE.test(v)) throw new Error(`非法通道 id：${v}`)
+    if (!PROFILE_ID_RE.test(v)) throw new AppError(`非法通道 id：${v}`)
     return v
   }
 
@@ -1143,7 +1141,7 @@ export class FsRuntime {
     // 本地目录通道（二期，2026-11-17 定版：通道顺序 云→远端→本地）
     if (profileId === 'local') {
       const root = String(cfg.local.defaultDir ?? '').trim()
-      if (!root) throw new Error('本地目录未配置：请到「文件管理」设置本地默认目录并保存')
+      if (!root) throw new AppError('本地目录未配置：请到「文件管理」设置本地默认目录并保存', 'io')
       return {
         driver: new LocalFsDriver(root),
         channel: {
@@ -1211,7 +1209,7 @@ export class FsRuntime {
         },
       }
     }
-    throw new Error('未找到对应上传通道：请先在「文件管理」中添加')
+    throw new AppError('未找到对应上传通道：请先在「文件管理」中添加', 'io')
   }
 
   private assertPath(raw: string): string {
@@ -1242,13 +1240,13 @@ export class FsRuntime {
   async read(req: { profileId: string; path: string; maxBytes?: number }): Promise<FsReadResult> {
     const { driver } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('目录没有可读内容')
+    if (path === '/') throw new AppError('目录没有可读内容', 'io')
     const maxBytes = Math.max(1, Math.floor(Number(req?.maxBytes) || 10 * 1024 * 1024))
     const stat = await driver.stat(path)
-    if (!stat.exists) throw new Error('远端文件不存在（可能已被删除）')
-    if (stat.isDir) throw new Error('目录没有可读内容')
+    if (!stat.exists) throw new AppError('远端文件不存在（可能已被删除）', 'io')
+    if (stat.isDir) throw new AppError('目录没有可读内容', 'io')
     if ((stat.size ?? 0) > maxBytes) {
-      throw new Error(`文件过大（${fsFormatSize(stat.size)} 超过 ${fsFormatSize(maxBytes)}），请下载后编辑`)
+      throw new AppError(`文件过大（${fsFormatSize(stat.size)} 超过 ${fsFormatSize(maxBytes)}），请下载后编辑`, 'io')
     }
     const { data, size, modified, etag } = await driver.readBuffer(path)
     return { contentBase64: data.toString('base64'), size: size || (stat.size ?? 0), modified, etag }
@@ -1259,8 +1257,8 @@ export class FsRuntime {
   async mkdir(req: { profileId: string; path: string }): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('根目录无需创建')
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (path === '/') throw new AppError('根目录无需创建', 'io')
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     await driver.mkdir(path)
     logger.info('upload', `fs 新建目录：${channel.id}/${path}`)
     return true
@@ -1268,12 +1266,12 @@ export class FsRuntime {
 
   async rm(req: FsRmRequest): Promise<{ taskIds: string[] }> {
     const { driver, channel } = this.resolve(req?.profileId)
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const taskIds: string[] = []
     const files: string[] = []
     for (const item of (req?.paths ?? []).slice(0, 500)) {
       const path = this.assertPath(item.path)
-      if (path === '/') throw new Error('根目录不可删除')
+      if (path === '/') throw new AppError('根目录不可删除', 'io')
       if (item.kind === 'dir') {
         // 递归删除（高危）入队列：分批 + 进度 + 可取消
         taskIds.push(...this.engine.add([{
@@ -1295,7 +1293,7 @@ export class FsRuntime {
 
   async cp(req: FsCpRequest): Promise<{ taskIds: string[] }> {
     const { driver, channel } = this.resolve(req?.profileId)
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const destDir = this.assertPath(req?.destDir)
     const taskIds: string[] = []
     const inline: { src: string; dest: string }[] = []
@@ -1308,7 +1306,7 @@ export class FsRuntime {
       do {
         const page = await driver.list(dirPath, { pageSize: 2000, cursor })
         for (const e of page.entries) {
-          if (dirCopies >= CP_DIR_CAP) throw new Error(`目录复制超过 ${CP_DIR_CAP} 个文件上限，已中止`)
+          if (dirCopies >= CP_DIR_CAP) throw new AppError(`目录复制超过 ${CP_DIR_CAP} 个文件上限，已中止`, 'io')
           const childDest = destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`
           if (e.kind === 'file') inline.push({ src: e.path, dest: childDest })
           else await expandDir(e.path, childDest)
@@ -1319,16 +1317,16 @@ export class FsRuntime {
 
     const cpRenameTo = String(req?.renameTo ?? '').trim()
     if (cpRenameTo && (/[\\/]/.test(cpRenameTo) || cpRenameTo === '.' || cpRenameTo === '..')) {
-      throw new Error('新名称不能包含斜杠或为 . / ..')
+      throw new AppError('新名称不能包含斜杠或为 . / ..')
     }
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
-      if (src === '/') throw new Error('根目录不可复制')
+      if (src === '/') throw new AppError('根目录不可复制', 'io')
       // 同源同目录复制（含重命名）必须给新名，否则覆盖自身；不同目录沿用原文件名
       const dest = cpRenameTo && (destDir === this.parentOf(src))
         ? (destDir === '/' ? `/${cpRenameTo}` : `${destDir}/${cpRenameTo}`)
         : fsDestPath(destDir, src)
-      if (!cpRenameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录，请在弹框中换一个文件名')
+      if (!cpRenameTo && (dest === src || dest.startsWith(`${src}/`))) throw new AppError('目标目录不能是源条目自身或其子目录，请在弹框中换一个文件名', 'io')
       // FTP/SFTP 复制 = 下载+重传（无服务端复制），大文件慢 → 队列化（§二能力矩阵）
       if (channel.type === 'remote') {
         taskIds.push(...this.engine.add([{
@@ -1356,20 +1354,20 @@ export class FsRuntime {
 
   async mv(req: FsMvRequest): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     const destDir = this.assertPath(req?.destDir)
     // 重命名：新文件名单独指定（仅单源有意义），目标 = 父目录/新名
     const renameTo = String(req?.renameTo ?? '').trim()
     if (renameTo && (/[\\/]/.test(renameTo) || renameTo === '.' || renameTo === '..')) {
-      throw new Error('新名称不能包含斜杠或为 . / ..')
+      throw new AppError('新名称不能包含斜杠或为 . / ..')
     }
     const MV_DIR_CAP = 1500
     for (const item of (req?.sources ?? []).slice(0, 500)) {
       const src = this.assertPath(item.path)
-      if (src === '/') throw new Error('根目录不可移动')
+      if (src === '/') throw new AppError('根目录不可移动', 'io')
       // 重命名时 dest 用新名（与 src 同父目录）；普通移动沿用原文件名
       const dest = renameTo ? (destDir === '/' ? `/${renameTo}` : `${destDir}/${renameTo}`) : fsDestPath(destDir, src)
-      if (!renameTo && (dest === src || dest.startsWith(`${src}/`))) throw new Error('目标目录不能是源条目自身或其子目录')
+      if (!renameTo && (dest === src || dest.startsWith(`${src}/`))) throw new AppError('目标目录不能是源条目自身或其子目录', 'io')
       if (renameTo && dest === src) return true // 名称未变，无需操作
       if (item.kind === 'dir' && channel.type === 'cloud') {
         // 云目录「移动」= 逐文件 copy+delete（copyObject 不接受目录路径），最后删源 marker（项19）。
@@ -1383,7 +1381,7 @@ export class FsRuntime {
           do {
             const page = await driver.list(dirPath, { pageSize: 2000, cursor })
             for (const e of page.entries) {
-              if (moved >= MV_DIR_CAP) throw new Error(`目录移动超过 ${MV_DIR_CAP} 个文件上限，已中止`)
+              if (moved >= MV_DIR_CAP) throw new AppError(`目录移动超过 ${MV_DIR_CAP} 个文件上限，已中止`, 'io')
               if (e.kind === 'file') {
                 const destPath = destBase === '/' ? `/${e.name}` : `${destBase}/${e.name}`
                 await driver.mv(e.path, destPath)
@@ -1404,7 +1402,7 @@ export class FsRuntime {
           for (const pair of movedPairs) {
             try { await driver.cp(pair.dest, pair.src); await driver.rmFile(pair.dest); restored++ } catch { /* 还原失败如实报告 */ }
           }
-          throw new Error(
+          throw new AppError(
             `目录移动未完成：${(err as Error).message}` +
             (restored
               ? `。已自动还原 ${restored}/${movedPairs.length} 个已移文件，源目录保持原样。`
@@ -1447,9 +1445,9 @@ export class FsRuntime {
   async crossCopy(req: FsCrossCopyRequest): Promise<FsCrossCopyResult> {
     const { driver: srcDriver, channel: srcChannel } = this.resolve(req?.srcProfileId)
     const { driver: destDriver, channel: destChannel } = this.resolve(req?.destProfileId)
-    if (srcChannel.id === destChannel.id) throw new Error('源与目标为同一通道：请用同通道复制')
-    if (!destDriver.writable) throw new Error(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
-    if (req?.move && !srcDriver.writable) throw new Error(`源通道「${srcChannel.name}」不支持删除，无法跨通道移动（仅复制）`)
+    if (srcChannel.id === destChannel.id) throw new AppError('源与目标为同一通道：请用同通道复制')
+    if (!destDriver.writable) throw new AppError(`目标通道「${destChannel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (req?.move && !srcDriver.writable) throw new AppError(`源通道「${srcChannel.name}」不支持删除，无法跨通道移动（仅复制）`)
     // 跨通道移动 = 复制成功后删源：先探测源通道删除权限，无权限直接拒绝（避免复制完成却删不了源的半程操作）
     if (req?.move) await srcDriver.ensureCanDelete('跨通道移动')
     const destDir = this.assertPath(req?.destDir ?? '')
@@ -1485,8 +1483,8 @@ export class FsRuntime {
 
     for (const item of (req?.sources ?? []).slice(0, 200)) {
       const src = this.assertPath(item.path)
-      if (src === '/') throw new Error('根目录不可复制')
-      if (src === destDir || destDir.startsWith(`${src}/`)) throw new Error('目标目录不能是源条目自身或其子目录')
+      if (src === '/') throw new AppError('根目录不可复制', 'io')
+      if (src === destDir || destDir.startsWith(`${src}/`)) throw new AppError('目标目录不能是源条目自身或其子目录', 'io')
       // 顶层落点 = 目标目录 / 被复制项名（子内容相对该项展开）
       await expand(src, item.kind === 'dir' ? 'dir' : 'file', fsDestPath(destDir, src))
     }
@@ -1524,8 +1522,8 @@ export class FsRuntime {
   async chmod(req: FsChmodRequest): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('根目录不支持 chmod')
-    if (!driver.chmod) throw new Error(`通道「${channel.name}」不支持 chmod（本地与 SFTP 通道可用）`)
+    if (path === '/') throw new AppError('根目录不支持 chmod', 'io')
+    if (!driver.chmod) throw new AppError(`通道「${channel.name}」不支持 chmod（本地与 SFTP 通道可用）`)
     const modeOctal = String(req?.modeOctal ?? '').trim()
     await driver.chmod(path, modeOctal)
     logger.info('upload', `fs chmod：${channel.id}/${path} → ${modeOctal}`)
@@ -1536,12 +1534,12 @@ export class FsRuntime {
   async convertText(req: FsConvertTextRequest): Promise<FsConvertTextResult> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('根目录不是文件')
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作`)
+    if (path === '/') throw new AppError('根目录不是文件', 'io')
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作`)
     const stat = await driver.stat(path)
-    if (!stat.exists || stat.isDir) throw new Error('文件不存在或为目录')
+    if (!stat.exists || stat.isDir) throw new AppError('文件不存在或为目录', 'io')
     if ((stat.size ?? 0) > FS_TEXT_CONVERT_LIMIT) {
-      throw new Error(`文件过大（${fsFormatSize(stat.size)} 超过 ${fsFormatSize(FS_TEXT_CONVERT_LIMIT)}），请下载后本地转换`)
+      throw new AppError(`文件过大（${fsFormatSize(stat.size)} 超过 ${fsFormatSize(FS_TEXT_CONVERT_LIMIT)}），请下载后本地转换`, 'io')
     }
     const { data } = await driver.readBuffer(path)
     // 源编码解析：显式指定直接用；auto = BOM → UTF-8 严格校验 → GBK 兜底
@@ -1557,8 +1555,8 @@ export class FsRuntime {
       try { strict.decode(data); from = 'utf-8' }
       catch { from = 'gbk' } // UTF-8 解不开 → 按 GBK（大陆文件最常见的非 UTF-8 编码）
     }
-    if (!iconv.encodingExists(from)) throw new Error(`不支持的源编码：${from}`)
-    if (!iconv.encodingExists(req?.toEncoding ?? 'utf-8')) throw new Error(`不支持的目标编码：${req?.toEncoding}`)
+    if (!iconv.encodingExists(from)) throw new AppError(`不支持的源编码：${from}`)
+    if (!iconv.encodingExists(req?.toEncoding ?? 'utf-8')) throw new AppError(`不支持的目标编码：${req?.toEncoding}`)
     let text = iconv.decode(body, from)
     if (from === 'utf-8' && hadBom) text = text.replace(/^\uFEFF/, '')
 
@@ -1593,21 +1591,21 @@ export class FsRuntime {
   /** 压缩为 zip（仅本地通道）：sources 递归收集文件 → fflate zipSync → 写回当前目录 */
   async zip(req: FsZipRequest): Promise<FsZipResult> {
     const { driver, channel } = this.resolve(req?.profileId)
-    if (channel.type !== 'local') throw new Error('压缩仅支持本地目录通道')
+    if (channel.type !== 'local') throw new AppError('压缩仅支持本地目录通道', 'io')
     const zipPath = this.assertPath(req?.zipPath)
-    if (!/\.zip$/i.test(zipPath)) throw new Error('压缩包名须以 .zip 结尾')
+    if (!/\.zip$/i.test(zipPath)) throw new AppError('压缩包名须以 .zip 结尾')
     const exists = await driver.stat(zipPath)
-    if (exists.exists) throw new Error('同名压缩包已存在，请换一个名字')
+    if (exists.exists) throw new AppError('同名压缩包已存在，请换一个名字', 'io')
     const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
     const zipData: Record<string, Uint8Array> = {}
     let files = 0
     let bytes = 0
 
     const addFile = async (rel: string, zipRel: string): Promise<void> => {
-      if (files >= fileCap) throw new Error(`超过单次压缩 ${fileCap} 个文件上限，已中止`)
+      if (files >= fileCap) throw new AppError(`超过单次压缩 ${fileCap} 个文件上限，已中止`, 'io')
       const { data } = await driver.readBuffer(rel)
       if (bytes + data.length > bytesCap) {
-        throw new Error(`超过单次压缩 ${fsFormatSize(bytesCap)} 上限，已中止`)
+        throw new AppError(`超过单次压缩 ${fsFormatSize(bytesCap)} 上限，已中止`)
       }
       zipData[zipRel] = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
       files++
@@ -1626,11 +1624,11 @@ export class FsRuntime {
     }
     for (const item of (req?.sources ?? []).slice(0, 200)) {
       const src = this.assertPath(item.path)
-      if (src === '/') throw new Error('根目录不可压缩')
+      if (src === '/') throw new AppError('根目录不可压缩', 'io')
       if (item.kind === 'file') await addFile(src, fsBasename(src))
       else await addTree(src, fsBasename(src))
     }
-    if (!files) throw new Error('没有可压缩的内容')
+    if (!files) throw new AppError('没有可压缩的内容')
     const zipped = zipSync(zipData, { level: 6 })
     await driver.write(zipPath, Buffer.from(zipped.buffer, zipped.byteOffset, zipped.byteLength))
     logger.info('upload', `fs 压缩：${channel.id}/${zipPath}（${files} 个文件 / ${fsFormatSize(zipped.length)}）`)
@@ -1641,22 +1639,22 @@ export class FsRuntime {
   async unzip(req: FsUnzipRequest): Promise<FsUnzipResult> {
     const { driver: srcDriver } = this.resolve(req?.profileId)
     const zipPath = this.assertPath(req?.path)
-    if (!isFsZipName(zipPath)) throw new Error('仅支持 .zip 压缩包')
+    if (!isFsZipName(zipPath)) throw new AppError('仅支持 .zip 压缩包')
     const stat = await srcDriver.stat(zipPath)
-    if (!stat.exists || stat.isDir) throw new Error('压缩包不存在')
+    if (!stat.exists || stat.isDir) throw new AppError('压缩包不存在', 'io')
     const { fileCap, bytesCap } = readZipCaps((k) => this.opts.services.config.get(k))
-    if ((stat.size ?? 0) > bytesCap) throw new Error(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
+    if ((stat.size ?? 0) > bytesCap) throw new AppError(`压缩包过大（${fsFormatSize(stat.size)} 超过上限）`)
     const { data } = await srcDriver.readBuffer(zipPath)
     const entries = unzipSync(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
     // 安全检查前置：防路径穿越（任何非法条目直接中止，未解出任何文件）
     for (const name of Object.keys(entries)) {
       if (/^[\\/]/.test(name) || name.includes('..') || name.includes('\\')) {
-        throw new Error(`压缩包含非法路径条目：${name}（已中止，未解出任何文件）`)
+        throw new AppError(`压缩包含非法路径条目：${name}（已中止，未解出任何文件）`, 'io')
       }
     }
     // 目标通道：可选跨源（用户 2026-11-19）；目标目录不存在自动创建
     const dest = this.resolve(req?.destProfileId || req?.profileId)
-    if (!dest.driver.writable) throw new Error(`通道「${dest.channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持写）`)
+    if (!dest.driver.writable) throw new AppError(`通道「${dest.channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持写）`)
     const zipParent = zipPath.lastIndexOf('/') <= 0 ? '/' : zipPath.slice(0, zipPath.lastIndexOf('/'))
     const destDirRaw = String(req?.destDir ?? '').trim()
     let destDir: string
@@ -1664,12 +1662,12 @@ export class FsRuntime {
       destDir = this.assertPath(destDirRaw)
     } else {
       const destName = String(req?.destDirName ?? '').trim() || fsBasename(zipPath).replace(/\.zip$/i, '')
-      if (/[\\/]/.test(destName) || destName === '.' || destName === '..') throw new Error('解压目标目录名不能包含斜杠或路径段')
+      if (/[\\/]/.test(destName) || destName === '.' || destName === '..') throw new AppError('解压目标目录名不能包含斜杠或路径段', 'io')
       destDir = zipParent === '/' ? `/${destName}` : `${zipParent}/${destName}`
     }
-    if (destDir === '/') throw new Error('目标目录不能为根目录')
+    if (destDir === '/') throw new AppError('目标目录不能为根目录', 'io')
     const dst = await dest.driver.stat(destDir)
-    if (dst.exists && !dst.isDir) throw new Error('目标路径已存在且不是目录')
+    if (dst.exists && !dst.isDir) throw new AppError('目标路径已存在且不是目录', 'io')
     if (dst.exists && !req?.overwrite) {
       // 冲突预检（用户 2026-11-19）：顶层条目与目标目录已有条目同名 → 抛标记错误，渲染层覆盖确认后重试
       const topNames = new Set(Object.keys(entries).map((n) => n.replace(/\/+$/, '').split('/')[0] ?? ''))
@@ -1677,7 +1675,7 @@ export class FsRuntime {
         const page = await dest.driver.list(destDir, { pageSize: 1000 })
         const conflicts = [...topNames].filter((n) => page.entries.some((e) => e.name === n))
         if (conflicts.length) {
-          throw new Error(`__UNZIP_CONFLICT__:${conflicts.slice(0, 8).join('、')}${conflicts.length > 8 ? ` …共 ${conflicts.length} 个` : ''}`)
+          throw new AppError(`__UNZIP_CONFLICT__:${conflicts.slice(0, 8).join('、')}${conflicts.length > 8 ? ` …共 ${conflicts.length} 个` : ''}`)
         }
       } catch (e) {
         if (String((e as Error).message).startsWith('__UNZIP_CONFLICT__')) throw e
@@ -1689,8 +1687,8 @@ export class FsRuntime {
     let files = 0
     let bytes = 0
     for (const [name, content] of Object.entries(entries)) {
-      if (bytes + content.length > bytesCap) throw new Error(`解压内容超过 ${fsFormatSize(bytesCap)} 上限，已中止`)
-      if (files >= fileCap) throw new Error(`解压内容超过 ${fileCap} 个文件上限，已中止`)
+      if (bytes + content.length > bytesCap) throw new AppError(`解压内容超过 ${fsFormatSize(bytesCap)} 上限，已中止`)
+      if (files >= fileCap) throw new AppError(`解压内容超过 ${fileCap} 个文件上限，已中止`, 'io')
       if (name.endsWith('/')) {
         await dest.driver.mkdir(`${destDir}/${name.replace(/\/+$/, '')}`)
         continue
@@ -1747,7 +1745,7 @@ export class FsRuntime {
   async favoriteAdd(req: { profileId: string; path: string; kind: 'dir' | 'file'; name: string }): Promise<FsFavorite> {
     const pid = this.assertProfileId(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('根目录无需收藏')
+    if (path === '/') throw new AppError('根目录无需收藏', 'io')
     const repo = this.opts.services.repository
     const rows = await repo.list<FsFavoriteDoc>('fsFavorites', { profileId: pid, path, archived: false })
     if (rows[0]) {
@@ -1771,8 +1769,8 @@ export class FsRuntime {
   async write(req: FsWriteRequest): Promise<boolean> {
     const { driver, channel } = this.resolve(req?.profileId)
     const path = this.assertPath(req?.path)
-    if (path === '/') throw new Error('写入路径不能为空')
-    if (!driver.writable) throw new Error(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
+    if (path === '/') throw new AppError('写入路径不能为空', 'io')
+    if (!driver.writable) throw new AppError(`通道「${channel.name}」不支持写操作（当前仅阿里云 OSS / AWS S3 支持）`)
     // 冲突检测：保存前重新 stat，比对 etag / 大小+时间，不一致提示覆盖（§四）
     if (req?.expect && !req?.force) {
       const stat = await driver.stat(path)
@@ -1781,7 +1779,7 @@ export class FsRuntime {
         (req.expect.size != null && stat.size != null && req.expect.size !== stat.size) ||
         (req.expect.modified != null && stat.modified != null && req.expect.modified !== stat.modified))
       if (!stat.exists || etagChanged || metaChanged) {
-        throw new Error('远端文件已变化：请在覆盖与放弃之间选择（保存时可选择覆盖）')
+        throw new AppError('远端文件已变化：请在覆盖与放弃之间选择（保存时可选择覆盖）', 'io')
       }
     }
     const buf = Buffer.from(String(req?.contentBase64 ?? ''), 'base64')
@@ -1943,7 +1941,7 @@ export class FsRuntime {
 
   setDownloadDir(dir: string): string {
     const clean = String(dir ?? '').trim()
-    if (!clean) throw new Error('下载目录不能为空')
+    if (!clean) throw new AppError('下载目录不能为空', 'io')
     mkdirSync(clean, { recursive: true })
     this.opts.services.config.set('app.fs.downloadDir', clean)
     return clean
@@ -1972,7 +1970,7 @@ export class FsRuntime {
     const setCap = (key: string, raw: number | undefined, max: number, label: string): void => {
       if (raw == null) return
       const v = Math.floor(Number(raw))
-      if (!Number.isFinite(v) || v < 0) throw new Error(`${label}必须是不小于 0 的整数（0 = 不限）`)
+      if (!Number.isFinite(v) || v < 0) throw new AppError(`${label}必须是不小于 0 的整数（0 = 不限）`)
       this.opts.services.config.set(key, Math.min(max, v))
     }
     setCap(CFG_UPLOAD_CAP, req?.uploadCap, FS_TRANSFER_FILE_CAP_MAX, '上传文件数上限')
@@ -1989,12 +1987,12 @@ export class FsRuntime {
     const cfg = this.opts.services.config
     if (req?.fileCap != null) {
       const v = Math.floor(Number(req.fileCap))
-      if (!Number.isFinite(v)) throw new Error('文件数上限必须是数字')
+      if (!Number.isFinite(v)) throw new AppError('文件数上限必须是数字', 'io')
       cfg.set(CFG_ZIP_FILE_CAP, Math.min(FS_ZIP_FILE_CAP_MAX, Math.max(FS_ZIP_FILE_CAP_MIN, v)))
     }
     if (req?.bytesCapMb != null) {
       const v = Math.floor(Number(req.bytesCapMb))
-      if (!Number.isFinite(v)) throw new Error('容量上限必须是数字')
+      if (!Number.isFinite(v)) throw new AppError('容量上限必须是数字')
       cfg.set(CFG_ZIP_BYTES_CAP, Math.min(FS_ZIP_BYTES_CAP_MAX, Math.max(FS_ZIP_BYTES_CAP_MIN, v * 1024 * 1024)))
     }
     return this.zipLimits()

@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { normalizeUploadConfig, now, type UploadGlobalConfig } from '@sshk/shared'
+import { AppError, normalizeUploadConfig, now, type UploadGlobalConfig } from '@sshk/shared'
 import { logger } from './logger'
 
 /**
@@ -136,10 +136,10 @@ export function buildPreset(cfg: PresetConfigStore, secretStore?: PresetSecretSt
 /** 合并预设到当前配置（按 id 覆盖/追加；返回计数）。非法结构直接抛错（H1：调用方 handleOk 包装）
  *  secretStore 可选：提供时，预设里的 credentials 段（含密钥导出才有）会写回 safeStorage。 */
 export function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: PresetSecretStore): PresetImportResult {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('预设文件格式不正确')
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new AppError('预设文件格式不正确', 'io')
   const preset = raw as Record<string, unknown>
   if (preset['kind'] !== PRESET_KIND || typeof preset['version'] !== 'number') {
-    throw new Error('不是 sshk-tools 配置预设文件（kind/version 不匹配）')
+    throw new AppError('不是 sshk-tools 配置预设文件（kind/version 不匹配）', 'io')
   }
   // credentials 段先摘出（字段名避开敏感正则，stripSensitiveDeep 不会剔它），避免被写进配置
   const rawCred = preset['credentials'] as PresetCredentials | undefined
@@ -244,7 +244,7 @@ export function exportPreset(
   includeSecrets = false,
 ): { file: string; providers: number; uploadProfiles: number; secrets: number } {
   const target = String(outPath ?? '')
-  if (!/\.json$/i.test(target)) throw new Error('保存路径必须是 .json')
+  if (!/\.json$/i.test(target)) throw new AppError('保存路径必须是 .json', 'io')
   const preset = buildPreset(cfg, secretStore, includeSecrets)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify(preset, null, 2), 'utf8')
@@ -258,12 +258,12 @@ export function exportPreset(
 /** 从 .json 导入预设（路径必须来自用户文件选择对话框，与 backup.import 同范式） */
 export function importPreset(cfg: PresetConfigStore, filePath: string, secretStore?: PresetSecretStore): PresetImportResult {
   const source = String(filePath ?? '')
-  if (!/\.json$/i.test(source)) throw new Error('请选择 .json 预设文件')
+  if (!/\.json$/i.test(source)) throw new AppError('请选择 .json 预设文件', 'io')
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(source, 'utf8'))
   } catch {
-    throw new Error('预设文件不是合法 JSON')
+    throw new AppError('预设文件不是合法 JSON', 'io')
   }
   return mergePreset(cfg, raw, secretStore)
 }

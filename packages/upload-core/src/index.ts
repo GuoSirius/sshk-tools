@@ -4,6 +4,7 @@
  * B4 / B5 分别落地 Local / Remote(ftp|sftp) / Cloud Provider。
  * main 进程持有 Service 实例，经 IPC upload:single / upload:batch 暴露；密钥不进渲染层。
  */
+export { uploadErrorClassifier } from './error-classifier'
 export type {
   UploadedImageInfo,
   UploadedImagePage,

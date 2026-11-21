@@ -11,8 +11,7 @@ import { execSync } from 'node:child_process'
 import { createHash, createPublicKey } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path, { join } from 'node:path'
-import {
-  ACCESS_GRANT,
+import { AppError, ACCESS_GRANT,
   IPC_CHANNELS,
   collectDefaultProviders,
   resolveToolCatalog,
@@ -24,8 +23,7 @@ import {
   now,
   getEnvBool,
   SSHK_DEV,
-  isDevFeaturesEnabled,
-} from '@sshk/shared'
+  isDevFeaturesEnabled, } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
 import { handleOk } from './ipc-wrap'
@@ -185,7 +183,7 @@ function createTray(): void {
 
 function readProvider(_event: unknown, provider: LlmProvider): LlmProvider {
   if (!/^https?:\/\//i.test(provider?.baseURL ?? '')) {
-    throw new Error('baseURL 必须是 http(s) 地址')
+    throw new AppError('baseURL 必须是 http(s) 地址')
   }
   return provider
 }
@@ -201,7 +199,7 @@ function allManifests(): ToolDescriptor[] {
 }
 
 function assertKnownTool(id: string): void {
-  if (!allManifests().some((tool) => tool.id === id)) throw new Error(`未知工具: ${id}`)
+  if (!allManifests().some((tool) => tool.id === id)) throw new AppError(`未知工具: ${id}`)
 }
 
 /** Windows 是否提权运行：net session 仅管理员可成功（结果缓存，权限不会中途变化） */
@@ -223,7 +221,7 @@ function readRecord<T>(key: string): Record<string, T> {
 
 /** 只接受白名单字段，避免渲染层写入任意配置段 */
 function pickOverrides(raw: unknown): ToolOverrides {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('非法工具元数据')
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new AppError('非法工具元数据')
   const out: ToolOverrides = {}
   for (const key of ['name', 'description', 'icon'] as const) {
     const value = (raw as Record<string, unknown>)[key]
@@ -354,7 +352,7 @@ async function registerIpc(): Promise<void> {
     // 已是开启状态再保存、或关闭，都不需要口令，避免误伤正常配置保存。
     if (key === 'app.developerMode' && value === true && !isDev &&
         !Boolean(cfg.get('app.developerMode')) && !isDevOpAuthorized('developerMode')) {
-      throw new Error('开启开发者模式需要先通过访问密钥验证')
+      throw new AppError('开启开发者模式需要先通过访问密钥验证', 'permission')
     }
     cfg.set(key, value)
     return true
@@ -405,7 +403,7 @@ async function registerIpc(): Promise<void> {
     if (isDev) { mainWindow?.webContents.toggleDevTools(); return true }
     if (!isDevOpAuthorized('devtools')) {
       if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
-        throw new Error('访问密钥不正确')
+        throw new AppError('访问密钥不正确', 'permission')
       }
       markDevOpAuthorized('devtools')
     }
@@ -418,7 +416,7 @@ async function registerIpc(): Promise<void> {
     if (isDevOpAuthorized(op)) return true
     if (isDev) { markDevOpAuthorized(op); return true }
     if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
-      throw new Error('访问密钥不正确')
+      throw new AppError('访问密钥不正确', 'permission')
     }
     markDevOpAuthorized(op)
     return true
@@ -433,13 +431,13 @@ async function registerIpc(): Promise<void> {
   })
   handleOk(IPC_CHANNELS.toolsSetGrant, (_event, id: string, grant: string) => {
     assertKnownTool(id)
-    if (grant && grant !== ACCESS_GRANT) throw new Error(`未知权限要求: ${grant}`)
+    if (grant && grant !== ACCESS_GRANT) throw new AppError(`未知权限要求: ${grant}`, 'permission')
     cfg.set(`tools.${id}.requiredGrant`, grant || '')
     return buildCatalog()
   })
   handleOk(IPC_CHANNELS.toolsSetDependencies, (_event, id: string, raw: unknown) => {
     assertKnownTool(id)
-    if (!Array.isArray(raw)) throw new Error('依赖必须是工具 id 数组')
+    if (!Array.isArray(raw)) throw new AppError('依赖必须是工具 id 数组')
     const ids = Array.from(new Set(raw.filter((dep): dep is string =>
       typeof dep === 'string' && dep !== id && MANIFESTS.some((t) => t.id === dep))))
     cfg.set(`tools.${id}.dependsOn`, ids)
@@ -471,7 +469,7 @@ async function registerIpc(): Promise<void> {
   // ── 备份：settings + NeDB + 产物 → zip；导入含快照回滚 ──
   handleOk(IPC_CHANNELS.backupExport, async (_event, zipPath: string, passphrase?: string) => {
     const out = String(zipPath ?? '')
-    if (!out) throw new Error('缺少导出路径')
+    if (!out) throw new AppError('缺少导出路径', 'io')
     const manifest = await exportBackup({
       repository: services!.repository,
       settings: services!.config.snapshot() as unknown as Record<string, unknown>,
@@ -485,7 +483,7 @@ async function registerIpc(): Promise<void> {
   })
   handleOk(IPC_CHANNELS.backupImport, async (_event, zipPath: string, passphrase?: string) => {
     const file = String(zipPath ?? '')
-    if (!file) throw new Error('缺少导入文件')
+    if (!file) throw new AppError('缺少导入文件', 'io')
     const dbDir = services!.dbDir
     const result = await importBackup({
       repository: services!.repository,
@@ -513,12 +511,12 @@ async function registerIpc(): Promise<void> {
   const runtimeDeps = () => ({ userDataDir: app.getPath('userData'), importedKeys: (cfg.get('app.runtime.publicKeys') ?? []) as never[] })
   handleOk(IPC_CHANNELS.runtimePreview, (_event, zipPath: string) => {
     const path = String(zipPath ?? '')
-    if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
+    if (!/\.sshktool$/i.test(path)) throw new AppError('仅支持 .sshktool 包')
     return previewInstall(path, runtimeDeps(), { builtinIds: builtinToolIds() })
   })
   handleOk(IPC_CHANNELS.runtimeInstall, (_event, zipPath: string, explicitlyTrusted?: boolean) => {
     const path = String(zipPath ?? '')
-    if (!/\.sshktool$/i.test(path)) throw new Error('仅支持 .sshktool 包')
+    if (!/\.sshktool$/i.test(path)) throw new AppError('仅支持 .sshktool 包')
     const result = installPackage(path, runtimeDeps(), { explicitlyTrusted, builtinIds: builtinToolIds() })
     return { record: result.record, warnings: result.warnings }
   })
@@ -530,11 +528,11 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.runtimeKeysList, () => cfg.get('app.runtime.publicKeys') ?? [])
   handleOk(IPC_CHANNELS.runtimeKeysImport, (_event, label: string, pem: string) => {
     const clean = String(pem ?? '').trim()
-    if (!clean.startsWith('-----BEGIN')) throw new Error('不是有效的 PEM 公钥')
-    try { createPublicKey(clean) } catch { throw new Error('PEM 公钥解析失败，请检查内容') }
+    if (!clean.startsWith('-----BEGIN')) throw new AppError('不是有效的 PEM 公钥')
+    try { createPublicKey(clean) } catch { throw new AppError('PEM 公钥解析失败，请检查内容') }
     const entry = { keyId: 'pk_' + keyFingerprint(clean), label: String(label || '未命名发布者'), pem: clean, importedAt: now() }
     const keys = (cfg.get('app.runtime.publicKeys') ?? []) as { keyId: string }[]
-    if (keys.some((k) => k.keyId === entry.keyId)) throw new Error('该公钥已导入')
+    if (keys.some((k) => k.keyId === entry.keyId)) throw new AppError('该公钥已导入')
     cfg.set('app.runtime.publicKeys', [...keys, entry])
     return entry
   })
@@ -592,7 +590,7 @@ async function registerIpc(): Promise<void> {
     // 禁用拦截（2026-11-18）：应用级 Provider 被禁用后，即使渲染层缓存了元数据直连调用也拒绝
     const stored = services!.host.listProviders().find((s) => s._id === p._id)
     if (stored && stored.enabled === false) {
-      throw new Error(`Provider「${stored.name}」已禁用，请先在「模型控制台」启用后再调用`)
+      throw new AppError(`Provider「${stored.name}」已禁用，请先在「模型控制台」启用后再调用`)
     }
     const apiKey = services!.getApiKey(p._id)
     // 模型链优先级：options.model（工具自选）→ provider.model（默认）→ provider.fallbackModel（回退）
@@ -835,9 +833,9 @@ async function registerIpc(): Promise<void> {
   // 图片应用内预览：仅图片扩展名 + 10MB 上限，返回 data URI
   handleOk(IPC_CHANNELS.osReadDataUri, (_event, file: string) => {
     const target = String(file ?? '')
-    if (!/\.(png|jpe?g|webp|gif|bmp)$/i.test(target)) throw new Error('仅支持图片文件预览')
+    if (!/\.(png|jpe?g|webp|gif|bmp)$/i.test(target)) throw new AppError('仅支持图片文件预览', 'io')
     const buf = readFileSync(target)
-    if (buf.byteLength > 10 * 1024 * 1024) throw new Error('图片超过 10MB，无法预览')
+    if (buf.byteLength > 10 * 1024 * 1024) throw new AppError('图片超过 10MB，无法预览')
     const mimeMap: Record<string, string> = {
       '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
       '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
@@ -848,15 +846,15 @@ async function registerIpc(): Promise<void> {
   // 文本写盘：路径必须来自用户经保存对话框选择（导出 HTML 等）
   handleOk(IPC_CHANNELS.osWriteText, (_event, path: string, content: string) => {
     const target = String(path || '')
-    if (!target) throw new Error('缺少写入路径')
+    if (!target) throw new AppError('缺少写入路径', 'io')
     writeFileSync(target, String(content ?? ''), 'utf8')
     return true
   })
   // 二进制写盘（base64 → 文件）：下载 PNG 等场景；路径同样必须来自用户保存对话框
   handleOk(IPC_CHANNELS.osWriteBinary, (_event, path: string, base64: string) => {
     const target = String(path || '')
-    if (!target) throw new Error('缺少写入路径')
-    if (!/^[A-Za-z0-9+/=]+$/.test(String(base64 ?? ''))) throw new Error('内容必须是合法 base64')
+    if (!target) throw new AppError('缺少写入路径', 'io')
+    if (!/^[A-Za-z0-9+/=]+$/.test(String(base64 ?? ''))) throw new AppError('内容必须是合法 base64')
     writeFileSync(target, Buffer.from(String(base64), 'base64'))
     return true
   })
@@ -875,7 +873,7 @@ async function registerIpc(): Promise<void> {
   handleOk(IPC_CHANNELS.osShellOpen, async (_event, target: string) => {
     const t = String(target ?? '')
     if (/^https?:\/\//i.test(t)) return void shell.openExternal(t)
-    if (await shell.openPath(t)) throw new Error(`拒绝打开: ${t}`)
+    if (await shell.openPath(t)) throw new AppError(`拒绝打开: ${t}`, 'permission')
     return true
   })
   handleOk(IPC_CHANNELS.osIsElevated, () => isElevated())

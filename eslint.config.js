@@ -28,41 +28,46 @@ const ignores = [
 
 const languageOptions = { ecmaVersion: 2022, sourceType: 'module' }
 
-const rules = {
+// 全局语法禁令选择器（P0-4 起抽为常量：scoped 块覆盖同名规则时必须带上本数组全部条目）
+const syntaxSelectors = [
   // 时间规范：一律北京时间，禁止 UTC 序列化
+  {
+    selector: "CallExpression[callee.property.name='toISOString']",
+    message: '禁止 toISOString()（输出 UTC），请使用 @sshk/shared 的 time.ts 北京时间工具',
+  },
+  // P0-3（B5/B33）：时间格式化统一走 time.ts，禁 toLocale*（依赖宿主时区/环境）
+  {
+    selector:
+      "CallExpression[callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+    message: '禁止 toLocaleString/toLocaleDateString/toLocaleTimeString（依赖宿主时区），一律使用 @sshk/shared 的 time.ts（数字千分位用 Intl.NumberFormat）',
+  },
+  // P0-3（B33/CR-32）：时间解析统一走 time.ts 的 toMs()
+  {
+    selector: "CallExpression[callee.object.name='Date'][callee.property.name='parse']",
+    message: '禁止 Date.parse（散写时间解析），一律使用 @sshk/shared 的 toMs()',
+  },
+  // dev 判据唯一化（P0-1 · D55）：全仓判 dev 只认 @sshk/shared 的 SSHK_DEV
+  // （__SSHK_DEV__ 由 electron.vite.config.ts 构建期注入三端），禁止 import.meta.env 内建标志
+  {
+    selector:
+      "MemberExpression[object.object.type='MetaProperty'][object.property.name='env'][property.name=/^(DEV|PROD|MODE|BASE_URL|SSR)$/]",
+    message: 'dev 判据唯一化（D55）：禁止 import.meta.env.DEV/PROD/MODE 等，一律使用 @sshk/shared 的 SSHK_DEV',
+  },
+  // D-2（P0-2）：开发者功能总开关禁止散拼，一律 isDevFeaturesEnabled() / catalog 下发的 devFeatures
+  {
+    selector: "LogicalExpression[operator='||'][right.name='developerMode']",
+    message: '禁止散拼 isDev || developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
+  },
+  {
+    selector: "LogicalExpression[operator='||'][right.property.name='developerMode']",
+    message: '禁止散拼 isDev || xxx.developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
+  },
+]
+
+const rules = {
   'no-restricted-syntax': [
     'error',
-    {
-      selector: "CallExpression[callee.property.name='toISOString']",
-      message: '禁止 toISOString()（输出 UTC），请使用 @sshk/shared 的 time.ts 北京时间工具',
-    },
-    // P0-3（B5/B33）：时间格式化统一走 time.ts，禁 toLocale*（依赖宿主时区/环境）
-    {
-      selector:
-        "CallExpression[callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
-      message: '禁止 toLocaleString/toLocaleDateString/toLocaleTimeString（依赖宿主时区），一律使用 @sshk/shared 的 time.ts（数字千分位用 Intl.NumberFormat）',
-    },
-    // P0-3（B33/CR-32）：时间解析统一走 time.ts 的 toMs()
-    {
-      selector: "CallExpression[callee.object.name='Date'][callee.property.name='parse']",
-      message: '禁止 Date.parse（散写时间解析），一律使用 @sshk/shared 的 toMs()',
-    },
-    // dev 判据唯一化（P0-1 · D55）：全仓判 dev 只认 @sshk/shared 的 SSHK_DEV
-    // （__SSHK_DEV__ 由 electron.vite.config.ts 构建期注入三端），禁止 import.meta.env 内建标志
-    {
-      selector:
-        "MemberExpression[object.object.type='MetaProperty'][object.property.name='env'][property.name=/^(DEV|PROD|MODE|BASE_URL|SSR)$/]",
-      message: 'dev 判据唯一化（D55）：禁止 import.meta.env.DEV/PROD/MODE 等，一律使用 @sshk/shared 的 SSHK_DEV',
-    },
-    // D-2（P0-2）：开发者功能总开关禁止散拼，一律 isDevFeaturesEnabled() / catalog 下发的 devFeatures
-    {
-      selector: "LogicalExpression[operator='||'][right.name='developerMode']",
-      message: '禁止散拼 isDev || developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
-    },
-    {
-      selector: "LogicalExpression[operator='||'][right.property.name='developerMode']",
-      message: '禁止散拼 isDev || xxx.developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
-    },
+    ...syntaxSelectors,
   ],
   // 分层规范：tools/* 之间禁止直接 import（细粒度检查由 check-boundaries.mjs 负责）
   'no-restricted-imports': [
@@ -88,6 +93,23 @@ export default [
   ...(tsParser
     ? [{ files: ['**/*.ts'], languageOptions: { ...languageOptions, parser: tsParser }, rules }]
     : []),
+  // Q-15（P0-4）：业务 main 层禁裸 throw new Error —— 一律 AppError（code 见 ipc-result），expected 失败不刷堆栈
+  ...(tsParser
+    ? [{
+        files: ['apps/desktop/src/main/**/*.ts', 'tools/*/src/main/**/*.ts'],
+        ignores: ['**/*.test.ts'],
+        rules: {
+          'no-restricted-syntax': [
+            'error',
+            ...syntaxSelectors,
+            {
+              selector: "ThrowStatement > NewExpression[callee.name='Error']",
+              message: '业务 main 层禁止 throw new Error（Q-15），一律 throw new AppError(message, code)',
+            },
+          ],
+        },
+      }]
+    : []),
   // H2 工具渲染层零裸调：window.api.<group>.<method> 一律走 createSafeHost / callHostApi；
   // window.api.ipc（工具自有通道直连，工具开发指南 §四文档化 API）豁免；
   // 事件订阅类（onProgress/onDelta）集中在封装点并加 eslint-disable 行注释。
@@ -97,6 +119,7 @@ export default [
         rules: {
           'no-restricted-syntax': [
             'error',
+            ...syntaxSelectors,
             {
               selector:
                 "MemberExpression[object.object.name='window'][object.property.name='api'][property.name!='ipc']",

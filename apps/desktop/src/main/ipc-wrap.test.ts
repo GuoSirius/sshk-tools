@@ -6,7 +6,11 @@ vi.mock('electron', () => ({
 
 import { ipcMain } from 'electron'
 import { AppError, isIpcResult } from '@sshk/shared'
-import { handleOk, wrapIpcHandler } from './ipc-wrap'
+import { uploadErrorClassifier } from '@sshk/upload-core'
+import { handleOk, registerErrorClassifier, wrapIpcHandler } from './ipc-wrap'
+
+// B16（P0-4）注册制：云 SDK 归类器由领域包自我申报，测试环境同样显式注册（模块级一次）
+registerErrorClassifier(uploadErrorClassifier)
 
 const eventStub = {} as never
 

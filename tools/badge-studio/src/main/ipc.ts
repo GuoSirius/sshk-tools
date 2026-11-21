@@ -3,7 +3,7 @@ import { zipSync, type Zippable } from 'fflate'
 import { dirname, extname, isAbsolute } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { app } from 'electron'
-import { IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
+import { AppError, IPC_CHANNELS, now, type ToolHostCapabilities } from '@sshk/shared'
 import {
   entityId,
   posterOutputRel,
@@ -43,11 +43,11 @@ async function fetchAsDataUrl(url: string): Promise<string> {
     signal: AbortSignal.timeout(INLINE_TIMEOUT_MS),
     headers: { 'user-agent': 'Mozilla/5.0 sshk-tools (badge poster inline)' },
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw new AppError(`HTTP ${res.status}`)
   const type = res.headers.get('content-type') ?? ''
-  if (!type.startsWith('image/')) throw new Error(`非图片类型 ${type}`)
+  if (!type.startsWith('image/')) throw new AppError(`非图片类型 ${type}`)
   const buf = Buffer.from(await res.arrayBuffer())
-  if (buf.byteLength > INLINE_MAX_BYTES) throw new Error(`超过 10MB`)
+  if (buf.byteLength > INLINE_MAX_BYTES) throw new AppError(`超过 10MB`)
   return `data:${type.split(';')[0]};base64,${buf.toString('base64')}`
 }
 
@@ -81,7 +81,7 @@ function readHtmlFile(file: string, outputRoot: string): string {
   // 用户通过文件选择器主动选择的绝对路径（.html/.htm）直接读取；
   // 产物系统内的相对路径仍受 resolveSafe 防穿越保护
   if (isAbsolute(file)) {
-    if (!/\.html?$/i.test(file)) throw new Error(`仅支持 .html/.htm 文件: ${file}`)
+    if (!/\.html?$/i.test(file)) throw new AppError(`仅支持 .html/.htm 文件: ${file}`, 'io')
     return readFileSync(file, 'utf8')
   }
   return readFileSync(resolveSafe(outputRoot, file), 'utf8')
@@ -94,9 +94,9 @@ function resolveInputFile(file: string, outputRoot: string): string {
 /** 用户主动选择的图片：转 data URI 供视觉模型使用，限制体积避免撑爆请求 */
 function readImageDataUri(file: string): string {
   const mime = IMAGE_MIME[extname(file).toLowerCase()]
-  if (!mime) throw new Error('仅支持 png / jpg / webp / gif / bmp 图片')
+  if (!mime) throw new AppError('仅支持 png / jpg / webp / gif / bmp 图片')
   const buf = readFileSync(file)
-  if (buf.byteLength > 8 * 1024 * 1024) throw new Error('图片超过 8MB，请压缩后重试')
+  if (buf.byteLength > 8 * 1024 * 1024) throw new AppError('图片超过 8MB，请压缩后重试')
   return `data:${mime};base64,${buf.toString('base64')}`
 }
 
@@ -175,7 +175,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   const wrap = <T,>(fn: (payload: T) => unknown) =>
     (_event: IpcMainInvokeEvent, payload: T): unknown => fn(payload)
   const requireHost = (): ToolHostCapabilities => {
-    if (!deps.host) throw new Error('宿主未提供图片识别能力')
+    if (!deps.host) throw new AppError('宿主未提供图片识别能力')
     return deps.host
   }
   // ① 数据源解析：按扩展名分派（xlsx/csv/json）
@@ -194,7 +194,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
 
     if (input.provider === 'cloud') {
       if (!input.providerId?.trim()) {
-        throw new Error('请先在「模型控制台」配置 Provider，再在图片识别里选择')
+        throw new AppError('请先在「模型控制台」配置 Provider，再在图片识别里选择')
       }
       // 复用应用级 Provider：端点、密钥一律由主进程注入，工具侧不再存 baseURL / apiKey
       text = await host.chatByProvider({
@@ -205,7 +205,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         maxTokens: 4096,
       })
     } else if (input.provider === 'paddleocr') {
-      if (!input.paddleCommand?.trim()) throw new Error('请先在工具配置里填写本机 PaddleOCR 命令')
+      if (!input.paddleCommand?.trim()) throw new AppError('请先在工具配置里填写本机 PaddleOCR 命令')
       // 适配器脚本由宿主托管（userData/adapters），用户参数只负责 {image}；
       // 未写 .py 脚本时自动前置适配器路径，避免 python 把图片当源码执行
       const adapterPath = await ensureAdapterScript()
@@ -222,7 +222,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         imagePath: abs,
       })
     } else {
-      throw new Error('当前为「仅人工校对」模式，请直接粘贴 CSV 文本')
+      throw new AppError('当前为「仅人工校对」模式，请直接粘贴 CSV 文本')
     }
 
     const rows = parseVisionResult(text, warnings, { layout: input.ocrLayout })
@@ -356,7 +356,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   // ④b 导出产物文件（badge 副本 + 海报长图）→ 单个 zip 包；批量时每个海报一个子目录
   ipc.handle(IPC_CHANNELS.badgeExportFiles, wrap(async (payload: { posterIds: string[]; outPath: string }) => {
     const outPath = String(payload.outPath || '')
-    if (!outPath.toLowerCase().endsWith('.zip')) throw new Error('导出路径必须是 .zip 文件')
+    if (!outPath.toLowerCase().endsWith('.zip')) throw new AppError('导出路径必须是 .zip 文件', 'io')
     const zipObj: Zippable = {}
     let exported = 0
     for (const posterId of payload.posterIds) {
@@ -370,7 +370,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       }
       exported += 1
     }
-    if (exported === 0) throw new Error('没有可导出的海报')
+    if (exported === 0) throw new AppError('没有可导出的海报')
     mkdirSync(dirname(outPath), { recursive: true })
     writeFileSync(outPath, zipSync(zipObj))
     return { outPath, posters: exported }
@@ -395,7 +395,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   //     不存在则建 status=draft 草稿记录并回传 posterId；渲染层后续生成按该 id 覆盖。
   ipc.handle(IPC_CHANNELS.badgeSavePosterMeta, wrap(async (payload: { posterId?: string; name?: string; configSnapshot?: Partial<Poster['configSnapshot']> }) => {
     const name = payload.name?.trim()
-    if (!name) throw new Error('海报名必填')
+    if (!name) throw new AppError('海报名必填')
     const existing = payload.posterId ? await deps.repository.get<Poster>('posters', payload.posterId) : null
     if (existing) {
       await deps.repository.update<Poster>('posters', existing._id, {
@@ -434,9 +434,9 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   // ⑧ 下载已截图海报 PNG：复制产物到用户指定路径（渲染层经 pickSave 取路径）
   ipc.handle(IPC_CHANNELS.badgeDownloadPng, wrap(async (payload: { posterId: string; outPath: string }) => {
     const poster = await deps.repository.get<Poster>('posters', payload.posterId)
-    if (!poster?.outputs.poster) throw new Error('该海报尚未截图保存 PNG，请先在生成页「截图保存 PNG」')
+    if (!poster?.outputs.poster) throw new AppError('该海报尚未截图保存 PNG，请先在生成页「截图保存 PNG」')
     const src = resolveSafe(deps.outputRoot, poster.outputs.poster)
-    if (!existsSync(src)) throw new Error('海报图片文件不存在：' + poster.outputs.poster)
+    if (!existsSync(src)) throw new AppError('海报图片文件不存在：' + poster.outputs.poster, 'io')
     mkdirSync(dirname(payload.outPath), { recursive: true })
     copyFileSync(src, payload.outPath)
     return { outPath: payload.outPath }
@@ -451,11 +451,11 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
       return { root: deps.outputRoot, entry: '', label: '海报列表' }
     }
     const poster = await deps.repository.get<Poster>('posters', payload.posterId)
-    if (!poster?.outputs.badged) throw new Error('海报尚未生成，无法分享')
+    if (!poster?.outputs.badged) throw new AppError('海报尚未生成，无法分享')
     // serve 产物根（html + assets 同源可访问）；entry 为 badged 相对路径
     const entry = poster.outputs.badged.replaceAll('\\', '/').replace(/^\/+/, '')
     const abs = resolveSafe(deps.outputRoot, entry)
-    if (!existsSync(abs)) throw new Error('海报产物文件不存在：' + entry)
+    if (!existsSync(abs)) throw new AppError('海报产物文件不存在：' + entry, 'io')
     return { root: deps.outputRoot, entry, label: `海报：${poster.name}` }
   }))
 

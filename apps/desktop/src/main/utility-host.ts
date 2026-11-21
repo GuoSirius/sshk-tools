@@ -1,4 +1,5 @@
 import { utilityProcess, type UtilityProcess } from 'electron'
+import { AppError } from '@sshk/shared'
 import { asUtilityMessage, parseChildArgv } from './utility-protocol.js'
 import type {
   UtilityIpcInvoke,
@@ -52,7 +53,7 @@ export function forkUtilityTool(opts: ForkOptions): UtilityInstance {
       if (!p) return
       pending.delete(msg.reqId)
       if (msg.ok) p.resolve(msg.data)
-      else p.reject(new Error(msg.error ?? 'utility 调用失败'))
+      else p.reject(new AppError(msg.error ?? 'utility 调用失败'))
       return
     }
     if (msg.t === 'host-invoke') {
@@ -65,7 +66,7 @@ export function forkUtilityTool(opts: ForkOptions): UtilityInstance {
     if (msg.t === 'register') opts.onRegister?.(msg.channel)
   })
   child.on('exit', () => {
-    for (const [, p] of pending) p.reject(new Error(`工具 ${opts.toolId} 的沙箱进程已退出`))
+    for (const [, p] of pending) p.reject(new AppError(`工具 ${opts.toolId} 的沙箱进程已退出`))
     pending.clear()
   })
 

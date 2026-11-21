@@ -14,23 +14,22 @@ import { logger } from './logger'
 type Handler<T> = (event: IpcMainInvokeEvent, ...args: any[]) => T | Promise<T>
 
 /**
- * 云 SDK / 网络库抛出的「预期内业务失败」归类为 AppError，避免按 unknown 刷控制台堆栈。
- * 只认确定性标记（code/status）与既有友好文案同款关键词，不明异常仍走 unknown + 全量日志。
+ * 预期内业务失败归类（B16 · P0-4 改注册制）：AppError 直通；其余交给注册的
+ * errorClassifier（领域知识归各领域包，如 upload-core 注册云 SDK 错误归类）。
+ * 无匹配 → null（unknown + 全量日志）。
  */
-function classifyExpected(err: unknown): IpcErrorCode | null {
+type ErrorClassifier = (err: unknown) => IpcErrorCode | null
+const errorClassifiers: ErrorClassifier[] = []
+export function registerErrorClassifier(fn: ErrorClassifier): void {
+  errorClassifiers.push(fn)
+}
+
+export function classifyExpected(err: unknown): IpcErrorCode | null {
   if (err instanceof AppError) return err.code
-  const rec = err as { code?: unknown; status?: unknown; name?: unknown }
-  const sdkCode = String(rec?.code ?? '')
-  const status = Number(rec?.status ?? 0)
-  const name = String(rec?.name ?? '')
-  const msg = err instanceof Error ? err.message : String(err)
-  if (
-    sdkCode === 'AccessDenied' || name === 'AccessDeniedError' || status === 403 ||
-    /no right to access|bucket acl|AccessDenied|permission denied|Forbidden|无权|权限不足/i.test(msg)
-  ) return 'permission'
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo/i.test(msg)) return 'timeout'
-  if (/530|532|Authentication|All authentication|认证失败|密码错误/i.test(msg)) return 'permission'
-  if (sdkCode === 'NoSuchBucket' || sdkCode === 'NoSuchKey' || /NoSuchBucket|NoSuchKey|The specified bucket does not exist/i.test(msg)) return 'io'
+  for (const fn of errorClassifiers) {
+    const code = fn(err)
+    if (code) return code
+  }
   return null
 }
 

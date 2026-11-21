@@ -18,14 +18,12 @@ import {
   listModels as llmListModels,
   type LlmProvider,
 } from '@sshk/llm-gateway'
-import {
-  ACCESS_GRANT,
+import { AppError, ACCESS_GRANT,
   ACCESS_KEY_SECRET_ID,
   TOOL_IDS,
   mergeToolDefaults,
   type LlmProviderInfo,
-  type ToolHostCapabilities,
-} from '@sshk/shared'
+  type ToolHostCapabilities, } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
 import { logger } from './logger'
@@ -116,7 +114,7 @@ export function setupServices(): AppServices {
 
   async function saveSecrets(secrets: Record<string, string>): Promise<void> {
     if (!(await safeStorage.isAsyncEncryptionAvailable())) {
-      throw new Error('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
+      throw new AppError('当前系统不支持凭据加密（safeStorage 不可用），无法保存密钥')
     }
     // encryptString 已弃用（Electron 45+ 警告）：改用 encryptStringAsync + 异步写盘
     const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(secrets))
@@ -143,10 +141,10 @@ export function setupServices(): AppServices {
   }
 
   function findProvider(providerId: string): LlmProvider {
-    if (!isProviderId(providerId)) throw new Error(`非法 Provider ID：${providerId}`)
+    if (!isProviderId(providerId)) throw new AppError(`非法 Provider ID：${providerId}`)
     const provider = readProviders().find((p) => p._id === providerId)
     if (!provider) {
-      throw new Error(`未找到 Provider「${providerId}」，请先在「模型控制台」新增或启用`)
+      throw new AppError(`未找到 Provider「${providerId}」，请先在「模型控制台」新增或启用`)
     }
     return provider
   }
@@ -160,7 +158,7 @@ export function setupServices(): AppServices {
   }): Promise<string> {
     return new Promise((resolve, reject) => {
       const command = req.command.trim()
-      if (!command) { reject(new Error('未配置本机 OCR 命令')); return }
+      if (!command) { reject(new AppError('未配置本机 OCR 命令')); return }
       const args = req.args.map((arg) => arg.replaceAll('{image}', req.imagePath))
       let child: ReturnType<typeof spawn>
       try {
@@ -171,7 +169,7 @@ export function setupServices(): AppServices {
           env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
         })
       } catch (err) {
-        reject(new Error(`本机 OCR 启动失败：${(err as Error).message}`))
+        reject(new AppError(`本机 OCR 启动失败：${(err as Error).message}`))
         return
       }
       let stdout = ''
@@ -182,7 +180,7 @@ export function setupServices(): AppServices {
         if (settled) return
         settled = true
         child.kill()
-        reject(new Error(`本机 OCR 超时（${Math.round(limit / 1000)}s）`))
+        reject(new AppError(`本机 OCR 超时（${Math.round(limit / 1000)}s）`, 'timeout'))
       }, limit)
       child.stdout?.setEncoding('utf8')
       child.stderr?.setEncoding('utf8')
@@ -196,13 +194,13 @@ export function setupServices(): AppServices {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        reject(new Error(`本机 OCR 启动失败：${err.message}`))
+        reject(new AppError(`本机 OCR 启动失败：${err.message}`))
       })
       child.on('close', (code) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        if (code !== 0) reject(new Error(`本机 OCR 退出码 ${code}：${stderr.slice(0, 500)}`))
+        if (code !== 0) reject(new AppError(`本机 OCR 退出码 ${code}：${stderr.slice(0, 500)}`))
         else resolve(stdout.trim())
       })
     })
@@ -396,7 +394,7 @@ export function setupServices(): AppServices {
     },
     ensureSecrets: async () => { await loadSecrets() },
     setApiKey: (providerId, apiKey) => {
-      if (!isProviderId(providerId)) throw new Error(`非法 providerId: ${providerId}`)
+      if (!isProviderId(providerId)) throw new AppError(`非法 providerId: ${providerId}`)
       const secrets = currentSecrets()
       if (apiKey === '') delete secrets[providerId]
       else secrets[providerId] = apiKey

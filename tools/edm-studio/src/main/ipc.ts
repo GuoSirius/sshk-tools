@@ -4,7 +4,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
 import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { IPC_CHANNELS, TOOL_IDS, now, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
+import { AppError, IPC_CHANNELS, TOOL_IDS, now, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
 import { seedSystemContent, seedCustomContent, versionNumberOf } from './edm-seed.js'
 import {
@@ -84,7 +84,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
   /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
   async function assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void> {
     const doc = await repo.get(name, id)
-    if (doc && (doc as { origin?: string }).origin === 'system') throw new Error('系统内容只读：请用「另存为」派生自定义副本')
+    if (doc && (doc as { origin?: string }).origin === 'system') throw new AppError('系统内容只读：请用「另存为」派生自定义副本')
   }
 
   // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种；不阻塞注册）
@@ -101,12 +101,12 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
     return isDevFeaturesEnabled(SSHK_DEV, deps.config?.get('app.developerMode') === true)
   }
   function assertSystemEditable(): void {
-    if (!systemEditable()) throw new Error('系统内容在当前模式下只读（打包版需开启开发者模式）')
+    if (!systemEditable()) throw new AppError('系统内容在当前模式下只读（打包版需开启开发者模式）')
   }
   /** 限制在指定根内（越权即拒）；返回绝对路径 */
   function confine(root: string, file: string): string {
     const abs = path.resolve(root, file)
-    if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('越权路径')
+    if (abs !== root && !abs.startsWith(root + path.sep)) throw new AppError('越权路径', 'permission')
     return abs
   }
   /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（2026-11-16 拍板：dev 与打包统一落 userData，仓库源码目录不进运行数据） */
@@ -137,7 +137,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
 
   ipc.handle(IPC_CHANNELS.edmApi, async (_event: IpcMainInvokeEvent, payload: { action: string; data?: Payload }) => {
     const { action, data = {} as Payload } = payload
-    if (!ACTIONS.has(action)) throw new Error(`非法 action: ${action}`)
+    if (!ACTIONS.has(action)) throw new AppError(`非法 action: ${action}`)
 
     switch (action) {
       // ── 品牌（D29：独立管理页） ──
@@ -147,7 +147,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const id = str(data, '_id')
         const meta = { code: str(data, 'code'), name: str(data, 'name'), logo: str(data, 'logo') || undefined }
         if (id === '') {
-          if (!meta.code || !meta.name) throw new Error('品牌 code 与名称必填')
+          if (!meta.code || !meta.name) throw new AppError('品牌 code 与名称必填')
           return repo.insert<Brand>('brands', meta)
         }
         await assertMutable('brands', id)
@@ -167,7 +167,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
           description: str(data, 'description') || undefined,
           origin: (id === '' ? 'custom' : 'custom') as 'custom',
         }
-        if (!meta.brandId || !meta.name) throw new Error('品牌与模板名称必填')
+        if (!meta.brandId || !meta.name) throw new AppError('品牌与模板名称必填')
         if (id === '') return repo.insert<Template>('templates', meta)
         await assertMutable('templates', id)
         return repo.update<Template>('templates', id, meta)
@@ -180,14 +180,14 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       case 'tplv:save': {
         const templateId = str(data, 'templateId')
         const prev = str(data, 'prevVersionId')
-        if (!templateId) throw new Error('templateId 必填')
+        if (!templateId) throw new AppError('templateId 必填')
         const tpl = await repo.get<Template>('templates', templateId)
-        if (!tpl) throw new Error('模板不存在')
-        if (tpl.origin === 'system') throw new Error('系统模板只读：请用「另存为」派生自定义副本')
+        if (!tpl) throw new AppError('模板不存在', 'io')
+        if (tpl.origin === 'system') throw new AppError('系统模板只读：请用「另存为」派生自定义副本')
         let version = 1
         if (prev !== '') {
           const prevV = await repo.get<TemplateVersion>('templateVersions', prev)
-          if (!prevV) throw new Error('上一版本不存在')
+          if (!prevV) throw new AppError('上一版本不存在', 'io')
           version = prevV.version + 1
         }
         const inserted = await repo.insert<TemplateVersion>('templateVersions', {
@@ -207,7 +207,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       case 'tplv:saveAsNew': {
         // 复制为另一种模板（brandId 可改，跨品牌 D8）
         const src = await repo.get<TemplateVersion>('templateVersions', str(data, '_id'))
-        if (!src) throw new Error('源版本不存在')
+        if (!src) throw new AppError('源版本不存在', 'io')
         const brandId = str(data, 'brandId') || src.brandId
         const newTpl = await repo.insert<Template>('templates', {
           brandId,
@@ -242,7 +242,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         if (data['sampleData'] !== undefined) patch['sampleData'] = obj(data, 'sampleData')
         if (data['description'] !== undefined) patch['description'] = str(data, 'description') || undefined
         if (data['fields'] !== undefined) patch['fields'] = Array.isArray(data['fields']) ? data['fields'] : undefined
-        if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
+        if (Object.keys(patch).length === 0) throw new AppError('无可更新字段')
         return repo.update<TemplateVersion>('templateVersions', id, patch)
       }
       case 'tplv:remove':
@@ -259,7 +259,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
           description: str(data, 'description') || undefined,
           type: str(data, 'type') || 'product', origin: 'custom' as const,
         }
-        if (!meta.brandId || !meta.name) throw new Error('品牌与片段名称必填')
+        if (!meta.brandId || !meta.name) throw new AppError('品牌与片段名称必填')
         if (id === '') return repo.insert<Fragment>('fragments', meta)
         await assertMutable('fragments', id)
         return repo.update<Fragment>('fragments', id, meta)
@@ -271,12 +271,12 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const fragmentId = str(data, 'fragmentId')
         const prev = str(data, 'prevVersionId')
         const frg = await repo.get<Fragment>('fragments', fragmentId)
-        if (!frg) throw new Error('片段不存在')
-        if (frg.origin === 'system') throw new Error('系统片段只读：请用「另存为」派生自定义副本')
+        if (!frg) throw new AppError('片段不存在', 'io')
+        if (frg.origin === 'system') throw new AppError('系统片段只读：请用「另存为」派生自定义副本')
         let version = 1
         if (prev !== '') {
           const prevV = await repo.get<FragmentVersion>('fragmentVersions', prev)
-          if (!prevV) throw new Error('上一版本不存在')
+          if (!prevV) throw new AppError('上一版本不存在', 'io')
           version = prevV.version + 1
         }
         const inserted = await repo.insert<FragmentVersion>('fragmentVersions', {
@@ -296,7 +296,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       }
       case 'frgv:saveAsNew': {
         const src = await repo.get<FragmentVersion>('fragmentVersions', str(data, '_id'))
-        if (!src) throw new Error('源版本不存在')
+        if (!src) throw new AppError('源版本不存在', 'io')
         const brandId = str(data, 'brandId') || src.brandId
         const newFrg = await repo.insert<Fragment>('fragments', {
           brandId, name: str(data, 'name') || `${src.label} 副本`, type: src.type, origin: 'custom',
@@ -324,7 +324,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         if (data['type'] !== undefined) patch['type'] = str(data, 'type') || 'product'
         if (data['description'] !== undefined) patch['description'] = str(data, 'description') || undefined
         if (data['fields'] !== undefined) patch['fields'] = Array.isArray(data['fields']) ? data['fields'] : undefined
-        if (Object.keys(patch).length === 0) throw new Error('无可更新字段')
+        if (Object.keys(patch).length === 0) throw new AppError('无可更新字段')
         return repo.update<FragmentVersion>('fragmentVersions', id, patch)
       }
       case 'frgv:remove':
@@ -338,7 +338,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const v = cat === 'template'
           ? await repo.get<TemplateVersion>('templateVersions', id)
           : await repo.get<FragmentVersion>('fragmentVersions', id)
-        if (!v) throw new Error('版本不存在')
+        if (!v) throw new AppError('版本不存在', 'io')
         const stages = await compose({
           templateHtml: v.source.html,
           templateCss: v.source.cssMode === 'inline' ? v.source.css : undefined,
@@ -354,7 +354,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       // ── 候选片段（两道过滤下推 Repository，黑名单优先 §2.2） ──
       case 'candidates:pick': {
         const tv = await repo.get<TemplateVersion>('templateVersions', str(data, 'templateVersionId'))
-        if (!tv) throw new Error('模板版本不存在')
+        if (!tv) throw new AppError('模板版本不存在', 'io')
         return repo.listCandidateFragmentVersions(tv, str(data, 'slotType'))
       }
 
@@ -372,7 +372,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
           status: (id === '' ? 'draft' : 'draft') as Mail['status'],
           outputs: (obj(data, 'outputs') as unknown as Mail['outputs']) ?? {},
         }
-        if (!meta.name || !meta.templateVersionId) throw new Error('邮件名称与模板版本必填')
+        if (!meta.name || !meta.templateVersionId) throw new AppError('邮件名称与模板版本必填')
         if (id === '') return repo.insert<Mail>('mails', meta)
         return repo.update<Mail>('mails', id, meta)
       }
@@ -383,9 +383,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       }
       case 'mail:generate': {
         const mail = await repo.get<Mail>('mails', str(data, '_id'))
-        if (!mail) throw new Error('邮件不存在')
+        if (!mail) throw new AppError('邮件不存在', 'io')
         const tv = await repo.get<TemplateVersion>('templateVersions', mail.templateVersionId)
-        if (!tv) throw new Error('模板版本不存在')
+        if (!tv) throw new AppError('模板版本不存在', 'io')
         // R19 统一组合引擎：placements（per-placement data/order/repeat，Q12）→ slot_* → 三阶段
         const placements: ComposePlacement[] = []
         for (const b of mail.bindings) {
@@ -425,7 +425,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       case 'mail:preview': {
         // 草稿组合预览（不落库不写产物；R20 编辑页实时预览用）
         const tv = await repo.get<TemplateVersion>('templateVersions', str(data, 'templateVersionId'))
-        if (!tv) throw new Error('模板版本不存在')
+        if (!tv) throw new AppError('模板版本不存在', 'io')
         const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
         const placements: ComposePlacement[] = []
         for (const p of raw) {
@@ -453,15 +453,15 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       }
       case 'mail:readFinal': {
         const mail = await repo.get<Mail>('mails', str(data, '_id'))
-        if (!mail?.outputs.final) throw new Error('尚未生成产物')
+        if (!mail?.outputs.final) throw new AppError('尚未生成产物')
         return readOutput(deps.outputRoot, mail.outputs.final)
       }
       // ── 导出（约定：单封 .html(final) / 批量 .zip 含各形态 assembled/inlined/final，§6.3） ──
       case 'mail:export': {
         const ids = Array.isArray(data['ids']) ? (data['ids'] as unknown[]).map(String).filter(Boolean) : []
         const outPath = str(data, 'outPath')
-        if (ids.length === 0) throw new Error('ids 必填')
-        if (!outPath) throw new Error('outPath 必填（os.pickSave 结果）')
+        if (ids.length === 0) throw new AppError('ids 必填')
+        if (!outPath) throw new AppError('outPath 必填（os.pickSave 结果）')
         const read = async (rel?: string): Promise<string> => (rel ? await readOutput(deps.outputRoot, rel) : '')
         const items: { id: string; name: string; assembled: string; inlined: string; final: string }[] = []
         for (const id of ids) {
@@ -475,7 +475,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
             final: await read(mail.outputs.final),
           })
         }
-        if (items.length === 0) throw new Error('所选邮件均无产物，请先生成')
+        if (items.length === 0) throw new AppError('所选邮件均无产物，请先生成')
         if (items.length === 1 && !outPath.endsWith('.zip')) {
           await fs.writeFile(outPath, items[0]!.final, 'utf8')
           return { count: 1, outPath }
@@ -496,7 +496,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       // ── 分享解析（plans/09 ShareHub）：产物根目录绝对路径，交给 ShareDialog 创建路由 ──
       case 'share:resolve': {
         const root = path.join(deps.outputRoot, 'outputs')
-        if (!existsSync(root)) throw new Error('尚无产物目录，请先生成邮件')
+        if (!existsSync(root)) throw new AppError('尚无产物目录，请先生成邮件', 'io')
         return { root, entry: '', label: '邮件产物' }
       }
 
@@ -507,7 +507,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       // ── 系统内容预览渲染（R5 就近 css + R19 组合预览：placements 非空 → 片段/模板统一组合入口） ──
       case 'system:render': {
         const sel = obj(data, 'selector') as unknown as SystemSelector
-        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
+        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new AppError('selector 需含 brandCode/kind/familyCode')
         const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
         if (raw.length === 0) return await renderSystemPreview(resolveEdmRoot(), sel)
         return await renderSystemCompose(
@@ -527,7 +527,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const root = resolveEdmRoot()
         const file = str(data, 'file')
         const abs = path.resolve(root, file)
-        if (!abs.startsWith(root)) throw new Error('越权读取系统文件')
+        if (!abs.startsWith(root)) throw new AppError('越权读取系统文件', 'permission')
         try {
           return await fs.readFile(abs, 'utf8')
         } catch {
@@ -541,7 +541,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         assertSystemEditable()
         const root = resolveEdmRoot()
         const file = str(data, 'file')
-        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new Error(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`)
+        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new AppError(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`, 'io')
         const abs = confine(root, file)
         await fs.mkdir(path.dirname(abs), { recursive: true })
         await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')
@@ -552,10 +552,10 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const root = resolveEdmRoot()
         const file = str(data, 'file')
         const newName = str(data, 'newName').trim()
-        if (!newName || /[/\\]|\.\./.test(newName)) throw new Error('新名称非法（不得含路径分隔符）')
+        if (!newName || /[/\\]|\.\./.test(newName)) throw new AppError('新名称非法（不得含路径分隔符）', 'io')
         const abs = confine(root, file)
         const dst = path.join(path.dirname(abs), newName)
-        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new Error('越权路径')
+        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new AppError('越权路径', 'permission')
         let exists = false
         try {
           await fs.access(dst)
@@ -563,7 +563,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         } catch {
           /* 不存在即目标可用 */
         }
-        if (exists) throw new Error(`「${newName}」已存在，请先处理同名冲突`)
+        if (exists) throw new AppError(`「${newName}」已存在，请先处理同名冲突`, 'io')
         await fs.rename(abs, dst)
         return relOf(dst)
       }
@@ -571,7 +571,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         assertSystemEditable()
         const root = resolveEdmRoot()
         const abs = confine(root, str(data, 'file'))
-        if (abs === root) throw new Error('不能删除 EDM 根目录')
+        if (abs === root) throw new AppError('不能删除 EDM 根目录', 'io')
         let exists = false
         try {
           await fs.access(abs)
@@ -591,7 +591,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
         const file = str(data, 'file')
         const abs = path.resolve(root, file)
-        if (!abs.startsWith(root)) throw new Error('越权读取内容文件')
+        if (!abs.startsWith(root)) throw new AppError('越权读取内容文件', 'permission')
         try {
           return await fs.readFile(abs, 'utf8')
         } catch {
@@ -603,7 +603,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         if (source === 'system') assertSystemEditable()
         const root = resolveContentRoot(source)
         const file = str(data, 'file')
-        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new Error(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`)
+        if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new AppError(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`, 'io')
         const abs = confine(root, file)
         await fs.mkdir(path.dirname(abs), { recursive: true })
         await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')
@@ -615,10 +615,10 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const root = resolveContentRoot(source)
         const file = str(data, 'file')
         const newName = str(data, 'newName').trim()
-        if (!newName || /[/\\]|\.\./.test(newName)) throw new Error('新名称非法（不得含路径分隔符）')
+        if (!newName || /[/\\]|\.\./.test(newName)) throw new AppError('新名称非法（不得含路径分隔符）', 'io')
         const abs = confine(root, file)
         const dst = path.join(path.dirname(abs), newName)
-        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new Error('越权路径')
+        if (dst !== abs && !dst.startsWith(root + path.sep)) throw new AppError('越权路径', 'permission')
         let exists = false
         try {
           await fs.access(dst)
@@ -626,7 +626,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         } catch {
           /* 不存在即目标可用 */
         }
-        if (exists) throw new Error(`「${newName}」已存在，请先处理同名冲突`)
+        if (exists) throw new AppError(`「${newName}」已存在，请先处理同名冲突`, 'io')
         await fs.rename(abs, dst)
         return path.resolve(root, dst).split(path.sep).join('/')
       }
@@ -635,7 +635,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         if (source === 'system') assertSystemEditable()
         const root = resolveContentRoot(source)
         const abs = confine(root, str(data, 'file'))
-        if (abs === root) throw new Error('不能删除内容根目录')
+        if (abs === root) throw new AppError('不能删除内容根目录', 'io')
         let exists = false
         try {
           await fs.access(abs)
@@ -673,7 +673,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       case 'content:render': {
         const root = resolveContentRoot(str(data, 'source') === 'custom' ? 'custom' : 'system')
         const sel = obj(data, 'selector') as unknown as SystemSelector
-        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new Error('selector 需含 brandCode/kind/familyCode')
+        if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new AppError('selector 需含 brandCode/kind/familyCode')
         const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
         // R28：显式 link 的 @shared / @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
         const cssRoots = { systemRoot: resolveContentRoot('system'), customRoot: resolveContentRoot('custom') }
@@ -704,12 +704,12 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         const familyCode = str(data, 'familyCode')
         const versionDir = str(data, 'versionDir')
         const target = str(data, 'target')
-        if (!name) throw new Error('名称必填')
+        if (!name) throw new AppError('名称必填')
         const root = resolveContentRoot(source)
         const customRoot = resolveContentRoot(targetSource)
         const model = await loadEdmModel(root)
         const srcBrand = model.brands.find((b) => b.code === brandCode)
-        if (!srcBrand) throw new Error(`系统品牌「${brandCode}」不存在`)
+        if (!srcBrand) throw new AppError(`系统品牌「${brandCode}」不存在`, 'io')
         const counts = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0 }
         const copyTree = async (srcRel: string, dstRel: string): Promise<void> => {
           const srcAbs = path.resolve(root, srcRel)
@@ -751,7 +751,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
         } else if (kind === 'family') {
           const dstBrand = targetBrandCode
           const fam = (cat === 'template' ? srcBrand.templates : srcBrand.fragments).find((f) => f.code === familyCode)
-          if (!fam) throw new Error(`系统${cat === 'template' ? '模板' : '片段'}族「${familyCode}」不存在`)
+          if (!fam) throw new AppError(`系统${cat === 'template' ? '模板' : '片段'}族「${familyCode}」不存在`, 'io')
           await copyTree(`${brandCode}/${cat}/${familyCode}`, `${dstBrand}/${cat}/${name}`)
           await patchMeta(`${dstBrand}/${cat}/${name}`, { code: name, name })
           if (cat === 'template') counts.templates++
@@ -760,18 +760,18 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
           const dstBrand = targetBrandCode
           const fam = (cat === 'template' ? srcBrand.templates : srcBrand.fragments).find((f) => f.code === familyCode)
           const v = fam?.versions.find((x) => x.dir === versionDir)
-          if (!fam || !v) throw new Error(`系统${cat === 'template' ? '模板' : '片段'}版本「${familyCode}/${versionDir || 'default'}」不存在`)
+          if (!fam || !v) throw new AppError(`系统${cat === 'template' ? '模板' : '片段'}版本「${familyCode}/${versionDir || 'default'}」不存在`, 'io')
           await copyTree(`${brandCode}/${cat}/${familyCode}/${versionDir}`, `${dstBrand}/${cat}/${familyCode}/${name}`)
           await patchMeta(`${dstBrand}/${cat}/${familyCode}/${name}`, { version: versionNumberOf(name, v.meta.version) })
           if (cat === 'template') counts.templateVersions++
           else counts.fragmentVersions++
         } else {
-          throw new Error(`非法 kind: ${kind}`)
+          throw new AppError(`非法 kind: ${kind}`)
         }
         return counts
       }
       default:
-        throw new Error(`未实现: ${action}`)
+        throw new AppError(`未实现: ${action}`)
     }
   })
 

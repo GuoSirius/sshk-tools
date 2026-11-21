@@ -11,7 +11,7 @@ import { app } from 'electron'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync, rmSync } from 'node:fs'
-import { getEnvBool, getEnvStr, SSHK_DEV } from '@sshk/shared'
+import { AppError, getEnvBool, getEnvStr, SSHK_DEV } from '@sshk/shared'
 
 // dev 判据唯一化（P0-1 · D55）：不再用 app.isPackaged 判 dev（SSHK_DEV 含 preview）
 const isDev = SSHK_DEV
@@ -74,7 +74,7 @@ export function devUpdateMirrorFeedUrl(): string | null {
     const yml = readFileSync(join(app.getAppPath(), 'dev-app-update.yml'), 'utf8')
     const owner = /(?:^|\n)\s*owner\s*:\s*([^\s#]+)/.exec(yml)?.[1]
     const repo = /(?:^|\n)\s*repo\s*:\s*([^\s#]+)/.exec(yml)?.[1]
-    if (!owner || !repo) throw new Error('dev-app-update.yml 缺 owner/repo')
+    if (!owner || !repo) throw new AppError('dev-app-update.yml 缺 owner/repo')
     return `${mirror}/https://github.com/${owner}/${repo}/releases/latest/download`
   } catch (err) {
     console.warn('[sshk] dev 更新测试：镜像源解析失败（回落原生 GitHub）：', (err as Error).message)

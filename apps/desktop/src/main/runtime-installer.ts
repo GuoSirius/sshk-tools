@@ -2,8 +2,7 @@ import { createHash, verify as cryptoVerify } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { unzipSync } from 'fflate'
-import {
-  canLoadInMain,
+import { AppError, canLoadInMain,
   now,
   OFFICIAL_PUBLIC_KEYS,
   assertAllowedFiles,
@@ -12,8 +11,7 @@ import {
   type ImportedPublicKey,
   type InstalledPackageRecord,
   type InstallPreview,
-  type ToolDescriptor,
-} from '@sshk/shared'
+  type ToolDescriptor, } from '@sshk/shared'
 
 /**
  * 运行时工具包安装器（#35 阶段二核心）：
@@ -141,7 +139,7 @@ export type { InstallPreview }
 export function previewInstall(zipPath: string, deps: RuntimeDeps, opts: { builtinIds?: string[] } = {}): InstallPreview {
   const entries = unzipSync(readFileSync(zipPath))
   const manifestEntry = Object.entries(entries).find(([n, data]) => n === 'tool.manifest.json' && data instanceof Uint8Array)
-  if (!manifestEntry) throw new Error('包内缺少 tool.manifest.json')
+  if (!manifestEntry) throw new AppError('包内缺少 tool.manifest.json')
   const manifest = JSON.parse(Buffer.from(manifestEntry[1] as Uint8Array).toString('utf8')) as ToolDescriptor
   const id = manifest.id
   if (opts.builtinIds?.includes(id)) return { status: 'builtin-conflict', id }
@@ -171,25 +169,25 @@ export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { expli
     const slip = checkZipSlip(name)
     if (slip) structErrors.push(slip)
   }
-  if (structErrors.length) throw new Error(`包结构不合规：\n- ${structErrors.slice(0, 8).join('\n- ')}`)
+  if (structErrors.length) throw new AppError(`包结构不合规：\n- ${structErrors.slice(0, 8).join('\n- ')}`)
 
   // manifest + 契约校验
   const manifestEntry = files.find((f) => f.name === MANIFEST_FILE)
-  if (!manifestEntry) throw new Error('包内缺少 tool.manifest.json')
+  if (!manifestEntry) throw new AppError('包内缺少 tool.manifest.json')
   const manifestRaw = Buffer.from(manifestEntry.data).toString('utf8')
   let manifest: ToolDescriptor
   try {
     manifest = JSON.parse(manifestRaw) as ToolDescriptor
   } catch (err) {
-    throw new Error(`tool.manifest.json 不是合法 JSON：${(err as Error).message}`)
+    throw new AppError(`tool.manifest.json 不是合法 JSON：${(err as Error).message}`)
   }
   const contractErrors = validateToolPackage(manifest)
-  if (contractErrors.length) throw new Error(`契约校验失败：\n- ${contractErrors.join('\n- ')}`)
+  if (contractErrors.length) throw new AppError(`契约校验失败：\n- ${contractErrors.join('\n- ')}`)
   const pkg = manifest.package!
 
   // 内建/外部同 id 冲突（D-C）：已作为内置工具随应用分发的，完全禁止重复安装外部同名包
   if (opts.builtinIds?.includes(manifest.id)) {
-    throw new Error(`工具「${manifest.id}」已作为内置工具随本应用分发，禁止重复安装同名外部包；如需替换请在「工具与权限」中先禁用内置版本`)
+    throw new AppError(`工具「${manifest.id}」已作为内置工具随本应用分发，禁止重复安装同名外部包；如需替换请在「工具与权限」中先禁用内置版本`, 'permission')
   }
 
   // L2：签名（可选；main 必须签名——validateToolPackage 已卡）
@@ -217,7 +215,7 @@ export function installPackage(zipPath: string, deps: RuntimeDeps, opts: { expli
       warnings.push(`签名校验未通过：${result.reason ?? '未知原因'}；按 utility 沙箱安装`)
     }
   } else if (pkg.sandbox === 'main') {
-    throw new Error('该包申请 main 权限但包内没有 SIGNATURE 签名文件；未签名包只能以 utility 沙箱安装')
+    throw new AppError('该包申请 main 权限但包内没有 SIGNATURE 签名文件；未签名包只能以 utility 沙箱安装', 'permission')
   } else {
     warnings.push('未签名包：以 utility 沙箱安装，能力受限')
   }
@@ -263,14 +261,14 @@ export function listInstalled(deps: RuntimeDeps): InstalledPackageRecord[] {
 /** 读取已安装包的渲染层产物（编译后 ESM，默认导出组件）；路径受安装目录约束 */
 export function readRenderer(packageId: string, deps: RuntimeDeps): string {
   const record = readInstalled(deps)[packageId]
-  if (!record) throw new Error('运行时包 ' + packageId + ' 未安装')
+  if (!record) throw new AppError('运行时包 ' + packageId + ' 未安装')
   const manifestPath = join(runtimeRoot(deps), PACKAGES_DIR, record.id, record.version, 'tool.manifest.json')
-  if (!existsSync(manifestPath)) throw new Error('运行时包 ' + record.id + ' 清单缺失')
+  if (!existsSync(manifestPath)) throw new AppError('运行时包 ' + record.id + ' 清单缺失')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ToolDescriptor
   const rel = manifest.plugin?.renderer
-  if (!rel) throw new Error('运行时包 ' + record.id + ' 未声明渲染层')
+  if (!rel) throw new AppError('运行时包 ' + record.id + ' 未声明渲染层')
   const file = join(runtimeRoot(deps), PACKAGES_DIR, record.id, record.version, rel)
-  if (!existsSync(file)) throw new Error('渲染层文件缺失：' + rel)
+  if (!existsSync(file)) throw new AppError('渲染层文件缺失：' + rel, 'io')
   return readFileSync(file, 'utf8')
 }
 

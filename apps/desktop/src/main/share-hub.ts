@@ -9,8 +9,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { powerMonitor } from 'electron'
 import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
-import {
-  IPC_CHANNELS,
+import { AppError, IPC_CHANNELS,
   TOOL_IDS,
   type   ShareRouteInput,
   type ShareHubMount,
@@ -19,8 +18,7 @@ import {
   type ShareContentResolverResult,
   type ShareLogsQuery,
   type ShareAccessLog,
-  format,
-} from '@sshk/shared'
+  format, } from '@sshk/shared'
 import type { ConfigService, Repository, ShareLogDoc } from '@sshk/repository'
 import { handleOk } from './ipc-wrap'
 import { logger } from './logger'
@@ -269,7 +267,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
     if (caller && caller !== '*') {
       const route = hub.listRoutes().find((r) => r.id === id)
       if (!route) return false
-      if (route.toolId !== caller) throw new Error('无权撤销其它工具的分享路由')
+      if (route.toolId !== caller) throw new AppError('无权撤销其它工具的分享路由', 'permission')
     }
     return hub.revoke(id)
   })
@@ -278,8 +276,8 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
     const caller = resolveToolId(toolId)
     if (caller && caller !== '*') {
       const route = hub.listRoutes().find((r) => r.id === id)
-      if (!route) throw new Error('分享路由不存在')
-      if (route.toolId !== caller) throw new Error('无权续期其它工具的分享路由')
+      if (!route) throw new AppError('分享路由不存在', 'io')
+      if (route.toolId !== caller) throw new AppError('无权续期其它工具的分享路由', 'permission')
     }
     return hub.renew(id, ttlHours, mode, patch)
   })
@@ -312,7 +310,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
 
   handleOk(IPC_CHANNELS.shareHubLogs, async (_e, q?: ShareLogsQuery) => {
     const repo = hostRepository
-    if (!repo) throw new Error('数据层未就绪，无法读取访问日志')
+    if (!repo) throw new AppError('数据层未就绪，无法读取访问日志', 'io')
     const routeIds = q?.toolId?.trim() ? routeIdsOf(q.toolId.trim()) : undefined
     // 工具过滤下无匹配路由 → 直接空结果（避免 $in 空数组语义歧义）
     if (routeIds && routeIds.length === 0) return { rows: [], total: 0 }
@@ -327,7 +325,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
 
   handleOk(IPC_CHANNELS.shareHubExportLogs, async (_e, q?: ShareLogsQuery) => {
     const repo = hostRepository
-    if (!repo) throw new Error('数据层未就绪，无法导出访问日志')
+    if (!repo) throw new AppError('数据层未就绪，无法导出访问日志')
     const routeIds = q?.toolId?.trim() ? routeIdsOf(q.toolId.trim()) : undefined
     if (routeIds && routeIds.length === 0) return ''
     const query = buildLogQuery(q, routeIds)
@@ -349,7 +347,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
 
   handleOk(IPC_CHANNELS.shareHubDeleteLogs, async (_e, ids: string[]) => {
     const repo = hostRepository
-    if (!repo) throw new Error('数据层未就绪，无法删除访问日志')
+    if (!repo) throw new AppError('数据层未就绪，无法删除访问日志')
     const list = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string' && x) : []
     if (!list.length) return 0
     // 尚未落库的队列记录同步移除，防止删除后又被 flush 写回
@@ -359,7 +357,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
 
   handleOk(IPC_CHANNELS.shareHubClearLogs, async () => {
     const repo = hostRepository
-    if (!repo) throw new Error('数据层未就绪，无法清空访问日志')
+    if (!repo) throw new AppError('数据层未就绪，无法清空访问日志')
     return repo.removeWhere('shareLogs', {})
   })
 
@@ -370,7 +368,7 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
       case 'restart': return hub.restart()
       case 'stop': await hub.stop(); return { port: 0 }
       case 'clear': await hub.clear(); return { port: 0 }
-      default: throw new Error(`未知的分享服务操作：${String(action)}`)
+      default: throw new AppError(`未知的分享服务操作：${String(action)}`)
     }
   })
 }
