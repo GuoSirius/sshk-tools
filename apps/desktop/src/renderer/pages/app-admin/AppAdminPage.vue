@@ -52,44 +52,76 @@ const emit = defineEmits<{ 'create-tool': [] }>()
 provideToolId('file-manager')
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
-// 需求（2026-11-22）：一级顺序调整为 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）
+// 需求（2026-11-22）：一级顺序 = 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）
+
+// 菜单图标（需求 2026-11-22：全部菜单项显式带图标， SidebarMenu stroke 线条风格）：
+// - 复用改版前三工具 manifest 的菜单图标（files/contents/profiles/usage/logs/service/mounts/proxies
+//   + gear=工具设置）与 SidebarMenu 内置集改版前实际显示的兜底（providers 堆叠 / chat 气泡）；
+// - 旧设置抽屉（1d1665b 前删）的 EP 图标转译同风格 path：常规=gear、系统与数据=趋势线、
+//   工具与权限=扳手（Feather tool）、关于=info；应用设置组=滑杆（新设计）；
+// - 撞形处重新设计以区分层级：文件系统（组=文件夹）/模型管理组（providers=堆叠）=芯片、
+//   路由管理（manifest 原为文件夹、与文件管理组撞）=S 形路线。
+const MENU_ICONS = {
+  filesGroup: 'M3 7V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM3 7h18',
+  files: 'M3 5h18v14H3zM3 9h18M10 9v10M13 12h4M13 15h4',
+  contents: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
+  profiles: 'M12 15V4M8 8l4-4 4 4M4 20h16',
+  modelsGroup: 'M9 9h6v6H9zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4',
+  providers: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+  chat: 'M4 5h16v11H9l-5 4z',
+  usage: 'M4 20h16M6 20V10M11 20V4M16 20v-7M21 20V8',
+  shareGroup: 'M18 5a3 3 0 100 6 3 3 0 100-6zM6 10a3 3 0 100 6 3 3 0 100-6zM18 15a3 3 0 100 6 3 3 0 100-6zM8.6 13.7l6.8 3.9M15.4 6.5L8.6 10.3',
+  routes: 'M4 18h5c4 0 4-12 8-12h3M4 18h.01M20 6h.01',
+  logs: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  service: 'M7 17h10a3.5 3.5 0 00.6-6.95A5 5 0 007.9 8.6 4 4 0 007 17z',
+  mounts: 'M9.5 13.5l5-5M8 12l-2.2 2.2a3.3 3.3 0 104.7 4.7L12.7 16.7M16 12l2.2-2.2a3.3 3.3 0 10-4.7-4.7L11.3 7.3',
+  proxies: 'M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3',
+  settingsGroup: 'M3 7h8M11 7a2 2 0 104 0 2 2 0 10-4 0M15 7h6M3 17h4M7 17a2 2 0 104 0 2 2 0 10-4 0M11 17h10',
+  general: 'M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 3.1l2-.6-1-3.4-2 .6a8 8 0 00-1.2-1.2l.6-2-3.4-1-.6 2a8 8 0 00-1.7 0l-.6-2-3.4 1 .6 2a8 8 0 00-1.2 1.2l-2-.6-1 3.4 2 .6a8 8 0 000 1.7l-2 .6 1 3.4 2-.6c.4.4.8.8 1.2 1.2l-.6 2 3.4 1 .6-2a8 8 0 001.7 0l.6 2 3.4-1-.6-2c.4-.4.8-.8 1.2-1.2l2 .6 1-3.4-2-.6a8 8 0 000-1.7z',
+  system: 'M3 20h18M5 16l4-5 4 3 6-8',
+  tools: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z',
+  about: 'M12 2a10 10 0 100 20 10 10 0 100-20zM12 16v-4M12 8h.01',
+  config: 'M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 3.1l2-.6-1-3.4-2 .6a8 8 0 00-1.2-1.2l.6-2-3.4-1-.6 2a8 8 0 00-1.7 0l-.6-2-3.4 1 .6 2a8 8 0 00-1.2 1.2l-2-.6-1 3.4 2 .6a8 8 0 000 1.7l-2 .6 1 3.4 2-.6c.4.4.8.8 1.2 1.2l-.6 2 3.4 1 .6-2a8 8 0 001.7 0l.6 2 3.4-1-.6-2c.4-.4.8-.8 1.2-1.2l2 .6 1-3.4-2-.6a8 8 0 000-1.7z',
+} as const
+
 const APP_MENUS: ToolMenu[] = [
   {
     id: 'files',
     label: '文件管理',
-    icon: 'M3 7V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM3 7h18',
+    icon: MENU_ICONS.filesGroup,
     children: [
-      { id: 'files', label: '文件系统' },
-      { id: 'contents', label: '内容管理' },
-      { id: 'profiles', label: '通道配置' },
-      { id: 'fileconfig', label: '工具设置' },
+      { id: 'files', label: '文件系统', icon: MENU_ICONS.files },
+      { id: 'contents', label: '内容管理', icon: MENU_ICONS.contents },
+      { id: 'profiles', label: '通道配置', icon: MENU_ICONS.profiles },
+      { id: 'fileconfig', label: '工具设置', icon: MENU_ICONS.config },
     ],
   },
   {
     id: 'models',
     label: '模型管理',
-    icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+    icon: MENU_ICONS.modelsGroup,
     children: [
-      { id: 'providers', label: '模型配置' },
-      { id: 'chat', label: '对话调试' },
-      { id: 'usage', label: '用量统计' },
-      { id: 'modelconfig', label: '工具配置' },
+      { id: 'providers', label: '模型配置', icon: MENU_ICONS.providers },
+      { id: 'chat', label: '对话调试', icon: MENU_ICONS.chat },
+      { id: 'usage', label: '用量统计', icon: MENU_ICONS.usage },
+      { id: 'modelconfig', label: '工具配置', icon: MENU_ICONS.config },
     ],
   },
   {
     id: 'share',
     label: '分享管理',
-    icon: 'M18 5a3 3 0 100 6 3 3 0 100-6zM6 10a3 3 0 100 6 3 3 0 100-6zM18 15a3 3 0 100 6 3 3 0 100-6zM8.6 13.7l6.8 3.9M15.4 6.5L8.6 10.3',
+    icon: MENU_ICONS.shareGroup,
     children: [
-      { id: 'routes', label: '路由管理' },
-      { id: 'logs', label: '访问日志' },
+      { id: 'routes', label: '路由管理', icon: MENU_ICONS.routes },
+      { id: 'logs', label: '访问日志', icon: MENU_ICONS.logs },
       {
         id: 'shareconfig',
         label: '工具设置',
+        icon: MENU_ICONS.config,
         children: [
-          { id: 'service', label: '服务配置' },
-          { id: 'mounts', label: '挂载管理' },
-          { id: 'proxies', label: '代理管理' },
+          { id: 'service', label: '服务配置', icon: MENU_ICONS.service },
+          { id: 'mounts', label: '挂载管理', icon: MENU_ICONS.mounts },
+          { id: 'proxies', label: '代理管理', icon: MENU_ICONS.proxies },
         ],
       },
     ],
@@ -97,11 +129,12 @@ const APP_MENUS: ToolMenu[] = [
   {
     id: 'settings',
     label: '应用设置',
+    icon: MENU_ICONS.settingsGroup,
     children: [
-      { id: 'general', label: '常规设置' },
-      { id: 'system', label: '系统与数据' },
-      { id: 'tools', label: '工具与权限' },
-      { id: 'about', label: '关于应用' },
+      { id: 'general', label: '常规设置', icon: MENU_ICONS.general },
+      { id: 'system', label: '系统与数据', icon: MENU_ICONS.system },
+      { id: 'tools', label: '工具与权限', icon: MENU_ICONS.tools },
+      { id: 'about', label: '关于应用', icon: MENU_ICONS.about },
     ],
   },
 ]
