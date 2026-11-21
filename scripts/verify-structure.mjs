@@ -96,16 +96,37 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   // P4-8c（C-11）：file-manager/share-manager/model-manager = 应用模块 id（verify-steps 直达目标，
   // VerifyGuidePage 映射到应用管理页）；原 model-console 工具 id 已退役
   const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-manager', 'file-manager', 'share-manager', 'share'])
+  // P8-4（A7/CR-08 常量化）：target 允许两种形态——①字面量（settings 分组名 / 'share' / app.* / tools.*）；
+  // ②常量引用（TOOL_IDS.* / TEMPLATE_TOOL_ID = shared/constants.ts；MODULE_IDS.* = verify-steps.ts 顶部单一定义点）。
+  // 白名单「值」不变；常量引用按成员名校验拼写（值本身由 verify-steps.test.ts 字面量集合锚定），漏拼成员名同样红
+  const KNOWN_REF_ROOTS = new Set(['TEMPLATE_TOOL_ID'])
+  const KNOWN_REF_MEMBERS = {
+    TOOL_IDS: new Set(['edmStudio', 'badgeStudio', 'modelConsole', 'fileManager']),
+    MODULE_IDS: new Set(['fileManager', 'modelManager', 'shareManager']),
+  }
   // P5-2（C-10）：verify-steps 外迁宿主 apps/desktop/src/shared/（shared 回归纯契约）
   const vsPath = join(ROOT, 'apps/desktop/src/shared/verify-steps.ts')
   if (existsSync(vsPath)) {
     const content = readFileSync(vsPath, 'utf8')
-    for (const m of content.matchAll(/target: '([^']+)'/g)) {
-      const t = m[1]
-      // type: 'settings' 的 target 是设置抽屉分组名（常规/系统与数据/工具与权限），route 的 target 是工具 id
+    for (const m of content.matchAll(/target: (?:(?:'([^']+)')|([A-Z][A-Za-z0-9_$.]*))/g)) {
+      // type: 'settings' 的 target 是设置抽屉分组名（常规/系统与数据/工具与权限），route 的 target 是工具/模块 id
       const settingsNames = new Set(['常规', '系统与数据', '工具与权限', '分享服务', '关于应用', '常规设置'])
-      if (!KNOWN.has(t) && !settingsNames.has(t) && !t.startsWith('app.') && !t.startsWith('tools.')) {
-        errors.push(`verify-steps target 违规：'${t}' 不是在册工具 id 也非设置键（KNOWN 白名单见 verify-structure.mjs）`)
+      let bad = false
+      let label = ''
+      if (m[1]) {
+        const t = m[1]
+        bad = !KNOWN.has(t) && !settingsNames.has(t) && !t.startsWith('app.') && !t.startsWith('tools.')
+        label = `'${t}'`
+      } else if (m[2]) {
+        const parts = m[2].split('.')
+        if (!KNOWN_REF_ROOTS.has(m[2])) {
+          const [root, member] = parts
+          bad = !(root in KNOWN_REF_MEMBERS) || !member || !KNOWN_REF_MEMBERS[root].has(member)
+        }
+        label = m[2]
+      }
+      if (bad) {
+        errors.push(`verify-steps target 违规：${label} 不是在册工具/模块 id 常量引用也非设置键（KNOWN 白名单见 verify-structure.mjs）`)
       }
     }
   }

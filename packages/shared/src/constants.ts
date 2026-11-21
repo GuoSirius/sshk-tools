@@ -21,6 +21,12 @@ export const TOOL_IDS = {
 } as const
 
 /**
+ * 纯渲染模板工具 id（P8-4 · A7/CR-08：verify-steps 等跨文件静态引用统一走此常量，禁散写字面量）。
+ * template-tool 未入上方 TOOL_IDS：它不参与按工具枚举的迁移/通道扫描链，仅作静态引用常量。
+ */
+export const TEMPLATE_TOOL_ID = 'template-tool'
+
+/**
  * 工具配置键统一拼接（CR-25③ · P0-7）：`tools.<toolId>.<key>`。
  * 此前 badge-studio / model-console 各自重复实现同名 configKey()，格式漂移无门禁。
  */
