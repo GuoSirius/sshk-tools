@@ -277,8 +277,9 @@ class FsTransferStore {
   }
 }
 
-/** 传输队列引擎：任务表 + 按通道并发调度 + 进度节流推送 + 协作式暂停 + 分片/续传 + 持久化（plans/10） */
-class FsTransferEngine {
+/** 传输队列引擎：任务表 + 按通道并发调度 + 进度节流推送 + 协作式暂停 + 分片/续传 + 持久化（plans/10）。
+ *  export 仅供状态机单测（fs-engine.test.ts）注入 mock driver 构造 conflict/pause/cancel 矩阵；生产入口仍是 FsRuntime */
+export class FsTransferEngine {
   private readonly tasks = new Map<string, FsTransferTask>()
   private readonly queued: string[] = []
   private readonly runningByProfile = new Map<string, number>()
@@ -682,6 +683,12 @@ class FsTransferEngine {
           this.setStatus(t, 'canceled')
           return
         }
+        if (msg.startsWith(`__fs_conflict__:${t.id}:`)) {
+          // P1-1（A1/Q-01 方案A）：冲突走信号抛出——runXxx 内直接 setStatus 会被
+          // execute 成功路径的无条件 setStatus('success') 覆盖（事故：conflict 秒变 success）
+          this.setStatus(t, 'conflict', { error: msg.slice(`__fs_conflict__:${t.id}:`.length), speed: undefined, pausing: undefined })
+          return
+        }
         if (attempt === 0 && !this.canceled.has(t.id) && !this.pauseRequestedIds.has(t.id)) {
           logger.warn('upload', `fs 传输首次失败，自动重试：${t.name}：${msg}`)
           continue
@@ -702,8 +709,7 @@ class FsTransferEngine {
     // 冲突：远端已有同名文件 → 挂起等确认
     const stat = await driver.stat(String(t.remotePath ?? ''))
     if (stat.exists && !stat.isDir && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: '目标目录已有同名文件：任务已暂停、尚未上传。点「覆盖」=覆盖远端同名文件继续上传；点「停止」=跳过此文件' })
-      return
+      throw new AppError(`__fs_conflict__:${t.id}:目标目录已有同名文件：任务已暂停、尚未上传。点「覆盖」=覆盖远端同名文件继续上传；点「停止」=跳过此文件`)
     }
     this.overwrite.delete(t.id)
     // 分片：阈值（默认 50MB）以上 + 目标驱动支持 multipart（OSS/S3），其余单流直传
@@ -887,8 +893,7 @@ class FsTransferEngine {
     if (!stat.exists || stat.isDir) throw new AppError('远端文件不存在或为目录', 'io')
     t.size = stat.size ?? 0
     if (existsSync(destPath) && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: '本地已有同名文件：任务已暂停、尚未写入。点「覆盖」=覆盖本地文件；点「停止」=跳过此文件' })
-      return
+      throw new AppError(`__fs_conflict__:${t.id}:本地已有同名文件：任务已暂停、尚未写入。点「覆盖」=覆盖本地文件；点「停止」=跳过此文件`)
     }
     this.overwrite.delete(t.id)
     // 分片下载：阈值以上 + 驱动具备 Range 能力（local/SFTP/OSS/S3）；不支持 Range 的通道回落单流
@@ -1019,8 +1024,7 @@ class FsTransferEngine {
     // 冲突：目标通道已有同名文件 → 挂起等确认
     const destStat = await destDriver.stat(dest)
     if (destStat.exists && !destStat.isDir && !this.overwrite.has(t.id)) {
-      this.setStatus(t, 'conflict', { error: '目标通道已有同名文件：任务已暂停、尚未复制。点「覆盖」=覆盖目标同名文件；点「停止」=跳过此文件' })
-      return
+      throw new AppError(`__fs_conflict__:${t.id}:目标通道已有同名文件：任务已暂停、尚未复制。点「覆盖」=覆盖目标同名文件；点「停止」=跳过此文件`)
     }
     this.overwrite.delete(t.id)
     const tmpFile = join(app.getPath('temp'), `fsx-${t.id}.part`)
