@@ -20,7 +20,7 @@ import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import AppAdminPage from './pages/app-admin/AppAdminPage.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
-import VerifyGuidePage from './components/VerifyGuidePage.vue'
+import VerifyGuidePage from './pages/verify-guide/VerifyGuidePage.vue'
 import { promptSecret } from './components/secret-prompt'
 
 const { visibleTools: catalogTools, byId, accept: acceptCatalog, refresh: refreshCatalog } = useToolCatalog()
