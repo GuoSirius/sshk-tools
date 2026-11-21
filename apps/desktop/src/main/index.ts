@@ -32,7 +32,7 @@ import { collectDiagnostics, exportDiagnosisZip } from './diagnostics'
 import { collectToolHealth, toolRecentErrors } from './health'
 import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoCheck, saveSession } from './verify-sessions'
 import type { VerifySession } from '@sshk/shared'
-import { exportPreset, importPreset, type PresetSecretStore } from './presets'
+import { exportPreset, importPreset, type PresetSecretStore } from './modules/llm/presets'
 import { recordUsage, collectUsageStats, clearUsage } from './usage'
 import { contentList, contentGet, contentSave, contentRemove, makeContentResolver, makeContentListResolver } from './content'
 import { exportBackup } from '@sshk/backup'
@@ -47,7 +47,7 @@ import { FsRuntime } from './fs'
 import { installLocalResHandler } from './local-res'
 import { APP_RENDERER_URL, installAppProtocolHandler, registerPrivilegedSchemes } from './renderer-protocol'
 import { allowWindowDrop } from './win32-drop'
-import { createShareHubHost, registerShareHubIpc, type ShareHubHost, type ShareHubGuards } from './share-hub'
+import { createShareHubHost, registerShareHubIpc, type ShareHubHost, type ShareHubGuards } from './modules/share/share-hub'
 
 /** 必须在 app ready 前注册：localres:// 预览协议 + app:// 渲染层加载协议（特权一次性注册） */
 registerPrivilegedSchemes()

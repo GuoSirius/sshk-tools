@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPreset, mergePreset, stripSensitiveDeep, type PresetConfigStore, type PresetSecretStore } from './presets'
+import { buildPreset, mergePreset, stripSensitiveDeep, type PresetConfigStore, type PresetSecretStore } from './modules/llm/presets'
 
 function store(initial: Record<string, unknown> = {}): PresetConfigStore & { data: Record<string, unknown> } {
   const data: Record<string, unknown> = { ...initial }

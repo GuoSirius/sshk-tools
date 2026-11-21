@@ -449,8 +449,8 @@ scripts/
 | **P3-1** | index.ts 拆分 | A1 六模块：window/tray/catalog/migrations/updater/compact + `ipc/` 目录（registerIpc 600 行拆 config/dev/update/llm/share/upload/runtime/verify/tools） | B14/B20/O2 | L |
 | **P3-2** ✅ 已完成（LLM 域拆 `llm-service.ts`：readProviders/findProvider/listProviders/chatByProvider/listModelsByProvider 经 createLlmService 工厂装配，services.ts 组装进 host；secrets-store.ts 已在 P1-2 落位；services.ts 名字保留作装配入口=密钥/备份面/视觉直连/OCR，IPC 契约零变化） | services.ts 拆分改名 | 第一刀：`secrets-store.ts`（P1-2 产物）+ `llm-service.ts` + 其余按内容归位（O6/N5） | B18/B31 | M |
 | **P3-3** | fs.ts → modules/file | 2047 行拆 `modules/file/{browser,transfer,archive,media,metadata}`；IPC 通道名不变（渲染层零感知）；`fs:transfer:control` 等契约不动 | B12-T3/B30/CF-3/Q-03 | L |
-| **P3-4** | presets 归位 | presets.ts + seedDefaultProviders → `modules/llm/` | B12-T4 | S |
-| **P3-5** | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
+| **P3-4** ✅ 已完成（presets.ts git mv → `main/modules/llm/`，index.ts/presets.test.ts import 随改；seedDefaultProviders 按 P3-1 批次落 migrations.ts） | presets 归位 | presets.ts + seedDefaultProviders → `modules/llm/` | B12-T4 | S |
+| **P3-5** ✅ 已完成（share-hub.ts git mv → `main/modules/share/`；头注释补「生命周期=宿主常驻（Q-22 终审），分享管理=应用模块」；迁移文件相对 import 随路径修正） | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
 | **P4-1** | 顶栏改版 + App.vue 瘦身 | 彩色胶囊按钮组（C-7）；更多下拉三段；关于应用轻弹框；App.vue 抽 `AppHeader.vue` + useUpdateBanner/useNewToolScan/useRuntimeComponent（CR-42 首刀） | 新想法#2/#3、CR-42 | M |
 | **P4-2** | AppAdminPage 壳 | 页面骨架 + 左菜单（SidebarMenu 复用/折叠）+ hash 路由 `#/app/...` + 返回桌面协议 + 桌面入口按钮 | 新想法#4 | M |
 | **P4-3** | 应用设置页化 | **4 页（规整后）**：GeneralPage（更名「常规设置」；开发者模式行保留）/SystemDataPage/ToolsPermissionPage/AboutPage（更名「关于应用」）；**分享页取消**（并入分享管理，P4-6）；**不再新增文件与传输页**（传输参数并入文件管理工具设置，P4-4）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑；**迁即重构**：4 页按规范清单直接重写（FormGrid/FormHint/分轨确认/留白 token），禁原样搬运 | 新想法#5、C-6、二/三轮规整、#155、§六 | L |
