@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
  * 应用管理壳页（P4-2 · 新想法#4，总计划 §五.4 / §五.5 v1.3）：
- * - 页头：返回桌面（与 goHome 同款 router.push('/')）+ 标题 + 右侧折叠按钮；
+ * - 页头行块已删（2026-11-22 需求：返回桌面与顶栏「桌面」按钮重复、标题冗余）；折叠钮移至左菜单底部固定位；
  * - 左菜单复用 SidebarMenu（递归渲染，全局 .side-* 样式）；菜单树按 §五.5 v1.3 定稿
- *   硬编码在页面内（非 manifest 驱动）；
- * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
- *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
+ *   硬编码在页面内（非 manifest 驱动）；2026-11-22 起一级序 = 文件/模型/分享/应用设置（沉底），
+ *   分组默认全部折叠，激活页祖先链自动展开；
+ * - hash 路由 /app/:module?/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
+ *   未指定或指定无效时按「第一个有效菜单页」落点并 router.replace 规整 URL；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
  *   文件管理三页（P4-4）/模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件
  *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，文件管理子树内页面经
@@ -15,9 +16,9 @@
  *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
  *   应用本体不再 import 工具代码（边界铁律 §五.1）。
  */
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Expand, Fold } from '@element-plus/icons-vue'
+import { Expand, Fold } from '@element-plus/icons-vue'
 import { provideToolId } from '@sshk/ui-kit'
 import type { ToolMenu } from '@sshk/shared'
 import SidebarMenu from '../../components/SidebarMenu.vue'
@@ -51,17 +52,8 @@ const emit = defineEmits<{ 'create-tool': [] }>()
 provideToolId('file-manager')
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
+// 需求（2026-11-22）：一级顺序调整为 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）
 const APP_MENUS: ToolMenu[] = [
-  {
-    id: 'settings',
-    label: '应用设置',
-    children: [
-      { id: 'general', label: '常规设置' },
-      { id: 'system', label: '系统与数据' },
-      { id: 'tools', label: '工具与权限' },
-      { id: 'about', label: '关于应用' },
-    ],
-  },
   {
     id: 'files',
     label: '文件管理',
@@ -102,35 +94,56 @@ const APP_MENUS: ToolMenu[] = [
       },
     ],
   },
+  {
+    id: 'settings',
+    label: '应用设置',
+    children: [
+      { id: 'general', label: '常规设置' },
+      { id: 'system', label: '系统与数据' },
+      { id: 'tools', label: '工具与权限' },
+      { id: 'about', label: '关于应用' },
+    ],
+  },
 ]
 
 /** 各模块默认页（URL 只带模块段 / 页段非法时回退） */
 const MODULE_DEFAULT_PAGE: Record<string, string> = { settings: 'general', files: 'files', models: 'providers', share: 'routes' }
 
-// 页面 id → 所属模块（含三级页），selectItem 反查路由段用；父分组 id 不入表
+// 页面 id → 所属模块（含三级页）+ 祖先分组链（激活页自动展开用）；父分组 id 不入 PAGE_MODULE
 const PAGE_MODULE: Record<string, string> = {}
+const PAGE_CHAIN: Record<string, string[]> = {}
 for (const group of APP_MENUS) {
-  const walk = (items: ToolMenu[]): void => {
+  const walk = (items: ToolMenu[], chain: string[]): void => {
     for (const item of items) {
-      if (item.children?.length) { walk(item.children); continue }
+      if (item.children?.length) { walk(item.children, [...chain, item.id]); continue }
       PAGE_MODULE[item.id] = group.id
+      PAGE_CHAIN[item.id] = chain
     }
   }
-  walk(group.children ?? [])
+  walk(group.children ?? [], [group.id])
 }
 
 const route = useRoute()
 const router = useRouter()
 // route.params 变化经 computed 响应式同步 active（watch 显式化与 computed 等价，这里取纯推导）
+// 需求（2026-11-22）：未指定或指定无效时打开第一个有效菜单页（菜单序首组的首个有效页）
+const firstModuleId = APP_MENUS[0]?.id ?? 'settings'
 const activeModule = computed(() => {
   const m = route.params.module as string | undefined
-  return m !== undefined && m in MODULE_DEFAULT_PAGE ? m : 'settings'
+  return m !== undefined && m in MODULE_DEFAULT_PAGE ? m : firstModuleId
 })
 const activePage = computed<string>(() => {
   const p = route.params.page as string | undefined
   if (p !== undefined && PAGE_MODULE[p] === activeModule.value) return p
   return MODULE_DEFAULT_PAGE[activeModule.value] ?? 'general'
 })
+
+// 落点规整（2026-11-22 需求）：/app 裸路径或指定无效（模块/页面段非法）时，按「第一个有效菜单页」
+// 解析并把 URL 规整为 /app/<module>/<page>（replace 不留历史）；指定有效时 URL 原样保留
+const canonicalPath = computed(() => `/app/${activeModule.value}/${activePage.value}`)
+watch(canonicalPath, (target) => {
+  if (route.fullPath !== target) void router.replace(target)
+}, { immediate: true })
 
 /** 页面标题 + 说明（仅三模块过渡页用；应用设置 4 页 P4-3 起自管页头，不在此登记） */
 const PAGE_META: Record<string, { title: string; description: string }> = {
@@ -150,62 +163,57 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
 }
 const activeMeta = computed(() => PAGE_META[activePage.value] ?? { title: '应用管理', description: '' })
 
-// ── 左菜单状态：默认全部分组展开（▲ 结构一眼可见）；分组开合仅影响展示 ──
-function collectGroupIds(items: ToolMenu[]): string[] {
-  const ids: string[] = []
-  for (const item of items) {
-    if (item.children?.length) ids.push(item.id, ...collectGroupIds(item.children))
-  }
-  return ids
-}
+// ── 左菜单状态：默认全部分组折叠（2026-11-22 需求）；激活页变化时自动展开其祖先分组链，
+//    让「指定的菜单及页面」可见，其余分组不受影响；分组开合仅影响展示 ──
 function toggleIn(target: Ref<Set<string>>, id: string): void {
   const next = new Set(target.value)
   if (next.has(id)) next.delete(id)
   else next.add(id)
   target.value = next
 }
-const openIds = ref(new Set(collectGroupIds(APP_MENUS)))
+const openIds = ref(new Set<string>())
 function toggleGroup(id: string): void { toggleIn(openIds, id) }
+watch(activePage, (page) => {
+  const chain = PAGE_CHAIN[page]
+  if (!chain?.length || chain.every((id) => openIds.value.has(id))) return
+  const next = new Set(openIds.value)
+  for (const id of chain) next.add(id)
+  openIds.value = next
+}, { immediate: true })
 function selectItem(pageId: string): void {
   const moduleId = PAGE_MODULE[pageId]
   if (moduleId) void router.push(`/app/${moduleId}/${pageId}`)
 }
 
 const collapsed = ref(false)
-function goBackDesktop(): void {
-  void router.push('/')
-}
 </script>
 
 <template>
   <div class="admin-page">
-    <header class="admin-bar">
-      <button class="admin-back" type="button" @click="goBackDesktop">
-        <el-icon :size="14"><ArrowLeft /></el-icon>
-        <span>返回桌面</span>
-      </button>
-      <strong class="admin-title">应用管理</strong>
-      <span class="app-spacer" />
-      <button
-        class="admin-collapse"
-        type="button"
-        :title="collapsed ? '展开菜单' : '收起菜单'"
-        :aria-label="collapsed ? '展开菜单' : '收起菜单'"
-        @click="collapsed = !collapsed"
-      >
-        <el-icon :size="16"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
-      </button>
-    </header>
-
     <div class="admin-body">
       <aside class="admin-side" :class="{ collapsed }">
-        <SidebarMenu
-          :items="APP_MENUS"
-          :active="activePage"
-          :open-ids="openIds"
-          :toggle-group="toggleGroup"
-          :select-item="selectItem"
-        />
+        <div class="admin-side-menu">
+          <SidebarMenu
+            :items="APP_MENUS"
+            :active="activePage"
+            :open-ids="openIds"
+            :toggle-group="toggleGroup"
+            :select-item="selectItem"
+          />
+        </div>
+        <!-- 需求（2026-11-22）：展开/收起固定在左菜单底部（随侧栏收窄为图标轨，仍可再展开） -->
+        <div class="admin-side-foot">
+          <button
+            class="admin-side-toggle"
+            type="button"
+            :title="collapsed ? '展开菜单' : '收起菜单'"
+            :aria-label="collapsed ? '展开菜单' : '收起菜单'"
+            @click="collapsed = !collapsed"
+          >
+            <el-icon :size="16"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
+            <span v-if="!collapsed" class="admin-side-toggle-text">收起菜单</span>
+          </button>
+        </div>
       </aside>
 
       <section class="admin-content">
@@ -268,21 +276,44 @@ function goBackDesktop(): void {
   display: flex;
   flex-direction: column;
 }
-.admin-bar {
-  flex: none;
+.admin-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--sshk-border);
 }
-.admin-back,
-.admin-collapse {
+/* 左菜单：纵向 flex——菜单区滚动、底部固定展开/收起钮（2026-11-22 需求，原在页头行块内） */
+.admin-side {
+  flex: none;
+  width: 216px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--sshk-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width .18s ease, padding .18s ease;
+}
+.admin-side-menu {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  overflow-y: auto;
+  transition: opacity .18s ease;
+}
+.admin-side-foot {
+  flex: none;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--sshk-border);
+  display: flex;
+}
+.admin-side-toggle {
+  flex: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid var(--sshk-border);
   border-radius: 6px;
   background: transparent;
@@ -291,33 +322,23 @@ function goBackDesktop(): void {
   cursor: pointer;
   transition: color .16s ease, border-color .16s ease, background .16s ease;
 }
-.admin-back:hover {
+.admin-side-toggle:hover {
   color: var(--sshk-accent);
   border-color: var(--sshk-accent);
   background: color-mix(in srgb, var(--sshk-accent) 10%, transparent);
 }
-.admin-collapse .el-icon { flex: none; }
-.admin-title { font-size: 14px; font-weight: 600; }
-.admin-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-.admin-side {
-  flex: none;
-  width: 216px;
-  padding: 10px 8px;
-  border-right: 1px solid var(--sshk-border);
-  overflow: hidden;
-  overflow-y: auto;
-  transition: width .18s ease, padding .18s ease, opacity .18s ease;
-}
+.admin-side-toggle .el-icon { flex: none; }
+.admin-side-toggle-text { white-space: nowrap; }
+/* 收起：不缩没（宽 0 会连折叠钮一起消失）——保留窄轨放底部展开钮，菜单区隐藏 */
 .admin-side.collapsed {
-  width: 0;
-  padding: 10px 0;
-  opacity: 0;
-  border-right-color: transparent;
+  width: 44px;
+  padding: 10px 4px;
 }
+.admin-side.collapsed .admin-side-menu {
+  opacity: 0;
+  pointer-events: none;
+}
+.admin-side.collapsed .admin-side-toggle-text { display: none; }
 .admin-content {
   flex: 1;
   min-width: 0;

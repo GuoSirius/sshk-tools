@@ -5,7 +5,8 @@ import type { FsTransferTask } from '@sshk/shared'
  * 传输面板全局单例（P4-7 · 总计划 §五.4「传输面板全局悬浮」/ C-8 不设任何传输设置入口）：
  * - TransferPanel 组件挂 App.vue 根层，跨桌面/应用管理/工具宿主三容器可用，任何页面可唤起；
  * - 本 composable 是面板状态与任务数据的单一真相源：
- *   · visible/expanded：收起摘要条显隐与展开态（展开态不持久化，用户 2026-11-19 口径：唤起才展开）；
+ *   · visible/expanded：收起摘要条显隐（2026-11-22 起默认隐藏，仅应用管理内渲染）与展开态
+ *     （展开态不持久化，用户 2026-11-19 口径：唤起才展开）；
  *   · tasks/taskList：App 级订阅 fs.onTransferEvent 增量 + transferList 恢复——页面切换不丢任务，
  *     文件管理页卸载后传输仍在面板持续可见（全局化前任务数据随页面销毁重建）；
  *   · runningCount：状态条「N 进行中」（queued/running/conflict）；
@@ -20,7 +21,9 @@ import type { FsTransferTask } from '@sshk/shared'
 /** provide/inject 注入键（App.vue provide ↔ tools/file-manager FileExplorerPage inject，成对维护） */
 export const TRANSFER_PANEL_KEY = 'sshk:transfer-panel'
 
-const visible = ref(true) // 收起摘要条默认贴底可见（原文件管理页内挂语义一致）；✕ 关闭后会话内保持隐藏
+// 需求（2026-11-22）：面板默认隐藏，不再常驻贴底——只有点「传输队列」按钮（show()）或
+// 检测到有队列（App 层调 reveal()）才亮出；✕ 关闭后会话内保持隐藏，路由再进入/新队列再现
+const visible = ref(false)
 const expanded = ref(false)
 /** show() 序号：重复唤起也要回默认位置（watch 需要变化源，计数器承载「再次弹出」语义） */
 const showSeq = ref(0)
@@ -58,6 +61,11 @@ function hide(): void {
   expanded.value = false
 }
 
+/** 需求（2026-11-22）：检测到有队列时仅亮出收起摘要条（不展开、不打断当前操作）；点「传输队列」仍走 show() */
+function reveal(): void {
+  visible.value = true
+}
+
 export function useTransferPanel(): {
   visible: Ref<boolean>
   expanded: Ref<boolean>
@@ -66,7 +74,8 @@ export function useTransferPanel(): {
   runningCount: ComputedRef<number>
   show: typeof show
   hide: typeof hide
+  reveal: typeof reveal
 } {
   ensureSubscribed()
-  return { visible, expanded, showSeq, taskList, runningCount, show, hide }
+  return { visible, expanded, showSeq, taskList, runningCount, show, hide, reveal }
 }

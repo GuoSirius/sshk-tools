@@ -91,9 +91,10 @@ function goHome(): void {
   void router.push('/')
 }
 function openDataDir(): void { void window.api.app.openDataDir() }
-/** P4-2：顶栏「应用管理」入口——跳应用管理页（hash 路由 /app/...，默认 应用设置 > 常规设置） */
+/** P4-2：顶栏「应用管理」入口——跳应用管理页（hash 路由 /app/...）；
+ *  2026-11-22 起不指定落点，由 AppAdminPage 按「第一个有效菜单页」规整（菜单序首组=文件管理） */
 function openAppAdmin(): void {
-  void router.push('/app/settings/general')
+  void router.push('/app')
 }
 /** dev 随意开关；打包版先试无密钥（会抛错），再弹密钥输入（默认 sshk-tools@888） */
 async function openDevTools(): Promise<void> {
@@ -150,6 +151,14 @@ const { newTools, dismissNewTools } = useNewToolScan()
 // 工具被禁用 / 权限撤销 / 分发剔除 / 插件加载失败后自动退回桌面
 watch(catalogTools, (list) => {
   if (activeToolId.value && !list.some((tool) => tool.id === activeToolId.value)) goHome()
+})
+
+// 需求（2026-11-22 · 传输面板按需显示）：面板默认隐藏、仅应用管理容器内渲染（TransferPanel 自判）。
+// 这里只在两个转换点自动亮出收起摘要条（不展开、不打断）：①进入应用管理且队列仍有活动任务；
+// ②应用管理内检测到新队列（活动任务 0→N）。用户 ✕ 关闭后不被反复顶起，路由再进入/新队列再现。
+watch([isAdminRoute, transferPanel.runningCount], ([admin, count], [prevAdmin, prevCount]) => {
+  if (!admin || count === 0 || transferPanel.visible.value) return
+  if (!prevAdmin || prevCount === 0) transferPanel.reveal()
 })
 
 // 刷新恢复由 URL 天然承担（hash 路由），无需 sessionStorage 方案
