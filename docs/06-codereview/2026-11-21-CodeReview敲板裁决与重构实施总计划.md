@@ -1,7 +1,7 @@
 # CodeReview 敲板裁决与重构实施总计划（2026-11-21）
 
 - 状态：**终审完成（2026-11-21 用户已逐项回复全部 CF/C，见 §十三）· 具备开工条件，待令执行 P0~P9**
-- 版本：v1.3（v1.0 = 敲板汇总；v1.1 = 终审落档（D52 推翻→D55 / C-6 下移 / model-manager）；v1.2 = 菜单规整二轮；**v1.3 = 三轮复核：关于→关于应用更名 + 模型工具配置恢复独立页**）
+- 版本：v1.4（v1.0 = 敲板汇总；v1.1 = 终审落档；v1.2/v1.3 = 菜单规整二/三轮；**v1.4 = 全页面统一重构指令入 §九 执行总原则（#155），P4 迁即重构 / P6 收窄**）
 - 日期：2026-11-21（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`（分支 `main`）
 - 关联需求：台账 #151；输入四份文档（本目录下 报告A / 报告B / 二次复核台账 v1.1 / 交叉合并总计划）+ 用户 2026-11-21 敲板消息（报告B 40 项 + 报告A 18 项 + 台账 C1/C4/Q-01~21 + **重构新想法 1~8**）
@@ -17,6 +17,7 @@
 3. **Q-19 useSelection 改判**：它正是当初为「需求 8·跨页选择」建的 composable（代码注释自证），按你的敲板从"删除"改为**保留 + 增强 + 全量多选表格接入**（§七）。
 4. **F2（.sshktool 运行时安装/卸载）主体已做完**：SystemTab「运行时工具包」区已有 预览/安装（含降级确认）/卸载/信任钥导入吊销 全套 UI；剩全链路实测演练（§八）。
 5. 实施分 **10 个阶段（P0~P9）**，P0 判据与地基 → P1 正确性 → P2 抽象建库 → P3 main 层重构 → P4 应用管理架构重构（最大批）→ P5 包内聚 → P6 页面接入与大文件拆分 → P7 删除清理 → P8 文档治理 → P9 验证收尾（§九）。
+6. **全页面统一重构指令（2026-11-21 用户指令·台账 #155）**：趁此次重构，**所有页面（新建+存量）全部重构到位**——尽量提前、优先复用公共组件，杜绝散乱与不统一；**迁移即重构**（P4 每迁一页直接落公共组件+规范清单重写），P6 只收尾纯工具页（§九 执行总原则）。
 
 ---
 
@@ -414,6 +415,12 @@ scripts/
 
 ## 九、实施总计划（P0~P9，每批独立可交付）
 
+> **执行总原则（2026-11-21 用户指令·台账 #155）**：趁此次重构，**所有页面——新建与存量一视同仁——全部重构到位**：
+> ① 尽量提前：公共组件库（P2）是最早批次前提，先于一切页面工作（P0~P2 → P3/P4 排布已满足）；新建页面从第一天起只用公共组件，不再产生任何"旧写法"页面。
+> ② 优先复用公共组件：useTablePage / ListPageShell / TableOpsColumn / EmptyState / FormHint / FormGrid / SecretField / ConnectivityField / useAction().runWithToast / 弹框分轨（简单 ElMessageBox / 复杂 ConfirmDialog）/ 统一分页与留白 token；禁止散写 `.hint` span、手写空态、手写分页 CSS、散落 `catch{ElMessage.error}`。
+> ③ **迁移即重构**：P4 每迁入一页必须直接落公共组件并按规范清单重写，**禁止原样搬运旧散写实现**（先搬家后补课的模式作废）。
+> ④ 逐页验收清单 = 总纲 §2（表单/列表页/弹框/按钮语义配色/图标 D50）+《列表页筛选与操作栏规范》+《页面留白与间距规范》（P8-1 三合一后以《UI 与页面规范》为唯一清单）。
+>
 > 执行纪律（每批相同）：批前在台账登记 → 实施 → `pnpm verify` 全绿（13 门禁 + typecheck + lint + build + vitest）→ conventional commit → push main → `git log -1 --format='%h | %s'` 核验 message。规模：S≤半天 / M 1 天 / L 2~3 天 / XL 专项。
 
 | 批 | 目标 | 内容 | 对应敲板 | 规模 |
@@ -446,10 +453,10 @@ scripts/
 | **P3-5** | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
 | **P4-1** | 顶栏改版 + App.vue 瘦身 | 彩色胶囊按钮组（C-7）；更多下拉三段；关于应用轻弹框；App.vue 抽 `AppHeader.vue` + useUpdateBanner/useNewToolScan/useRuntimeComponent（CR-42 首刀） | 新想法#2/#3、CR-42 | M |
 | **P4-2** | AppAdminPage 壳 | 页面骨架 + 左菜单（SidebarMenu 复用/折叠）+ hash 路由 `#/app/...` + 返回桌面协议 + 桌面入口按钮 | 新想法#4 | M |
-| **P4-3** | 应用设置页化 | **4 页（规整后）**：GeneralPage（更名「常规设置」；开发者模式行保留）/SystemDataPage/ToolsPermissionPage/AboutPage（更名「关于应用」）；**分享页取消**（并入分享管理，P4-6）；**不再新增文件与传输页**（传输参数并入文件管理工具设置，P4-4）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑 | 新想法#5、C-6、二/三轮规整、§六 | L |
-| **P4-4** | 文件管理模块迁入 | FileExplorerPage（迁移时同步拆 composables：useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…+ 组件）/ContentsPage+编辑器/ProfilesPage（同步用 SecretField）；菜单**原样下移**（文件系统/内容管理/通道配置/工具设置）；**工具设置页含「内容编辑器」+「传输与分片」两组**（传输参数迁入，原「传输设置」面板入口删除 C-8） | 新想法#5、C-6、二轮规整、§六#2/#7、B37-F1 | XL |
-| **P4-5** | 模型管理模块迁入 | **模块 id `model-manager`（C-11，原 model-console）**；模型配置页（ProvidersPage 更名）/ChatPage（核实双布局）/UsagePage/**工具配置页**（网关偏好 3 字段，模块描述 + SettingsPage 引擎渲染；三轮复核恢复独立页）；菜单原样下移+更名 | §六#3/#8、C-11、二/三轮规整 | M |
-| **P4-6** | 分享管理模块迁入 | Routes/Logs + 工具设置▸Service/Mounts/Proxies（**二级变三级**，C-6）；**ServicePage 扩容为唯一分享服务页**：收编 ShareTab 全部内容（状态卡/autoStart/基础设置 4 字段/保存后重拉逻辑 #144）+ 既有启停/清路由/日志容量；应用设置分享页删除 | §六#5/#6、C-6、二轮规整 | M |
+| **P4-3** | 应用设置页化 | **4 页（规整后）**：GeneralPage（更名「常规设置」；开发者模式行保留）/SystemDataPage/ToolsPermissionPage/AboutPage（更名「关于应用」）；**分享页取消**（并入分享管理，P4-6）；**不再新增文件与传输页**（传输参数并入文件管理工具设置，P4-4）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑；**迁即重构**：4 页按规范清单直接重写（FormGrid/FormHint/分轨确认/留白 token），禁原样搬运 | 新想法#5、C-6、二/三轮规整、#155、§六 | L |
+| **P4-4** | 文件管理模块迁入 | **迁即重构**：FileExplorerPage 迁移时拆 composables（useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…）+ 组件，列表/传输页直接落 useTablePage/ListPageShell/TableOpsColumn/useSelection（§七）+ EmptyState/FormHint；ContentsPage+编辑器、ProfilesPage（同步用 SecretField/ConnectivityField）同口径重写；菜单**原样下移**（文件系统/内容管理/通道配置/工具设置）；**工具设置页含「内容编辑器」+「传输与分片」两组**（传输参数迁入，原「传输设置」面板入口删除 C-8） | 新想法#5、C-6、二轮规整、#155、§六#2/#7、B37-F1 | XL |
+| **P4-5** | 模型管理模块迁入 | **模块 id `model-manager`（C-11，原 model-console）**；模型配置页（ProvidersPage 更名）/ChatPage（核实双布局并随迁重构）/UsagePage/**工具配置页**（网关偏好 3 字段，模块描述 + SettingsPage 引擎渲染；三轮复核恢复独立页）；菜单原样下移+更名；**迁即重构**：四页按规范清单重写落公共组件 | §六#3/#8、C-11、二/三轮规整、#155 | M |
+| **P4-6** | 分享管理模块迁入 | Routes/Logs + 工具设置▸Service/Mounts/Proxies（**二级变三级**，C-6）；**ServicePage 扩容为唯一分享服务页**：收编 ShareTab 全部内容（状态卡/autoStart/基础设置 4 字段/保存后重拉逻辑 #144）+ 既有启停/清路由/日志容量；应用设置分享页删除；**迁即重构**：四页按规范清单重写落 useTablePage/ListPageShell/TableOpsColumn 等公共组件 | §六#5/#6、C-6、二轮规整、#155 | M |
 | **P4-7** | 传输面板全局化 | TransferPanel 挂 App 层（跨桌面/应用管理/工具宿主可用）；**不设任何传输设置入口**（C-8；参数在 文件管理>工具设置「传输与分片」）；FilePicker 联动回归 | §六#1 | M |
 | **P4-8** | 三工具包退役 | 删 tools/{file-manager,model-console,share-manager}；discovery/catalog/BUILTIN 名单/内置判定收缩为纯工具；配置键一次性迁移 `app.modules.<moduleId>.*`（C-3；模块 id：file-manager / **model-manager**（原 model-console，C-11）/ share-manager）；verify-steps 相关条目改写指向应用管理页；工具与权限页适配；桌面卡片只剩纯工具 | 新想法#5/#6 | L |
 | **P4-9** | VerifyGuidePage 归位 | pages/verify-guide/（A2）；入口=顶栏验证引导（仅 dev）；verify-sessions 数据结构不动 | B21/A2 | S |
@@ -457,8 +464,8 @@ scripts/
 | **P5-2** | shared 领域外迁收尾 | upload-manager/upload-vendors 完成 `@sshk/upload-core/types` 收编（P0-5 收尾）；verify-steps → `apps/desktop/src/shared/`（C-10）；shared 复审=纯契约+裁决+机制 | B22/A3/Q-23 | M |
 | **P5-3** | ShareDialog 迁出 | → `@sshk/share-core/ui`（C-4）；share-ticket 同迁；ui-kit 复审零业务（B10 收口） | B10/Q-08 | M |
 | **P5-4** | export-core | 新包：exportZip/exportSingleFile/文件名编码（toFileName 统一）；fflate 4 处直用收敛 | B12-T6 | M |
-| **P6-1** | 全量列表页接入 | 11+ 页接 useTablePage/ListPageShell/TableOpsColumn + useSelection（§七）；含应用管理新页 | B2/B8 | L |
-| **P6-2** | FormHint/EmptyState/ToolPageLayout 全量推广 | 纯工具（edm/badge/template）+ 应用管理页补齐；ChatPage 双布局终核 | B9/B39-C1~C3 | M |
+| **P6-1** | 纯工具列表页收尾 | 应用管理各页已在 P4 迁即重构完成；本批收尾**纯工具**存量列表页（edm 邮件管理/内容相关列表、badge 海报列表、template 示例页等）接 useTablePage/ListPageShell/TableOpsColumn + useSelection（§七） | B2/B8、#155 | M |
+| **P6-2** | 纯工具组件规范收尾 | edm/badge/template 存量页补齐 FormHint/EmptyState/ToolPageLayout（应用管理页已在 P4 完成；ChatPage 双布局已在 P4-5 处理） | B9/B39-C1~C3、#155 | S |
 | **P6-3** | FilePickerDialog 拆分 | 三 tab 拆组件 + useUploadPool/useDirPicker | B37-F3 | M |
 | **P6-4** | ContentManagePage 拆分 | useContentTree/ContentEditors/useCssTabs/useContextMenu/SaveAsDialog | B37-F4 | M |
 | **P6-5** | badge state.ts + edm ipc.ts 拆分 | stores 三分 + ipc 按域目录 | B37-F6/F7 | M |
