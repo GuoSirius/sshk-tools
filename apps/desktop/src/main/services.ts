@@ -13,20 +13,18 @@ import {
 } from '@sshk/repository'
 import {
   chat as llmChat,
-  chatWithFallback as llmChatWithFallback,
-  listModels as llmListModels,
   type LlmProvider,
 } from '@sshk/llm-gateway'
 import { AppError, ACCESS_GRANT,
   ACCESS_KEY_SECRET_ID,
   TOOL_IDS,
   mergeToolDefaults,
-  type LlmProviderInfo,
   type ToolHostCapabilities, } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 import { isProviderId, toolSecretId, uploadSecretId } from './secret-ids'
 import { recordUsage } from './usage'
 import { logger } from './logger'
+import { createLlmService } from './llm-service'
 
 export interface AppServices {
   config: ConfigService
@@ -58,8 +56,10 @@ function sha256(text: string): string {
 }
 
 /**
- * 应用级服务装配：
+ * 应用级服务装配（O6/N5 · 名字保留作装配入口）：
  * settings.json / NeDB / 产物目录 / secrets.bin（safeStorage）。
+ * LLM 域（Provider 读取 / chatByProvider / listModels）已拆至 llm-service.ts，
+ * 本文件保留装配编排与密钥/备份面。
  * 工具默认配置来自各工具包 manifest.defaults，宿主不硬编码任何工具的默认值。
  */
 export function setupServices(): AppServices {
@@ -83,33 +83,6 @@ export function setupServices(): AppServices {
 
   /** 同步读缓存（启动预载后恒可用）；写路径必须走 secretsStore.set */
   function currentSecrets(): Record<string, string> { return secretsStore.snapshot() }
-
-  /**
-   * 应用级 Provider 是宿主能力，不属于任何工具：
-   * 所有工具通过 host.listProviders()/chatByProvider() 复用同一份配置与密钥，
-   * 不需要也不允许各自再配一遍 baseURL / apiKey。
-   */
-  function readProviders(): LlmProvider[] {
-    const raw = config.get('app.llm.providers')
-    if (!Array.isArray(raw)) return []
-    return raw.filter((item): item is LlmProvider => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return false
-      const p = item as Record<string, unknown>
-      return typeof p['_id'] === 'string'
-        && typeof p['baseURL'] === 'string'
-        && /^https?:\/\//i.test(p['baseURL'])
-        && typeof p['model'] === 'string'
-    })
-  }
-
-  function findProvider(providerId: string): LlmProvider {
-    if (!isProviderId(providerId)) throw new AppError(`非法 Provider ID：${providerId}`)
-    const provider = readProviders().find((p) => p._id === providerId)
-    if (!provider) {
-      throw new AppError(`未找到 Provider「${providerId}」，请先在「模型控制台」新增或启用`)
-    }
-    return provider
-  }
 
   /** 本机 OCR：无 shell、固定超时、限制输出，避免外部命令失控 */
   function runLocalOcr(req: {
@@ -168,6 +141,9 @@ export function setupServices(): AppServices {
     })
   }
 
+  // O6/N5（P3-2 第一刀）：LLM 域服务拆至 llm-service.ts，密钥仍由 SecretsStore 单一收口（快照只读注入）
+  const llm = createLlmService({ config, repository, currentSecrets })
+
   const host: ToolHostCapabilities = {
     getToolSecret: (toolId, name) => currentSecrets()[toolSecretId(toolId, name)] ?? '',
     setToolSecret: (toolId, name, value) => {
@@ -223,69 +199,9 @@ export function setupServices(): AppServices {
         throw err
       }
     },
-    listProviders: (): LlmProviderInfo[] => readProviders().map((p) => ({
-      _id: p._id,
-      name: p.name,
-      kind: p.kind,
-      baseURL: p.baseURL,
-      model: p.model,
-      fallbackModel: p.fallbackModel,
-      enabled: p.enabled,
-      // 只回布尔标记，绝不回明文；工具据此提示用户「需要去模型控制台填 Key」
-      hasApiKey: Boolean(currentSecrets()[p._id]),
-    })),
-    chatByProvider: async (req) => {
-      const provider = findProvider(req.providerId)
-      const started = Date.now()
-      // 模型链优先级：req.model（工具自选，如 badge 识别页所选）→ Provider 默认模型 → 回退模型
-      const models = [...new Set(
-        [req.model?.trim() ?? '', provider.model, provider.fallbackModel ?? ''].map((m) => m.trim()).filter(Boolean),
-      )]
-      const retries = Math.max(0, Math.min(5, Math.floor(Number(provider.maxRetries) || 0)))
-      try {
-        const result = await llmChatWithFallback(
-          {
-            provider,
-            apiKey: currentSecrets()[provider._id] ?? '',
-            messages: req.messages,
-            temperature: req.temperature,
-            maxTokens: req.maxTokens,
-          },
-          models,
-          retries,
-        )
-        // D-Q1 用量记录（tool）：工具经宿主能力调用模型
-        recordUsage(repository, {
-          providerId: provider._id,
-          providerName: provider.name,
-          model: result.model,
-          purpose: 'tool',
-          streamed: false,
-          contentLength: result.content.length,
-          promptTokens: result.usage?.promptTokens,
-          completionTokens: result.usage?.completionTokens,
-          durationMs: Date.now() - started,
-          ok: true,
-        })
-        return result.content
-      } catch (err) {
-        recordUsage(repository, {
-          providerId: provider._id,
-          providerName: provider.name,
-          model: req.model ?? provider.model,
-          purpose: 'tool',
-          streamed: false,
-          durationMs: Date.now() - started,
-          ok: false,
-          error: (err as Error).message,
-        })
-        throw err
-      }
-    },
-    listModelsByProvider: (providerId, apiKey) => llmListModels(
-      findProvider(providerId),
-      typeof apiKey === 'string' && apiKey ? apiKey : (currentSecrets()[providerId] ?? ''),
-    ),
+    listProviders: () => llm.listProviders(),
+    chatByProvider: (req) => llm.chatByProvider(req),
+    listModelsByProvider: (providerId, apiKey) => llm.listModelsByProvider(providerId, apiKey),
     runLocalOcr,
   }
 

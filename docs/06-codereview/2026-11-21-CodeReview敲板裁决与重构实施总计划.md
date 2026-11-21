@@ -447,7 +447,7 @@ scripts/
 | **P2-5** ✅ 已完成（ConfirmDialog 头注释立分轨规范锚点：简单确认=ElMessageBox.confirm（check-dialogs 守双禁）、复杂表单确认=ConfirmDialog；细则随 P8-1《UI 与页面规范》） | 弹框分轨 | 简单确认=ElMessageBox.confirm（守卫齐备）；复杂表单确认=ConfirmDialog；规范入《UI 与页面规范》 | B40-P5/Q-07/C4 | S |
 | **P2-6** ✅ 已完成（29 导出×全仓引用矩阵：useAction/logFront/OpsAction/SIGN_URL_HINT/useTablePage 类型=新库面（P4/P6 迁移即消费，保留）；logFront=工具文档化 API 保留；其余全部有消费） | ui-kit 导出审计 | 全导出×全仓引用矩阵，零引用删除/降 @internal（knip 结果交叉） | B3/U2 | S |
 | **P3-1** | index.ts 拆分 | A1 六模块：window/tray/catalog/migrations/updater/compact + `ipc/` 目录（registerIpc 600 行拆 config/dev/update/llm/share/upload/runtime/verify/tools） | B14/B20/O2 | L |
-| **P3-2** | services.ts 拆分改名 | 第一刀：`secrets-store.ts`（P1-2 产物）+ `llm-service.ts` + 其余按内容归位（O6/N5） | B18/B31 | M |
+| **P3-2** ✅ 已完成（LLM 域拆 `llm-service.ts`：readProviders/findProvider/listProviders/chatByProvider/listModelsByProvider 经 createLlmService 工厂装配，services.ts 组装进 host；secrets-store.ts 已在 P1-2 落位；services.ts 名字保留作装配入口=密钥/备份面/视觉直连/OCR，IPC 契约零变化） | services.ts 拆分改名 | 第一刀：`secrets-store.ts`（P1-2 产物）+ `llm-service.ts` + 其余按内容归位（O6/N5） | B18/B31 | M |
 | **P3-3** | fs.ts → modules/file | 2047 行拆 `modules/file/{browser,transfer,archive,media,metadata}`；IPC 通道名不变（渲染层零感知）；`fs:transfer:control` 等契约不动 | B12-T3/B30/CF-3/Q-03 | L |
 | **P3-4** | presets 归位 | presets.ts + seedDefaultProviders → `modules/llm/` | B12-T4 | S |
 | **P3-5** | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
