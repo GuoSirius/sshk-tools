@@ -96,7 +96,8 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   // P4-8c（C-11）：file-manager/share-manager/model-manager = 应用模块 id（verify-steps 直达目标，
   // VerifyGuidePage 映射到应用管理页）；原 model-console 工具 id 已退役
   const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-manager', 'file-manager', 'share-manager', 'share'])
-  const vsPath = join(ROOT, 'packages/shared/src/verify-steps.ts')
+  // P5-2（C-10）：verify-steps 外迁宿主 apps/desktop/src/shared/（shared 回归纯契约）
+  const vsPath = join(ROOT, 'apps/desktop/src/shared/verify-steps.ts')
   if (existsSync(vsPath)) {
     const content = readFileSync(vsPath, 'utf8')
     for (const m of content.matchAll(/target: '([^']+)'/g)) {

@@ -70,6 +70,3 @@ export type {
   ShareLogsResult,
   HubStatus,
 } from './types'
-
-/** U2 验证引导：步骤数据单一来源（页内引导与验证清单文档共用） */
-export * from './verify-steps'

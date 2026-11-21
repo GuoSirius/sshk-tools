@@ -2,7 +2,7 @@ import { mkdtempSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { VerifySession } from '@sshk/shared'
+import type { VerifySession } from '../shared/verify-steps'
 import { findRepoRoot, listSessions, loadSession, resolveSessionsDir, runAutoCheck, saveSession, type AutoCheckDeps } from './verify-sessions'
 
 let dir: string

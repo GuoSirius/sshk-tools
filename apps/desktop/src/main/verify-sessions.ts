@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { AppError } from '@sshk/shared'
 import { dirname, join } from 'node:path'
-import type { VerifySession } from '@sshk/shared'
+import type { VerifySession } from '../shared/verify-steps'
 
 /** 会话目录（userData/verify-sessions） */
 export function verifySessionsDir(userDataDir: string): string {

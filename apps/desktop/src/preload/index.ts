@@ -254,9 +254,9 @@ const api = {
   },
   /** U2 验证引导：会话存取 + main 侧自动判定 */
   verify: {
-    load: (date?: string): Promise<import('@sshk/shared').VerifySession | null> =>
+    load: (date?: string): Promise<import('../shared/verify-steps').VerifySession | null> =>
       invoke(IPC_CHANNELS.verifySessionLoad, date),
-    save: (session: import('@sshk/shared').VerifySession): Promise<string> =>
+    save: (session: import('../shared/verify-steps').VerifySession): Promise<string> =>
       invoke(IPC_CHANNELS.verifySessionSave, session),
     list: (): Promise<string[]> => invoke(IPC_CHANNELS.verifySessionList),
     autoCheck: (req: { kind: string; spec: string }): Promise<{ state: string; detail: string }> =>

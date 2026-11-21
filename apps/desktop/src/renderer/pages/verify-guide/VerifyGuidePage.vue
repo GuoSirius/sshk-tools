@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * U2 验证引导页（plans/04 §四）：可执行的检查步骤，不是静态清单搬运。
- * - 步骤数据单一来源 @sshk/shared VERIFY_STEPS（与验证清单文档同源）
+ * - 步骤数据单一来源 apps/desktop/src/shared/verify-steps VERIFY_STEPS（与验证清单文档同源）
  * - 自动判定优先：hostCapability 渲染层判；fileExists/catalogState/logScan 走 main verify:autoCheck
  * - 结果留痕：userData/verify-sessions/<日期>.json，下次进入续接进度；可导出 markdown 报告
  * - dev 恒显示；打包版 developerMode 开启后显示（贴合开发者自检定位）
@@ -17,7 +17,7 @@ import {
   type VerifySession,
   type VerifyStep,
   type VerifyStepResult,
-} from '@sshk/shared'
+} from '../../../shared/verify-steps'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
