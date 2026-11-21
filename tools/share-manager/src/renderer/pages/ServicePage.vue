@@ -1,7 +1,11 @@
 <script setup lang="ts">
 /**
- * 分享管理 · 服务配置页（plans/12 §8.3）。
- * 服务状态 + 基础设置（与应用设置同键读写天然一致）+ 日志容量卡片（仅此页配置）。
+ * 分享管理 · 服务配置页（plans/12 §8.3；P4-6 扩容为分享服务唯一页）。
+ * 二轮规整 #5（实测同键双入口重合）：本页收编原应用设置 ShareTab 全部内容——
+ * 服务状态卡（运行中/端口/displayIp）+ autoStart 开关 + 基础设置 4 字段
+ * （监听端口/默认时长/分享 IP/允许目录，同键读写 app.shareHub.*）+ 既有启停/清空路由/日志容量。
+ * 应用设置分享页已随 P4-3 删除，本页是 app.shareHub.* 的唯一 UI 入口；
+ * 保存后立即重拉 status + preferredIp（#144：displayIp 由主进程实时计算，不能等 3s 定时器）。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -100,10 +104,10 @@ async function saveBase(): Promise<void> {
     await host.config.set('app.shareHub.defaultTtlHours', defaultTtlHours.value)
     await host.config.set('app.shareHub.allowIndex', allowIndex.value)
     await host.config.set('app.shareHub.preferredIp', ipManual.value ? preferredIp.value.trim() : '')
-    // 保存后立即重拉：displayIp 由主进程按当前 preferredIp 实时计算（config.onChanged 即时生效），
+    // 保存后立即重拉（#144 语义）：displayIp 由主进程按当前 preferredIp 实时计算（config.onChanged 即时生效），
     // 本地 preferredIp 决定「（自动优选）」后缀——两者必须同刻更新，不能等 3s 定时器
     await Promise.all([refresh(), loadConfig()])
-    ElMessage.success('基础设置已保存（同键两处入口一致）')
+    ElMessage.success('基础设置已保存（服务状态与展示 IP 已即时刷新）')
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { saving.value = false }
 }

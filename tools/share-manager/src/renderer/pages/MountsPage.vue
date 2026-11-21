@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * 分享管理 · 挂载管理页（plans/12 §8.4，#140 列表化改造）。
- * 规范列表页：筛选栏（label+.f-item+查询/重置）→ 操作栏 → 表格 → 分页；新增/编辑走 MountEditDialog；
- * 每次增删改/启停即时写 config（入库前二次校验），危险操作一律二次确认。
+ * 分享管理 · 挂载管理页（plans/12 §8.4；P4-6 迁即重构，对齐 ProxiesPage 样板）。
+ * useTablePage（草稿/生效筛选+分页）+ useSelection（§七 跨页多选，批量删除单一真相）
+ * + ListPageShell/TableOpsColumn/ListPagination 公共组件；布局 CSS 全部上收 theme.css .lp-*。
+ * 新增/编辑走 MountEditDialog；每次增删改/启停即时写 config（入库前二次校验），危险操作一律二次确认。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Delete, Plus } from '@element-plus/icons-vue'
-import { EmptyState } from '@sshk/ui-kit'
+import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, useTablePage } from '@sshk/ui-kit'
 import type { HubStatus, ShareHubMount } from '@sshk/shared'
 import { host } from '../host'
 import MountEditDialog, { type MountForm } from './MountEditDialog.vue'
@@ -16,34 +17,32 @@ interface MountRow { id: string; dir: string; alias: string; enabled: boolean; a
 
 const status = ref<HubStatus | null>(null)
 const rows = ref<MountRow[]>([])
-const loading = ref(false)
-let timer: ReturnType<typeof setInterval> | null = null
 
-// ── 列表筛选（草稿态/生效态分离：点查询才生效，重置清空并立即生效）──
-const kw = ref('')
-const stateFilter = ref('all')
-const applied = ref({ kw: '', state: 'all' })
-const currentPage = ref(1)
-const pageSize = ref(10)
-const selected = ref<MountRow[]>([])
-
-function doSearch(): void {
-  applied.value = { kw: kw.value.trim(), state: stateFilter.value }
-  currentPage.value = 1
-}
-function resetFilters(): void { kw.value = ''; stateFilter.value = 'all'; doSearch() }
-
-const filtered = computed(() => {
-  const f = applied.value
-  const k = f.kw.toLowerCase()
-  return rows.value.filter((r) => {
-    if (f.state === 'enabled' && !r.enabled) return false
-    if (f.state === 'disabled' && r.enabled) return false
-    if (!k) return true
-    return r.alias.toLowerCase().includes(k) || r.dir.toLowerCase().includes(k)
-  })
+// ── 列表状态（P4-6：useTablePage 统一承载 草稿/生效筛选+分页；数据源=load() 写入 rows 镜像）──
+const table = useTablePage<MountRow, { kw: string; state: string }>({
+  fetch: async () => rows.value,
+  rowKey: (r) => r.id,
+  filters: () => ({ kw: '', state: 'all' }),
+  clientFilter: (list, f) => {
+    const k = f.kw.toLowerCase()
+    return list.filter((r) => {
+      if (f.state === 'enabled' && !r.enabled) return false
+      if (f.state === 'disabled' && r.enabled) return false
+      if (!k) return true
+      return r.alias.toLowerCase().includes(k) || r.dir.toLowerCase().includes(k)
+    })
+  },
+  selection: true,
+  errorPrefix: '挂载列表加载失败',
 })
-const paged = computed(() => filtered.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+const rowKey = table.rowKey
+const selection = table.selection!
+
+/** 批量勾选单一真相 = useSelection（§七）：el-table selection-change 全量同步（reserve-selection 跨页保留） */
+function syncSelection(tableRows: MountRow[]): void {
+  selection.clear()
+  selection.selectMany(tableRows.map(rowKey))
+}
 
 // ── 加载 / 落盘 ──
 function toRow(m: ShareHubMount): MountRow {
@@ -51,13 +50,9 @@ function toRow(m: ShareHubMount): MountRow {
 }
 async function refreshStatus(): Promise<void> { try { status.value = await host.shareHub.status() } catch { /* 静默 */ } }
 async function load(): Promise<void> {
-  loading.value = true
-  try {
-    const arr = await host.config.get('app.shareHub.mounts') as ShareHubMount[] | null
-    rows.value = Array.isArray(arr) ? arr.map(toRow) : []
-    await refreshStatus()
-  } catch (err) { ElMessage.error((err as Error).message) }
-  finally { loading.value = false }
+  const arr = await host.config.get('app.shareHub.mounts') as ShareHubMount[] | null
+  rows.value = Array.isArray(arr) ? arr.map(toRow) : []
+  await table.refresh()
 }
 
 /** 入库前校验（双层铁律第二层）：重复挂载点 / 空目录 / 非法别名——失败不发 IPC */
@@ -78,6 +73,9 @@ async function persist(next: MountRow[], label: string): Promise<boolean> {
   try {
     await host.config.set('app.shareHub.mounts', next.map((r) => ({ ...r, allowIndex: r.allowIndex !== false, enabled: r.enabled === true })))
     rows.value = next
+    // P1-1 配套：数据源变更后同步引擎数据 + 失效勾选清理（§七 防「幽灵计数」）
+    await table.refresh()
+    selection.prune(new Set(rows.value.map(rowKey)))
     await refreshStatus()
     if (status.value?.running) { ElMessage.success(`${label}已保存并即时生效`); return true }
     try {
@@ -125,112 +123,108 @@ async function removeOne(row: MountRow): Promise<void> {
   } catch { return }
   await persist(rows.value.filter((r) => r.id !== row.id), '移除挂载')
 }
+/** 批量删除单一真相 = useSelection（§七）：读 selection.count/selected，不读表格瞬时勾选 */
 async function removeSelected(): Promise<void> {
-  const ids = new Set(selected.value.map((r) => r.id))
-  if (!ids.size) { ElMessage.warning('请先勾选要删除的挂载'); return }
+  const ids = [...selection.selected.value]
+  if (!ids.length) { ElMessage.warning('请先勾选要删除的挂载'); return }
   try {
-    await ElMessageBox.confirm(`确认移除选中的 ${ids.size} 个挂载？对应分享链接将立即失效。`, '批量移除挂载', {
+    await ElMessageBox.confirm(`确认移除选中的 ${ids.length} 个挂载？对应分享链接将立即失效。`, '批量移除挂载', {
       type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false, confirmButtonText: '移除', cancelButtonText: '保留',
     })
   } catch { return }
-  selected.value = []
-  await persist(rows.value.filter((r) => !ids.has(r.id)), '批量移除')
+  const idSet = new Set(ids)
+  selection.clear()
+  await persist(rows.value.filter((r) => !idSet.has(r.id)), '批量移除')
 }
 
-onMounted(() => { void load(); timer = setInterval(() => { void refreshStatus() }, 3000) })
-onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
+const ops = [
+  { key: 'edit', label: '编辑', type: 'primary' as const },
+  { key: 'copy', label: '复制', type: 'success' as const },
+  { key: 'remove', label: '删除', type: 'danger' as const },
+]
+function onAction(key: string, row: MountRow): void {
+  if (key === 'edit') openEdit(row)
+  else if (key === 'copy') void copyLink(row)
+  else if (key === 'remove') void removeOne(row)
+}
+
+let statusTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  void load()
+  table.startPoll()
+  statusTimer = setInterval(() => { void refreshStatus() }, 3000)
+})
+onUnmounted(() => {
+  table.stopPoll()
+  if (statusTimer) { clearInterval(statusTimer); statusTimer = null }
+})
 </script>
 
 <template>
-  <div class="page-wrap">
-    <!-- 筛选栏（列表页规范：label+控件包 .f-item 整体换行；末尾统一 查询+重置） -->
-    <div class="filter-bar">
+  <ListPageShell :loading="table.loading.value">
+    <template #filter>
       <div class="f-item">
         <span class="f-label">搜索</span>
-        <el-input v-model="kw" size="small" clearable placeholder="挂载点 / 目录" style="width: 180px" @keyup.enter="doSearch" />
+        <el-input v-model="table.draft.value.kw" size="small" clearable placeholder="挂载点 / 目录" style="width: 180px" @keyup.enter="table.search" />
       </div>
       <div class="f-item">
         <span class="f-label">状态</span>
-        <el-select v-model="stateFilter" size="small" style="width: 180px">
+        <el-select v-model="table.draft.value.state" size="small" style="width: 180px">
           <el-option label="全部" value="all" />
           <el-option label="已启用" value="enabled" />
           <el-option label="已停用" value="disabled" />
         </el-select>
       </div>
-      <el-button size="small" type="primary" @click="doSearch">查询</el-button>
-      <el-button size="small" @click="resetFilters">重置</el-button>
-    </div>
+      <el-button size="small" type="primary" @click="table.search">查询</el-button>
+      <el-button size="small" @click="table.reset">重置</el-button>
+    </template>
 
-    <!-- 操作栏：单独一行居右 -->
-    <div class="toolbar">
+    <template #ops>
       <el-button size="small" type="success" plain :icon="Plus" @click="openCreate">新增挂载</el-button>
       <el-divider direction="vertical" />
-      <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length" @click="removeSelected">批量删除（{{ selected.length }}）</el-button>
+      <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selection.count.value" @click="removeSelected">批量删除（{{ selection.count.value }}）</el-button>
       <el-divider direction="vertical" />
-      <el-button size="small" plain :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-    </div>
+      <el-button size="small" plain :icon="Refresh" :loading="table.loading.value" @click="load">刷新</el-button>
+    </template>
 
-    <div class="table-wrap" v-loading="loading">
-      <el-table v-if="paged.length > 0" :data="paged" size="small" height="100%" @selection-change="(v: MountRow[]) => selected = v">
-        <el-table-column type="selection" width="38" />
-        <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (currentPage - 1) * pageSize + i + 1" />
-        <el-table-column label="挂载点" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }"><span class="alias">/{{ row.alias }}</span></template>
-        </el-table-column>
-        <el-table-column prop="dir" label="本地目录" min-width="200" show-overflow-tooltip />
-        <el-table-column label="访问密钥" width="96" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.password" size="small" type="warning" effect="plain">已设置</el-tag>
-            <span v-else class="muted">未设置</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="允许索引" width="88" align="center">
-          <template #default="{ row }"><el-tag size="small" :type="row.allowIndex !== false ? 'warning' : 'info'" effect="plain">{{ row.allowIndex !== false ? '是' : '否' }}</el-tag></template>
-        </el-table-column>
-        <el-table-column label="启用" width="72" align="center">
-          <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" @change="(v: string | number | boolean) => toggleEnabled(row, v === true)" /></template>
-        </el-table-column>
-        <el-table-column label="访问地址" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            <el-button v-if="mountLink(row)" link type="primary" size="small" @click="copyLink(row)">{{ mountLink(row) }}</el-button>
-            <span v-else class="muted">{{ row.enabled ? '（服务未运行）' : '（已停用）' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
-          <template #default="{ row }">
-            <div class="op-row">
-              <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" type="success" plain @click="copyLink(row)">复制</el-button>
-              <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-      <EmptyState v-else description="还没有挂载目录；新增一个目录即可生成固定分享链接" action-text="新增挂载" @action="openCreate" />
-    </div>
+    <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
+      <el-table-column type="selection" width="38" reserve-selection />
+      <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
+      <el-table-column label="挂载点" min-width="120" show-overflow-tooltip>
+        <template #default="{ row }"><span class="alias">/{{ row.alias }}</span></template>
+      </el-table-column>
+      <el-table-column prop="dir" label="本地目录" min-width="200" show-overflow-tooltip />
+      <el-table-column label="访问密钥" width="96" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.password" size="small" type="warning" effect="plain">已设置</el-tag>
+          <span v-else class="muted">未设置</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="允许索引" width="88" align="center">
+        <template #default="{ row }"><el-tag size="small" :type="row.allowIndex !== false ? 'warning' : 'info'" effect="plain">{{ row.allowIndex !== false ? '是' : '否' }}</el-tag></template>
+      </el-table-column>
+      <el-table-column label="启用" width="72" align="center">
+        <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" @change="(v: string | number | boolean) => toggleEnabled(row, v === true)" /></template>
+      </el-table-column>
+      <el-table-column label="访问地址" min-width="200" show-overflow-tooltip>
+        <template #default="{ row }">
+          <el-button v-if="mountLink(row)" link type="primary" size="small" @click="copyLink(row)">{{ mountLink(row) }}</el-button>
+          <span v-else class="muted">{{ row.enabled ? '（服务未运行）' : '（已停用）' }}</span>
+        </template>
+      </el-table-column>
+      <TableOpsColumn :actions="ops" width="180" fixed="right" @action="(key: string, row: Record<string, unknown>) => onAction(key, row as unknown as MountRow)" />
+    </el-table>
+    <EmptyState v-else description="还没有挂载目录；新增一个目录即可生成固定分享链接" action-text="新增挂载" @action="openCreate" />
 
-    <div class="foot">
-      <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="filtered.length" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next, jumper" small />
-    </div>
+    <template #footer>
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+    </template>
 
     <MountEditDialog v-model="dialogOpen" :record="editing" :taken-aliases="takenAliases" @save="onSave" />
-  </div>
+  </ListPageShell>
 </template>
 
 <style scoped>
-.page-wrap { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
-.filter-bar { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
-.filter-bar .el-button + .el-button { margin-left: 0; }
-.filter-bar > .el-button:first-of-type { margin-left: 16px; }
-.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
-.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
-.toolbar { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.toolbar .el-button + .el-button, .toolbar .el-button + .el-dropdown, .toolbar .el-dropdown + .el-button { margin-left: 0; }
-.toolbar .el-button { padding-left: 8px; padding-right: 8px; }
-.table-wrap { flex: 1; min-height: 0; }
-.foot { flex: none; display: flex; justify-content: flex-end; }
-.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
-.op-row .el-button + .el-button { margin-left: 0; }
 .alias { font-weight: 600; }
 .muted { font-size: 12px; color: var(--el-text-color-secondary); }
 </style>

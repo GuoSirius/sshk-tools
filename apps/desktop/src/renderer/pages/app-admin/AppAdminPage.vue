@@ -7,8 +7,8 @@
  * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
  *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
- *   模型管理三页 P4-5 起直引页面组件（toolId 注入与幂等加载职责上收本壳），
- *   文件/分享两模块过渡直引工具壳组件（provideToolId 在壳内已处理，最少侵入），
+ *   模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件（模型 toolId 注入与幂等加载职责上收本壳），
+ *   文件模块过渡直引工具壳组件（provideToolId 在壳内已处理，最少侵入），
  *   fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动）。
  */
 import { computed, ref, type Ref } from 'vue'
@@ -24,11 +24,16 @@ import AboutPage from './settings/AboutPage.vue'
 // 三模块页直引（过渡）：相对路径与 discovery.ts 同一跨包引用先例（apps → tools 方向合法）。
 // P4-5 起模型管理分发到各页面组件（不再整壳直引）——壳的 toolId 注入职责上收本壳：
 // state.toolId 是 config key 拼装（modelPresets/chat.*）的单一来源，AppAdminPage 以模块 id 显式赋值。
+// P4-6 起分享管理同样直引五页组件（Routes/Logs/Service/Mounts/Proxies）。
 import FileManagerPage from '../../../../../../tools/file-manager/src/renderer/FileManagerPage.vue'
 import ProvidersPage from '../../../../../../tools/model-console/src/renderer/pages/ProvidersPage.vue'
 import ChatPage from '../../../../../../tools/model-console/src/renderer/pages/ChatPage.vue'
 import UsagePage from '../../../../../../tools/model-console/src/renderer/pages/UsagePage.vue'
-import ShareManagerPage from '../../../../../../tools/share-manager/src/renderer/ShareManagerPage.vue'
+import RoutesPage from '../../../../../../tools/share-manager/src/renderer/pages/RoutesPage.vue'
+import LogsPage from '../../../../../../tools/share-manager/src/renderer/pages/LogsPage.vue'
+import ServicePage from '../../../../../../tools/share-manager/src/renderer/pages/ServicePage.vue'
+import MountsPage from '../../../../../../tools/share-manager/src/renderer/pages/MountsPage.vue'
+import ProxiesPage from '../../../../../../tools/share-manager/src/renderer/pages/ProxiesPage.vue'
 import { toolId as modelManagerToolId } from '../../../../../../tools/model-console/src/renderer/state'
 
 defineOptions({ name: 'AppAdminPage' })
@@ -238,12 +243,12 @@ function goBackDesktop(): void {
               section="config"
               layout="single"
             />
-            <ShareManagerPage
-              v-else-if="activeModule === 'share'"
-              :key="'share-manager'"
-              :menu="activePage"
-              tool-id="share-manager"
-            />
+            <!-- 分享管理五页直引（P4-6 迁即重构；service 即收编 ShareTab 后的唯一分享服务页） -->
+            <RoutesPage v-else-if="activePage === 'routes'" />
+            <LogsPage v-else-if="activePage === 'logs'" />
+            <ServicePage v-else-if="activePage === 'service'" />
+            <MountsPage v-else-if="activePage === 'mounts'" />
+            <ProxiesPage v-else-if="activePage === 'proxies'" />
           </div>
         </template>
       </section>
