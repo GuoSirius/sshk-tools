@@ -1,7 +1,5 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { DEFAULT_OCR_LAYOUT } from '@sshk/badge-studio'
-import type { OcrLayoutConfig } from '@sshk/badge-studio'
 import type { LlmProviderInfo } from '@sshk/shared'
 import { host } from '../host'
 import { configKey, textConfig } from './base'
@@ -12,13 +10,11 @@ import { configKey, textConfig } from './base'
  * 识别执行编排（recognizeImages，写工作区统计表）在 workspace 域——依赖方向恒为 域 → base，无环。
  * 注意：vision / imageThumbs 用 ref 而非 reactive——volar 对「导入的 reactive 对象」
  * 在模板里会错误地做 ref 解包（成员访问被改写成 .value），ref 则一切正常。
- * C-Q1（2026-11-16 拍板）：PaddleOCR 搁置 + 界面抹除——provider 只剩 cloud/manual；
- * 已存的 paddleocr 配置回落 cloud（数据不清，将来恢复零成本，见 plans/06 §五）。
+ * CF-5（2026-11-21 终审）：PaddleOCR 彻底移除——provider 只剩 cloud/manual；
+ * 已存的 paddleocr 配置数据作历史残留（不再读取；D45 已推翻）。
  */
 export const vision = ref({
   provider: 'cloud' as 'cloud' | 'manual',
-  paddleCommand: '',
-  paddleArgs: '{image}',
 })
 export const providers = ref<LlmProviderInfo[]>([])
 export const visionProviderId = ref('')
@@ -39,7 +35,6 @@ export async function loadThumb(file: string): Promise<void> {
 export const recognizing = ref(false)
 export const visionRaw = ref('')
 // 配置兼容保留（UI 已抹除，恢复零成本）
-export const ocrLayout = reactive<OcrLayoutConfig>({ ...DEFAULT_OCR_LAYOUT })
 export const activeProvider = computed(() => providers.value.find((p) => p._id === visionProviderId.value) ?? null)
 
 export async function loadProviders(): Promise<void> {

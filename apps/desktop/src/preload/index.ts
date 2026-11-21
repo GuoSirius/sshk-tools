@@ -199,11 +199,9 @@ const api = {
       invoke(IPC_CHANNELS.badgeTemplateDownload, fmt),
     parseImage: (payload: {
       file: string
-      provider: 'cloud' | 'paddleocr' | 'manual'
+      provider: 'cloud' | 'manual'
       providerId?: string
       model?: string
-      paddleCommand?: string
-      paddleArgs?: string
       ocrLayout?: Record<string, unknown>
     }): Promise<{ rows: { url: string; clicks: number; totalClicks: number; metrics?: Record<string, number> }[]; warnings: string[]; csv: string; raw: string }> =>
       invoke(IPC_CHANNELS.badgeParseImage, payload),

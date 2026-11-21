@@ -190,7 +190,7 @@ export const IPC_CHANNELS = {
   badgeDeletePoster: 'badge:deletePoster',
   badgeSavePosterMeta: 'badge:savePosterMeta',
   badgeExportFiles: 'badge:exportFiles',
-  /** 图片数据源：读取图片 / 视觉识别 / 工具专属密钥（PaddleOCR 与云端模型共用） */
+  /** 图片数据源：读取图片 / 视觉识别 / 工具专属密钥（CF-5 终审：PaddleOCR 已彻底移除，仅云端模型） */
   badgeParseImage: 'badge:parseImage',
   badgeSetVisionKey: 'badge:setVisionKey',
   badgeVisionState: 'badge:visionState',

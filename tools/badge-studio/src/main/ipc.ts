@@ -18,12 +18,9 @@ import {
 import { injectBadges, markBadges, parseDatasource } from '../core/index.js'
 import {
   buildVisionMessages,
-  DEFAULT_OCR_LAYOUT,
   parseVisionResult,
   toCsvText,
-  type OcrLayoutConfig,
 } from '../core/vision.js'
-import { ensureAdapterScript, withAdapterArgs } from './adapter.js'
 import { hashHtml } from './hash.js'
 import type { StatRow } from '../core/datasource.js'
 import { DEFAULT_URL_NORM } from '../core/url-norm.js'
@@ -100,12 +97,6 @@ function readImageDataUri(file: string): string {
   return `data:${mime};base64,${buf.toString('base64')}`
 }
 
-/** 命令参数模板：支持双 / 单引号包裹，{image} 由宿主替换为图片绝对路径 */
-function parseArgs(template: string): string[] {
-  const parts = template.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
-  return parts.map((part) => part.replace(/^["']|["']$/g, ''))
-}
-
 /** badge 生成入参（渲染层传内容与相对路径，不信任绝对路径） */
 export interface GenerateInput {
   name: string
@@ -122,15 +113,11 @@ export interface GenerateInput {
 
 export interface ParseImageInput {
   file: string
-  provider: 'cloud' | 'paddleocr' | 'manual'
+  provider: 'cloud' | 'manual'
   /** 应用级 Provider id：baseURL / 密钥由主进程注入，工具不重复配置 */
   providerId?: string
   /** 覆盖 Provider 上的模型名（用户可在页面上直接选） */
   model?: string
-  paddleCommand?: string
-  paddleArgs?: string
-  /** 本机 OCR 版式：来自工具配置，宿主不猜 */
-  ocrLayout?: OcrLayoutConfig
 }
 
 export interface BadgeIpcDeps {
@@ -185,7 +172,7 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
     return parseDatasource(kindOf(abs), readFileSync(abs))
   }))
 
-  // ①-b 图片数据源：云端视觉模型 / 本机 PaddleOCR → 统一标准 StatRow[]
+  // ①-b 图片数据源：云端视觉模型（CF-5：PaddleOCR 已移除）→ 统一标准 StatRow[]
   ipc.handle(IPC_CHANNELS.badgeParseImage, wrap(async (input: ParseImageInput) => {
     const host = requireHost()
     const abs = resolveInputFile(input.file, deps.outputRoot)
@@ -204,28 +191,11 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
         temperature: 0,
         maxTokens: 4096,
       })
-    } else if (input.provider === 'paddleocr') {
-      if (!input.paddleCommand?.trim()) throw new AppError('请先在工具配置里填写本机 PaddleOCR 命令')
-      // 适配器脚本由宿主托管（userData/adapters），用户参数只负责 {image}；
-      // 未写 .py 脚本时自动前置适配器路径，避免 python 把图片当源码执行
-      const adapterPath = await ensureAdapterScript()
-      const args = withAdapterArgs(
-        parseArgs(input.paddleArgs ?? '{image}').map((arg) => arg.replaceAll('{image}', abs)),
-        adapterPath,
-      )
-      if (!args.includes('--layout')) {
-        args.push('--layout', JSON.stringify(input.ocrLayout ?? DEFAULT_OCR_LAYOUT))
-      }
-      text = await host.runLocalOcr({
-        command: input.paddleCommand,
-        args,
-        imagePath: abs,
-      })
     } else {
       throw new AppError('当前为「仅人工校对」模式，请直接粘贴 CSV 文本')
     }
 
-    const rows = parseVisionResult(text, warnings, { layout: input.ocrLayout })
+    const rows = parseVisionResult(text, warnings)
     // 回填可校对 CSV：识别结果永远先过人眼，再进 badge 注入链路
     return { rows, warnings, csv: toCsvText(rows), raw: text.slice(0, 20_000) }
   }))

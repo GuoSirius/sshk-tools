@@ -49,8 +49,7 @@
         "chat",
         "listProviders",
         "chatByProvider",
-        "listModelsByProvider",
-        "runLocalOcr"
+        "listModelsByProvider"
       ]
     },
     "sandbox": "main",
@@ -101,26 +100,6 @@
       ]
     },
     {
-      "id": "config-ocr",
-      "label": "本机 OCR",
-      "fields": [
-        {
-          "key": "ocr.command",
-          "label": "OCR 命令",
-          "type": "string",
-          "hint": "如 paddleocr 的可执行路径"
-        },
-        {
-          "key": "ocr.timeoutMs",
-          "label": "超时(ms)",
-          "type": "number",
-          "min": 1000,
-          "max": 60000,
-          "hint": "单次识别超时"
-        }
-      ]
-    },
-    {
       "id": "config-path",
       "label": "路径类（必须用 dir/file 类型）",
       "fields": [
@@ -147,10 +126,5 @@
       "defaultProviderId": "",
       "systemPrompt": "你是一个乐于助人的助手。",
       "temperature": 0.7
-    },
-    "ocr": {
-      "command": "",
-      "timeoutMs": 30000
-    }
-  }
+    }  }
 }

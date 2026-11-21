@@ -6,7 +6,7 @@ import type { ToolHostCapabilities } from '@sshk/shared'
  *
  * 这里集中演示「工具包可能拥有的全部 7 项宿主能力」：
  *   getToolSecret / setToolSecret / chat / listProviders /
- *   chatByProvider / listModelsByProvider / runLocalOcr
+ *   chatByProvider / listModelsByProvider
  * 每个能力都注册一个 IPC 通道，渲染层经 window.api.ipc.invoke 调用，
  * 主进程再把调用转发给宿主注入的 deps.host（密钥永不下发到渲染层）。
  *
@@ -52,8 +52,4 @@ export default function registerToolMain(
   // 6) 读取工具专属密钥
   ipcMain.handle(ch('getSecret'), (_event, name: string) => host.getToolSecret(deps.toolId, name))
 
-  // 7) 本机 OCR（无 shell、带超时，stdout 作为识别文本返回）
-  ipcMain.handle(ch('runOcr'), async (_event, req: Parameters<ToolHostCapabilities['runLocalOcr']>[0]) =>
-    host.runLocalOcr(req),
-  )
 }

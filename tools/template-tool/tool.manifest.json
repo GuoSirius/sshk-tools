@@ -75,26 +75,6 @@
       ]
     },
     {
-      "id": "config-ocr",
-      "label": "本机 OCR",
-      "fields": [
-        {
-          "key": "ocr.command",
-          "label": "OCR 命令",
-          "type": "string",
-          "hint": "如 paddleocr 的可执行路径"
-        },
-        {
-          "key": "ocr.timeoutMs",
-          "label": "超时(ms)",
-          "type": "number",
-          "hint": "单次识别超时",
-          "min": 1000,
-          "max": 60000
-        }
-      ]
-    },
-    {
       "id": "config-path",
       "label": "路径类（必须用 dir/file 类型）",
       "fields": [
@@ -152,7 +132,7 @@
       "icon": "M8 3v2M16 3v2M8 19v2M16 19v2M3 8h2M3 16h2M19 8h2M19 16h2M6 6h12v12H6zM10 10.5h4v3h-4z",
       "groups": [
         "config-llm",
-        "config-ocr"
+        "config-path"
       ]
     },
     {
@@ -173,12 +153,7 @@
       "defaultProviderId": "",
       "systemPrompt": "你是一个乐于助人的助手。",
       "temperature": 0.7
-    },
-    "ocr": {
-      "command": "",
-      "timeoutMs": 30000
-    },
-    "workspaceDir": "",
+    },    "workspaceDir": "",
     "lastImageFile": "",
     "output": {
       "keepHtml": true,

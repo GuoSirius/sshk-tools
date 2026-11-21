@@ -12,7 +12,7 @@ export interface PageRow { id: string; label: string; groups: string[] }
 /** 两壳共用的 7 项宿主能力（与 scripts/tool-skeleton CREATE_CAPABILITIES 一致，单一事实源在此） */
 export const CAPABILITIES_LIST = [
   'getToolSecret', 'setToolSecret', 'chat', 'listProviders',
-  'chatByProvider', 'listModelsByProvider', 'runLocalOcr',
+  'chatByProvider', 'listModelsByProvider',
 ]
 
 export const FIELD_TYPES: { label: string; value: ToolConfigFieldType }[] = [

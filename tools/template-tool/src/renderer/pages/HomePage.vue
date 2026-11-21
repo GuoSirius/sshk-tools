@@ -49,16 +49,6 @@ async function getSecret(): Promise<void> {
   if (r !== undefined) secretReadback.value = r
 }
 
-// ── 7) OCR ──
-const ocrCommand = ref('paddleocr')
-const ocrImage = ref('')
-const ocrResult = ref('')
-async function runOcr(): Promise<void> {
-  if (!ocrCommand.value || !ocrImage.value) { ElMessage.warning('请填写 OCR 命令与图片路径'); return }
-  const r = await call<string>('runOcr', { command: ocrCommand.value, args: ['predict', '--image_dir', ocrImage.value], imagePath: ocrImage.value, timeoutMs: 30000 })
-  if (r !== undefined) ocrResult.value = r
-}
-
 onMounted(() => { void loadProviders() })
 
 const providerOptions = computed(() => providers.value.map((p) => ({ value: p._id, label: `${p.name}（${p.model}）${p.hasApiKey ? ' ✓key' : ''}` })))
@@ -70,7 +60,6 @@ const CAPS = [
   { id: 'chat-provider', label: '按 Provider 对话', api: 'chatByProvider' },
   { id: 'models', label: '查询模型', api: 'listModelsByProvider' },
   { id: 'secret', label: '工具专属密钥', api: 'set/getToolSecret' },
-  { id: 'ocr', label: '本机 OCR', api: 'runLocalOcr' },
   { id: 'logs', label: '调用日志', api: '—' },
 ] as const
 const activeCap = ref<string>('providers')
@@ -153,13 +142,6 @@ const activeCap = ref<string>('providers')
       </template>
 
       <!-- ⑦ OCR -->
-      <template v-else-if="activeCap === 'ocr'">
-        <div class="panel-head">本机 OCR（runLocalOcr）</div>
-        <el-input clearable v-model="ocrCommand" placeholder="OCR 命令" style="margin-bottom:6px" />
-        <el-input clearable v-model="ocrImage" placeholder="图片绝对路径" style="margin-bottom:6px" />
-        <el-button type="primary" @click="runOcr">执行识别</el-button>
-        <pre class="result">{{ ocrResult || '（识别结果将显示在此）' }}</pre>
-      </template>
 
       <!-- 调用日志 -->
       <template v-else>

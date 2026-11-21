@@ -24,7 +24,6 @@ function fakeHost(): PluginHost {
     listProviders: () => [],
     chatByProvider: async () => '',
     listModelsByProvider: async () => [],
-    runLocalOcr: async () => '',
   }
   return {
     ipcMain,

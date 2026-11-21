@@ -136,8 +136,6 @@ export interface ToolHostCapabilities {
   chatByProvider(req: ToolHostProviderChatRequest): Promise<string>
   /** 按 Provider id 真实查询 /models；密钥同样在主进程注入 */
   listModelsByProvider(providerId: string, apiKey?: string): Promise<string[]>
-  /** 本机 OCR（PaddleOCR 等）：无 shell、带超时，stdout 作为识别文本返回 */
-  runLocalOcr(req: { command: string; args: string[]; imagePath: string; timeoutMs?: number }): Promise<string>
 }
 
 /**

@@ -63,7 +63,6 @@ const ALLOWED_HOST_METHODS = new Set<keyof ToolHostCapabilities>([
   'listProviders',
   'chatByProvider',
   'listModelsByProvider',
-  'runLocalOcr',
 ])
 
 /** 给插件的 ipcMain 代理：每次调用都校验工具当前是否可用；handler 统一 IpcResult 包装（H1 永不 reject） */

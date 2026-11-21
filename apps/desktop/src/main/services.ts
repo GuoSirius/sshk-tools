@@ -2,7 +2,6 @@ import { app } from 'electron'
 import { SecretsStore } from './secrets-store'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { spawn } from 'node:child_process'
 import {
   ConfigService,
   DEFAULT_SETTINGS,
@@ -88,62 +87,6 @@ export function setupServices(): AppServices {
   function currentSecrets(): Record<string, string> { return secretsStore.snapshot() }
 
   /** 本机 OCR：无 shell、固定超时、限制输出，避免外部命令失控 */
-  function runLocalOcr(req: {
-    command: string
-    args: string[]
-    imagePath: string
-    timeoutMs?: number
-  }): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const command = req.command.trim()
-      if (!command) { reject(new AppError('未配置本机 OCR 命令')); return }
-      const args = req.args.map((arg) => arg.replaceAll('{image}', req.imagePath))
-      let child: ReturnType<typeof spawn>
-      try {
-        child = spawn(command, args, {
-          shell: false,
-          windowsHide: true,
-          // Windows 控制台默认 GBK，强制 Python 走 UTF-8，否则中文文件名 / 报错全是乱码
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
-        })
-      } catch (err) {
-        reject(new AppError(`本机 OCR 启动失败：${(err as Error).message}`))
-        return
-      }
-      let stdout = ''
-      let stderr = ''
-      let settled = false
-      const limit = Math.min(Math.max(req.timeoutMs ?? 60_000, 1_000), 180_000)
-      const timer = setTimeout(() => {
-        if (settled) return
-        settled = true
-        child.kill()
-        reject(new AppError(`本机 OCR 超时（${Math.round(limit / 1000)}s）`, 'timeout'))
-      }, limit)
-      child.stdout?.setEncoding('utf8')
-      child.stderr?.setEncoding('utf8')
-      child.stdout?.on('data', (chunk: string) => {
-        if (stdout.length < 2_000_000) stdout += chunk
-      })
-      child.stderr?.on('data', (chunk: string) => {
-        if (stderr.length < 20_000) stderr += chunk
-      })
-      child.on('error', (err) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(new AppError(`本机 OCR 启动失败：${err.message}`))
-      })
-      child.on('close', (code) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        if (code !== 0) reject(new AppError(`本机 OCR 退出码 ${code}：${stderr.slice(0, 500)}`))
-        else resolve(stdout.trim())
-      })
-    })
-  }
-
   // O6/N5（P3-2 第一刀）：LLM 域服务拆至 llm-service.ts，密钥仍由 SecretsStore 单一收口（快照只读注入）
   const llm = createLlmService({ config, repository, currentSecrets })
 
@@ -205,7 +148,6 @@ export function setupServices(): AppServices {
     listProviders: () => llm.listProviders(),
     chatByProvider: (req) => llm.chatByProvider(req),
     listModelsByProvider: (providerId, apiKey) => llm.listModelsByProvider(providerId, apiKey),
-    runLocalOcr,
   }
 
   /**

@@ -7,7 +7,7 @@ import { DEFAULT_BADGE_ATTR, DEFAULT_CLICKS_FIELD, DEFAULT_POSTER_WIDTH, format,
 import { host } from '../host'
 import { configKey, textConfig } from './base'
 import {
-  imageFiles, loadProviders, ocrLayout, recognizing, vision, visionModel, visionProviderId, visionRaw,
+  imageFiles, loadProviders, recognizing, vision, visionModel, visionProviderId, visionRaw,
 } from './vision'
 import {
   copyCode, currentGenerated, currentPosterId, deleteOpen, deleteTarget, downloadPosterPng, exportPosterHtml,
@@ -105,13 +105,9 @@ export async function loadConfigAndRecent(): Promise<void> {
   captureScale.value = Number(await host.config.get(configKey('scale'))) || 2
   const recent = (await host.config.get(configKey('recentHtmls'))) as RecentHtml[] | null
   recentHtmls.value = Array.isArray(recent) ? recent : []
-  // C-Q1：已存的 paddleocr 配置回落 cloud（数据保留，UI 不露出）
+  // CF-5（2026-11-21 终审）：PaddleOCR 已移除——已存 vision.paddleCommand/paddleArgs 键作历史残留不再读取，provider 恒 cloud/manual
   const provider = await textConfig('vision.provider', 'cloud')
   vision.value.provider = provider === 'manual' ? 'manual' : 'cloud'
-  vision.value.paddleCommand = await textConfig('vision.paddleCommand', 'python')
-  vision.value.paddleArgs = await textConfig('vision.paddleArgs', '{image}')
-  const savedLayout = (await host.config.get(configKey('ocrLayout'))) as Partial<typeof ocrLayout> | null
-  if (savedLayout && typeof savedLayout === 'object') Object.assign(ocrLayout, savedLayout)
   await loadProviders()
   snapshotWorkspaceBaseline() // 初始基线：新建海报空工作区，此后变化计入返回列表 dirty
 }

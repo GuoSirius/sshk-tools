@@ -1,16 +1,12 @@
 import type { ToolVisionMessage } from '@sshk/shared'
 import { parseCsvText, rowsToCsv, toStatRows } from './datasource.js'
 import type { StatRow } from './datasource.js'
-import { DEFAULT_OCR_LAYOUT, parseOcrLines, type OcrLayoutConfig } from './ocr-layout.js'
 
-export type { OcrLayoutConfig } from './ocr-layout.js'
-export { DEFAULT_OCR_LAYOUT } from './ocr-layout.js'
 
 /**
  * 图片数据源统一入口：
- * 云端视觉模型 / 本机 PaddleOCR 都只需要产出「JSON 数组或带表头 CSV 文本」，
+ * 云端视觉模型产出「JSON 数组或带表头 CSV 文本」（CF-5 终审：PaddleOCR 已移除）
  * 这里统一收敛成标准 StatRow[]，再走原有 URL 归一 + badge 注入链路。
- * PaddleOCR 无表头的原始行文本则按工具配置里的版式规则解析。
  */
 
 /** 云端视觉模型提示词：强约束输出，避免模型自由发挥编造数据 */
@@ -51,11 +47,6 @@ function extractJsonArray(text: string): unknown {
   throw new Error('识别结果中没有 JSON 数据数组')
 }
 
-export interface ParseVisionOptions {
-  /** 本机 OCR 版式；由工具配置提供，宿主不猜 */
-  layout?: OcrLayoutConfig
-}
-
 /**
  * 解析识别结果：JSON 数组 → 带表头 CSV → 按配置解析的 OCR 原始行。
  * 三种方式都走同一套 URL / 数值清洗，最终结构完全一致。
@@ -63,13 +54,12 @@ export interface ParseVisionOptions {
 export function parseVisionResult(
   text: string,
   warnings: string[] = [],
-  options: ParseVisionOptions = {},
 ): StatRow[] {
   const cleaned = text
     .replace(/```(?:json|csv)?/gi, '')
     .replace(/```/g, '')
     .trim()
-  if (!cleaned) throw new Error('识别结果为空，请检查模型 / OCR 是否返回内容')
+  if (!cleaned) throw new Error('识别结果为空，请检查模型是否返回内容')
 
   let rows: StatRow[] = []
   try {
@@ -77,12 +67,8 @@ export function parseVisionResult(
     if (!Array.isArray(data)) throw new Error('不是数组')
     rows = toStatRows(data as Record<string, unknown>[], warnings)
   } catch {
-    try {
       rows = parseCsvText(cleaned, warnings)
-    } catch {
-      rows = parseOcrLines(cleaned, options.layout ?? DEFAULT_OCR_LAYOUT, warnings)
     }
-  }
   if (rows.length === 0) warnings.push('识别结果未解析出有效数据行，请人工校对后重试')
   else warnings.push('图片识别结果请人工核对数值后再生成海报')
   return rows

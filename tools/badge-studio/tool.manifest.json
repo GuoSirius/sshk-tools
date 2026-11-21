@@ -368,16 +368,7 @@
     "vision": {
       "provider": "cloud",
       "providerId": "",
-      "modelOverride": "",
-      "paddleCommand": "python",
-      "paddleArgs": "{image}"
-    },
-    "ocrLayout": {
-      "linkNumberSameLine": true,
-      "thousandsSeparator": true,
-      "skipTotalRow": true,
-      "skipKeywords": "合计,总计,小计,total,sum",
-      "columnOrder": "url,clicks,totalClicks"
+      "modelOverride": ""
     }
   },
   "visibility": "desktop",
