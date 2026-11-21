@@ -1,4 +1,4 @@
-import { toPlainArg } from './plain'
+import { toPlainArg } from './to-plain'
 
 /**
  * 渲染层入口组装 window.api：

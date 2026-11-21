@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
-import { installPlainApi } from './api-plain'
-import { toPlainArg } from './plain'
+import { installPlainApi } from './install'
+import { toPlainArg } from './to-plain'
 
 declare global {
   var sshkApiBridge: unknown
