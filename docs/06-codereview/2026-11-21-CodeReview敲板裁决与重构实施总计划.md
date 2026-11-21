@@ -1,7 +1,7 @@
 # CodeReview 敲板裁决与重构实施总计划（2026-11-21）
 
-- 状态：**敲板汇总完成 · 待用户终审 §三 冲突点 + §四 待确认清单后即按 §九 分批开工**
-- 版本：v1.0
+- 状态：**终审完成（2026-11-21 用户已逐项回复全部 CF/C，见 §十三）· 具备开工条件，待令执行 P0~P9**
+- 版本：v1.1（v1.0 = 敲板汇总；v1.1 = 终审落档：CF-1 改判 developerMode 保留（D52 推翻→D55）+ C-6 菜单结构原样下移定稿 + C-11 model-manager + 其余 C 项采纳）
 - 日期：2026-11-21（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`（分支 `main`）
 - 关联需求：台账 #151；输入四份文档（本目录下 报告A / 报告B / 二次复核台账 v1.1 / 交叉合并总计划）+ 用户 2026-11-21 敲板消息（报告B 40 项 + 报告A 18 项 + 台账 C1/C4/Q-01~21 + **重构新想法 1~8**）
@@ -12,7 +12,7 @@
 
 ## 〇、一页速览（TL;DR）
 
-1. **敲板总体成立，无推翻性冲突**；发现 **3 处真冲突 + 2 处敲板前提过时 + 1 处与仓库铁律冲突**（§三 CF-1~CF-6），另有 **11 个小落点待确认**（§四 C-1~C-11，均给了建议默认）。
+1. **敲板总体成立，无推翻性冲突**；识别出 **3 处真冲突 + 2 处敲板前提过时 + 1 处与仓库铁律冲突**（§三 CF-1~CF-6）+ **11 个小落点**（§四 C-1~C-11）——**已于 2026-11-21 全部终审落定（§十三）**，其中 CF-1 终审改判：developerMode **保留不删**（D52 推翻 → D55）。
 2. **重构新想法吸收了多个待决策点**：三基础能力工具（file-manager / model-console / share-manager）并入「应用管理」成为应用本体后，Q-03（FsRuntime 下沉）、Q-04（三能力配置升层）、Q-22（share-hub 生命周期）、S1/S2（配置藏在可禁用工具）等**不再是问题**——它们从"待决策"变为"被架构吸收"（§五.7）。
 3. **Q-19 useSelection 改判**：它正是当初为「需求 8·跨页选择」建的 composable（代码注释自证），按你的敲板从"删除"改为**保留 + 增强 + 全量多选表格接入**（§七）。
 4. **F2（.sshktool 运行时安装/卸载）主体已做完**：SystemTab「运行时工具包」区已有 预览/安装（含降级确认）/卸载/信任钥导入吊销 全套 UI；剩全链路实测演练（§八）。
@@ -64,9 +64,9 @@
 | B20 | A1 main/index.ts 拆 6 模块（按报告组织结构） | ✅ | P3-1 |
 | B21 | A2 渲染层 pages/ 彻底规范化 | ✅（并入应用管理新结构） | P4 |
 | B22 | A3 shared 包内聚 | ✅（=P10 拆领域包） | P0-5 / P5-2 |
-| B23 | 删 developerMode 开关，只区分 dev/build | ✅（⚠️ 冲突点 CF-1，含铁律修订） | P0-2 |
+| B23 | 删 developerMode 开关，只区分 dev/build | 🔁 **终审改判：不删，developerMode 保留**（CF-1；D52 推翻→D55；铁律原文不变） | P0-2（保留+收敛） |
 | B24 | D-1 方案A：`__SSHK_DEV__` define 注入 + isSourceRepo 分离 | ✅ | P0-1 |
-| B25 | D-3 isDev/devFeatures 注释分节 | 🔁 **作废**（developerMode 删除后 devFeatures 概念消亡，仅剩 isDev / isSourceRepo） | — |
+| B25 | D-3 isDev/devFeatures 注释分节 | ✅ **恢复执行**（CF-1 终审保留 developerMode） | P0-2 |
 | B26 | D-4 判据概念分离命名 | ✅（随 D-1） | P0-1 |
 | B27 | N1 工具 id 后缀不统一，命名合法即可 | ✅ 存量不改 + 指南立规 | P8-2 |
 | B28 | N2 pages/ 只放真实页面 | ✅ | P4 / P6-7 |
@@ -121,7 +121,7 @@
 | Q-09 | edm 三死代码页 | ✅ 直接删 | P1-7 |
 | Q-10 | EDM v5 归档 | ✅ 已执行（批3） | — |
 | Q-11 | archive 优化建议文档 | ⚠️ → CF-5（建议保持归档） | 待确认 |
-| Q-12 | build+developerMode 图标字段 | 🔁 **作废**（developerMode 删除 → 图标字段仅 dev 可改） | — |
+| Q-12 | build+developerMode 图标字段 | ✅ **恢复**：采纳报告A P-5 倾向（devFeatures 可改） | P0-2 |
 | Q-13 | 分享硬鉴权 | ✅ 本轮纳入（webContents 绑定可信身份） | P1-5 |
 | Q-14 | COS/七牛验证 | ✅ 方向确认；V7 需你提供真实账号 ⏳ | P9-1 |
 | Q-15 | AppError 治理范围 | ✅ apps + tools main（裸 throw 121+66 处） | P0-4 |
@@ -151,6 +151,8 @@
 
 ## 三、冲突点清单（CF，需你终审）
 
+> **✅ 终审结果（2026-11-21 用户逐项回复，登记 §十三）**：**CF-1 = 不删，developerMode 保留**（D52 已推翻 → D55；D-2/D-3/Q-12/CR-46 恢复执行，2026-11-14 铁律原文不变）；**CF-2 / C-1 = preview 归 dev**；CF-3 = 确认改判应用内 `main/modules/file/`；**CF-4 / C-2 = 保持归档**；CF-5 = 确认彻底移除 PaddleOCR；CF-6 = 随 developerMode 保留而恢复执行。下表保留原始冲突分析供追溯。
+
 | # | 冲突 | 双方 | 影响与后果 | 处置建议 |
 |---|---|---|---|---|
 | **CF-1** | **删除 developerMode vs AGENTS.md「开发模式铁律」（最高优先级）** | 你的敲板 B23 vs 2026-11-14 铁律（`devFeatures = isDev \|\| cfg.developerMode`，developerMode 只作用于打包版） | 删除后**安装版永久失去所有开发者入口**：①创建工具（dev 恒显，不受影响）②工具全量列表/配置按钮（打包版永不可见）③devOnly 配置字段（打包版隐藏）④图标字段（Q-12 作废=仅 dev）⑤验证引导入口（打包版隐藏，与新想法#3"区分 dev 显示"一致）⑥EDM 系统内容编辑（打包版只读，无提权途径）⑦开发者模式开关及其口令通道（GeneralTab 行删除；DevTools 口令通道保留） | **按敲板执行**。铁律本体「dev 下全量展示全量可编辑」不变；P0-2 同步修订 AGENTS.md + 00-CONVENTIONS §5.1（新表述：门控唯一判据 `__SSHK_DEV__`，打包版不存在任何用户可配置功能开关）。**若你想保留"安装版口令开启开发者功能"能力，请在开工前改判** |
@@ -165,6 +167,8 @@
 ---
 
 ## 四、待确认清单（C，逐项回复"编号+选择"即可；不回复则按建议默认执行）
+
+> **✅ 终审结果（2026-11-21，登记 §十三）**：C-1=dev；C-2=保持归档；C-3=采纳（配置键一次性迁移）；C-4=采纳（`@sshk/share-core/ui`）；C-5=采纳（`scripts/tool-skeleton/`）；**C-6=应用设置 tab 与三工具菜单「结构原样下移一级」**（§五.5 v1.1 定稿）；C-7=方案一（语义色胶囊组）；**C-8=文件管理侧不保留传输设置入口**；**C-9=保持现有烤入机制，只修 bug 完善**（CR-20/47/E4/E5 修复 + CR-22 注释，机制与默认值不动）；C-10=采纳（`apps/desktop/src/shared/verify-steps.ts`）；**C-11=模块 id 沿用，但 model-console → `model-manager`**（原文"model-manger"按拼写惯例取 manager，如需原拼写请指出）。下表保留原始清单供追溯。
 
 | # | 待确认 | 建议默认 | 影响面 |
 |---|---|---|---|
@@ -203,7 +207,7 @@
         └─彩色胶囊按钮组，图标+短文字，语义色──────────────┘ primary 实底锚点
 ```
 
-- **方案一（建议，C-7 默认）·语义色胶囊组**：高度 28px、圆角 6px、图标 14px + 12px 文字；底色用 EP 语义色 `color-*-light-9`、前景/边框 `color-*`，hover 加深一档；「应用管理」用 primary 实底胶囊（全组视觉锚点，最右）。色彩语义沿用总纲 §2.5：主题=purple、检查更新=success、验证引导=warning、更多操作=info、应用管理=primary。图标按 D50 优先 EP/FontAwesome（Brush、Refresh、CircleCheck、MoreFilled、Setting）。
+- **方案一（✅ 终审确认，C-7）·语义色胶囊组**：高度 28px、圆角 6px、图标 14px + 12px 文字；底色用 EP 语义色 `color-*-light-9`、前景/边框 `color-*`，hover 加深一档；「应用管理」用 primary 实底胶囊（全组视觉锚点，最右）。色彩语义沿用总纲 §2.5：主题=purple、检查更新=success、验证引导=warning、更多操作=info、应用管理=primary。图标按 D50 优先 EP/FontAwesome（Brush、Refresh、CircleCheck、MoreFilled、Setting）。
 - **方案二（备选）·分段式**：一个 rounded 容器内五段 icon 按钮 + active 底色，更紧凑但"应用管理"不突出。
 - **更多操作下拉（三段）**：
   1. 刷新页面（F5 / Ctrl+R）· 强制刷新（Ctrl+F5）· 开发者工具 —— 照现保留；
@@ -225,53 +229,61 @@
 │              │  │ ├ 表格（撑满 + EmptyState）─────────────────┤ │  │
 │ ▾应用设置     │  │ └ 分页（total,sizes,prev,pager,next,jumper）┘ │  │
 │  常规         │  └───────────────────────────────────────────────┘  │
-│  分享服务     │   （表单类页面：FormGrid + FormHint + 校验双层）      │
+│  分享         │   （表单类页面：FormGrid + FormHint + 校验双层）      │
 │  文件与传输   │                                                      │
 │  系统与数据   │                                                      │
 │  工具与权限   │                                                      │
 │  关于         │                                                      │
 │ ▾文件管理     │                                                      │
-│  文件浏览     │                                                      │
+│  文件系统     │                                                      │
 │  内容管理     │                                                      │
-│  上传通道     │                                                      │
+│  通道配置     │                                                      │
+│  工具设置     │                                                      │
 │ ▾模型管理     │                                                      │
-│  服务配置     │                                                      │
+│  模型 Provider│                                                      │
 │  对话调试     │                                                      │
-│  用量明细     │                                                      │
+│  用量统计     │                                                      │
+│  工具配置     │                                                      │
 │ ▾分享管理     │                                                      │
 │  路由管理     │                                                      │
 │  访问日志     │                                                      │
-│  挂载管理     │                                                      │
-│  代理管理     │                                                      │
-│  服务状态     │                                                      │
+│  工具设置 ▾   │                                                      │
+│  · 服务配置   │                                                      │
+│  · 挂载管理   │                                                      │
+│  · 代理管理   │                                                      │
 └──────────────┴──────────────────────────────────────────────────────┘
 ```
 
 - 路由：hash 路由 `#/app/<模块>/<页面>`（如 `#/app/files/explorer`）；`← 返回桌面` 与工具页返回协议一致。
-- 菜单来源：**静态配置**（不再是工具 manifest menus），结构见 §五.5。
+- **菜单结构定稿（C-6 终审）**：应用设置 5 个 tab 与三工具现有菜单**结构原样下移一级**——tab/一级→二级、二级→三级，标签与层级沿用现状，不重命名不重排；唯一新增 = 应用设置 >「文件与传输」（承接 §六#1 提取的传输参数；文件管理侧不保留入口，C-8）。
+- 菜单驱动推荐：三模块各保留一份**模块描述文件**（复用 manifest 的 menus/configGroups 引擎与 SettingsPage 表单组件，实现「原样下移」零重写；仅数据文件，不构成对工具代码的依赖）。
 - 传输面板：保持**全局悬浮**（不占菜单，任何页面可唤起）。
 
-### 5.5 应用管理菜单结构表（C-6 可调）
+### 5.5 应用管理菜单结构表（C-6 终审定稿：结构原样下移一级）
 
-| 一级 | 二级（页面） | 内容来源（现状） | 说明 |
+> 原则：应用设置 5 个 tab 与三工具现有菜单**标签、层级、顺序全部沿用现状**，仅整体下移一级（tab/一级→二级、二级→三级）；唯一新增页 = 应用设置 >「文件与传输」。
+
+| 一级 | 二级/三级 | 内容来源（现状） | 说明 |
 |---|---|---|---|
-| 应用设置 | 常规 | GeneralTab（主题/开机自启/托盘/自动更新/产物目录） | **删「开发者模式」行**（CF-1） |
-| | 分享服务 | ShareTab（端口/autoPort/TTL/目录开关/日志容量） | 参数进设置；启停操作留「分享管理>服务状态」 |
-| | 文件与传输 | **新增**：分片阈值/片大小/并发/超时（`app.fs.multipart.*`，现文件管理「传输设置」面板） | FilePicker 图片库共用（台账 #139） |
-| | 系统与数据 | SystemTab（更新/数据目录与日志/备份/配置预览/运行时工具包/回滚快照/诊断） | 内容原样迁移 |
-| | 工具与权限 | ToolsTab（启用/密钥权限/元数据覆盖） | 仅剩纯工具 + 外部安装工具 |
-| | 关于 | AboutTab（运行环境/配置分层约定） | 「更多>关于应用」轻弹框复用其数据 |
-| 文件管理 | 文件浏览 | 原 FileExplorerPage（迁移时拆分 composables/组件） | 全屏工作台，ToolPageLayout 豁免 |
-| | 内容管理 | 原 ContentsPage + ContentEditorCore/Dialog | editorMode 设置随迁 |
-| | 上传通道 | 原 ProfilesPage + Cloud/RemoteProfileForm（迁移时抽 SecretField） | 数据 `app.upload.*` 不动 |
-| 模型管理 | 服务配置 | 原 ProvidersPage（+ 网关偏好分组：默认Provider/超时/流式） | T2 落位 |
-| | 对话调试 | 原 ChatPage | 核实双布局（C2） |
-| | 用量明细 | 原 UsagePage | — |
-| 分享管理 | 路由管理 | 原 RoutesPage | — |
-| | 访问日志 | 原 LogsPage | — |
-| | 挂载管理 | 原 MountsPage | — |
-| | 代理管理 | 原 ProxiesPage | — |
-| | 服务状态 | 原 ServicePage | 启停/清路由操作在此 |
+| 应用设置 | 常规 | GeneralTab → 页面（主题/开机自启/托盘/自动更新/开发者模式/产物目录） | **开发者模式行保留**（CF-1 终审） |
+| | 分享 | ShareTab → 页面（端口/autoPort/TTL/目录开关） | 与 分享管理▸工具设置▸服务配置 同键读写（#115 既有口径） |
+| | 文件与传输 | **唯一新增页**：分片阈值/片大小/并发/超时（`app.fs.multipart.*`） | 承接 §六#1 提取；文件管理侧不保留入口（C-8） |
+| | 系统与数据 | SystemTab → 页面（更新/数据目录与日志/备份/配置预览/运行时工具包/回滚快照/诊断） | 原样迁移 |
+| | 工具与权限 | ToolsTab → 页面（启用/密钥权限/元数据覆盖） | 仅剩纯工具 + 外部安装工具 |
+| | 关于 | AboutTab → 页面（运行环境/配置分层约定） | 「更多>关于应用」轻弹框复用其数据 |
+| 文件管理 | 文件系统 | 原 file-manager 一级菜单「文件系统」（FileExplorerPage，迁移时拆 composables/组件） | 一级菜单下移为二级（C-6）；全屏工作台，ToolPageLayout 豁免 |
+| | 内容管理 | 原「内容管理」（ContentsPage + ContentEditorCore/Dialog） | editorMode 设置随迁 |
+| | 通道配置 | 原「通道配置」（ProfilesPage + Cloud/RemoteProfileForm，迁移时抽 SecretField） | 数据 `app.upload.*` 不动 |
+| | 工具设置 | 原「工具设置」（content-editor 配置组 → 页面） | 键随 C-3 迁 `app.modules.fileManager.*` |
+| 模型管理 | 模型 Provider | 原 model-console 一级「模型 Provider」（ProvidersPage） | **模块 id `model-manager`（C-11）** |
+| | 对话调试 | 原「对话调试」（ChatPage） | 核实双布局（C2） |
+| | 用量统计 | 原「用量统计」（UsagePage） | — |
+| | 工具配置 | 原「工具配置」（config-gateway 网关偏好 → 页面） | 键迁 `app.modules.modelManager.*` |
+| 分享管理 | 路由管理 | 原「路由管理」（RoutesPage） | — |
+| | 访问日志 | 原「访问日志」（LogsPage） | — |
+| | 工具设置 ▸ 服务配置 | 原「工具设置>服务配置」（ServicePage：状态/启停/日志容量） | **二级变三级**（C-6） |
+| | 工具设置 ▸ 挂载管理 | 原「工具设置>挂载管理」（MountsPage） | 三级 |
+| | 工具设置 ▸ 代理管理 | 原「工具设置>代理管理」（ProxiesPage） | 三级 |
 
 ### 5.6 目标代码结构（Q-23/P10/A3/A2 落地形态）
 
@@ -304,11 +316,11 @@ apps/desktop/src/renderer/
 ├── pages/
 │   ├── app-admin/
 │   │   ├── AppAdminPage.vue          # 左菜单（折叠）+ 右内容 + hash 路由
-│   │   ├── settings/  GeneralPage / ShareServicePage / FileTransferPage /
+│   │   ├── settings/  GeneralPage / SharePage / FileTransferPage /     # 5 tab 页 + 新增文件与传输（C-6/C-8）
 │   │   │              SystemDataPage / ToolsPermissionPage / AboutPage
-│   │   ├── files/     FilesExplorerPage / ContentsPage / UploadProfilesPage
-│   │   ├── models/    ProvidersPage / ChatPage / UsagePage
-│   │   └── share/     RoutesPage / LogsPage / MountsPage / ProxiesPage / ServicePage
+│   │   ├── files/     FileExplorerPage / ContentsPage / ProfilesPage  # 原页平移（C-6 下移原则）
+│   │   ├── models/    ProvidersPage / ChatPage / UsagePage            # 模块 id model-manager（C-11）
+│   │   └── share/     RoutesPage / LogsPage / ServicePage / MountsPage / ProxiesPage
 │   └── verify-guide/VerifyGuidePage.vue          # 从 components/ 归位（A2）
 ├── components/        # 真组件+弹框（原 settings/tabs 拆为页面后，组件留此或随页面就近）
 ├── composables/       # useAppConfig / useUpdater / useNewToolScan / useRuntimeComponent …
@@ -328,10 +340,10 @@ scripts/
 | Q-04 三能力配置升层（设置中心加三分组） | 吸收：模块页即应用页，配置天然可达；无需再往设置塞三分组 |
 | Q-22 / O8 / S2 share-hub 生命周期 | 吸收：分享管理=应用模块，服务=应用级常驻（autoStart 保留 + 文档说明） |
 | S1「配置藏在可禁用工具」 | 吸收：三模块不可禁用（应用本体） |
-| D-2 developerMode 写法收敛 | 作废（概念删除） |
-| D-3 isDev/devFeatures 注释分节 | 作废（devFeatures 概念删除） |
-| Q-12 build+developerMode 图标字段 | 作废（图标字段=仅 dev） |
-| CR-46 developerModeOn 不订阅变更 | 作废（developerModeOn 删除；config.onChanged 订阅机制仍保留给其它配置） |
+| D-2 developerMode 写法收敛 | **恢复执行**（CF-1 终审保留 developerMode）：shared 纯函数 + 统一下发（P0-2） |
+| D-3 isDev/devFeatures 注释分节 | **恢复执行**（B25 敲板；P0-2） |
+| Q-12 build+developerMode 图标字段 | **恢复**：devFeatures 可改（报告A P-5 倾向采纳；P0-2） |
+| CR-46 developerModeOn 不订阅变更 | **恢复执行**：订阅 config.onChanged 或复用 useAppConfig 同源（P0-2） |
 | H3/M15/T1/T2（设置中心升层批次） | 并入 P4 模块化迁移 |
 | B S2/P4 share-manager 禁用语义 | 吸收（不可禁用） |
 | 台账 D-Q 三能力"配置入口"相关待办 | 以 §六 提取清单为准 |
@@ -344,14 +356,14 @@ scripts/
 
 | # | 配置 | 现位置 | 配置键 | 新位置 | 说明 |
 |---|---|---|---|---|---|
-| 1 | 传输/分片参数（阈值/片大小/并发/超时） | 文件管理「更多▾→传输设置」面板 | `app.fs.multipart.*` | **应用设置 > 文件与传输** | FilePicker 图片库同一份配置（#139 已统一注入）；文件管理侧保留只读跳转（C-8） |
-| 2 | 上传通道 Profile CRUD | file-manager 通道配置页 | `app.upload.*` + 密钥 `app:upload:<pid>` | **文件管理 > 上传通道** | 数据零迁移，仅 UI 归位为模块页 |
-| 3 | 模型 Provider CRUD | model-console Provider 页 | `app.provider*`（密钥 safeStorage） | **模型管理 > 服务配置** | T2 落位 |
+| 1 | 传输/分片参数（阈值/片大小/并发/超时） | 文件管理「更多▾→传输设置」面板 | `app.fs.multipart.*` | **应用设置 > 文件与传输（唯一新增页）** | FilePicker 图片库同一份配置（#139 已统一注入）；**文件管理侧不保留入口（C-8 终审）** |
+| 2 | 上传通道 Profile CRUD | file-manager 通道配置页 | `app.upload.*` + 密钥 `app:upload:<pid>` | **文件管理 > 通道配置（原页平移）** | 数据零迁移，仅 UI 归位为模块页 |
+| 3 | 模型 Provider CRUD | model-console Provider 页 | `app.provider*`（密钥 safeStorage） | **模型管理 > 模型 Provider（原页平移）** | 模块 id model-manager（C-11） |
 | 4 | 模型预设 + 播种 | main/presets.ts + seedDefaultProviders | `app.provider*` | **main/modules/llm/**（应用本体） | T4 对齐，宿主单一播种器 |
 | 5 | 分享服务参数（端口/TTL/目录开关/日志容量） | 应用设置 ShareTab | `app.shareHub.*` | **应用设置 > 分享服务** | 已是正面范例，保持 |
-| 6 | 挂载/代理 | share-manager 工具设置子菜单 | 模块配置 | **分享管理 > 挂载管理/代理管理** | 运营数据留模块 |
-| 7 | 内容编辑器形态 | file-manager 工具设置 | `tools.file-manager.editorMode` | **文件管理 > 内容管理（页内设置）** | 键随 C-3 迁 `app.modules.fileManager.*` |
-| 8 | 网关偏好（默认 Provider/超时/流式） | model-console 工具配置 | `tools.model-console.*` | **模型管理 > 服务配置「网关偏好」分组** | 键随 C-3 迁移 |
+| 6 | 挂载/代理 | share-manager 工具设置子菜单 | 模块配置 | **分享管理 > 工具设置 ▸ 挂载管理/代理管理（下移为三级）** | 运营数据留模块 |
+| 7 | 内容编辑器形态 | file-manager 工具设置 | `tools.file-manager.editorMode` | **文件管理 > 工具设置（原页平移）** | 键随 C-3 迁 `app.modules.fileManager.*` |
+| 8 | 网关偏好（默认 Provider/超时/流式） | model-console 工具配置 | `tools.model-console.*` | **模型管理 > 工具配置（原页平移）** | 键随 C-3 迁 `app.modules.modelManager.*`；模块 id model-manager（C-11） |
 | 9 | OCR 命令/超时 | template-tool config-ocr | `tools.template-tool.ocr.*` | **删除** | 随 PaddleOCR 移除（CF-5） |
 | 10 | badge/edm/template 工具业务配置 | 各工具 manifest configGroups | `tools.<id>.*` | **不动** | 纯工具自留（D32 边界不变） |
 | 11 | 常规项（主题/自启/托盘/更新/产物目录） | 设置抽屉 GeneralTab | `app.*` | **应用设置 > 常规** | 删开发者模式行 |
@@ -398,12 +410,12 @@ scripts/
 
 | 批 | 目标 | 内容 | 对应敲板 | 规模 |
 |---|---|---|---|---|
-| **P0-1** | dev 判据唯一化 | electron.vite.config 转 `defineConfig(({mode})=>…)`，注入 `__SSHK_DEV__`（值按 C-1）三端；shared `declare const __SSHK_DEV__`；main 弃 `!app.isPackaged` 判 dev、拆 `isSourceRepo`（dev-tools/dev-access）；renderer 5 处 `import.meta.env.DEV` 全替换并加 lint 禁用；`pnpm start` 实测校准 | B13/B24/B26/A3/Q-05/C-1 | M |
-| **P0-2** | 删 developerMode | 删 config 字段/GeneralTab 开关行/main IPC/edm ipc 分支/ToolManifestDialog/ToolsTab devFeatures（退化 `__SSHK_DEV__`）/VerifyGuidePage 门控/App.vue canShowVerifyGuide；**同步修订 AGENTS.md + 00-CONVENTIONS §5.1**（铁律新表述，见 CF-1） | B23/CF-1/CF-6 | M |
+| **P0-1** | dev 判据唯一化 | electron.vite.config 转 `defineConfig(({mode})=>…)`，注入 `__SSHK_DEV__`（**终审定值：`mode==='dev' \|\| mode==='preview'`，preview 归 dev**）三端；shared `declare const __SSHK_DEV__`；main 弃 `!app.isPackaged` 判 dev、拆 `isSourceRepo`（dev-tools/dev-access）；renderer 5 处 `import.meta.env.DEV` 全替换并加 lint 禁用；`pnpm start` 实测校准 | B13/B24/B26/A3/Q-05/C-1 | M |
+| **P0-2** | developerMode 保留 + 写法收敛 | **developerMode 不删（CF-1 终审，D55；AGENTS/铁律原文不变）**；D-2 写法收敛：shared 纯函数 `isDevFeaturesEnabled(isDev, developerMode)` + catalog 统一下发 `devFeatures`，替换 8 处 4 种写法并 lint 禁裸拼；D-3：ToolsTab isDev/devFeatures 注释分节；Q-12：图标字段改 `devFeatures`（build+developerMode 可改）；CR-46：developerModeOn 订阅 config.onChanged（或复用 useAppConfig 同源） | B25/D-2/D-3/Q-12/CR-46/CF-1 | M |
 | **P0-3** | 时间统一 | 14 处（toLocale\* 7 + Date.parse 7）替换 shared/time；ESLint `no-restricted-syntax` 禁 `toLocaleString/toLocaleTimeString/Date.parse`（白名单 time.ts） | B5/B33/R1/CR-32 | S |
 | **P0-4** | 错误契约 | 统一错误工厂（`AppError(msg,'validation'\|'permission'\|'io')`），apps+tools main 裸 throw 187 处治理；`classifyExpected` 改 provider 注册制（upload-core 注册 errorClassifier）；preload 保留 code；ui-kit `useAction().runWithToast` | A4/A17/Q-15/B16 | L |
 | **P0-5** | 类型真相源 | `@sshk/upload-core/types` 零依赖子入口收编 UploadProfile/UploadTargetType/upload-vendors；shared/upload-manager 改 re-export（P5-2 拆包收尾）；env.d.ts 改由 preload `typeof api` 推导 + IPC_CHANNELS 泛型映射；`Promise<any>` 收紧 unknown | B6/B17/B22/B40-P10/O5 | M |
-| **P0-6** | env 契约 | CR-20 烤入集合合并 / CR-22 注释口径 / CR-47+E4/E5 denylist+键名修正（C-9） | Q-17 | S |
+| **P0-6** | env 烤入完善 | **机制保持（C-9 终审），只修 bug 补全**：CR-20 烤入键集合合并（.env ∪ process.env SSHK_*）；CR-47/E5 `SSHK_DEV_` 前缀入烤入 denylist（对齐契约）；E4 注释键名修正；CR-22 注释改实情（默认值不动） | Q-17/C-9 | S |
 | **P0-7** | 门禁三件套 + 死代码 | knip 进 verify（与 check-env 并列）；check-dialogs 补扫 ElMessageBox.confirm 选项；CHANGELOG 结构校验；8 僵尸常量 A 案（硬编码点 import + 门禁禁产物文件名字面量）；CR-25 四组收敛（ID_PREFIX/logFront/configKey/verify-steps 工具 id） | B15/A9/Q-16/Q-21 | M |
 | **P0-8** | plain 收敛 | 抽 `plain-core.ts`（keepFunctions 参数化）；renderer `ipc-plain/`（install.ts+to-plain.ts）；preload 薄封装 | B7/B29/N3 | S |
 | **P1-1** | conflict 修复 | 冲突分支抛 `__fs_conflict__:` 信号，execute catch 识别置 conflict；补 FsRuntime 状态机单测（含 conflict/pause/cancel 矩阵） | A1/Q-01 | M |
@@ -426,12 +438,12 @@ scripts/
 | **P3-5** | share-hub 保持 | 生命周期宿主常驻不动；`modules/share/` 归置 + 文档说明（Q-22） | Q-22 | S |
 | **P4-1** | 顶栏改版 + App.vue 瘦身 | 彩色胶囊按钮组（C-7）；更多下拉三段；关于应用轻弹框；App.vue 抽 `AppHeader.vue` + useUpdateBanner/useNewToolScan/useRuntimeComponent（CR-42 首刀） | 新想法#2/#3、CR-42 | M |
 | **P4-2** | AppAdminPage 壳 | 页面骨架 + 左菜单（SidebarMenu 复用/折叠）+ hash 路由 `#/app/...` + 返回桌面协议 + 桌面入口按钮 | 新想法#4 | M |
-| **P4-3** | 应用设置页化 | 六页迁移（C-6）：GeneralPage（删开发者模式行）/ShareServicePage/SystemDataPage/ToolsPermissionPage/AboutPage/**FileTransferPage（新增，§六#1）**；删除 AppSettingsDrawer 侧滑 | 新想法#5、§六 | L |
-| **P4-4** | 文件管理模块迁入 | FileExplorerPage（迁移时同步拆 composables：useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…+ 组件）/ContentsPage+编辑器/UploadProfilesPage（同步用 SecretField）；菜单接入 | 新想法#5、§六#2/#7、B37-F1 | XL |
-| **P4-5** | 模型管理模块迁入 | ProvidersPage（+网关偏好分组）/ChatPage（核实双布局）/UsagePage | §六#3/#8 | M |
-| **P4-6** | 分享管理模块迁入 | Routes/Logs/Mounts/Proxies/Service 五页；服务状态启停留模块页 | §六#5/#6 | M |
+| **P4-3** | 应用设置页化 | **5 个 tab 变页面 + 新增文件与传输页（C-6/C-8）**：GeneralPage（开发者模式行保留）/SharePage/SystemDataPage/ToolsPermissionPage/AboutPage/FileTransferPage（新增，§六#1）；菜单/表单推荐复用模块描述文件 + SettingsPage 引擎（§五.4）；删除 AppSettingsDrawer 侧滑 | 新想法#5、C-6、§六 | L |
+| **P4-4** | 文件管理模块迁入 | FileExplorerPage（迁移时同步拆 composables：useFsNavigation/useFsSelection/useFsPreview/useFsTransfer…+ 组件）/ContentsPage+编辑器/ProfilesPage（同步用 SecretField）；菜单**原样下移**（文件系统/内容管理/通道配置/工具设置）；传输设置入口移除（C-8） | 新想法#5、C-6、§六#2/#7、B37-F1 | XL |
+| **P4-5** | 模型管理模块迁入 | **模块 id `model-manager`（C-11，原 model-console）**；ProvidersPage/ChatPage（核实双布局）/UsagePage/工具配置页；菜单原样下移 | §六#3/#8、C-11 | M |
+| **P4-6** | 分享管理模块迁入 | Routes/Logs + 工具设置▸Service/Mounts/Proxies（**二级变三级**，C-6）；服务状态启停留模块页 | §六#5/#6、C-6 | M |
 | **P4-7** | 传输面板全局化 | TransferPanel 挂 App 层（跨桌面/应用管理/工具宿主可用）；传输设置入口改跳应用设置（C-8）；FilePicker 联动回归 | §六#1 | M |
-| **P4-8** | 三工具包退役 | 删 tools/{file-manager,model-console,share-manager}；discovery/catalog/BUILTIN 名单/内置判定收缩为纯工具；配置键一次性迁移 `app.modules.<moduleId>.*`（C-3/C-11）；verify-steps 相关条目改写指向应用管理页；工具与权限页适配；桌面卡片只剩纯工具 | 新想法#5/#6 | L |
+| **P4-8** | 三工具包退役 | 删 tools/{file-manager,model-console,share-manager}；discovery/catalog/BUILTIN 名单/内置判定收缩为纯工具；配置键一次性迁移 `app.modules.<moduleId>.*`（C-3；模块 id：file-manager / **model-manager**（原 model-console，C-11）/ share-manager）；verify-steps 相关条目改写指向应用管理页；工具与权限页适配；桌面卡片只剩纯工具 | 新想法#5/#6 | L |
 | **P4-9** | VerifyGuidePage 归位 | pages/verify-guide/（A2）；入口=顶栏验证引导（仅 dev）；verify-sessions 数据结构不动 | B21/A2 | S |
 | **P5-1** | tool-skeleton 迁出 | → `scripts/tool-skeleton/`（C-5）；shared 零运行时骨架代码；dev:toolCreate/向导预览接线 | B11/Q-23 | S |
 | **P5-2** | shared 领域外迁收尾 | upload-manager/upload-vendors 完成 `@sshk/upload-core/types` 收编（P0-5 收尾）；verify-steps → `apps/desktop/src/shared/`（C-10）；shared 复审=纯契约+裁决+机制 | B22/A3/Q-23 | M |
@@ -493,5 +505,24 @@ scripts/
 ## 十二、登记与执行
 
 - 台账 #151 已登记本总计划；00-index 新增 **D52**（dev/build 二态，developerMode 删除）、**D53**（应用/工具边界重划 + 应用管理架构）、**D54**（codereview 独立目录）。
-- **开工条件**：你对 §三 CF-1~CF-6 与 §四 C-1~C-11 逐项回复（或回复"全部按建议"）→ 从 P0-1 起按 §九 顺序执行，每批可中断、可插队（P1 各项彼此独立）。
+- **开工条件：已满足**（2026-11-21 终审，§十三）→ 待你回复「开工」即从 P0-1 起按 §九 顺序执行，每批可中断、可插队（P1 各项彼此独立）。
 - 本文档为唯一实施排期来源；执行中的增量决策一律登记台账并回写本文对应批次行。
+
+---
+
+## 十三、终审记录（2026-11-21，用户逐项回复）
+
+| # | 用户回复 | 落定 |
+|---|---|---|
+| 1 | CF-1：不删了，保留 | **developerMode 开关保留**（D52 推翻 → **D55**）；2026-11-14 铁律原文不变；D-2 写法收敛 / D-3 注释分节 / Q-12 图标字段 devFeatures 可改 / CR-46 订阅修复 恢复执行（P0-2） |
+| 2 | CF-2：归 dev | preview 归 dev（=C-1） |
+| 3 | CF-4：仅归档即可 | 99-archive 优化建议文档保持归档，不删除（Q-11 维持；P8 无删除动作） |
+| 4 | C-1：dev | `__SSHK_DEV__ = mode==='dev' \|\| mode==='preview'`（P0-1 定值） |
+| 5 | C-6：应用设置 tab 作为二级菜单全变页面；三工具一级菜单下移为二级、二级变三级以此类推 | §五.4/§五.5 定稿：**结构原样下移一级**，标签层级沿用现状；唯一新增页 = 应用设置 > 文件与传输 |
+| 6 | C-8：不保留 | 文件管理侧移除传输设置入口，参数只在 应用设置 > 文件与传输（P4-4/P4-7） |
+| 7 | C-9：保持现有烤入逻辑，只是完善修 bug | P0-6 改为完善批：CR-20（烤入集合合并）/CR-47+E5（SSHK_DEV_ 入 denylist）/E4（注释键名）修 bug + CR-22 注释改实情；机制与默认值不动 |
+| 8 | C-11：model-console 改为 model-manager | 模块 id 定 `model-manager`（原文"model-manger"按拼写惯例取 manager，如需原拼写请指出）；配置键/TOOL_IDS/verify-steps 同步（P4-5/P4-8） |
+| 9 | C-1~11 其余全部采纳建议 | C-3 配置键一次性迁移 / C-4 `@sshk/share-core/ui` / C-5 `scripts/tool-skeleton/` / C-10 `apps/desktop/src/shared/verify-steps.ts` 全采纳 |
+| 10 | 顶栏方案一 | 语义色胶囊组（§五.3，P4-1） |
+
+> 决策看板同步：D52 加「已推翻」标注指向 D55；D53 细化（菜单下移 + module id）；本记录登记台账 #152。

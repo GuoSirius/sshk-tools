@@ -103,7 +103,118 @@
 
 
 
-开始按敲定内容逐项修复、完成，记得分批执行、提交，并及时更新对应的codereview等相关文档的状态，标记出执行结果。
+
+
+所有的codereview规整、更新后单独存放一个目录，后续会有很多次的codereview。
+
+报告B = 2026-11-20-全仓CodeReview与重构建议.md：
+1、SSHK_TOOLS_ALLOW_SECRET_MIGRATION 在 5 处源码使用，但 .env.example 未声明：删除相关文案及说明，应用中不允许再出现这个env的文案了
+2、ui-kit 导出的 useSelection composable 全仓零使用（仅 ui-kit 自身定义与导出）：最初提过一个需求，就是表格的多选，也能跨页和跨搜索多选，不会因为翻页或搜索条件的变化而导致之前的选中失效，除非手动取消选中，也就是我在第一页选中一项，然后翻到第2页，在选中其他的，第一页的选中能够保持住，并且在我返回第一页时依然可以看到对应的选中状态；这个是实现这个需求的能力吗？现有所有可多选表格，建议已全部加上这个需求
+3、ui-kit 导出 createSafeHost/SafeHostChannelMap/logFront 等使用面极窄（待逐一核实），存在「导出面 > 实际消费面」倾向：对 ui-kit 做一次「导出审计」，把零引用导出删除，保持包接口最小化
+4、全仓 TODO/FIXME/HACK 扫描为零——既说明无烂尾标记，也说明「未完成项」只活在文档里：最好在代码中有相应的TODO/FIXME/HACK等的标识，以便更好从代码中看出问题
+5、提取统一的时间处理，以便各个包公用，并加check-boundaries 或 lint 加禁 toLocaleString('sv-SE') 规则防回潮
+6、UploadProfile 类型双真相源：packages/shared/src/upload-manager.ts 与 packages/upload-core/src/types.ts 各自定义 UploadTargetType、UploadProfile、remote profile 结构，字段一旦漂移即静默不一致：给一个彻底、合理的解决方案
+7、脱壳算法两份：apps/desktop/src/renderer/plain.ts（toPlainArg）与 apps/desktop/src/preload/plain.ts（toPlain）算法相近、语义有别（函数/回调保留与否）：建议抽公共 plain-core.ts（参数化 keepFunctions），两处薄封装——消除约 40 行近似代码
+8、表格页模式重复：列表 + 搜索 + el-pagination + 操作列 + 批量删除（ElMessageBox）+ 导出，在 edm 5 页、share-manager 4 页、file-manager ContentsPage、badge PostersPage 共 11+ 处各自实现：提取 ui-kit 增 useTablePage()（分页状态 + 加载 + 错误提示 + 刷新）与 TableOpsColumn 组件（操作列 ≤3 按钮 + 更多下拉，plans/01 已有规范但无组件落地）
+9、hint 样式双轨：宿主用 ui-kit/FormHint 组件；各工具页用 .hint span + scoped CSS（台账 #30 还为此打过全局间距补丁）：工具页统一改用 FormHint，但要注意放置的位置和各个方向的留白间距适应
+10、ui-kit 应零业务
+11、X4	tool-skeleton.ts（骨架生成 350 行）：独立 devDependency 包或 scripts 侧
+12、工具代码上移应用层 / 应用层下放工具层的T1-T6如果按照下面的重构新想法，你在规划下
+13、O1：统一 dev 判据为构建期常量 __SSHK_DEV__（electron.vite.config.ts define 注入 main/preload/renderer 三端，值 = mode==='dev'），main 与 renderer 全部替换
+14、O2 registerIpc()（index.ts:334-960）约 600 行巨型函数，窗口/托盘/目录/迁移/更新/LLM 流式/配置/目录裁决全部内联：拆分
+15、O3 门禁体系缺「死代码/未用导出」检查（U1 这类问题门禁抓不到）：加 knip（或 ts-prune）进 pnpm verify；与 check-env 并列
+16:、O4	中	classifyExpected 把云 SDK 错误知识硬编码在宿主 ipc-wrap（正则匹配中文/英文关键词）：改注册制：upload-core 等 provider 包注册 errorClassifier，宿主只跑注册表
+17、env.d.ts 手写 window.api 全量类型（336 行）与 preload 实现双维护：改单一
+18、O6	低	main/services.ts（435 行）职责命名过泛（"services" 什么都能装）：按实际内容拆分并改名（需精读后定，列入重构执行时第一刀）
+19、PaddleOCR ：彻底移除，不再考虑本机命名
+20、A1. main/index.ts 拆分方案（1131 行 → 6 个模块）：按你的组织结构来
+21、A2. 渲染层结构（现状无 pages/ 目录）：彻底规范化
+22、A3. shared 包内聚（结合 §三 3.2）：采纳你的建议
+23、删除developerMode 开关，应用整体移除这部分，只区分dev/build
+24、D-1 dev 判据双源：彻底改；A（推荐）：electron.vite.config.ts define 注入 __SSHK_DEV__: mode==='dev'，三端（main/preload/renderer）统一用这一个常量；shared 增 declare const __SSHK_DEV__: boolean；isDevOpAuthorized/dev-tools.ts 的「是否源码仓库」判据保留 !app.isPackaged（其语义本来就是「仓库」，两者概念分开命名：__SSHK_DEV__=开发构建、isSourceRepo=源码仓库）
+25、D-3	中	ToolsTab 内 isDev 与 devFeatures 混用：约定注释规范：isDev=构建/源码仓库相关（创建工具、打包入口）、devFeatures=功能可见性（全量列表、隐藏工具），并加注释分节
+26、D-4	低	dev-tools.ts/dev-access.ts 可用性按「是否源码仓库」裁决（符合 AGENTS.md），但该判据（!app.isPackaged）与 D-1 的 dev 判据物理上是同一个表达式，概念未分离：随 D-1 方案 A 一并拆分命名
+27、N1 工具 id 后缀无需统一，命名合法即可
+28、N2 工具页面文件位置漂移：统一目标树（§十六 T1）：pages/ 只放真实页面（XxxPage.vue），组件一律 components/，弹框也是组件
+29、N3	低	api-plain.ts vs plain.ts（renderer）与 plain.ts（preload）三文件都叫 plain：	合并为 renderer/ipc-plain/（install.ts + to-plain.ts）或改名 plain-arg.ts
+30、N4	低	main/fs.ts 名字过泛（实为文件管理运行时）：改
+31、N5	低	main/services.ts 命名过泛：改
+32、N6	低	工具 util 命名：改
+33、C3	时间规范、C4	类型真相源：全部规范化、统一化
+34、F1	PaddleOCR 本机识别绑定：彻底删除该部分，以后不再考虑本机命令
+35、F2	外部工具包运行时安装/卸载（.sshktool）：做完了吗？没做完就写计划就做完
+36、功能遗漏 / 不全的F3-F7：补全实现
+37、大文件 / 臃肿文件拆分清单：全部规范化、统一化拆分、实现
+38、T1. 工具包目标目录规范（所有工具对齐，写进《工具开发指南》）
+39、常用组件 / 布局规范统一的C1-C7：全部规范化、统一化拆分、实现
+40、P1	dev 判据统一机制	A：__SSHK_DEV__ define 注入（推荐） 
+P5	ConfirmDialog vs ElMessageBox 单轨	简单的用ElMessageBox 单轨（推荐）/ 复杂的用ConfirmDialog 组件化，更灵活
+P7	文件名规范	pages 内禁组件（推荐）/ 维持现状
+P8	pnpm local	文档改 pnpm dist（推荐）
+P10	shared 领域数据外迁	拆领域包（推荐）
+
+
+
+
+报告A = 2026-11-20-独立全仓深度CodeReview报告.md：
+1、CR-01 · 传输引擎冲突状态被 success 覆盖，覆盖确认机制完全失效：方案A
+2、CR-02 · 密钥写入竞态 + fire-and-forget：彻底方案：密钥写入统一收口到单一 SecretsStore 类，杜绝散落直写。
+3、CR-03 · dev 判据双源：!app.isPackaged vs import.meta.env.DEV：采纳你的建议
+4、CR-05 · 全主进程违反 AppError(msg,'validation') 铁律：统一错误工厂，禁止业务代码直接 new Error。
+5、CR-06 · D18 env 门控已删除，注释与文档仍称"唯一真相源"：采纳建议
+6、CR-07 · 字数口径：验收步骤/注释与实现相反：采纳你的建议
+7、CR-08 · 访问密钥参数验收步骤仍用失效的 ?key=：彻底方案：验收步骤中涉及参数名的描述改为引用常量/类型而非硬编码字面量
+8、CR-11 · edm-studio 三个列表页成片违规且为死代码：改合规，删
+9、2.2 死代码 / 声明-使用一致性：改
+10、2.3 重复代码 / 大文件（维度 3/17）：改
+11、2.4 健壮性 / 校验 / 功能完整性（维度 5/7/13/14）：改
+12、P-2	CR-11 edm 三个死代码页：删
+13、P-3	CR-54 EDM v5/v6 主从：确认 v6 权威、删 v5：保留 v6，删/归档 v5
+14、P-4	CR-53 99-archive 优化建议文档：确认已被 plans 吸收后删除：	删除
+15、P-6	CR-44 分享路由硬鉴权是否本轮纳入（plans/12 原定另立安全项）：	既然接受破坏性改动，建议纳入
+16、P-7	CR-55 COS/七牛 Provider 写能力是否补齐：补齐
+17、P-8	CR-05 错误工厂/CR-34 runWithToast 是否一并引入（涉及面广）：采纳你的建议
+18、P-9	CR-03 pnpm start（preview）归入 dev 还是 build：	倾向归入 dev
+
+
+
+2026-11-20-CodeReview二次复核与处置台账.md：
+1、C1	D18 env 开关处置：采用 A
+2、C4	危险操作确认弹框收敛：简单的用ElMessageBox.confirm，复制的用ConfirmDialog
+3、Q-01~21，除了上述明确的外，均采纳建议
+
+2026-11-21-CodeReview交叉合并与处置总计划.md：
+
+
+重构新想法：
+1、基于多轮codereview给出的修复、调整建议，现在想把应用和工具的边界重新划分一下
+2、现在的这个桌面结构还算合理，布局、交互都保持不变，工具的进入和返回桌面也都保持不变
+3、应用桌面顶部右上角的操作调整下：主题切换(现在的下拉就可以)、检查更新、验证引导(区分dev显示)、更多操作、应用管理，但是要优化一下他们的样式，都改为彩色、按钮式？你有什么好设计没有；更多操作下拉：第一部分就是现有的刷新/强制刷新/开发者工具，照现有的保留就行；第二部分创建工具；第三部分关于应用，点击后一个弹框显示 运行环境这部分即可；
+4、点击应用管理，则从桌面直接跳转至应用管理页面，应用管理页面就类似于现有的工具那样，左侧菜单(可折叠)+右侧内容；左侧菜单就是现有的三个基础能力工具的迁移。
+5、一级菜单的顺序为应用设置、文件管理、模型管理、分享管理，他们各自的二级、三级菜单就沿用现有的应用设置的tab(但是每个tab要换成页面)以及对应工具的各级菜单；迁移完成后，就可以不必再要现有的应用设置侧滑以及三个基础能力的工具包了
+6、按上述改造后，以后的工具就是纯工具了，他们只能使用应用的能力，应用绝对不会也不允许依赖工具而运行
+7、初步改造完成后，会把现有工具内的一些特殊配置调整一下他们的位置，比如文件管理中的上传分片相关设置，他即用于文件系统，同时也用于FilePicker，但是现在却只能在文件系统中统一设置，这是很不合理的，所有工具中这类设置都会考虑迁移出来；你帮我整理一下，都有哪些需要提取的，以及提取后他们放在哪里比较合适
+8、如果按照这个重构后，整个应用的代码结构、包结构，是否有需要重新调整的？我的建议是忽略谦容性，甚至可以忽略数据的迁移进行彻底、完整的重构。因为我更倾向于后期更好的管理和维护。
+
+
+综合以上我对每个codereview的md的敲板情况，以及重构新想法，你看下我的敲板是否有冲突，结合敲板和重构新想法你列一个实现计划以及冲突点、待确认、已确认等各项事宜，并落档，有带UI部分的最好给一个基础的目录结构和布局结构的示意，方便我的理解和调整。给出一份我敲板后即可分步实施的详细文档。
+
+
+1、CF-1（最重要）：不删了，保留
+2、CF-2：归dev
+3、CF-4：仅归档即可
+4、C-1	preview（pnpm start）归 dev 还是 build：dev
+5、C-6：把应用设置的tab作为他的二级菜单，每个tab全部改为页面形式，现有工具的一级菜单作为各自的二级菜单，二级变三级，以此类推
+6、C-8：不保留
+7、C-9：保持现有考入逻辑，只是完善一下，确保没有bug、功能齐全
+8、C-11：model-console改为 model-manger
+9、C-1~11：除了以上提到的外，全部采纳建议
+10、桌面顶栏（右上角）改造：方案一
+
+
+
+
+开始按敲定内容逐项修复、完成，记得分批执行、提交，并及时更新对应的codereview等相关文档的状态，标记出执行结果。虽然是分批执行，但是还是要一口气做完所有批次，中途不要停。一旦开始就要做完所有的需求，只是执行和提交分批而已，明白了吗？
 
 
 

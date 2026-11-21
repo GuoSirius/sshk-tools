@@ -1,8 +1,8 @@
 # 文档索引与决策看板
 
 - 状态：**M0~M7 全部落地；R1–R24 / N1–N18 / 工具插件化 / 工具包自包含 / Badge 图片识别 / Model 预设 / 共享上传·编辑器 / 创建工具向导全部实现。当前进入「收尾打磨阶段」——重点转向细节验证与健壮性，不再追新功能。测试数量随迭代增长（历史快照见下方变更记录，当前数以最近 `pnpm verify` 输出为准）。全量遗留项见 `02-architecture/遗留事项与收尾总账.md`，历史优化候选见 `99-archive/2026-11-16-优化建议与开发计划（已被plans接管）.md`（已被 `plans/` 分类计划接管）。**
-- 版本：v1.6
-- 最后更新：2026-11-21（北京时间；**CodeReview 全量敲板落档 + 敲板裁决与重构实施总计划（决策入口）+ `docs/06-codereview/` 独立目录**）
+- 版本：v1.7
+- 最后更新：2026-11-21（北京时间；**CodeReview 敲板终审落定（D52 推翻→D55 developerMode 保留 / C-6 菜单下移 / model-manager）+ 总计划 v1.1 §十三，具备开工条件**）
 - 仓库根：`D:/workspace/code/sshk-tools`
 - 远程：`https://github.com/GuoSirius/sshk-tools.git`（分支 `main`）
 - 唯一入口：本文件。任何沟通文档都要在这里登记；找不到就说明还没归档。
@@ -15,7 +15,7 @@
 | 文档 | 路径 | 状态 | 说明 |
 |---|---|---|---|
 | **★★ 规范与铁律总纲（新设备首读）** | `00-CONVENTIONS.md` | **权威汇总 · 唯一入口** | 目录/设计/文件/命名/使用/契约规范 + 全部铁律的统一汇总；AGENTS.md 是其摘要。新会话/新设备先读本文件再读 00-index |
-| **★★ CodeReview 敲板裁决与重构实施总计划（决策入口）** | `06-codereview/2026-11-21-CodeReview敲板裁决与重构实施总计划.md` | **敲板汇总完成 · 待终审 §三 CF / §四 C 清单后按 §九 开工** | 报告A 18 项 + 报告B 40 项 + 台账 C1/C4/Q-01~23 + **重构新想法 1~8** 全量裁决落点（§二三张总表）；冲突点 CF-1~6（developerMode 删铁律 / preview 归属 / FsRuntime 改判 / archive 删留 / PaddleOCR 推翻 D45 / D-2·D-3·Q-12 作废）+ 待确认 C-1~11；新架构 D53 定稿（应用管理 = 应用设置 + 文件/模型/分享三模块并入，纯工具仅 edm/badge/template）+ 顶栏/应用管理 UI 示意 + 配置提取清单 + useSelection 跨页多选答复 + F2 核查（主体已完成）+ **P0~P9 分批实施计划** |
+| **★★ CodeReview 敲板裁决与重构实施总计划（决策入口）** | `06-codereview/2026-11-21-CodeReview敲板裁决与重构实施总计划.md` | **终审完成（2026-11-21 · v1.1 §十三）· 具备开工条件，待令执行 P0~P9** | 报告A 18 项 + 报告B 40 项 + 台账 C1/C4/Q-01~23 + **重构新想法 1~8** 全量裁决落点（§二三张总表）；冲突点 CF-1~6 + 待确认 C-1~11 **已全部终审**（§十三：CF-1 改判 developerMode 保留→D52 推翻立 D55 / preview 归 dev / 保持归档 / C-6 菜单结构原样下移 / C-8 不保留入口 / C-9 烤入只修 bug / C-11 model-manager / 顶栏方案一）；新架构 D53 定稿（应用管理 = 应用设置 + 文件/模型/分享三模块并入，纯工具仅 edm/badge/template）+ 顶栏/应用管理 UI 示意 + 配置提取清单 + useSelection 跨页多选答复 + F2 核查（主体已完成）+ **P0~P9 分批实施计划** |
 | **★★ CodeReview 二次复核与处置台账** | `06-codereview/2026-11-20-CodeReview二次复核与处置台账.md` | **复核完成（v1.1 三次核对） · Q-01~21 已于 2026-11-21 敲板（见总计划）** | 两份 CodeReview 报告逐项回源码二次复核 + 对台账本身的三次核对（勘误 §八 Z1~Z7）：误报/属实/漏报判定 + 两报告冲突清单 + 工具⇄应用升降级专项 + 待决策 Q-01~Q-21 + 直接改批次（`4e879fb`/`3a0acf5`/`f830be6`+docs）|
 | **★★ CodeReview 交叉合并与处置总计划** | `06-codereview/2026-11-21-CodeReview交叉合并与处置总计划.md` | **交叉比对完成 · Q-22/Q-23 已敲板（见总计划）** | 两报告 9 域去重合并总表（81 项）+ 报告B独有条目逐条回源码补验（R2/O5/X4/T6/O8 全属实）+ 元缺陷证实（A 编号空洞/B L 系空洞/台账漏收 P4、P10）+ 撤销清单 + 统一处置计划（无争议 N1~N5 待令执行 / 拍板 D1~D5）+ **新增决策 Q-22**（share-hub 生命周期）/**Q-23**（shared 拆包）|
 | **需求沟通记录（多轮合并归档）** | `01-requirements/需求沟通记录.md` | 已合并归档（原 4 份逐轮文档已删） | 需求 0~7 + 术语表 + D10 输入组合 + 逐轮决策浓缩 + 图证登记 + 开放问题；按状态分组 |
@@ -155,9 +155,10 @@ docs/
 | **D49** | **创建工具向导 + 开发指南 + 清单表单化** | 骨架生成单一事实源 @sshk/shared/tool-skeleton（预览=落盘）；dev:toolCreate 主进程落盘（目录冲突拒绝）；双入口仅 dev 可见（更多下拉 + 设置抽屉）；清单编辑器 configGroups/configDeps/defaults/channels/dependsOn 全表单化 + JSON 预览 tab；指南 docs/02-architecture/工具开发指南.md |
 | **D51** | **依赖选型反转（强化）** | **推翻旧「优先不新增依赖」倾向**：设计方案时**优先使用成熟第三方 / npm 包，不造轮子**；图标、字体、日期、工具库等常见需求先查成熟包。`@element-plus/icons-vue` 与 **Font Awesome**（`@fortawesome/fontawesome-free`）已批准直接用；仅零依赖校验脚本 / icon 生成脚本等无合适包时自研（与 D30 同源，措辞强化） |
 | **D50** | **UI 视觉铁律** | **后续所有界面开发，能用图标处尽量用图标**（按钮 / 状态 / 操作列等）；界面须**美观大方、吸引用户、增强视觉体验**，不将就纯文字或裸箭头（`↓`/`▾` 等一律换图标库）。触发：自动更新按钮曾用 Unicode `↓` 被纠正 |
-| **D52** | **dev/build 二态（删除 developerMode 开关）** | 敲板 2026-11-21：删除 `app.developerMode` 配置与全部用户可配置功能开关，门控唯一判据 `__SSHK_DEV__`（构建期 define 注入 main/preload/renderer 三端）；「dev 恒全量展示」铁律本体保留；安装版无开发者入口（DevTools 口令通道保留）。**推翻 2026-11-14「开发模式铁律」中的 developerMode 机制部分**（AGENTS/总纲随总计划 P0-2 批次修订）；B25/D-3、D-2、Q-12、CR-46 随之作废。后果清单与终审项见总计划 CF-1 |
+| **D52** | **dev/build 二态（删除 developerMode 开关）** | 敲板 2026-11-21：删除 `app.developerMode` 配置与全部用户可配置功能开关，门控唯一判据 `__SSHK_DEV__`（构建期 define 注入 main/preload/renderer 三端）；「dev 恒全量展示」铁律本体保留；安装版无开发者入口（DevTools 口令通道保留）。**推翻 2026-11-14「开发模式铁律」中的 developerMode 机制部分**（AGENTS/总纲随总计划 P0-2 批次修订）；B25/D-3、D-2、Q-12、CR-46 随之作废。后果清单与终审项见总计划 CF-1 **【⛔ 已推翻 2026-11-21 终审 → D55：developerMode 保留不删】** |
 | **D53** | **应用/工具边界重划 + 应用管理架构** | 敲板 2026-11-21（重构新想法 1~8）：file-manager / model-console / share-manager 三个基础能力工具并入「应用管理」页面（左侧可折叠菜单 + 右侧内容；一级 = 应用设置 / 文件管理 / 模型管理 / 分享管理），成为应用本体；纯工具仅 edm-studio / badge-studio / template-tool；**工具 → 应用单向依赖，应用本体绝不依赖工具**。吸收 Q-03（FsRuntime 改判应用内 `main/modules/file/`）/Q-04/Q-22/S1/S2；**推翻 D36 设置抽屉形态**（应用设置变页面）；D39 自包含收窄为纯工具；菜单表/目录树/配置提取清单/useTablePage+跨页多选方案/P0~P9 批次见总计划 §五~§九 |
 | **D54** | **CodeReview 文档独立目录** | `docs/06-codereview/` 为全部 CodeReview 报告/台账/处置计划唯一存放地（2026-11-21 起，AGENTS/总纲已立规）；四份既有文档已 git mv 迁入；后续每轮 review 在此新建 `YYYY-MM-DD-主题.md` |
+| **D55** | **developerMode 保留 + dev 判据唯一化 + preview 归 dev（终审改判，推翻 D52）** | 用户 2026-11-21 终审：**保留** `app.developerMode` 与 `devFeatures = isDev \|\| cfg.developerMode` 机制（2026-11-14 铁律原文不变）；dev 判据唯一化照旧执行（`__SSHK_DEV__` define 注入三端 + `isSourceRepo` 分离），定值 `mode==='dev' \|\| mode==='preview'`（preview 归 dev）；恢复执行 D-2 写法收敛（shared 纯函数 + 统一下发）/ D-3 注释分节 / Q-12 图标字段 devFeatures 可改 / CR-46 订阅修复；env 烤入机制保持只修 bug（C-9）；应用管理菜单结构原样下移一级（C-6）、模块 id `model-manager`（C-11）、顶栏方案一（C-7）。详见总计划 §十三 |
 
 > **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
 > shared 现为**纯契约 / 裁决层**（零具体工具数据），真相源下沉到各工具包 manifest；`DEFAULT_SETTINGS.tools` 也已清空。
@@ -200,6 +201,7 @@ docs/
 | **v1.4** | 11-20 | 二轮**独立全仓深度 Code Review** 落档（台账 #148，明确未参照 #147）：19 维度覆盖 + CR-01~60 分级问题 + 6 专题（三能力分层/三态/大文件/文档/页面规范/组织命名）+ 待拍板 P1~P10 + 6 批次重构建议；00-index 同步修断链、去写死测试数字、版本日期 | 只读审查 + 文档落档，零源码改动 |
 | **v1.5** | 11-20 | 两份 CodeReview 报告**逐项二次复核**：回源码核验全部条目，判定误报（CR-21/51/53/54、E1、R5/R6、CR-04/40/60 夸大）+ 漏报（危险操作 8 处缺禁遮罩、tools main 66 处裸 throw、check-dialogs 门禁盲区）+ 两报告冲突清单 + 工具⇄应用升降级专项；直接改 2 批（`4e879fb`/`3a0acf5`）；新增 `00-CONVENTIONS.md` 规范总纲 + 二次复核台账；两份审查文档同步复核结果 | /bug 修复 + 规范落档；待决策 Q-01~Q-21 集中台账 §六 |
 | **v1.6** | 11-21 | **CodeReview 全量敲板落档**：新增《敲板裁决与重构实施总计划》（`06-codereview/`，决策入口）；报告A 18 项 + 报告B 40 项 + 台账 C1/C4/Q-01~21 + 重构新想法 1~8 逐项裁决（总计划 §二）；冲突点 CF-1~6 + 待确认 C-1~11 待终审；新架构定稿 **D52/D53/D54**；四份 CodeReview 文档 git mv 迁 `docs/06-codereview/`；AGENTS/CONVENTIONS 同步决策入口与目录规范；台账 #151 | Q-19 useSelection 删除→推广落地；Q-03 FsRuntime 下沉→应用内 modules/file；D-2/D-3/Q-12 作废；交叉合并 N1~N5 无争议清单并入总计划批次 |
+| **v1.7** | 11-21 | **CodeReview 敲板终审落定**（台账 #152，总计划 v1.1 §十三）：CF-1 改判 developerMode **保留**（**D52 已推翻 → D55**；D-2/D-3/Q-12/CR-46 恢复执行，2026-11-14 铁律原文不变）；preview 归 dev（`__SSHK_DEV__` 含 preview）；99-archive 保持归档；**C-6 菜单定稿 = 应用设置 tab 与三工具菜单结构原样下移一级**（唯一新增页 = 应用设置>文件与传输；C-8 文件管理侧不保留入口）；C-9 env 烤入保持机制只修 bug；**C-11 模块 id model-console → model-manager**；顶栏方案一确认；具备开工条件待令执行 P0~P9 | P0-2 由「删除批」改「保留+收敛批」；P0-6 由「契约三案」改「完善批」；P4-3~6 菜单结构按 C-6；P4-5/P4-8 module id 更名 |
 
 ## 六、ADR 记录格式（按主题）
 
