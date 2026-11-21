@@ -18,6 +18,7 @@ import { installPlainApi } from './ipc-plain/install'
 import { installFrontLog } from './front-log'
 import { setupDialogAutofocus } from './focus-on-dialog-open'
 import { SSHK_DEV } from '@sshk/shared'
+import { router } from './router'
 
 // P0-1 冒烟断言：dev 判据唯一化——渲染层 __SSHK_DEV__ 注入值在此可见（dev/preview=true，打包=false）
 console.debug(`[sshk] renderer __SSHK_DEV__ = ${SSHK_DEV}`)
@@ -36,8 +37,6 @@ setupDialogAutofocus()
   provide, inject, defineComponent, markRaw, shallowRef, shallowReactive,
   toRef, toRefs, isRef, unref, triggerRef, customRef,
 }
-
-import { router } from "./router"
 
 const { init } = useTheme()
 void init()
