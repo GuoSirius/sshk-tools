@@ -1,21 +1,11 @@
 <script lang="ts">
-/** 区块 / 片段摆放类型（三场景共用：片段预览 / 模板预览 / 邮件编辑） */
-export interface SlotDef { key: string; label?: string; type?: string }
-export interface FragmentOption { id: string; label: string; type?: string }
-export interface PlacementItem {
-  uid: string
-  /** 片段标识：系统内容域=JSON(selector)；NeDB 域=片段版本 _id */
-  fragmentId: string
-  label: string
-  slot: string
-  order: number
-  repeat: number
-  data?: Record<string, unknown>
-}
+/** 区块 / 片段摆放类型（P6-4 抽到 compose-types.ts；此处 re-export 保持原消费面） */
+export type { SlotDef, FragmentOption, PlacementItem } from './compose-types'
 </script>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { FragmentOption, PlacementItem, SlotDef } from './compose-types'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Rank } from '@element-plus/icons-vue'
 import { FormHint } from '@sshk/ui-kit'
