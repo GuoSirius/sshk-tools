@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "latest",
     "@sshk/shared": "workspace:*",
     "element-plus": "latest",
     "qrcode": "latest",

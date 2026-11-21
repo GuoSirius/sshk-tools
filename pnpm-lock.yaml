@@ -291,6 +291,9 @@ importers:
 
   packages/ui-kit:
     dependencies:
+      '@element-plus/icons-vue':
+        specifier: latest
+        version: 2.3.2(vue@3.5.46(typescript@6.0.3))
       '@sshk/shared':
         specifier: workspace:*
         version: link:../shared

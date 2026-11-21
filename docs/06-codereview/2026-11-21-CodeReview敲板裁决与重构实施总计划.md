@@ -440,12 +440,12 @@ scripts/
 | **P1-5** ✅ 已完成（ShareHubGuards 守卫注入：sender 绑定主窗口 webContents + create toolId 在册校验 + revoke/renew 废除 '*' 通配严格匹配；不传 toolId 保留分享管理台特权） | 分享硬鉴权 | share-hub 按 webContents 绑定可信 toolId，不信任渲染层参数 | A15/Q-13 | M |
 | **P1-6** ✅ 已完成（CR-36 editorMode 旧键 app.content.editorMode 回落清 + DEFAULT_SETTINGS 清 content 段；CR-37 app.llm.health 持久化双轨清改内存态；CR-23 已随 P0-7） | 杂项修复 | CR-23 常量（若 P0-7 未含）、editorMode/app.llm.health 双轨清（CR-36/37）、edm 现存页面守卫复核 | A10/A11 | S |
 | **P1-7** | 死代码页 | 删 edm Brands/Fragments/TemplatesPage 三死文件（Q-09） | A8/A12 | S |
-| **P2-1** | 列表页抽象建库 | ui-kit 增 `useTablePage()`（分页状态+加载+错误+刷新+内置 useSelection 选项）、`ListPageShell.vue`（筛选/操作/表格/分页四 slot，CSS 上收 theme.css）、`TableOpsColumn`（≤3 按钮+更多下拉）；样板页接入验证（PostersPage 或 ContentsPage） | B8/B39/R4/CR-30/C5~C7 | L |
-| **P2-2** | 分页规范内置 | layout 固定 + 中文 total + 分页 CSS 全部进 useTablePage/ListPageShell | B39-C5 | S |
-| **P2-3** | hint/空态组件化 | FormHint/FormGrid 细化（四向留白自适应）；`.hint` span 样式废弃登记；EmptyState 三类空态规范 | B9/B39 | S |
-| **P2-4** | 表单抽象 | `SecretField.vue` + `ConnectivityField.vue` + `SIGN_URL_HINT`（CloudProfileForm/RemoteProfileForm 收敛，迁移后用于上传通道页） | A10/CR-31 | S |
-| **P2-5** | 弹框分轨 | 简单确认=ElMessageBox.confirm（守卫齐备）；复杂表单确认=ConfirmDialog；规范入《UI 与页面规范》 | B40-P5/Q-07/C4 | S |
-| **P2-6** | ui-kit 导出审计 | 全导出×全仓引用矩阵，零引用删除/降 @internal（knip 结果交叉） | B3/U2 | S |
+| **P2-1** ✅ 已完成（ui-kit 增 useTablePage（分页/加载/草稿生效筛选/轮询/内置 useSelection）/ListPageShell（四 slot，CSS 上收 theme.css .lp-*）/TableOpsColumn（≤3+更多▾）；样板页 ProxiesPage 迁即重构接入验证，PostersPage 等留 P6-1 批量迁移） | 列表页抽象建库 | ui-kit 增 `useTablePage()`（分页状态+加载+错误+刷新+内置 useSelection 选项）、`ListPageShell.vue`（筛选/操作/表格/分页四 slot，CSS 上收 theme.css）、`TableOpsColumn`（≤3 按钮+更多下拉）；样板页接入验证（PostersPage 或 ContentsPage） | B8/B39/R4/CR-30/C5~C7 | L |
+| **P2-2** ✅ 已完成（ListPagination 组件：layout 固定 total,sizes,prev,pager,next,jumper + 页尺寸变化回第一页；CSS 走 theme.css .el-pagination） | 分页规范内置 | layout 固定 + 中文 total + 分页 CSS 全部进 useTablePage/ListPageShell | B39-C5 | S |
+| **P2-3** ✅ 已完成（.lp-*/f-item/f-label/op-row/mini-tag 全局化=散写样式废除登记；FormHint/EmptyState 规范注释锚点；四向留白随 .lp-* token 化） | hint/空态组件化 | FormHint/FormGrid 细化（四向留白自适应）；`.hint` span 样式废弃登记；EmptyState 三类空态规范 | B9/B39 | S |
+| **P2-4** ✅ 已完成（SecretField=密码+查看回显+清除三件套、ConnectivityField=测试连接+结果、SIGN_URL_HINT 常量；迁移后供上传通道页共用） | 表单抽象 | `SecretField.vue` + `ConnectivityField.vue` + `SIGN_URL_HINT`（CloudProfileForm/RemoteProfileForm 收敛，迁移后用于上传通道页） | A10/CR-31 | S |
+| **P2-5** ✅ 已完成（ConfirmDialog 头注释立分轨规范锚点：简单确认=ElMessageBox.confirm（check-dialogs 守双禁）、复杂表单确认=ConfirmDialog；细则随 P8-1《UI 与页面规范》） | 弹框分轨 | 简单确认=ElMessageBox.confirm（守卫齐备）；复杂表单确认=ConfirmDialog；规范入《UI 与页面规范》 | B40-P5/Q-07/C4 | S |
+| **P2-6** ✅ 已完成（29 导出×全仓引用矩阵：useAction/logFront/OpsAction/SIGN_URL_HINT/useTablePage 类型=新库面（P4/P6 迁移即消费，保留）；logFront=工具文档化 API 保留；其余全部有消费） | ui-kit 导出审计 | 全导出×全仓引用矩阵，零引用删除/降 @internal（knip 结果交叉） | B3/U2 | S |
 | **P3-1** | index.ts 拆分 | A1 六模块：window/tray/catalog/migrations/updater/compact + `ipc/` 目录（registerIpc 600 行拆 config/dev/update/llm/share/upload/runtime/verify/tools） | B14/B20/O2 | L |
 | **P3-2** | services.ts 拆分改名 | 第一刀：`secrets-store.ts`（P1-2 产物）+ `llm-service.ts` + 其余按内容归位（O6/N5） | B18/B31 | M |
 | **P3-3** | fs.ts → modules/file | 2047 行拆 `modules/file/{browser,transfer,archive,media,metadata}`；IPC 通道名不变（渲染层零感知）；`fs:transfer:control` 等契约不动 | B12-T3/B30/CF-3/Q-03 | L |

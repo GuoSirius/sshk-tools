@@ -1,5 +1,10 @@
 <script setup lang="ts">
 /**
+ * 弹框分轨规范锚点（Q-07/C4 · P2-5）：
+ * - 简单确认（删一条/撤一个/纯提示）→ ElMessageBox.confirm（门禁 check-dialogs 守双禁选项）；
+ * - 复杂表单确认（需展示目标清单/多步后果）→ 本组件（targets 列表预览 + danger 语义色）。
+ * 详见《UI 与页面规范》（P8-1 三合一后为唯一清单）。
+/**
  * 危险操作统一二次确认（数据契约 §6）：展示影响数量与对象名。
  * v-model:open 控制显隐；确认时 emit confirm，取消时 emit cancel。
  */

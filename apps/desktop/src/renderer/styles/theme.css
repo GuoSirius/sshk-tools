@@ -791,3 +791,21 @@ html.dark .el-image-viewer__prev,
 html.dark .el-image-viewer__next {
   color: var(--sshk-text);
 }
+
+/* ══ 列表页规范布局（P2-1 上收自各页 scoped；ListPageShell 消费） ══
+   原则：根容器高度链 + 区块间距 token；筛选 label+控件包 .f-item 整体换行不错开；
+   操作栏单独一行居右、紧凑口径（gap 4px + 归零 EP 兄弟 margin + padding 8px）。 */
+.lp-page { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; min-height: 0; padding: var(--sshk-page-padding); gap: var(--sshk-gap-sm); }
+.lp-filter { flex: none; display: flex; gap: var(--sshk-gap-sm); align-items: center; flex-wrap: wrap; }
+.lp-filter .el-button + .el-button { margin-left: 0; }
+.lp-filter > .el-button:first-of-type { margin-left: 16px; }
+.f-item { display: inline-flex; gap: var(--sshk-gap-sm); align-items: center; white-space: nowrap; }
+.f-label { flex: none; font-size: 12px; color: var(--el-text-color-secondary); }
+.lp-ops { flex: none; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.lp-ops .el-button + .el-button, .lp-ops .el-button + .el-dropdown, .lp-ops .el-dropdown + .el-button { margin-left: 0; }
+.lp-ops .el-button { padding-left: 8px; padding-right: 8px; }
+.lp-table { flex: 1; min-height: 0; }
+.lp-foot { flex: none; display: flex; justify-content: flex-end; }
+.op-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.op-row .el-button + .el-button { margin-left: 0; }
+.mini-tag { height: 18px; padding: 0 5px; font-size: 11px; }
