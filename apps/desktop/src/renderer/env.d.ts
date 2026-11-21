@@ -57,7 +57,7 @@ interface Window {
     config: {
       get(key: string): Promise<unknown>
       set(key: string, value: unknown): Promise<boolean>
-      onChanged(callback: (payload: { namespace: string; key: string }) => void): void
+      onChanged(callback: (payload: { namespace: string; key: string }) => void): () => void
     }
     theme: {
       set(mode: string): Promise<boolean>

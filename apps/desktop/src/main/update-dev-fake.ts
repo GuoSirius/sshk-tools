@@ -11,9 +11,10 @@ import { app } from 'electron'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync, rmSync } from 'node:fs'
-import { getEnvBool, getEnvStr } from '@sshk/shared'
+import { getEnvBool, getEnvStr, SSHK_DEV } from '@sshk/shared'
 
-const isDev = !app.isPackaged
+// dev 判据唯一化（P0-1 · D55）：不再用 app.isPackaged 判 dev（SSHK_DEV 含 preview）
+const isDev = SSHK_DEV
 
 /** dev 更新测试模式：仅 dev + SSHK_DEV_UPDATE_TEST=1 生效，走真实 GitHub 更新源验证下载全流程 */
 export const updateDevCheck = isDev && getEnvBool('SSHK_DEV_UPDATE_TEST', false)

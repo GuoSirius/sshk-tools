@@ -23,6 +23,8 @@ import {
   type ToolPluginStatus,
   now,
   getEnvBool,
+  SSHK_DEV,
+  isDevFeaturesEnabled,
 } from '@sshk/shared'
 import { chatWithFallback, healthCheck, listModels, type LlmProvider } from '@sshk/llm-gateway'
 import { setupServices, type AppServices } from './services'
@@ -58,7 +60,9 @@ const preloadScript = path.join(here, '../preload/index.cjs')
 const iconFile = path.join(here, '../../build/icon.png')
 const trayIconFile = path.join(here, '../../build/tray.png')
 
-const isDev = !app.isPackaged
+// dev 判据唯一化（P0-1 · D55）：全仓只认构建期注入的 __SSHK_DEV__（含 preview，终审 C-1）；
+// 「是否源码仓库」的判定在 dev-tools.ts 的 findRepoRoot()，两者概念分离（D-4）。
+const isDev = SSHK_DEV
 /** dev 更新测试开关与版本号伪装统一收敛在 ./update-dev-fake（必须在 electron-updater import 前求值，见其头注释）。
  *  版本号伪装：SSHK_DEV_UPDATE_FAKE_VERSION=1.1.0 覆盖 app.getVersion()，updater 据此判定有新版；
  *  不设则读 package.json —— 老办法是本地把 version 改旧，dev 启动复现后改回。 */
@@ -273,6 +277,8 @@ function buildCatalog(): ToolCatalogPayload {
     // X5-A 依赖闭包拉入的工具：能力保留但任何位置强制不可见（用户 2026-11-17 定稿）
     forcedHidden: PULLED_IN_TOOLS,
     hasAccessKey,
+    // D-2（P0-2）：开发者功能总开关主进程统一裁决随 payload 下发，渲染层不再散拼
+    devFeatures: isDevFeaturesEnabled(SSHK_DEV, cfg.get('app.developerMode') === true),
   })
 }
 
@@ -1097,7 +1103,7 @@ void app.whenReady().then(async () => {
   // H3 日志：启动清理过期文件 + 记录启动事件
   const removedLogs = logger.clean()
   if (removedLogs > 0) logger.info('app', `已清理 ${removedLogs} 个过期日志文件`)
-  logger.info('app', `应用启动 v${app.getVersion()}（${app.isPackaged ? 'packaged' : 'dev'}）`)
+  logger.info('app', `应用启动 v${app.getVersion()}（${SSHK_DEV ? 'dev（含 preview）' : 'packaged'}）`)
   // H6 NeDB 防膨胀：每日首次启动全量压缩一次；超阈(>10MB)文件无论何时启动都压缩
   const today = now().slice(0, 10)
   if (services.config.get('app.lastCompactAt') !== today) {

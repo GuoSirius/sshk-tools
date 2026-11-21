@@ -8,6 +8,7 @@ const EMPTY: ToolCatalogPayload = {
   grants: [],
   includeTools: null,
   pluginStatus: {},
+  devFeatures: false,
 }
 
 // 单窗口单例：所有组件共享一份主进程裁决结果，配置变更后统一刷新

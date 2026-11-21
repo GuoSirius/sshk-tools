@@ -37,6 +37,7 @@ function fakeCatalog(partial: {
     grants: [],
     includeTools: null,
     pluginStatus: partial.pluginStatus ?? {},
+    devFeatures: false,
   }
 }
 

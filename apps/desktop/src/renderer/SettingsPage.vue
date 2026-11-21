@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
+import { SSHK_DEV } from '@sshk/shared'
 import type { ToolConfigField, ToolConfigGroup } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import BadgeStylePreview from './components/settings/BadgeStylePreview.vue'
@@ -43,7 +44,7 @@ const DEPS_ID = '__deps__'
 /** 点击导航后短暂锁定滚动高亮，避免 smooth scroll 经过中间组时高亮乱跳 */
 let scrollLockUntil = 0
 
-const isDev = import.meta.env.DEV
+const isDev = SSHK_DEV
 
 /** 形态 2 判定：menu 布局且清单声明了配置页 */
 const isMultiPage = computed(() => tool.value?.configLayout === 'menu' && (tool.value?.configPages.length ?? 0) > 0)

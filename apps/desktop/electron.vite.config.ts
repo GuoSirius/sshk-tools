@@ -64,6 +64,16 @@ const AUTO_UPDATE_DEFINE = {
 }
 
 /**
+ * dev 判据唯一化（P0-1 · D55 终审）：`__SSHK_DEV__` 注入 main/preload/renderer 三端，
+ * 全仓判 dev 只认它（shared/src/dev-flag.ts 的 SSHK_DEV 是唯一运行时消费形态）。
+ * 终审 C-1 定值：dev 与 preview 都算 dev —— electron-vite dev 实际 mode='development'，
+ * preview 走专链 `electron-vite preview --mode preview`（apps/desktop package.json）。
+ */
+function sshkDevDefine(mode: string) {
+  return { __SSHK_DEV__: JSON.stringify(mode === 'development' || mode === 'dev' || mode === 'preview') }
+}
+
+/**
  * 构建期烤入 env（用户 2026-11-18 拍板）：.env 中声明的 SSHK_ 前缀键整批注入
  * __SSHK_BAKED_ENV__ 字面量（主进程），打包版没有 .env 也能读到构建时取值；
  * 构建期把 .env 中声明的 SSHK_ 前缀键整批注入
@@ -147,11 +157,13 @@ const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'iconv-lite', 'electron-updater
  */
 const cpuFeaturesStub = fileURLToPath(new URL('./src/main/stubs/cpu-features.cjs', import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const DEV_DEFINE = sshkDevDefine(mode)
+  return {
   main: {
     plugins: [builtinStubPlugin(BUILTIN.excluded), externalizeDepsPlugin({ exclude: [...WORKSPACE_PKGS, ...BUNDLED_RUNTIME_DEPS] })],
     resolve: { alias: [...sshkAlias, { find: /^cpu-features$/, replacement: cpuFeaturesStub }] },
-    define: { ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE, ...BAKED_ENV_DEFINE },
+    define: { ...DEV_DEFINE, ...APP_COMMIT_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE, ...BAKED_ENV_DEFINE },
     build: {
       rollupOptions: {
         // 显式声明主进程入口：index 是 Electron 主进程；utility-host-entry 是
@@ -173,6 +185,7 @@ export default defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin({ exclude: ['@sshk/shared'] })],
     resolve: { alias: preloadAlias },
+    define: { ...DEV_DEFINE },
     build: {
       rollupOptions: {
         // sandbox: true 下 preload 必须是 CommonJS，产物固定 .cjs
@@ -187,11 +200,12 @@ export default defineConfig({
     server: { host: true },
     plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS(), VueDevTools()],
     resolve: { alias: sshkAlias },
-    define: { ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
+    define: { ...DEV_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
     build: {
       rollupOptions: {
         input: fileURLToPath(new URL('./index.html', import.meta.url)),
       },
     },
   },
+  }
 })

@@ -4,14 +4,14 @@
  */
 import { ElMessage } from 'element-plus'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { IPC_CHANNELS, SSHK_DEV } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
 import { appConfig, loadAppConfig, saveAppConfig } from '../../composables/useAppConfig'
 import { useTheme } from '../../composables/useTheme'
 import { promptSecret } from '../secret-prompt'
 import { onMounted, ref } from 'vue'
 
-const isDev = import.meta.env.DEV
+const isDev = SSHK_DEV
 const { mode, setMode } = useTheme()
 const saving = ref(false)
 

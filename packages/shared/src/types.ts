@@ -276,6 +276,8 @@ export interface ToolCatalogPayload {
   grants: string[]
   includeTools: string[] | null
   pluginStatus: Record<string, ToolPluginStatus>
+  /** 开发者功能总开关（D-2 · P0-2）：主进程用 isDevFeaturesEnabled 统一裁决后下发，渲染层不再散拼 */
+  devFeatures: boolean
 }
 
 export type SettingsShape = Record<string, Record<string, unknown>>

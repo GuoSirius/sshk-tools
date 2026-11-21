@@ -28,8 +28,12 @@ const api = {
     get: (key: string): Promise<unknown> => invoke(IPC_CHANNELS.configGet, key),
     set: (key: string, value: unknown): Promise<boolean> =>
       invoke(IPC_CHANNELS.configSet, key, value),
-    onChanged: (callback: (payload: { namespace: string; key: string }) => void): void => {
-      ipcRenderer.on(IPC_CHANNELS.configChanged, (_event, payload) => callback(payload))
+    onChanged: (callback: (payload: { namespace: string; key: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { namespace: string; key: string }): void =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.configChanged, listener)
+      // CR-46（P0-2）：返回退订函数，渲染层可在卸载时清理订阅
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.configChanged, listener) }
     },
   },
   theme: {

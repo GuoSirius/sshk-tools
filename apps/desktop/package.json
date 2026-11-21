@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron-vite preview",
+    "preview": "electron-vite preview --mode preview",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

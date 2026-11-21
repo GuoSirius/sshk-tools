@@ -4,7 +4,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { zipSync } from 'fflate'
 import * as yaml from 'js-yaml'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { IPC_CHANNELS, TOOL_IDS, now } from '@sshk/shared'
+import { IPC_CHANNELS, TOOL_IDS, now, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
 import { loadEdmModel } from './edm-manifest.js'
 import { seedSystemContent, seedCustomContent, versionNumberOf } from './edm-seed.js'
 import {
@@ -59,7 +59,8 @@ const SYSTEM_FILE_EXTS = new Set(['.css', '.yaml', '.yml', '.njk'])
  * 再按 manifest.plugin.source 切换 baseDir，此处预留 source 入参。
  */
 function resolveEdmRoot(_source: string = 'builtin', _baseDir?: string): string {
-  if (app.isPackaged) {
+  // 判据唯一化（P0-1）：打包态 SSHK_DEV=false → resourcesPath；dev/preview（源码仓库运行）→ 仓库工具目录
+  if (!SSHK_DEV) {
     return path.join(process.resourcesPath, TOOL_IDS.edmStudio, 'assets', 'edm')
   }
   return path.resolve(app.getAppPath(), '../../tools/edm-studio/assets/edm')
@@ -95,10 +96,9 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
     console.warn('[edm] 自定义内容索引失败：', err instanceof Error ? err.message : err),
   )
 
-  // ── 系统内容编辑门控（R12）：dev 全权；打包版需 developerMode。main 端校验为安全边界 ──
+  // ── 系统内容编辑门控（R12）：devFeatures 唯一口径（D-2 · P0-2）：dev 恒全权；打包版需 developerMode。main 端校验为安全边界 ──
   function systemEditable(): boolean {
-    if (!app.isPackaged) return true
-    return deps.config?.get('app.developerMode') === true
+    return isDevFeaturesEnabled(SSHK_DEV, deps.config?.get('app.developerMode') === true)
   }
   function assertSystemEditable(): void {
     if (!systemEditable()) throw new Error('系统内容在当前模式下只读（打包版需开启开发者模式）')

@@ -43,6 +43,8 @@ export interface ResolveCatalogInput {
   pluginStatus: Record<string, ToolPluginStatus>
   /** 构建裁剪依赖闭包拉入的工具（X5-A）：能力保留（可被依赖）但任何位置强制不可见 */
   forcedHidden?: string[]
+  /** 开发者功能总开关（D-2 · P0-2）：调用方用 isDevFeaturesEnabled 裁决后传入，随 payload 下发 */
+  devFeatures?: boolean
   hasAccessKey: boolean
 }
 
@@ -226,5 +228,6 @@ export function resolveToolCatalog(
     grants: input.heldGrants,
     includeTools: input.includeTools,
     pluginStatus: input.pluginStatus,
+    devFeatures: input.devFeatures ?? false,
   }
 }

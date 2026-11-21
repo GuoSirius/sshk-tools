@@ -17,6 +17,10 @@ import { useTheme } from './composables/useTheme'
 import { installPlainApi } from './api-plain'
 import { installFrontLog } from './front-log'
 import { setupDialogAutofocus } from './focus-on-dialog-open'
+import { SSHK_DEV } from '@sshk/shared'
+
+// P0-1 冒烟断言：dev 判据唯一化——渲染层 __SSHK_DEV__ 注入值在此可见（dev/preview=true，打包=false）
+console.debug(`[sshk] renderer __SSHK_DEV__ = ${SSHK_DEV}`)
 
 // Vue Proxy 跨 contextBridge 传参会触发结构化克隆错误；必须在任何组件调用前脱壳
 installPlainApi()

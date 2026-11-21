@@ -9,7 +9,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { now } from '@sshk/shared'
+import { now, SSHK_DEV } from '@sshk/shared'
 import {
   VERIFY_STEPS,
   VERIFY_GROUP_LABELS,
@@ -41,7 +41,7 @@ const saving = ref(false)
 const autoResults = reactive<Record<string, { state: string; detail: string }>>({})
 const autoRunning = ref(false)
 
-const isDev = import.meta.env.DEV
+const isDev = SSHK_DEV
 
 async function loadLast(): Promise<void> {
   const dates = await window.api.verify.list()

@@ -60,6 +60,25 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   }
 }
 
+// 3b. dev 判据唯一化（P0-1 · D55）：electron.vite.config.ts 必须三端注入 __SSHK_DEV__，
+// shared 必须保有唯一消费形态 SSHK_DEV；业务源码禁止 !app.isPackaged 判 dev
+{
+  const viteCfg = join(ROOT, 'apps/desktop/electron.vite.config.ts')
+  if (!existsSync(viteCfg)) {
+    errors.push('缺少 apps/desktop/electron.vite.config.ts')
+  } else {
+    const cfg = readFileSync(viteCfg, 'utf8')
+    if (!cfg.includes('__SSHK_DEV__')) errors.push('dev 判据唯一化违规：electron.vite.config.ts 未注入 __SSHK_DEV__')
+    for (const layer of ['main', 'preload', 'renderer']) {
+      const re = new RegExp(`${layer}:\\s*\\{[\\s\\S]*?define:\\s*\\{[^}]*DEV_DEFINE`)
+      if (!re.test(cfg)) errors.push(`dev 判据唯一化违规：electron.vite.config.ts ${layer} 端 define 未含 __SSHK_DEV__（DEV_DEFINE）`)
+    }
+  }
+  if (!existsSync(join(ROOT, 'packages/shared/src/dev-flag.ts'))) {
+    errors.push('缺少 packages/shared/src/dev-flag.ts（SSHK_DEV 唯一真相源）')
+  }
+}
+
 // 4. 关键文件与配置一致性
 const required = [
   'README.md', 'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
@@ -67,6 +86,7 @@ const required = [
   'docs/00-index.md', 'docs/02-architecture/2026-11-12-技术选型与任务拆分.md',
   'docs/04-api/2026-11-12-数据契约.md',
   'packages/shared/package.json', 'packages/shared/src/time.ts',
+  'packages/shared/src/dev-flag.ts',
   '.github/workflows/ci.yml',
 ]
 for (const rel of required) {

@@ -1,6 +1,6 @@
 # CodeReview 敲板裁决与重构实施总计划（2026-11-21）
 
-- 状态：**终审完成（2026-11-21 用户已逐项回复全部 CF/C，见 §十三）· 具备开工条件，待令执行 P0~P9**
+- 状态：**执行中（2026-11-21 开工令，台账 #156）：P0-1/P0-2 ✅ 已完成 · P0-3~P9 进行中/待执行**
 - 版本：v1.4（v1.0 = 敲板汇总；v1.1 = 终审落档；v1.2/v1.3 = 菜单规整二/三轮；**v1.4 = 全页面统一重构指令入 §九 执行总原则（#155），P4 迁即重构 / P6 收窄**）
 - 日期：2026-11-21（北京时间）
 - 仓库根：`D:/workspace/code/sshk-tools`（分支 `main`）
@@ -425,8 +425,8 @@ scripts/
 
 | 批 | 目标 | 内容 | 对应敲板 | 规模 |
 |---|---|---|---|---|
-| **P0-1** | dev 判据唯一化 | electron.vite.config 转 `defineConfig(({mode})=>…)`，注入 `__SSHK_DEV__`（**终审定值：`mode==='dev' \|\| mode==='preview'`，preview 归 dev**）三端；shared `declare const __SSHK_DEV__`；main 弃 `!app.isPackaged` 判 dev、拆 `isSourceRepo`（dev-tools/dev-access）；renderer 5 处 `import.meta.env.DEV` 全替换并加 lint 禁用；`pnpm start` 实测校准 | B13/B24/B26/A3/Q-05/C-1 | M |
-| **P0-2** | developerMode 保留 + 写法收敛 | **developerMode 不删（CF-1 终审，D55；AGENTS/铁律原文不变）**；D-2 写法收敛：shared 纯函数 `isDevFeaturesEnabled(isDev, developerMode)` + catalog 统一下发 `devFeatures`，替换 8 处 4 种写法并 lint 禁裸拼；D-3：ToolsTab isDev/devFeatures 注释分节；Q-12：图标字段改 `devFeatures`（build+developerMode 可改）；CR-46：developerModeOn 订阅 config.onChanged（或复用 useAppConfig 同源） | B25/D-2/D-3/Q-12/CR-46/CF-1 | M |
+| **P0-1** ✅ 已完成（`__SSHK_DEV__` 三端注入 + shared dev-flag.ts 单一真相源 + preview --mode preview 实测通过 + ESLint/verify-structure 双门禁） | dev 判据唯一化 | electron.vite.config 转 `defineConfig(({mode})=>…)`，注入 `__SSHK_DEV__`（**终审定值：`mode==='dev' \|\| mode==='preview'`，preview 归 dev**）三端；shared `declare const __SSHK_DEV__`；main 弃 `!app.isPackaged` 判 dev、拆 `isSourceRepo`（dev-tools/dev-access）；renderer 5 处 `import.meta.env.DEV` 全替换并加 lint 禁用；`pnpm start` 实测校准 | B13/B24/B26/A3/Q-05/C-1 | M |
+| **P0-2** ✅ 已完成（isDevFeaturesEnabled 唯一口径 + catalog 下发 devFeatures + D-3 分节注释 + CR-46 订阅修复） | developerMode 保留 + 写法收敛 | **developerMode 不删（CF-1 终审，D55；AGENTS/铁律原文不变）**；D-2 写法收敛：shared 纯函数 `isDevFeaturesEnabled(isDev, developerMode)` + catalog 统一下发 `devFeatures`，替换 8 处 4 种写法并 lint 禁裸拼；D-3：ToolsTab isDev/devFeatures 注释分节；Q-12：图标字段改 `devFeatures`（build+developerMode 可改）；CR-46：developerModeOn 订阅 config.onChanged（或复用 useAppConfig 同源） | B25/D-2/D-3/Q-12/CR-46/CF-1 | M |
 | **P0-3** | 时间统一 | 14 处（toLocale\* 7 + Date.parse 7）替换 shared/time；ESLint `no-restricted-syntax` 禁 `toLocaleString/toLocaleTimeString/Date.parse`（白名单 time.ts） | B5/B33/R1/CR-32 | S |
 | **P0-4** | 错误契约 | 统一错误工厂（`AppError(msg,'validation'\|'permission'\|'io')`），apps+tools main 裸 throw 187 处治理；`classifyExpected` 改 provider 注册制（upload-core 注册 errorClassifier）；preload 保留 code；ui-kit `useAction().runWithToast` | A4/A17/Q-15/B16 | L |
 | **P0-5** | 类型真相源 | `@sshk/upload-core/types` 零依赖子入口收编 UploadProfile/UploadTargetType/upload-vendors；shared/upload-manager 改 re-export（P5-2 拆包收尾）；env.d.ts 改由 preload `typeof api` 推导 + IPC_CHANNELS 泛型映射；`Promise<any>` 收紧 unknown | B6/B17/B22/B40-P10/O5 | M |

@@ -4,14 +4,13 @@
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { IPC_CHANNELS, type ToolCatalogPayload, type ToolRuntimeState } from '@sshk/shared'
+import { IPC_CHANNELS, SSHK_DEV, type ToolCatalogPayload, type ToolRuntimeState } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { useToolCatalog } from '../../composables/useToolCatalog'
-import { appConfig } from '../../composables/useAppConfig'
 import ToolIcon from '../ToolIcon.vue'
 import ToolManifestDialog from '../ToolManifestDialog.vue'
 
-const isDev = import.meta.env.DEV
+const isDev = SSHK_DEV
 const emit = defineEmits<{ 'create-tool': [] }>()
 const { payload, accept, refresh: refreshCatalog } = useToolCatalog()
 
@@ -112,8 +111,12 @@ function startEdit(tool: ToolRuntimeState): void {
   form.category = tool.categories.join('、')
   form.icon = tool.icon
 }
-/** 开发功能总开关：源码 dev 运行始终开启（developerMode 不影响 dev）；打包/安装版由 developerMode 决定 */
-const devFeatures = computed(() => isDev || appConfig.developerMode)
+// ── dev 判据分节（D-3 · P0-2）──
+// isDev（SSHK_DEV / __SSHK_DEV__）：构建期注入的「源码 dev/preview 运行态」，与任何配置无关，只读。
+// developerMode（app.developerMode）：用户配置开关，只作用于打包/安装版（2026-11-14 铁律；D55 保留）。
+// devFeatures（开发者功能总开关）：= isDevFeaturesEnabled(isDev, developerMode)。
+//   主进程 buildCatalog 统一裁决后随 payload 下发（D-2），渲染层禁止散拼 isDev || developerMode。
+const devFeatures = computed(() => payload.value.devFeatures)
 const manageableTools = computed(() => payload.value.tools.filter((item) => item.manageable))
 const listedTools = computed(() => (devFeatures.value ? payload.value.tools : manageableTools.value))
 function realVisibility(tool: ToolRuntimeState): string {

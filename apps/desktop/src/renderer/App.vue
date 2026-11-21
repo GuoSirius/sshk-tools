@@ -7,7 +7,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, DArrowLeft, Download, Setting } from '@element-plus/icons-vue'
-import { DEFAULT_THEME_MODE } from '@sshk/shared'
+import { DEFAULT_THEME_MODE, isDevFeaturesEnabled, SSHK_DEV } from '@sshk/shared'
 import type { ThemeMode, ToolCatalogPayload, ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import { useTheme } from './composables/useTheme'
@@ -252,14 +252,22 @@ function onMoreCommand(command: string): void {
 }
 
 /** N16 创建工具向导（仅 dev 显示入口）：创建成功后刷新目录让新工具立即可见 */
-const isDev = import.meta.env.DEV
+const isDev = SSHK_DEV
 const createToolOpen = ref(false)
 
-/** U2 验证引导（dev 恒显示；打包版 developerMode 开启后显示） */
+/** U2 验证引导（dev 恒显示；打包版 developerMode 开启后显示）——口径统一 isDevFeaturesEnabled（D-2 · P0-2） */
 const verifyGuideOpen = ref(false)
 const developerModeOn = ref(false)
-void window.api.config.get('app.developerMode').then((v: unknown) => { developerModeOn.value = Boolean(v) })
-const canShowVerifyGuide = computed(() => isDev || developerModeOn.value)
+async function refreshDeveloperMode(): Promise<void> {
+  developerModeOn.value = Boolean(await window.api.config.get('app.developerMode'))
+}
+void refreshDeveloperMode()
+// CR-46（P0-2）：developerMode 变更实时反映——订阅 config.onChanged（preload 返回退订函数）
+const offDeveloperModeChanged = window.api.config.onChanged((payload) => {
+  if (payload.namespace === 'app' && payload.key === 'developerMode') void refreshDeveloperMode()
+})
+onBeforeUnmount(() => offDeveloperModeChanged())
+const canShowVerifyGuide = computed(() => isDevFeaturesEnabled(isDev, developerModeOn.value))
 function onToolCreated(catalog: unknown): void {
   if (catalog) acceptCatalog(catalog as ToolCatalogPayload)
   else void refreshCatalog()

@@ -36,6 +36,22 @@ const rules = {
       selector: "CallExpression[callee.property.name='toISOString']",
       message: '禁止 toISOString()（输出 UTC），请使用 @sshk/shared 的 time.ts 北京时间工具',
     },
+    // dev 判据唯一化（P0-1 · D55）：全仓判 dev 只认 @sshk/shared 的 SSHK_DEV
+    // （__SSHK_DEV__ 由 electron.vite.config.ts 构建期注入三端），禁止 import.meta.env 内建标志
+    {
+      selector:
+        "MemberExpression[object.object.type='MetaProperty'][object.property.name='env'][property.name=/^(DEV|PROD|MODE|BASE_URL|SSR)$/]",
+      message: 'dev 判据唯一化（D55）：禁止 import.meta.env.DEV/PROD/MODE 等，一律使用 @sshk/shared 的 SSHK_DEV',
+    },
+    // D-2（P0-2）：开发者功能总开关禁止散拼，一律 isDevFeaturesEnabled() / catalog 下发的 devFeatures
+    {
+      selector: "LogicalExpression[operator='||'][right.name='developerMode']",
+      message: '禁止散拼 isDev || developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
+    },
+    {
+      selector: "LogicalExpression[operator='||'][right.property.name='developerMode']",
+      message: '禁止散拼 isDev || xxx.developerMode（D-2），一律使用 @sshk/shared 的 isDevFeaturesEnabled / catalog 下发的 devFeatures',
+    },
   ],
   // 分层规范：tools/* 之间禁止直接 import（细粒度检查由 check-boundaries.mjs 负责）
   'no-restricted-imports': [
