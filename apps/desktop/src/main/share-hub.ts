@@ -35,7 +35,8 @@ export interface ShareHubHost {
   dispose(): Promise<void>
 }
 
-/** toolId 参数来源：调用方 renderer 自报（网关不做强认证，仅避免误操作别的工具路由；宿主 tab 传 '*' 管理全部）。 */
+/** toolId 参数来源：调用方 renderer 自报。撤销/续期按 route.toolId 严格匹配（P1-5 硬鉴权，'*' 通配已废除）；
+ *  不传 toolId 仅限分享管理台（应用模块的跨工具管理特权，RoutesPage）。 */
 function resolveToolId(raw: unknown): string {
   return typeof raw === 'string' ? raw : ''
 }
@@ -252,19 +253,41 @@ export function createShareHubHost(cfg: ConfigService, opts: {
 
 /** 注册 ShareHub 的 IPC（create/list/revoke/renew/status/control + logs/exportLogs/deleteLogs/clearLogs）。
  *  全部经 handleOk，遵守 check:ipc 门禁。repository 为日志持久化数据层（plans/12，可选）。 */
-export function registerShareHubIpc(host: ShareHubHost, repository?: Repository): void {
+/** P1-5（A15/Q-13）硬鉴权守卫：sender 必须是主窗口 webContents（可信身份绑定），
+ *  toolId 必须是在册工具（目录裁决）；守卫缺省视为通过（单测/兼容）。 */
+export interface ShareHubGuards {
+  isTrustedSender: (sender: unknown) => boolean
+  isKnownTool: (toolId: string) => boolean
+}
+
+export function registerShareHubIpc(host: ShareHubHost, repository?: Repository, guards?: ShareHubGuards): void {
   const hub = host.hub
   const hostRepository = repository
+  const trusted = (e: unknown): void => {
+    if (guards && !guards.isTrustedSender((e as { sender?: unknown })?.sender)) {
+      throw new AppError('分享通道拒绝非主窗口调用', 'permission')
+    }
+  }
 
-  handleOk(IPC_CHANNELS.shareHubCreate, (_e, input: ShareRouteInput) =>
+  handleOk(IPC_CHANNELS.shareHubCreate, (e, input: ShareRouteInput) => {
+    trusted(e)
+    if (!input?.toolId || !guards?.isKnownTool(input.toolId)) {
+      throw new AppError('分享路由归属工具非法（toolId 不在册）', 'validation')
+    }
     // 应用级默认（app.shareHub.allowIndex，默认不允许）：弹框未显式指定时在此注入（弹框值优先）
-    hub.create({ ...input, allowIndex: input.allowIndex ?? host.getDefaultAllowIndex() }))
+    return hub.create({ ...input, allowIndex: input.allowIndex ?? host.getDefaultAllowIndex() })
+  })
 
-  handleOk(IPC_CHANNELS.shareHubList, (_e, toolId?: string) => hub.listRoutes(resolveToolId(toolId) || undefined))
+  handleOk(IPC_CHANNELS.shareHubList, (e, toolId?: string) => {
+    trusted(e)
+    return hub.listRoutes(resolveToolId(toolId) || undefined)
+  })
 
-  handleOk(IPC_CHANNELS.shareHubRevoke, (_e, id: string, toolId?: string) => {
+  handleOk(IPC_CHANNELS.shareHubRevoke, (e, id: string, toolId?: string) => {
+    trusted(e)
     const caller = resolveToolId(toolId)
-    if (caller && caller !== '*') {
+    // P1-5：'*' 通配绕过已废除——带 toolId 即严格匹配；不传 = 分享管理台特权
+    if (caller) {
       const route = hub.listRoutes().find((r) => r.id === id)
       if (!route) return false
       if (route.toolId !== caller) throw new AppError('无权撤销其它工具的分享路由', 'permission')
@@ -272,9 +295,10 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository)
     return hub.revoke(id)
   })
 
-  handleOk(IPC_CHANNELS.shareHubRenew, (_e, id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }) => {
+  handleOk(IPC_CHANNELS.shareHubRenew, (e, id: string, ttlHours: number | null, toolId?: string, mode?: 'reset' | 'extend', patch?: { allowIndex?: boolean; password?: string }) => {
+    trusted(e)
     const caller = resolveToolId(toolId)
-    if (caller && caller !== '*') {
+    if (caller) {
       const route = hub.listRoutes().find((r) => r.id === id)
       if (!route) throw new AppError('分享路由不存在', 'io')
       if (route.toolId !== caller) throw new AppError('无权续期其它工具的分享路由', 'permission')

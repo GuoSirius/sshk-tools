@@ -195,7 +195,7 @@ async function testProvider(row: Provider): Promise<void> {
     health.value[row._id] = { ok: false, message: (err as Error).message, at: format() }
   } finally {
     testingId.value = null
-    await host.config.set('app.llm.health', JSON.parse(JSON.stringify(health.value)))
+    // CR-37（P1-6）：不再写 app.llm.health（双轨清），测速结果仅存内存态
   }
 }
 

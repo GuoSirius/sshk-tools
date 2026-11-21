@@ -47,7 +47,7 @@ import { FsRuntime } from './fs'
 import { installLocalResHandler } from './local-res'
 import { APP_RENDERER_URL, installAppProtocolHandler, registerPrivilegedSchemes } from './renderer-protocol'
 import { allowWindowDrop } from './win32-drop'
-import { createShareHubHost, registerShareHubIpc, type ShareHubHost } from './share-hub'
+import { createShareHubHost, registerShareHubIpc, type ShareHubHost, type ShareHubGuards } from './share-hub'
 
 /** 必须在 app ready 前注册：localres:// 预览协议 + app:// 渲染层加载协议（特权一次性注册） */
 registerPrivilegedSchemes()
@@ -70,6 +70,8 @@ const isDev = SSHK_DEV
  *  __SSHK_BAKED_ENV__ 烤入双保险，任一生效即禁用；.env 声明的键默认不允许本机 env 覆盖（baked-env）。 */
 const autoUpdateDisabled = __SSHK_AUTO_UPDATE_DISABLED__ || !getEnvBool('SSHK_APP_AUTO_UPDATE', true)
 let mainWindow: BrowserWindow | null = null
+/** P1-5：分享通道硬鉴权守卫（whenReady 装配，registerIpc 消费） */
+let shareHubGuards: ShareHubGuards | undefined
 let tray: Tray | null = null
 let services: AppServices | null = null
 /** 退出中标志：关闭确认通过后由渲染层回调置位，放行 before-quit / close 链路 */
@@ -372,7 +374,7 @@ async function registerIpc(): Promise<void> {
   nativeTheme.themeSource = themeMode === 'system' ? 'system' : themeMode === 'light' ? 'light' : 'dark'
 
   // ── ShareHub 常驻分享服务（plans/09；plans/12 日志持久化）：通道注册，单例由 whenReady 初始化 ──
-  if (shareHubHost) registerShareHubIpc(shareHubHost, services?.repository)
+  if (shareHubHost) registerShareHubIpc(shareHubHost, services?.repository, shareHubGuards)
 
   handleOk(IPC_CHANNELS.appVersion, () => app.getVersion())
   // 关于页运行环境信息（__APP_COMMIT__ 由 electron-vite define 注入，打包/dev 一致）
@@ -1113,6 +1115,11 @@ void app.whenReady().then(async () => {
     contentResolver: makeContentResolver(services.repository),
     contentListResolver: makeContentListResolver(services.repository),
   })
+  // P1-5（A15/Q-13）：分享硬鉴权守卫——sender 绑定主窗口 + toolId 在册校验
+  shareHubGuards = {
+    isTrustedSender: (sender) => Boolean(sender) && sender === mainWindow?.webContents,
+    isKnownTool: (id) => allManifests().some((m) => m.id === id),
+  }
   await shareHubHost.init()
   seedDefaultProviders()
   migrateLegacyVisionConfig()

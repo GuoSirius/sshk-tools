@@ -87,7 +87,7 @@ watch(filteredRows, () => { currentPage.value = 1 })
 const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 
 /** 编辑器容器形态（plans/11 #8/S4）：dialog=弹框（默认），page=整页。两壳共用 ContentEditorCore。
- *  配置属工具级：tools.file-manager.editorMode（工具设置页）；旧键 app.content.editorMode 作回落读取（2026-11-20 迁移）。 */
+ *  配置属工具级：tools.file-manager.editorMode（工具设置页）；CR-36（P1-6）旧键 app.content.editorMode 双轨回落已清（迁移窗口已过）。 */
 const pageMode = ref(false)
 async function loadEditorMode(): Promise<void> {
   const spec = { group: 'config', method: 'get', channel: IPC_CHANNELS.configGet, label: '读取编辑器形态' } satisfies HostApiSpec
@@ -96,12 +96,6 @@ async function loadEditorMode(): Promise<void> {
     pageMode.value = mode === 'page'
   } catch {
     pageMode.value = false
-  }
-  if (!pageMode.value) {
-    try {
-      const legacy = await callHostApi<unknown>(spec, 'app.content.editorMode')
-      pageMode.value = legacy === 'page'
-    } catch { pageMode.value = false }
   }
 }
 

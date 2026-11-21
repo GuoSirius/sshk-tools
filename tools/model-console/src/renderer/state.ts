@@ -66,9 +66,7 @@ export const activeProvider = computed<Provider | null>(
 export async function load(): Promise<void> {
   const saved = (await host.config.get('app.llm.providers')) as Provider[] | null
   providers.value = Array.isArray(saved) ? saved : []
-  // 连通状态持久化：测过的 Provider 下次进来直接显示上次结果
-  const savedHealth = (await host.config.get('app.llm.health')) as Record<string, HealthState> | null
-  if (savedHealth && typeof savedHealth === 'object') health.value = savedHealth
+  // CR-37（P1-6）：连通状态不再持久化（app.llm.health 双轨已清）——内存态随会话，测速结果本就是临时诊断信息
   const rawPresets = (await host.config.get(configKey('modelPresets'))) as ModelPreset[] | null
   presets.value = Array.isArray(rawPresets)
     ? rawPresets.filter((p) => p && typeof p.baseURL === 'string' && Array.isArray(p.models))
