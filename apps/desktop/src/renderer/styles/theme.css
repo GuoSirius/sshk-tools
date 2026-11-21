@@ -571,8 +571,8 @@ body {
 .settings-head small { display: block; font-size: 12px; color: var(--sshk-muted); margin-top: 4px; }
 .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 14px; }
 .settings-card { border: 1px solid var(--sshk-border); border-radius: 10px; padding: 16px; background: var(--sshk-panel); }
-/* 设置抽屉各 tab 根容器：内部多卡片统一纵向间距（用户 2026-11-17 反馈区块挤在一起） */
-.tools-tab, .system-tab, .about-tab, .share-tab { display: flex; flex-direction: column; gap: 14px; }
+/* 设置抽屉过渡 tab 根容器（P4-3 页化后仅余 system/tools 两过渡 tab，抽屉随即删除） */
+.tools-tab, .system-tab { display: flex; flex-direction: column; gap: 14px; }
 .card-title { font-weight: 600; margin-bottom: 14px; }
 .card-actions { display: flex; gap: 8px; margin-top: 14px; }
 .hint { font-size: 12px; color: var(--sshk-muted); line-height: 1.6; }
@@ -628,11 +628,6 @@ body {
 .health-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .health-log-btn { margin-left: auto; }
 .snap-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.share-status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.share-actions { justify-content: flex-start; gap: 8px; }
-.share-ip-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-.share-route-filter { margin-bottom: 10px; }
-.expired-text { color: var(--el-color-danger); }
 
 .tool-manage-row {
   border: 1px solid var(--sshk-border); border-radius: 10px; padding: 12px; margin-bottom: 10px;

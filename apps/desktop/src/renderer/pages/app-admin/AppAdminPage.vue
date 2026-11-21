@@ -6,7 +6,7 @@
  *   硬编码在页面内（非 manifest 驱动；P4-4~6 迁即重构后再接各模块描述文件）；
  * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
  *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
- * - 右内容区：应用设置 4 页过渡直引 tab 组件（P4-3 页化重构）；
+ * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
  *   文件/模型/分享三模块过渡直引工具壳组件（provideToolId / llm.onDelta 注入在壳内已处理，最少侵入），
  *   fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动）。
  */
@@ -111,12 +111,8 @@ const activePage = computed<string>(() => {
   return MODULE_DEFAULT_PAGE[activeModule.value] ?? 'general'
 })
 
-/** 页面标题 + 说明（过渡版逐页登记；P4-3+ 迁即重构时随页面走） */
+/** 页面标题 + 说明（仅三模块过渡页用；应用设置 4 页 P4-3 起自管页头，不在此登记） */
 const PAGE_META: Record<string, { title: string; description: string }> = {
-  general: { title: '常规设置', description: '主题、产物目录、启动行为' },
-  system: { title: '系统与数据', description: '版本、数据目录、密钥与备份策略' },
-  tools: { title: '工具与权限', description: '启用禁用、访问密钥、分发白名单、卡片信息' },
-  about: { title: '关于应用', description: '运行环境、配置分层约定' },
   files: { title: '文件系统', description: '本地 / 远端 / 云存储浏览管理与上传下载传输队列' },
   contents: { title: '内容管理', description: '内容库管理与编辑（编辑器形态随「工具设置」切换）' },
   profiles: { title: '通道配置', description: '上传通道 Profile 管理，密钥经 safeStorage 加密' },
@@ -192,7 +188,7 @@ function goBackDesktop(): void {
       </aside>
 
       <section class="admin-content">
-        <!-- 应用设置 4 页（P4-2 过渡直引 tab 组件，P4-3 迁即重构页化） -->
+        <!-- 应用设置 4 页：P4-3 页化真页面（各页自管页头/加载/确认流） -->
         <template v-if="activeModule === 'settings'">
           <GeneralPage v-if="activePage === 'general'" />
           <SystemDataPage v-else-if="activePage === 'system'" />

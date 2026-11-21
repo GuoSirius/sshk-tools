@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * 「关于应用」轻弹框（P4-1 · 更多下拉三段之一）：
- * 运行环境四行（复用 AboutTab 的 window.api.app.runtime() 数据源：版本+commit / Electron / Chrome / Node），
- * kv-line 风格沿用 theme.css 全局类；完整信息页在 应用管理 > 应用设置 > 关于应用（P4-2 起）。
- * 禁遮罩禁 ESC：与设置抽屉同一防误关口径。
+ * 运行环境四行（window.api.app.runtime() 与 应用管理 > 应用设置 > 关于应用 页同数据源、各自加载），
+ * kv-line 风格沿用 theme.css 全局类；完整信息页在 应用管理 > 应用设置 > 关于应用（P4-3 页化）。
+ * 禁遮罩禁 ESC：防误关口径。
  */
 import { ref, watch } from 'vue'
 

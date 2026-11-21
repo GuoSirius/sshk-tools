@@ -7,7 +7,7 @@ import { CodeEditor } from '@sshk/code-editor'
 import { SSHK_DEV } from '@sshk/shared'
 import type { ToolConfigField, ToolConfigGroup } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
-import BadgeStylePreview from './components/settings/BadgeStylePreview.vue'
+import BadgeStylePreview from './components/BadgeStylePreview.vue'
 
 /**
  * 工具级配置：只读写 tools.<toolId>.*，字段由工具包 manifest 的 configGroups 驱动。

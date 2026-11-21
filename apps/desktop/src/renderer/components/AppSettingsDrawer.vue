@@ -1,16 +1,14 @@
 <script setup lang="ts">
 /**
- * 应用设置抽屉外壳（plans/09 起按 tab 拆分）：只负责左侧导航 + 分组分发 + 版本显示。
- * 各 tab 的页面与逻辑在 components/settings/ 下独立文件，新增 tab 只需加一个组件 + groups 一行。
- * 共享状态：应用配置走 composables/useAppConfig，工具目录/主题/更新走已有单例 composable。
+ * 应用设置抽屉外壳（过渡态，P4-3 commit 2 即删除）：只负责左侧导航 + 分组分发 + 版本显示。
+ * P4-3 页化后四页真身已落 pages/app-admin/settings/（常规设置/系统与数据/工具与权限/关于应用），
+ * 分享页取消（并入分享管理 ServicePage）。本壳仅余三组过渡直引，勿再新增功能。
  */
 import { computed, markRaw, onMounted, ref, watch, type Component } from 'vue'
-import { DataLine, InfoFilled, Setting, Share, Tools } from '@element-plus/icons-vue'
+import { DataLine, Setting, Tools } from '@element-plus/icons-vue'
 import GeneralTab from './settings/GeneralTab.vue'
-import ShareTab from './settings/ShareTab.vue'
 import ToolsTab from './settings/ToolsTab.vue'
 import SystemTab from './settings/SystemTab.vue'
-import AboutTab from './settings/AboutTab.vue'
 import { loadAppConfig } from '../composables/useAppConfig'
 
 const props = defineProps<{ modelValue: boolean; group?: string }>()
@@ -20,9 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean]; 'create-tool': [] }>(
 const groups = [
   { id: 'general', label: '常规设置', hint: '主题、产物目录、启动行为', icon: markRaw(Setting), comp: markRaw(GeneralTab) },
   { id: 'tools', label: '工具与权限', hint: '启用禁用、访问密钥、分发白名单、卡片信息', icon: markRaw(Tools), comp: markRaw(ToolsTab) },
-  { id: 'share', label: '分享服务', hint: '常驻分享服务与路由管理', icon: markRaw(Share), comp: markRaw(ShareTab) },
   { id: 'system', label: '系统与数据', hint: '版本、数据目录、密钥与备份策略', icon: markRaw(DataLine), comp: markRaw(SystemTab) },
-  { id: 'about', label: '关于应用', hint: '配置分层与扩展约定', icon: markRaw(InfoFilled), comp: markRaw(AboutTab) },
 ]
 const activeGroup = ref<string>(props.group ?? 'general')
 watch(() => props.group, (value) => { if (value) activeGroup.value = value })
