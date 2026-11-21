@@ -12,7 +12,7 @@
 
 1. 读 `AGENTS.md` → 本文件 → `docs/00-index.md`。
 2. 跑 `pnpm install` → `pnpm verify`（13 门禁 + typecheck + lint + build + vitest）全绿才算环境就绪。
-3. 任何新需求/新 bug：先看本文 §铁律与 §契约，确认不违反再动手；涉及待决策项先查 `02-architecture/2026-11-20-CodeReview二次复核与处置台账.md` §六是否已拍板。
+3. 任何新需求/新 bug：先看本文 §铁律与 §契约，确认不违反再动手；涉及待决策项先查 `06-codereview/2026-11-21-CodeReview敲板裁决与重构实施总计划.md` §三/§四（CodeReview 敲板裁决入口；2026-11-21 起全部 CodeReview 文档统一落 `docs/06-codereview/`）。
 4. 破坏性改动不需要兼容性兜底（应用未正式大批量发布），但**危险操作必须二次确认**、**每批 verify 全绿后立即 commit + push + 核验 message**。
 
 ---
@@ -82,6 +82,7 @@ docs/
 ├── 03-design/           ← UI 稿（占位）
 ├── 04-api/              ← 数据契约（门禁强依赖勿删）
 ├── 05-release/          ← 发布流程
+├── 06-codereview/       ← CodeReview 报告/复核台账/交叉合并/敲板处置计划（2026-11-21 起，唯一存放地）
 ├── plans/               ← 分类计划 00~12
 └── 99-archive/          ← 归档，**只移不删**
 ```
