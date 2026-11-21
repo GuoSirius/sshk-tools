@@ -16,7 +16,6 @@ import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
 import AppHeader from './components/AppHeader.vue'
 import AboutDialog from './components/AboutDialog.vue'
-import AppSettingsDrawer from './components/AppSettingsDrawer.vue'
 import AppAdminPage from './pages/app-admin/AppAdminPage.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
@@ -40,8 +39,6 @@ const sidebarCollapsed = ref(false)
 const sidebarHover = ref(false)
 const sideOpenIds = ref<Set<string>>(new Set())
 const sidebarExpanded = computed(() => !sidebarCollapsed.value || sidebarHover.value)
-const settingsOpen = ref(false)
-const settingsGroup = ref('general')
 const query = ref('')
 const version = ref('0.1.0')
 /** 状态栏实时时钟（用户 2026-11-17：年月日 时分秒+星期） */
@@ -167,10 +164,6 @@ function goHome(): void {
   void router.push('/')
 }
 function openDataDir(): void { void window.api.app.openDataDir() }
-function openSettings(group = 'general'): void {
-  settingsGroup.value = group
-  settingsOpen.value = true
-}
 /** P4-2：顶栏「应用管理」入口——跳应用管理页（hash 路由 /app/...，默认 应用设置 > 常规设置） */
 function openAppAdmin(): void {
   void router.push('/app/settings/general')
@@ -191,17 +184,14 @@ async function openDevTools(): Promise<void> {
   }
 }
 function onMoreCommand(command: string): void {
-  // 数据目录 / 工具与权限 / 系统与数据 三项已从「更多」下拉移除（迁往应用管理对应页，P4-2）；
-  // 分支按口径保留不删（命令项没了自然不触发），about 改开轻弹框（P4-1）
+  // 数据目录 / 工具与权限 / 系统与数据 / 常规设置 已从「更多」下拉移除（迁往应用管理对应页，P4-2），
+  // 旧 openSettings 分支随设置抽屉一并删除（P4-3）；about 开轻弹框（P4-1）
   if (command === 'dataDir') openDataDir()
   else if (command === 'reload') void window.api.app.reload()
   else if (command === 'reloadForce') void window.api.app.reload(true)
   else if (command === 'devtools') void openDevTools()
-  else if (command === 'tools') openSettings('tools')
-  else if (command === 'system') openSettings('system')
   else if (command === 'about') aboutOpen.value = true
   else if (command === 'createTool') createToolOpen.value = true
-  else openSettings('general')
 }
 
 /** N16 创建工具向导（仅 dev 显示入口）：创建成功后刷新目录让新工具立即可见 */
@@ -421,10 +411,10 @@ onMounted(async () => {
       <span>就绪</span>
     </footer>
 
-    <AppSettingsDrawer v-model="settingsOpen" :group="settingsGroup" @create-tool="createToolOpen = true" />
     <CreateToolWizard v-model="createToolOpen" @created="onToolCreated" />
     <!-- 更多下拉「关于应用」轻弹框（P4-1）：运行环境四行 + 完整信息指引 -->
     <AboutDialog v-model="aboutOpen" />
-    <VerifyGuidePage v-model="verifyGuideOpen" @open-settings="(g) => openSettings(String(g).includes('工具') ? 'tools' : 'system')" />
+    <!-- 验证引导：settings 类直达入口由页内自行路由到 应用管理 > 应用设置（P4-3 页化后无抽屉） -->
+    <VerifyGuidePage v-model="verifyGuideOpen" />
   </div>
 </template>

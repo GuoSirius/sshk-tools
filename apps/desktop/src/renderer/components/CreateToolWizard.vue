@@ -11,7 +11,7 @@ import JsonPreviewPane from './tool-form/JsonPreviewPane.vue'
 import { parseOptions } from './tool-form/types'
 
 /**
- * N16 创建工具向导（仅 dev 可见，见 App.vue / AppSettingsDrawer 入口条件）：
+ * N16 创建工具向导（仅 dev 可见，入口：顶栏「更多」下拉 + 工具与权限页按钮）：
  * 分步表单（tool-form/ 共享组件，与清单编辑器同源）→ 提交主进程 dev:toolCreate 生成 tools/<id>/ 整套骨架。
  * 右侧实时 JSON 预览与主进程落盘共用 @sshk/shared 的 buildSkeletonFiles——所见即所得，无第二套逻辑。
  */

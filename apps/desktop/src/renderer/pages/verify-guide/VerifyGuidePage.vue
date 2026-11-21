@@ -20,7 +20,7 @@ import {
 } from '@sshk/shared'
 
 const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'open-settings', group: string): void }>()
+const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -142,12 +142,19 @@ async function runAutoChecks(): Promise<void> {
 }
 
 // ── 直达入口 ──
+/** settings 类 step.entry.target（中文组名）→ 应用设置对应 page 段（P4-3 页化后直达页面，不经壳层事件开抽屉） */
+function settingsPageId(target: string): string {
+  if (target.includes('工具')) return 'tools'
+  if (target.includes('常规')) return 'general'
+  return 'system'
+}
 function goEntry(step: VerifyStep): void {
   if (!step.entry) return
   visible.value = false
   // 必须走 vue-router：手动改 location.hash 不触发 router 导航（曾因此按钮无反应）
   if (step.entry.type === 'route') void router.push('/tool/' + step.entry.target)
-  else emit('open-settings', step.entry.target)
+  else if (step.entry.target === 'share') void router.push('/app/share/service') // 分享服务配置在 分享管理 > 工具设置 > 服务配置
+  else void router.push('/app/settings/' + settingsPageId(step.entry.target))
 }
 
 // ── 导出 markdown 报告 ──
