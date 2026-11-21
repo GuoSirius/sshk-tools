@@ -23,6 +23,7 @@
     "@sshk/edm-studio": "workspace:*",
     "@sshk/llm-gateway": "workspace:*",
     "@sshk/repository": "workspace:*",
+    "@sshk/share-core": "workspace:*",
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@sshk/upload-core": "workspace:*",

@@ -12,7 +12,8 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, ConfirmDialog, ShareDialog, TimeText, readShareTicket, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
+import { ShareDialog, readShareTicket } from '@sshk/share-core/ui'
 import { callHostApi, type HostApiSpec, useToolId } from '@sshk/ui-kit'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, inMsRange, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
 import { host } from '../host'

@@ -8,15 +8,14 @@
  * 生效原则：打开弹框只读现状不自动创建（防误建）；有票后 TTL 三按钮点击即确认生效（按钮本身即确认）；
  *          目录开关变更需二次确认后才 renew patch 生效（链接不变），失败回滚勾选。
  * 工具只需 <ShareDialog v-model="open" :tool-id="..." :label="..." :default-root="..." />，
- * 底层统一走宿主 ShareHub（@sshk/ui-kit callHostApi 兜底），工具不自建服务、不占端口。
+ * 底层统一走宿主 ShareHub（@sshk/ui-kit callHostApi 兜底；P5-3/C-4 起本组件迁居 @sshk/share-core/ui），工具不自建服务、不占端口。
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
-import { callHostApi, type HostApiSpec } from '../host-api'
-import { shareDialogStorageKey, readShareTicket } from '../share-ticket'
+import { callHostApi, FormHint, type HostApiSpec } from '@sshk/ui-kit'
+import { shareDialogStorageKey, readShareTicket } from './share-ticket'
 import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
-import FormHint from './FormHint.vue'
 import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
 const props = defineProps<{

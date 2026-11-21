@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ToolPageLayout, ConfirmDialog, ShareDialog, provideToolId } from '@sshk/ui-kit'
+import { ToolPageLayout, ConfirmDialog, provideToolId } from '@sshk/ui-kit'
+import { ShareDialog } from '@sshk/share-core/ui'
 import { ArrowDown } from '@element-plus/icons-vue'
 import GeneratePage from './pages/GeneratePage.vue'
 import PostersPage from './pages/PostersPage.vue'

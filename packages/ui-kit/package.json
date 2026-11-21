@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 公共渲染层组件：页面布局、空态、二次确认、跨页选择、时间展示、统一分享",
+  "description": "sshk-tools 公共渲染层组件：页面布局、空态、二次确认、跨页选择、时间展示（零业务；ShareDialog 已迁 @sshk/share-core/ui · P5-3/C-4）",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -14,11 +14,9 @@
     "@element-plus/icons-vue": "latest",
     "@sshk/shared": "workspace:*",
     "element-plus": "latest",
-    "qrcode": "latest",
     "vue": "latest"
   },
   "devDependencies": {
-    "@types/qrcode": "latest",
     "typescript": "6"
   },
   "engines": {

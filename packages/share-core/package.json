@@ -3,20 +3,29 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 常驻分享服务内核（plans/09）：单端口多路由 + TTL + 内网优选 + Range，宿主与各工具共用",
+  "description": "sshk-tools 常驻分享服务内核（plans/09）：单端口多路由 + TTL + 内网优选 + Range，宿主与各工具共用；渲染子入口 @sshk/share-core/ui 承载 ShareDialog/share-ticket（P5-3 · C-4）",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@sshk/repository": "workspace:*",
-    "@sshk/shared": "workspace:*"
+    "@sshk/shared": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "qrcode": "latest"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "latest",
-    "typescript": "6"
+    "@types/qrcode": "latest",
+    "typescript": "6",
+    "vue": "latest"
   },
   "engines": {
     "node": ">=24"

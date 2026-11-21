@@ -125,6 +125,8 @@ const WORKSPACE_PKGS: string[] = []
 const sshkAlias: Alias[] = [
   // 包内聚子入口（B6 · P0-5）：upload-core 零依赖类型真相源（shared re-export 指向此处）
   { find: /^@sshk\/upload-core\/types$/, replacement: pkg('packages/upload-core/src/upload-types.ts') },
+  // 包内聚子入口（B10 · P5-3/C-4）：ShareDialog/share-ticket 渲染子入口（ui-kit 零业务收口）
+  { find: /^@sshk\/share-core\/ui$/, replacement: pkg('packages/share-core/src/ui/index.ts') },
 ]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)

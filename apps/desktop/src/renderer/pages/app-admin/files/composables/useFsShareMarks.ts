@@ -7,7 +7,7 @@ import {
   type FsEntry,
   type ShareRouteInfo,
 } from '@sshk/shared'
-import { buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/ui-kit'
+import { buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/share-core/ui'
 
 /**
  * ShareHub 分享状态标记（用户 2026-11-19，P4-4 自 FileExplorerPage 拆出）：

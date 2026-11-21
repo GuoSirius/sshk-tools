@@ -70,6 +70,9 @@ importers:
       '@sshk/repository':
         specifier: workspace:*
         version: link:../../packages/repository
+      '@sshk/share-core':
+        specifier: workspace:*
+        version: link:../../packages/share-core
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -274,13 +277,28 @@ importers:
       '@sshk/shared':
         specifier: workspace:*
         version: link:../shared
+      '@sshk/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      element-plus:
+        specifier: latest
+        version: 2.14.8(vue@3.5.46(typescript@6.0.3))
+      qrcode:
+        specifier: latest
+        version: 1.5.4
     devDependencies:
       '@types/node':
         specifier: latest
         version: 26.6.6
+      '@types/qrcode':
+        specifier: latest
+        version: 1.5.6
       typescript:
         specifier: '6'
         version: 6.0.3
+      vue:
+        specifier: latest
+        version: 3.5.46(typescript@6.0.3)
 
   packages/shared:
     dependencies:
@@ -309,16 +327,10 @@ importers:
       element-plus:
         specifier: latest
         version: 2.14.8(vue@3.5.46(typescript@6.0.3))
-      qrcode:
-        specifier: latest
-        version: 1.5.4
       vue:
         specifier: latest
         version: 3.5.46(typescript@6.0.3)
     devDependencies:
-      '@types/qrcode':
-        specifier: latest
-        version: 1.5.6
       typescript:
         specifier: '6'
         version: 6.0.3
@@ -383,6 +395,9 @@ importers:
       '@sshk/repository':
         specifier: workspace:*
         version: link:../../packages/repository
+      '@sshk/share-core':
+        specifier: workspace:*
+        version: link:../../packages/share-core
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -435,6 +450,9 @@ importers:
       '@sshk/rich-text':
         specifier: workspace:*
         version: link:../../packages/rich-text
+      '@sshk/share-core':
+        specifier: workspace:*
+        version: link:../../packages/share-core
       '@sshk/shared':
         specifier: workspace:*
         version: link:../../packages/shared

@@ -17,6 +17,7 @@
     "@sshk/code-editor": "workspace:*",
     "@sshk/repository": "workspace:*",
     "@sshk/shared": "workspace:*",
+    "@sshk/share-core": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@zumer/snapdom": "latest",
     "cheerio": "latest",

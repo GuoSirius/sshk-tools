@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, TimeText, ShareDialog, useToolId } from '@sshk/ui-kit'
+import { EmptyState, TimeText, useToolId } from '@sshk/ui-kit'
+import { ShareDialog } from '@sshk/share-core/ui'
 import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
 import { api, confirmRemove, osApi, type MailRow } from '../shared'

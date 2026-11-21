@@ -29,11 +29,14 @@ function walk(dir, acc = []) {
 //   故钉 ^6 由 lockfile 固定实际版本（最新 6.x）。
 // http(s) CDN tarball（如 sheetjs 官方 cdn.sheetjs.com 的 xlsx 安装包）：npm 公共源 xlsx 长期陈旧，
 //   官方推荐从其 CDN 安装最新版，属刻意的「latest 等价」例外，不要求 latest 字面量。
+// peerDependencies：pnpm 强制 peer 依赖为合法 semver 范围，"latest" 字面量直接安装报错
+//   （P5-3/C-4 share-core/ui 的 vue peer 实测），故 peer 字段放行任意显式 semver 范围。
 const VERSION_EXCEPTIONS = { typescript: '6', 'electron-updater': '^6' }
 
-function isAllowed(dep, spec) {
+function isAllowed(dep, spec, field) {
   if (VERSION_EXCEPTIONS[dep]) return spec === VERSION_EXCEPTIONS[dep]
   if (spec.startsWith('http://') || spec.startsWith('https://')) return true // CDN tarball 安装（sheetjs 等）
+  if (field === 'peerDependencies') return true
   return spec === 'latest' || spec.startsWith('workspace:') || spec.startsWith('catalog:')
 }
 
@@ -53,7 +56,7 @@ for (const file of files) {
     const deps = pkg[field] || {}
     for (const [dep, spec] of Object.entries(deps)) {
       checked += 1
-      if (!isAllowed(dep, spec)) {
+      if (!isAllowed(dep, spec, field)) {
         violations.push({ file: relative(ROOT, file), dep, spec })
       }
     }

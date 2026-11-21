@@ -14,7 +14,6 @@ export { default as ConnectivityField } from './components/ConnectivityField.vue
 export { useTablePage } from './composables/useTablePage'
 export type { UseTablePageOptions, UseTablePageReturn } from './composables/useTablePage'
 export { SIGN_URL_HINT } from './form-consts'
-export { default as ShareDialog } from './components/ShareDialog.vue'
 export { useSelection } from './composables/useSelection'
 export type { Selection } from './composables/useSelection'
 export { provideToolId, useToolId } from './composables/useToolId'
@@ -24,6 +23,5 @@ export { createSafeHost } from './safe-host'
 export type { SafeHostChannelMap } from './safe-host'
 export { logFront } from './front-log'
 export type { FrontLogLevel } from './front-log'
-/** 分享凭证存取（ShareDialog 与工具页「复制链接」共用同一把键） */
-export { shareDialogStorageKey, readShareTicket, isTicketAlive, findShareTicketById, migrateShareTickets, shareFileDirectUrl, buildDirectUrl } from './share-ticket'
+/** 分享凭证存取已迁 @sshk/share-core/ui（P5-3 · C-4）：ShareDialog 与工具页「复制链接」改从该子入口引 */
 export { useAction, type RunActionOptions } from './composables/useAction'

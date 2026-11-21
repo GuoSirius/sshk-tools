@@ -8,6 +8,8 @@ import { defineConfig } from 'vitest/config'
 const ROOT = fileURLToPath(new URL('./', import.meta.url))
 const alias: { find: RegExp; replacement: string }[] = [
   { find: /^@sshk\/upload-core\/types$/, replacement: join(ROOT, 'packages/upload-core/src/upload-types.ts') },
+  // 包内聚子入口（B10 · P5-3/C-4）：ShareDialog/share-ticket 渲染子入口（与 electron.vite.config 同口径）
+  { find: /^@sshk\/share-core\/ui$/, replacement: join(ROOT, 'packages/share-core/src/ui/index.ts') },
 ]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)

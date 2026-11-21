@@ -5,7 +5,8 @@ import { DEFAULT_OCR_LAYOUT, parseCsvText, rowsToCsv, sanitizeMetricKey, toStatR
 import type { OcrLayoutConfig, StatRow } from '@sshk/badge-studio'
 import type { LlmProviderInfo, ShareRouteInfo } from '@sshk/shared'
 import { DEFAULT_BADGE_ATTR, DEFAULT_CLICKS_FIELD, DEFAULT_POSTER_WIDTH, IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, format, toFileName, toolConfigKey } from '@sshk/shared'
-import { callHostApi, readShareTicket, type HostApiSpec } from '@sshk/ui-kit'
+import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
+import { readShareTicket } from '@sshk/share-core/ui'
 import { host } from './host'
 
 /**

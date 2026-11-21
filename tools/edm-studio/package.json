@@ -19,6 +19,7 @@
     "@sshk/repository": "workspace:*",
     "@sshk/rich-text": "workspace:*",
     "@sshk/shared": "workspace:*",
+    "@sshk/share-core": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@unocss/core": "latest",
     "@unocss/preset-wind3": "latest",

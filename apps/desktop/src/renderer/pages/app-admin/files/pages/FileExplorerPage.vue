@@ -37,7 +37,8 @@ import {
   isFsZipName,
   type FsEntry,
 } from '@sshk/shared'
-import { FormHint, ShareDialog, useToolId } from '@sshk/ui-kit'
+import { FormHint, useToolId } from '@sshk/ui-kit'
+import { ShareDialog } from '@sshk/share-core/ui'
 import FsChannelBar from '../components/FsChannelBar.vue'
 import FsContextMenu from '../components/FsContextMenu.vue'
 import FsEditorDialog from '../components/FsEditorDialog.vue'
