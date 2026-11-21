@@ -1,6 +1,6 @@
 import { IPC_CHANNELS } from '@sshk/shared'
 import { handleOk } from '../ipc-wrap'
-import { FsRuntime } from '../fs'
+import { FsRuntime } from '../modules/file/runtime'
 import type { IpcContext } from './context'
 
 /** X6 文件系统（P3-1 registerIpc 拆分：浏览/管理已配置上传通道 + 统一传输队列；FsRuntime 在此创建） */

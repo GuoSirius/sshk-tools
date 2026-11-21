@@ -43,7 +43,7 @@ import { registerRuntimeIpc } from './ipc/runtime'
 import { registerToolsIpc } from './ipc/tools'
 import { registerUpdateIpc } from './ipc/update'
 import { registerUploadIpc } from './ipc/upload'
-import type { FsRuntime } from './fs'
+import type { FsRuntime } from './modules/file/runtime'
 import { createShareHubHost, registerShareHubIpc, type ShareHubGuards, type ShareHubHost } from './modules/share/share-hub'
 
 /** 必须在 app ready 前注册：localres:// 预览协议 + app:// 渲染层加载协议（特权一次性注册） */

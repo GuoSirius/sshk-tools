@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FsDriver } from '@sshk/upload-core'
 import type { FsChannelInfo, FsListPage, FsSearchResult, FsStatResult, FsUsageResult } from '@sshk/shared'
-import { FsTransferEngine } from './fs'
+import { FsTransferEngine } from './modules/file/transfer'
 
 /**
  * P1-1（A1/Q-01）：FsTransferEngine 状态机单测——conflict / pause / cancel 矩阵。

@@ -7,7 +7,7 @@ import type {
   ToolPluginStatus,
 } from '@sshk/shared'
 import type { AppServices } from '../services'
-import type { FsRuntime } from '../fs'
+import type { FsRuntime } from '../modules/file/runtime'
 
 /**
  * registerIpc 各域文件共享的装配上下文（P3-1 拆分，B14/B20/O2）：
