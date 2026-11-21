@@ -3,14 +3,17 @@
  * 应用管理壳页（P4-2 · 新想法#4，总计划 §五.4 / §五.5 v1.3）：
  * - 页头：返回桌面（与 goHome 同款 router.push('/')）+ 标题 + 右侧折叠按钮；
  * - 左菜单复用 SidebarMenu（递归渲染，全局 .side-* 样式）；菜单树按 §五.5 v1.3 定稿
- *   硬编码在页面内（非 manifest 驱动；P4-4~6 迁即重构后再接各模块描述文件）；
+ *   硬编码在页面内（非 manifest 驱动）；
  * - hash 路由 /app/:module/:page?：active 由 route.params 响应式推导，selectItem push /app/<module>/<page>，
  *   默认 /app/settings/general（未知模块/页面回退各模块默认页）；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
  *   文件管理三页（P4-4）/模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件
- *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，与 P4-5 模型 state.toolId 显式
- *   赋值同一口径；文件管理子树内页面经 useToolId() inject），fileconfig / modelconfig 两个
- *   「工具设置」页走宿主 ToolSettingsPage（manifest configGroups 驱动，fs-transfer 新组自动出现）。
+ *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，文件管理子树内页面经
+ *   useToolId() inject）；fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage
+ *   （P4-8c 起改页内声明分组，键 app.modules.*，不再依赖工具 manifest）；
+ * - P4-8a 三基础模块渲染层已物理搬迁至本目录 files/models/share/ 子目录（原 tools 各包 renderer 目录）：
+ *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
+ *   应用本体不再 import 工具代码（边界铁律 §五.1）。
  */
 import { computed, ref, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -23,23 +26,20 @@ import GeneralPage from './settings/GeneralPage.vue'
 import SystemDataPage from './settings/SystemDataPage.vue'
 import ToolsPermissionPage from './settings/ToolsPermissionPage.vue'
 import AboutPage from './settings/AboutPage.vue'
-// 三模块页直引（过渡）：相对路径与 discovery.ts 同一跨包引用先例（apps → tools 方向合法）。
-// P4-4 起文件管理分发到各页面组件（不再整壳直引 FileManagerPage 壳——壳保留给工具宿主清单入口）。
-// P4-5 起模型管理分发到各页面组件（不再整壳直引）——壳的 toolId 注入职责上收本壳：
-// state.toolId 是 config key 拼装（modelPresets/chat.*）的单一来源，AppAdminPage 以模块 id 显式赋值。
-// P4-6 起分享管理同样直引五页组件（Routes/Logs/Service/Mounts/Proxies）。
-import FileExplorerPage from '../../../../../../tools/file-manager/src/renderer/pages/FileExplorerPage.vue'
-import ContentsPage from '../../../../../../tools/file-manager/src/renderer/pages/ContentsPage.vue'
-import ProfilesPage from '../../../../../../tools/file-manager/src/renderer/pages/ProfilesPage.vue'
-import ProvidersPage from '../../../../../../tools/model-console/src/renderer/pages/ProvidersPage.vue'
-import ChatPage from '../../../../../../tools/model-console/src/renderer/pages/ChatPage.vue'
-import UsagePage from '../../../../../../tools/model-console/src/renderer/pages/UsagePage.vue'
-import RoutesPage from '../../../../../../tools/share-manager/src/renderer/pages/RoutesPage.vue'
-import LogsPage from '../../../../../../tools/share-manager/src/renderer/pages/LogsPage.vue'
-import ServicePage from '../../../../../../tools/share-manager/src/renderer/pages/ServicePage.vue'
-import MountsPage from '../../../../../../tools/share-manager/src/renderer/pages/MountsPage.vue'
-import ProxiesPage from '../../../../../../tools/share-manager/src/renderer/pages/ProxiesPage.vue'
-import { toolId as modelManagerToolId } from '../../../../../../tools/model-console/src/renderer/state'
+// 三模块页直引（P4-8a 物理搬迁后为本目录相对导入；内部 composables/components/host 相对层级随迁不变）：
+// P4-4 起文件管理分发到各页面组件；P4-5 起模型管理分发到各页面组件；P4-6 起分享管理直引五页组件。
+import FileExplorerPage from './files/pages/FileExplorerPage.vue'
+import ContentsPage from './files/pages/ContentsPage.vue'
+import ProfilesPage from './files/pages/ProfilesPage.vue'
+import ProvidersPage from './models/pages/ProvidersPage.vue'
+import ChatPage from './models/pages/ChatPage.vue'
+import UsagePage from './models/pages/UsagePage.vue'
+import RoutesPage from './share/pages/RoutesPage.vue'
+import LogsPage from './share/pages/LogsPage.vue'
+import ServicePage from './share/pages/ServicePage.vue'
+import MountsPage from './share/pages/MountsPage.vue'
+import ProxiesPage from './share/pages/ProxiesPage.vue'
+import { toolId as modelManagerToolId } from './models/state'
 
 defineOptions({ name: 'AppAdminPage' })
 

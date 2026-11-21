@@ -113,9 +113,11 @@ export default [
   // H2 工具渲染层零裸调：window.api.<group>.<method> 一律走 createSafeHost / callHostApi；
   // window.api.ipc（工具自有通道直连，工具开发指南 §四文档化 API）豁免；
   // 事件订阅类（onProgress/onDelta）集中在封装点并加 eslint-disable 行注释。
+  // P4-8a：三基础模块渲染层物理搬迁至 apps renderer pages/app-admin/{files,models,share}，
+  // 该门禁范围随迁（原 tools/*/src/renderer 覆盖不缩水）。
   ...(tsParser
     ? [{
-        files: ['tools/*/src/renderer/**/*.ts'],
+        files: ['tools/*/src/renderer/**/*.ts', 'apps/desktop/src/renderer/pages/app-admin/{files,models,share}/**/*.ts'],
         rules: {
           'no-restricted-syntax': [
             'error',

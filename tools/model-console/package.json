@@ -5,21 +5,12 @@
   "type": "module",
   "description": "sshk-tools 模型控制台：provider 配置、连通性测试、对话调试",
   "exports": {
-    ".": "./src/index.ts",
-    "./renderer": "./src/renderer/ModelConsolePage.vue"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "@element-plus/icons-vue": "latest",
-    "@sshk/shared": "workspace:*",
-    "@sshk/ui-kit": "workspace:*",
-    "dompurify": "latest",
-    "element-plus": "latest",
-    "marked": "latest",
-    "vue": "latest"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "6"
   },

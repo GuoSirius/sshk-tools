@@ -88,6 +88,9 @@ importers:
       dayjs:
         specifier: latest
         version: 1.11.23
+      dompurify:
+        specifier: '>=3.4.17'
+        version: 3.4.17
       electron-updater:
         specifier: ^6
         version: 6.8.11(supports-color@7.2.0)
@@ -103,12 +106,18 @@ importers:
       koffi:
         specifier: latest
         version: 3.3.8
+      marked:
+        specifier: latest
+        version: 18.2.1
       unocss:
         specifier: latest
         version: 66.13.0(@oxc-project/types@0.156.0)(cac@7.1.0)(rolldown@1.2.19)(srvx@1.0.8)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
       vue:
         specifier: latest
         version: 3.5.46(typescript@6.0.3)
+      vue-draggable-plus:
+        specifier: latest
+        version: 0.6.1(@types/sortablejs@1.15.9)
       vue-router:
         specifier: latest
         version: 5.5.1(@vue/compiler-sfc@3.5.46)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))(vue@3.5.46(typescript@6.0.3))
@@ -480,90 +489,18 @@ importers:
         version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
 
   tools/file-manager:
-    dependencies:
-      '@element-plus/icons-vue':
-        specifier: latest
-        version: 2.3.2(vue@3.5.46(typescript@6.0.3))
-      '@sshk/code-editor':
-        specifier: workspace:*
-        version: link:../../packages/code-editor
-      '@sshk/file-picker':
-        specifier: workspace:*
-        version: link:../../packages/file-picker
-      '@sshk/rich-text':
-        specifier: workspace:*
-        version: link:../../packages/rich-text
-      '@sshk/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@sshk/ui-kit':
-        specifier: workspace:*
-        version: link:../../packages/ui-kit
-      '@vueuse/core':
-        specifier: latest
-        version: 15.0.0(vue@3.5.46(typescript@6.0.3))
-      element-plus:
-        specifier: latest
-        version: 2.14.8(vue@3.5.46(typescript@6.0.3))
-      fflate:
-        specifier: latest
-        version: 0.8.3
-      vue:
-        specifier: latest
-        version: 3.5.46(typescript@6.0.3)
-      vue-draggable-plus:
-        specifier: latest
-        version: 0.6.1(@types/sortablejs@1.15.9)
     devDependencies:
       typescript:
         specifier: '6'
         version: 6.0.3
 
   tools/model-console:
-    dependencies:
-      '@element-plus/icons-vue':
-        specifier: latest
-        version: 2.3.2(vue@3.5.46(typescript@6.0.3))
-      '@sshk/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@sshk/ui-kit':
-        specifier: workspace:*
-        version: link:../../packages/ui-kit
-      dompurify:
-        specifier: '>=3.4.17'
-        version: 3.4.17
-      element-plus:
-        specifier: latest
-        version: 2.14.8(vue@3.5.46(typescript@6.0.3))
-      marked:
-        specifier: latest
-        version: 18.2.1
-      vue:
-        specifier: latest
-        version: 3.5.46(typescript@6.0.3)
     devDependencies:
       typescript:
         specifier: '6'
         version: 6.0.3
 
   tools/share-manager:
-    dependencies:
-      '@element-plus/icons-vue':
-        specifier: latest
-        version: 2.3.2(vue@3.5.46(typescript@6.0.3))
-      '@sshk/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@sshk/ui-kit':
-        specifier: workspace:*
-        version: link:../../packages/ui-kit
-      element-plus:
-        specifier: latest
-        version: 2.14.8(vue@3.5.46(typescript@6.0.3))
-      vue:
-        specifier: latest
-        version: 3.5.46(typescript@6.0.3)
     devDependencies:
       typescript:
         specifier: '6'

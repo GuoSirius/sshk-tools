@@ -29,13 +29,16 @@
     "@sshk/upload-core": "workspace:*",
     "@vueuse/core": "latest",
     "dayjs": "latest",
+    "dompurify": "latest",
     "electron-updater": "^6",
     "element-plus": "latest",
     "fflate": "latest",
     "iconv-lite": "latest",
     "koffi": "latest",
+    "marked": "latest",
     "unocss": "latest",
     "vue": "latest",
+    "vue-draggable-plus": "latest",
     "vue-router": "latest"
   },
   "devDependencies": {

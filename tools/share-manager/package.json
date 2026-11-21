@@ -5,19 +5,12 @@
   "type": "module",
   "description": "sshk-tools 分享管理：ShareHub 常驻分享服务管理台——全量路由管理、访问日志（持久化/查询/导出/删除）、服务配置、挂载目录与代理规则；跨工具管理任意工具创建的分享路由",
   "exports": {
-    ".": "./src/index.ts",
-    "./renderer": "./src/renderer/ShareManagerPage.vue"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "@element-plus/icons-vue": "latest",
-    "@sshk/shared": "workspace:*",
-    "@sshk/ui-kit": "workspace:*",
-    "element-plus": "latest",
-    "vue": "latest"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "6"
   },

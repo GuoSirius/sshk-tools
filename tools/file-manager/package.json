@@ -5,25 +5,12 @@
   "type": "module",
   "description": "sshk-tools 文件管理（原上传管理/上传配置）：文件系统（本地/远端/云浏览传输）+ 上传通道配置（本地默认目录、远程 ftp/sftp 与云多 profile、safeStorage 密钥）",
   "exports": {
-    ".": "./src/index.ts",
-    "./renderer": "./src/renderer/FileManagerPage.vue"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "@element-plus/icons-vue": "latest",
-    "@vueuse/core": "latest",
-    "@sshk/code-editor": "workspace:*",
-    "@sshk/file-picker": "workspace:*",
-    "@sshk/rich-text": "workspace:*",
-    "@sshk/shared": "workspace:*",
-    "@sshk/ui-kit": "workspace:*",
-    "element-plus": "latest",
-    "fflate": "latest",
-    "vue": "latest",
-    "vue-draggable-plus": "latest"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "6"
   },
