@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
@@ -53,18 +53,16 @@ import {
   type FsEntry,
   type FsFavorite,
   type FsListPage,
-  type FsTransferTask,
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, ShareDialog, buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/ui-kit'
 import { useToolId } from '@sshk/ui-kit'
-import TransferPanel from '../components/TransferPanel.vue'
 
 /**
  * X6 文件系统页（plans/08 §3）：进入文件管理工具默认展示。
  * 布局三段：通道切换条 / 路径区（面包屑 + 可编辑路径）+ 工具栏 / 文件列表（列表·网格双视图）
- * + 状态条 + 右下角传输队列悬浮面板（plans/10，可拖拽/可收起）。
+ * + 状态条 + 传输队列唤起入口（面板本体 P4-7 全局化挂 App.vue 根层，跨容器悬浮）。
  * 通道 = 文件管理（通道配置）的 remote/cloud profile；密钥只在 main（safeStorage），渲染层零接触。
  */
 
@@ -337,14 +335,18 @@ const canZip = computed(() => hasWritable.value && activeChannel.value?.type ===
 const canUnzip = computed(() => hasWritable.value && selSingleFile.value != null && isFsZipName(selSingleFile.value.name))
 const canConvert = computed(() => selSingleFile.value != null && isFsTextName(selSingleFile.value.name))
 
-// ── 传输队列（plans/10：悬浮面板替代旧抽屉，无遮罩、可拖拽、收起态仍显摘要）──
-const transferPanelRef = ref<InstanceType<typeof TransferPanel> | null>(null)
-const panelExpanded = ref(false)
-const tasks = ref(new Map<string, FsTransferTask>())
-const taskList = computed(() => [...tasks.value.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0)))
-const runningCount = computed(() => taskList.value.filter((t) => t.status === 'running' || t.status === 'queued' || t.status === 'conflict').length)
+// ── 传输队列（plans/10 悬浮面板；P4-7 全局化：面板挂 App.vue 根层，本页只留唤起入口与进行中计数）──
+// 工具页禁止反向 import apps（check-boundaries 铁律），经 App.vue provide 的控制器 inject 消费：
+// 注入键 'sshk:transfer-panel' 与 apps/desktop/src/renderer/composables/useTransferPanel.ts 成对维护；
+// 缺省兜底 = 空实现（组件单测/孤立挂载不崩），面板不可用时静默降级。
+interface TransferPanelControl { show: () => void; runningCount: import('vue').ComputedRef<number> }
+const transferPanelCtrl = inject<TransferPanelControl>(
+  'sshk:transfer-panel',
+  { show: () => { /* App 层未挂载全局面板（兜底不触发） */ }, runningCount: computed(() => 0) },
+)
+const runningCount = transferPanelCtrl.runningCount
 function openTransferPanel(): void {
-  transferPanelRef.value?.show()
+  transferPanelCtrl.show()
 }
 
 const themeDark = ref(true)
@@ -2023,10 +2025,10 @@ function scheduleRefresh(): void {
     if (runningCount.value === 0) void list(false)
   }, 1200)
 }
+// 传输完成自动刷新订阅退订（任务数据本体已归全局面板单例 useTransferPanel，本页只关心完成后的列表刷新）
+let offTransferEvent: (() => void) | null = null
 onMounted(() => {
-  window.api.fs.onTransferEvent((task) => {
-    tasks.value.set(task.id, task)
-    tasks.value = new Map(tasks.value)
+  offTransferEvent = window.api.fs.onTransferEvent((task) => {
     if (task.status === 'success' && (task.kind === 'upload' || task.kind === 'delete' || task.kind === 'copy' || task.kind === 'cross')) scheduleRefresh()
   })
   // 管理员模式提示：Windows UIPI 会拦截「低权限资源管理器 → 高权限应用」的拖放（系统级，代码无法绕过）
@@ -2038,11 +2040,6 @@ onMounted(() => {
   void loadFavorites() // §十一 收藏夹
   void loadMediaLimit() // 在线预览上限（可配）
   initMediaProgress() // 媒体边下边播进度订阅
-  // 队列已有历史任务（页面刷新恢复）
-  void window.api.fs.transferList().then((list0) => {
-    for (const t of list0) tasks.value.set(t.id, t)
-    tasks.value = new Map(tasks.value)
-  })
   // 拖拽上传：window 级监听（见 onWindowDrop 注释）；capture 相位保证先于任何子元素拿到事件
   window.addEventListener('dragenter', onWindowDragEnter, { capture: true })
   window.addEventListener('dragover', onWindowDragOver, { capture: true })
@@ -2050,6 +2047,8 @@ onMounted(() => {
   window.addEventListener('drop', onWindowDrop, { capture: true })
 })
 onBeforeUnmount(() => {
+  offTransferEvent?.()
+  offTransferEvent = null
   unsubMediaEvent?.()
   unsubMediaEvent = null
   window.removeEventListener('click', onWindowCtxMaybeClose)
@@ -2605,8 +2604,7 @@ function onKeydown(event: KeyboardEvent): void {
       </template>
     </el-dialog>
 
-    <!-- plans/10：传输队列悬浮面板（替代旧抽屉；无遮罩、可拖拽、收起态仍显摘要） -->
-    <TransferPanel ref="transferPanelRef" v-model:expanded="panelExpanded" :tasks="taskList" />
+    <!-- P4-7：传输队列悬浮面板已全局化（App.vue 根层挂载），本页仅保留状态条唤起入口 -->
 
     <!-- plans/10 传输设置：分片开关/阈值/片大小/并发（实时生效、跨重启记忆）+ 遗留分片清理 -->
     <el-dialog v-model="transferCfgOpen" title="传输设置" width="460px" :close-on-click-modal="false" :close-on-press-escape="false">

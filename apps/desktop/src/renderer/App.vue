@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-  computed, nextTick, onBeforeUnmount, onMounted, ref, watch,
+  computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch,
   type Ref,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -16,6 +16,8 @@ import SidebarMenu from './components/SidebarMenu.vue'
 import ToolIcon from './components/ToolIcon.vue'
 import AppHeader from './components/AppHeader.vue'
 import AboutDialog from './components/AboutDialog.vue'
+import TransferPanel from './components/TransferPanel.vue'
+import { TRANSFER_PANEL_KEY, useTransferPanel } from './composables/useTransferPanel'
 import AppAdminPage from './pages/app-admin/AppAdminPage.vue'
 import ToolSettingsPage from './SettingsPage.vue'
 import CreateToolWizard from './components/CreateToolWizard.vue'
@@ -23,6 +25,11 @@ import VerifyGuidePage from './pages/verify-guide/VerifyGuidePage.vue'
 import { promptSecret } from './components/secret-prompt'
 
 const { visibleTools: catalogTools, byId, accept: acceptCatalog, refresh: refreshCatalog } = useToolCatalog()
+// P4-7 传输面板全局化：面板挂本壳根层（跨桌面/应用管理/工具宿主三容器悬浮，任何页面可唤起）；
+// 状态与任务数据的单一真相 = useTransferPanel 单例（App 级订阅 fs 传输事件，页面切换任务不丢）。
+// 工具页禁反向 import apps（check-boundaries），经本壳 provide 的控制器 inject 消费（键 'sshk:transfer-panel'）
+const transferPanel = useTransferPanel()
+provide(TRANSFER_PANEL_KEY, transferPanel)
 // 路由即状态（vue-router）：桌面=/，工具页=/tool/:toolId/:menu?，应用管理=/app/:module/:page?
 const route = useRoute()
 const router = useRouter()
@@ -416,5 +423,8 @@ onMounted(async () => {
     <AboutDialog v-model="aboutOpen" />
     <!-- 验证引导：settings 类直达入口由页内自行路由到 应用管理 > 应用设置（P4-3 页化后无抽屉） -->
     <VerifyGuidePage v-model="verifyGuideOpen" />
+    <!-- P4-7 传输队列悬浮面板（全局化）：无遮罩可拖拽、收起态显摘要；任何页面经 useTransferPanel 唤起；
+         不设任何传输设置入口（C-8 终审：参数只在 文件管理>工具设置「传输与分片」） -->
+    <TransferPanel />
   </div>
 </template>

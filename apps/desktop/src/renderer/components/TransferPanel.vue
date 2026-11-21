@@ -4,18 +4,19 @@ import { useDraggable } from '@vueuse/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Aim, CircleClose, Delete, Rank, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { fsFormatSize, type FsMultipartStatus, type FsTransferTask } from '@sshk/shared'
+import { useTransferPanel } from '../composables/useTransferPanel'
 
 /**
- * 传输队列悬浮面板（plans/10 §3，替代旧 el-drawer）：
- * - 悬浮于文件列表之上：非文档流、无遮罩、不锁页面，列表始终可滚动/右键/翻目录
- * - useDraggable 拖拽（手柄 ⠿），展开态与收起态均可拖；位置/展开态/分栏/过滤记忆
- * - 全部/上传/下载/其它 分栏 + 名称搜索；全局 ▶ ⏸ ⏹ ↻ 🗑；单条按状态显隐
+ * 传输队列悬浮面板（plans/10 §3，替代旧 el-drawer；P4-7 全局化挂 App.vue 根层）：
+ * - 悬浮于页面之上：非文档流、无遮罩、不锁页面，跨桌面/应用管理/工具宿主三容器可用，任何页面可唤起
+ * - useDraggable 拖拽（手柄 ⠿），展开态与收起态均可拖；位置/分栏/过滤记忆（展开态不记忆）
+ * - 任务数据与显隐由 useTransferPanel 全局单例承载（App 级订阅，页面切换任务不丢）；
+ *   工具页经 App.vue provide 的控制器 inject 唤起（show），本组件与任务订阅解耦
+ * - 全部/上传/下载/其它 分栏 + 名称搜索；全局控制钮；单条按状态显隐
  * - 危险操作（停止/清理/移除）一律二次确认（禁遮罩/禁 ESC）；按钮语义配色
  */
 
-const props = defineProps<{ tasks: FsTransferTask[] }>()
-const expanded = defineModel<boolean>('expanded', { default: false })
-const emit = defineEmits<{ (e: 'visible-change', v: boolean): void }>()
+const { visible, expanded, showSeq, taskList, hide } = useTransferPanel()
 
 const STORE_KEY = 'sshk.fs.transferPanel.v2' // v2：默认位置改底部（用户 2026-11-19），旧记忆作废走新默认
 type TabKey = 'all' | 'upload' | 'download' | 'other'
@@ -48,13 +49,15 @@ function loadState(): PanelState {
 }
 
 const init = loadState()
-// 展开态不记忆：每次进入文件系统都收起，只有操作触发 show() 或点状态栏按钮才展开
-expanded.value = false
 const tab = ref<TabKey>(init.tab)
 const filter = ref(init.filter)
 const panelRef = ref<HTMLElement | null>(null)
 const handleRef = ref<HTMLElement | null>(null)
-const hidden = ref(false)
+/** 关闭（✕）：全局单例收起可见性 + 本地回默认位置（下次唤起 show() 仍会回位，双保险） */
+function closePanel(): void {
+  hide()
+  resetPosition()
+}
 /** 拖拽守卫：onMove 移动过才算拖拽，pointerup 后的 click 不再触发展开/收起 */
 let dragMoved = false
 // 修复（用户 2026-11-19「拖拽无效」根因）：vueuse 的 useDraggable 只更新内部 position
@@ -129,26 +132,26 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.removeEventListener('resize', clampIntoView))
 
-// ── 分栏 / 过滤 / 计数 ──
+// ── 分栏 / 过滤 / 计数（数据源 = useTransferPanel 全局单例 taskList）──
 function tabOf(t: FsTransferTask): Exclude<TabKey, 'all'> {
   if (t.kind === 'upload') return 'upload'
   if (t.kind === 'download') return 'download'
   return 'other'
 }
-const tabTasks = computed(() => props.tasks.filter((t) => tab.value === 'all' || tabOf(t) === tab.value))
+const tabTasks = computed(() => taskList.value.filter((t) => tab.value === 'all' || tabOf(t) === tab.value))
 const shownTasks = computed(() => {
   const kw = filter.value.trim().toLowerCase()
   return kw ? tabTasks.value.filter((t) => t.name.toLowerCase().includes(kw)) : tabTasks.value
 })
 function countOf(kind: Exclude<TabKey, 'all'>): { done: number; total: number } {
-  const list = props.tasks.filter((t) => tabOf(t) === kind)
+  const list = taskList.value.filter((t) => tabOf(t) === kind)
   return { done: list.filter((t) => t.status === 'success').length, total: list.length }
 }
 const uploadCount = computed(() => countOf('upload'))
 const downloadCount = computed(() => countOf('download'))
 const otherCount = computed(() => countOf('other'))
-const activeCount = computed(() => props.tasks.filter((t) => ['queued', 'running', 'conflict', 'paused'].includes(t.status)).length)
-const failedCount = computed(() => props.tasks.filter((t) => t.status === 'failed' || t.status === 'canceled').length)
+const activeCount = computed(() => taskList.value.filter((t) => ['queued', 'running', 'conflict', 'paused'].includes(t.status)).length)
+const failedCount = computed(() => taskList.value.filter((t) => t.status === 'failed' || t.status === 'canceled').length)
 
 // ── 展示 ──
 function statusText(t: FsTransferTask): string {
@@ -235,8 +238,8 @@ async function retryFailed(): Promise<void> {
 }
 /** 清除全部（用户 2026-11-19）：停止全部进行中任务并移除所有任务记录，二次确认 */
 async function clearAllTasks(): Promise<void> {
-  if (!props.tasks.length) return
-  if (!(await confirmBox(`清除全部 ${props.tasks.length} 个任务记录？进行中的任务会停止并一并移除（不删除已传输的文件）。`, '清除全部'))) return
+  if (!taskList.value.length) return
+  if (!(await confirmBox(`清除全部 ${taskList.value.length} 个任务记录？进行中的任务会停止并一并移除（不删除已传输的文件）。`, '清除全部'))) return
   await ctl('clearAll')
 }
 
@@ -268,16 +271,14 @@ watch(expanded, (v) => {
     resetPosition()
   }
 })
+// P4-7：show() 唤起回默认贴底位置（原 defineExpose.show 的 #127 语义由 showSeq 变化承载，重复唤起同样回位）
+watch(showSeq, () => { void nextTick(resetPosition) })
 onMounted(() => { if (expanded.value) void loadMultipart() })
-
-defineExpose({
-  show: (): void => { hidden.value = false; expanded.value = true; void nextTick(resetPosition) }, // #127：弹出即回默认位置
-})
 </script>
 
 <template>
   <div
-    v-if="!hidden"
+    v-if="visible"
     ref="panelRef"
     class="fs-tpanel"
     :class="{ 'is-collapsed': !expanded, 'is-dragging': isDragging }"
@@ -304,7 +305,7 @@ defineExpose({
         <el-tooltip content="回到默认位置" placement="top">
           <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
         </el-tooltip>
-        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; resetPosition(); emit('visible-change', false)">✕</el-button>
+        <el-button size="small" text class="fs-tpanel-mini" @click.stop="closePanel">✕</el-button>
       </div>
     </template>
 
@@ -318,7 +319,7 @@ defineExpose({
           <el-button size="small" text :icon="Aim" class="fs-tpanel-mini" @click.stop="resetPosition" />
         </el-tooltip>
         <el-button size="small" text class="fs-tpanel-mini" @click.stop="expanded = false">—</el-button>
-        <el-button size="small" text class="fs-tpanel-mini" @click.stop="hidden = true; resetPosition(); emit('visible-change', false)">✕</el-button>
+        <el-button size="small" text class="fs-tpanel-mini" @click.stop="closePanel">✕</el-button>
       </div>
 
       <!-- 全局控制：开始/暂停/停止/失败重试（语义配色） -->
@@ -332,13 +333,13 @@ defineExpose({
       <!-- 搜索 + 清除全部（用户 2026-11-19 布局：搜索行在上、tab 行在下） -->
       <div class="fs-tpanel-filterrow">
         <el-input v-model="filter" size="small" clearable placeholder="按名称过滤" class="fs-tpanel-filter" />
-        <el-button size="small" type="danger" plain :icon="Delete" :disabled="!tasks.length" @click="clearAllTasks">清除全部</el-button>
+        <el-button size="small" type="danger" plain :icon="Delete" :disabled="!taskList.length" @click="clearAllTasks">清除全部</el-button>
       </div>
 
       <!-- 分栏 -->
       <div class="fs-tpanel-tabs">
         <el-radio-group v-model="tab" size="small">
-          <el-radio-button value="all">全部 {{ tasks.length }}</el-radio-button>
+          <el-radio-button value="all">全部 {{ taskList.length }}</el-radio-button>
           <el-radio-button value="upload">上传 {{ uploadCount.done }}/{{ uploadCount.total }}</el-radio-button>
           <el-radio-button value="download">下载 {{ downloadCount.done }}/{{ downloadCount.total }}</el-radio-button>
           <el-radio-button value="other">其它 {{ otherCount.done }}/{{ otherCount.total }}</el-radio-button>

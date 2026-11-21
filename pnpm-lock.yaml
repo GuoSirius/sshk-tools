@@ -82,6 +82,9 @@ importers:
       '@sshk/upload-core':
         specifier: workspace:*
         version: link:../../packages/upload-core
+      '@vueuse/core':
+        specifier: latest
+        version: 15.0.0(vue@3.5.46(typescript@6.0.3))
       dayjs:
         specifier: latest
         version: 1.11.23

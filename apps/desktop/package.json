@@ -27,6 +27,7 @@
     "@sshk/shared": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "@sshk/upload-core": "workspace:*",
+    "@vueuse/core": "latest",
     "dayjs": "latest",
     "electron-updater": "^6",
     "element-plus": "latest",
