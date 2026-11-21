@@ -97,7 +97,7 @@ docs/
 
 - `--sshk-page-padding:20px`（页面根）、`--sshk-gap-sm:8px`/`md:12px`/`lg:16px`。
 - 用 `ToolPageLayout` 的页面由全局 `.tool-page-body{padding:var(--sshk-page-padding)}` 提供留白，**页面自身勿再写 padding**；自管根容器页须显式 `padding:var(--sshk-page-padding); box-sizing:border-box`。
-- 禁止内容贴边；区块间必须有间距。详见 `02-architecture/页面留白与间距规范.md`。
+- 禁止内容贴边；区块间必须有间距。详见 `plans/01-UI与页面规范.md`（P8-1 三合一唯一清单）。
 
 ### 2.2 表单
 
@@ -105,7 +105,7 @@ docs/
 - 开关控件文字与开关同排；行内注释只一两个词；长说明放 `FormHint` 的 detail（❓悬浮）。
 - 校验**双层铁律**：前端表单校验 + 后端（IPC/入库前）校验都要有；表单校验失败停留、不发 IPC、控件下红字（`color: var(--el-color-danger)`，参照 `ContentEditorCore` 的 tip）；后端业务校验失败 `throw new AppError(msg, 'validation')`（warn 落盘，勿裸 throw Error 刷堆栈）。
 
-### 2.3 列表页（详见 `02-architecture/列表页筛选与操作栏规范.md`）
+### 2.3 列表页（详见 `plans/01-UI与页面规范.md`——P8-1 三合一唯一清单）
 
 1. 筛选控件「label + 控件」且包 `.f-item`（inline-flex + nowrap）整体换行；placeholder 只写短词。
 2. 控件宽 180px；时间范围 360px、`datetimerange` 精确到时分秒（value-format `YYYY-MM-DD HH:mm:ss`，default-time `[00:00, 23:59:59]`），闭区间过滤走 shared `inMsRange`。
