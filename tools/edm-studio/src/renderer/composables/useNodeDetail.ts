@@ -4,7 +4,7 @@ import * as yaml from 'js-yaml'
 import type { FieldDef } from '../sample-schema'
 import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from '../sample-schema'
 import { replaceFieldsInMeta } from '../meta-fields'
-import { api } from '../shared'
+import { api } from '../tool-store'
 import { uploadInlineImages } from '../upload.js'
 import type { Source, TreeNode } from './useContentTree'
 

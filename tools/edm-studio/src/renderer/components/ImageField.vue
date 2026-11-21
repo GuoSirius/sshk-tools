@@ -4,8 +4,8 @@ import { ElMessage } from 'element-plus'
 import { CopyDocument, Picture, Upload } from '@element-plus/icons-vue'
 import { useToolId } from '@sshk/ui-kit'
 import { toDisplaySrc } from '@sshk/rich-text'
-import { createImageUploader } from './upload.js'
-import { host } from './host'
+import { createImageUploader } from '../upload.js'
+import { host } from '../host'
 
 /**
  * 图片字段控件（R15 image / image-list）：支持「上传 + 预览 + URL 直填」。

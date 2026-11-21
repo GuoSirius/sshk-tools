@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { validateModel, type FieldDef } from './sample-schema'
+import { validateModel, type FieldDef } from '../sample-schema'
 import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
-import { createImageLibrary, createImageUploader } from './upload.js'
-import { llmApi, type LlmProviderLite } from './shared'
-import { generateSample, polishRichText, type ChatMessage } from './ai-copy'
+import { createImageLibrary, createImageUploader } from '../upload.js'
+import { llmApi, type LlmProviderLite } from '../tool-store'
+import { generateSample, polishRichText, type ChatMessage } from '../ai-copy'
 
 /**
  * 示例数据表单渲染器（R15）：按 fields schema 渲染 10 类控件，实时校验标红。

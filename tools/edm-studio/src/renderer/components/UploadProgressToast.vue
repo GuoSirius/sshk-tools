@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** E-T2：上传进度浮动条（右下角常驻，仅 uploadSession.active 时显示）。 */
 import { computed } from 'vue'
-import { uploadSession } from './upload-progress'
+import { uploadSession } from '../upload-progress'
 
 const currentName = computed(() => {
   const uploading = [...uploadSession.items].reverse().find((i) => i.status === 'uploading')

@@ -1,6 +1,6 @@
 import { ElMessageBox } from 'element-plus'
 
-/** EDM 共享类型与底层调用（各页面通用） */
+/** EDM 工具内类型与通道封装（各页面通用；P6-7 B32：原 shared.ts 改名——工具内文件禁 shared.ts 名，防与 packages/shared 混淆） */
 export interface Named { _id: string; name: string; [k: string]: unknown }
 export interface BrandRow extends Named { code: string }
 export interface VersionRow extends Named { version: number; label?: string; type?: string; source?: { html: string; css?: string; cssMode?: string }; templateId?: string; fragmentId?: string; slots?: { key: string; type: string }[]; policy?: { blacklist: string[]; whitelist: string[] }; sampleData?: Record<string, unknown>; fields?: unknown[] }

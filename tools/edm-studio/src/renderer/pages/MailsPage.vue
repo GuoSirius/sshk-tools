@@ -5,8 +5,8 @@ import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, us
 import { ShareDialog } from '@sshk/share-core/ui'
 import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
 import { brands, mails, tplVersionsAll, loadMails } from '../state'
-import { api, confirmRemove, osApi, type MailRow } from '../shared'
-import MailEditor from '../MailEditor.vue'
+import { api, confirmRemove, osApi, type MailRow } from '../tool-store'
+import MailEditor from '../components/MailEditor.vue'
 
 /**
  * 邮件管理页（R20，§6.3 拍板语义）：

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Plus, Rank } from '@element-plus/icons-vue'
-import { type FieldDef, type FieldType } from './sample-schema'
+import { type FieldDef, type FieldType } from '../sample-schema'
 
 /**
  * 字段设计器（R15 增强）：可视化逐项新增 / 编辑 meta.yaml 的 fields schema，

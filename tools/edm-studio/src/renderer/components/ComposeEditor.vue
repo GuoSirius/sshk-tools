@@ -1,11 +1,11 @@
 <script lang="ts">
 /** 区块 / 片段摆放类型（P6-4 抽到 compose-types.ts；此处 re-export 保持原消费面） */
-export type { SlotDef, FragmentOption, PlacementItem } from './compose-types'
+export type { SlotDef, FragmentOption, PlacementItem } from '../compose-types'
 </script>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { FragmentOption, PlacementItem, SlotDef } from './compose-types'
+import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Rank } from '@element-plus/icons-vue'
 import { FormHint } from '@sshk/ui-kit'

@@ -1,6 +1,6 @@
 import { computed, nextTick, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api } from '../shared'
+import { api } from '../tool-store'
 
 /**
  * 内容树域（P6-4 自 ContentManagePage 拆出，搬代码不改行为）：

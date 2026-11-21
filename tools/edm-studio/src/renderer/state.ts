@@ -1,6 +1,6 @@
 import { ref } from 'vue'
-import type { BrandRow, MailRow, Named, VersionRow } from './shared'
-import { api } from './shared'
+import type { BrandRow, MailRow, Named, VersionRow } from './tool-store'
+import { api } from './tool-store'
 
 /**
  * EDM 共享集合状态（模块级单例）：跨页面依赖（模板版本 → 邮件、品牌 → 模板/片段）
