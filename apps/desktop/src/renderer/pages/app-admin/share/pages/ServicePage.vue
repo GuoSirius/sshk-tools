@@ -81,7 +81,10 @@ async function loadConfig(): Promise<void> {
   const get = (key: string): Promise<unknown> => host.config.get(key) as Promise<unknown>
   try {
     autoStart.value = (await get('app.shareHub.autoStart')) !== false
-    port.value = Number(await get('app.shareHub.port')) || 56789
+    // 端口治理（2026-11-22）：0（自动分配）要如实显示，不得用 56789 兜底掩盖——
+    // 掩盖会让「已指定端口」的假象成立，实际服务却走自动分配（端口每次启停漂移）
+    const savedPort = Number(await get('app.shareHub.port'))
+    port.value = Number.isFinite(savedPort) ? savedPort : 56789
     defaultTtlHours.value = Number(await get('app.shareHub.defaultTtlHours')) || 72
     allowIndex.value = (await get('app.shareHub.allowIndex')) === true
     preferredIp.value = String(await get('app.shareHub.preferredIp') ?? '')
@@ -203,7 +206,8 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
           </span>
           <el-switch v-model="allowIndex" />
         </div>
-        <el-button type="primary" size="small" :loading="saving" @click="saveBase">保存基础设置</el-button>
+        <!-- 保存钮居右（用户 2026-11-22）：开关行 width:100% 各占一行，按钮推到行尾 -->
+        <el-button class="save-btn" type="primary" size="small" :loading="saving" @click="saveBase">保存基础设置</el-button>
       </div>
     </section>
 
@@ -236,6 +240,8 @@ onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
 /* 避开全局 theme.css 的 .status-bar（应用底部版本栏），同名会被其 height/background/border-top 命中导致错乱 */
 .service-status-row { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; }
 .actions { display: flex; align-items: center; gap: var(--sshk-gap-sm); flex-wrap: wrap; margin-top: var(--sshk-gap-md); }
+/* 保存钮居右（用户 2026-11-22）：与「保存日志容量」的 muted 占位同口径 */
+.actions > .save-btn { margin-left: auto; }
 .ip-text { font-size: 13px; color: var(--el-text-color-secondary); }
 .ip-text strong { color: var(--el-text-color-primary); font-weight: 600; }
 .switch-row { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; }

@@ -35,6 +35,11 @@ export interface ShareHubHost {
   resolvePort(): number
   /** 新建路由未显式指定时的「允许访问目录」默认值（app.shareHub.allowIndex，默认不允许） */
   getDefaultAllowIndex(): boolean
+  /** 统一「启动」入口（IPC 控制走这里）：端口解析 → 停旧起新 → 回写 autoPort（端口治理 2026-11-22，
+   *  自动分配模式下 autoPort 必须落盘，否则每次 start 都向系统要新端口=端口递增漂移） */
+  startFromConfig(): Promise<{ port: number }>
+  /** 统一「重启」入口：显式按配置端口重启（内核 restart 请求>0 优先），配置改端口重启即生效 */
+  restartFromConfig(): Promise<{ port: number }>
   /** 由 index.ts 在 whenReady 中调用；重复调用幂等 */
   init(): Promise<void>
   /** 退出前停止并落盘 */
@@ -180,13 +185,26 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   }
 
   /** 统一启动入口：按 resolvePort 启动 + 回写 autoPort。
-   *  已在运行时先 stop 再 start——内核 restart(requestedPort) 会沿用旧端口，
-   *  固定端口变更必须走显式重启才能生效。 */
+   *  已在运行时先 stop 再 start——固定端口变更走这里显式重启生效（内核 restart 请求>0 优先）。 */
   async function startHub(): Promise<void> {
     const port = resolvePort()
     if (hub.running) await hub.stop()
     await hub.start(port)
     persistAutoPort()
+  }
+
+  /** IPC「启动」：与 startHub 同一决策链（端口解析 + autoPort 回写），不再直连内核 start
+   *  （端口治理 2026-11-22：直连路径漏回写 autoPort，自动分配模式每次都向系统要新端口=端口+1 漂移） */
+  async function startFromConfig(): Promise<{ port: number }> {
+    await startHub()
+    return { port: hub.getPort() }
+  }
+
+  /** IPC「重启」：显式按配置端口重启（内核 restart 请求>0 优先），指定端口重启即生效 */
+  async function restartFromConfig(): Promise<{ port: number }> {
+    const result = await hub.restart(resolvePort())
+    persistAutoPort()
+    return result
   }
 
   function removeLegacyStates(): void {
@@ -268,6 +286,8 @@ export function createShareHubHost(cfg: ConfigService, opts: {
     resolvePort,
     // 应用级「允许访问目录」默认：未配置/配置非 true 一律不允许（用户 2026-11-18 定版）
     getDefaultAllowIndex: () => cfg.get('app.shareHub.allowIndex') === true,
+    startFromConfig,
+    restartFromConfig,
     init,
     dispose,
   }
@@ -408,11 +428,12 @@ export function registerShareHubIpc(host: ShareHubHost, repository?: Repository,
     return repo.removeWhere('shareLogs', {})
   })
 
-  // 生命周期控制：宿主「分享服务」tab 使用（action 白名单，防误用）
+  // 生命周期控制：宿主「分享服务」tab 使用（action 白名单，防误用）。
+  // start/restart 一律走宿主统一决策链（端口解析 + autoPort 回写），端口治理 2026-11-22
   handleOk(IPC_CHANNELS.shareHubControl, async (_e, action: 'start' | 'restart' | 'stop' | 'clear') => {
     switch (action) {
-      case 'start': return hub.start(host.resolvePort())
-      case 'restart': return hub.restart()
+      case 'start': return host.startFromConfig()
+      case 'restart': return host.restartFromConfig()
       case 'stop': await hub.stop(); return { port: 0 }
       case 'clear': await hub.clear(); return { port: 0 }
       default: throw new AppError(`未知的分享服务操作：${String(action)}`)

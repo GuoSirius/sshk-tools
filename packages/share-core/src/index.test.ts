@@ -204,6 +204,26 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect(LEGACY_SHARE_STATE_FILES).toContain('edm-share-state.json')
   })
 
+  it('端口治理（2026-11-22）：显式端口被占回落随机+告警回调（服务必须起来）；显式重启端口生效', async () => {
+    const { hub, root } = makeHub()
+    await hub.start(0)
+    const occupied = hub.getPort()
+    // 对手占住同端口：requested>0 被占不再启动失败，回落系统随机端口
+    const rival = new ShareHub(join(tempDir('rival'), 'hub-state.json'))
+    hubs.push(rival)
+    const fallbacks: Array<{ requested: number; actual: number }> = []
+    rival.setPortFallbackHandler((requested, actual) => fallbacks.push({ requested, actual }))
+    const { port: actualPort } = await rival.start(occupied)
+    expect(actualPort).toBeGreaterThan(0)
+    expect(actualPort).not.toBe(occupied)
+    expect(fallbacks).toEqual([{ requested: occupied, actual: actualPort }])
+    // 显式重启端口生效（restart 请求>0 优先）：沿用自己刚释放的端口重绑，路由仍可用
+    const { port: restarted } = await hub.restart(occupied)
+    expect(restarted).toBe(occupied)
+    const t = await hub.create({ toolId: 't', label: 'x', root })
+    expect((await fetch(`http://127.0.0.1:${restarted}/${t.token}/`)).status).toBe(200)
+  })
+
   it('永久有效（ttlHours=0）：expiresAt=哨兵、JSON 往返、重启 resume 后不失效', async () => {
     const { hub, root, state } = makeHub()
     await hub.start(0)

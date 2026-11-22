@@ -167,9 +167,10 @@ export class ShareHub {
     await this.persist.clearFile()
   }
 
-  /** 重启监听：保留全部路由与 token（token 属于路由不属于进程）。 */
+  /** 重启监听：保留全部路由与 token（token 属于路由不属于进程）。
+   *  需求（2026-11-22）：显式请求的端口优先（>0，配置改端口经重启即生效）；未请求沿用当前端口。 */
   async restart(requestedPort = 0): Promise<{ port: number }> {
-    const port = this.port || requestedPort
+    const port = requestedPort > 0 ? requestedPort : this.port
     await this.stop()
     return this.start(port)
   }
@@ -378,7 +379,22 @@ export class ShareHub {
     return urls
   }
 
+  /** 监听（端口治理 2026-11-22）：requested>0 被占（EADDRINUSE）不再启动失败——回落系统随机端口
+   *  保证服务总能起来（确保分享尽量可用），回落经 onPortFallback 告警；requested=0 的系统分配失败
+   *  （无可用端口）原样抛出。 */
   private async listen(requestedPort: number): Promise<void> {
+    try {
+      await this.listenOnce(requestedPort)
+    } catch (err) {
+      if (requestedPort <= 0) throw err
+      await this.listenOnce(0)
+    }
+    if (requestedPort > 0 && this.port !== requestedPort) {
+      this.onPortFallback?.(requestedPort, this.port)
+    }
+  }
+
+  private async listenOnce(requestedPort: number): Promise<void> {
     const server = createServer((req, res) => { void this.handle(req, res) })
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -386,9 +402,6 @@ export class ShareHub {
     })
     const addr = server.address()
     this.port = typeof addr === 'object' && addr ? addr.port : requestedPort
-    if (requestedPort > 0 && this.port !== requestedPort) {
-      this.onPortFallback?.(requestedPort, this.port)
-    }
     this.server = server
   }
 
