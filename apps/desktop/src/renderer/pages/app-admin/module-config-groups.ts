@@ -5,6 +5,8 @@ import type { ToolConfigGroup } from '@sshk/shared'
  * 三基础模块并入应用本体后工具 manifest 已退役（P4-8b），fileconfig / modelconfig 两页不再依赖
  * 目录 configGroups，改为页内声明数据 + 宿主 ToolSettingsPage 引擎渲染（AppAdminPage 传入 groups）。
  * 字段定义从原清单逐字抄准；配置键按 C-3 一次性迁移（旧键弃用，不写运行时迁移代码）。
+ * 布局口径（2026-11-22 需求 · 台账#159）：统一两列栅格——短控件（select/number/input）一律不标
+ * full，走 FormGrid 两列；长控件（textarea/代码编辑器/路径组合）才独占整行（引擎既有规则）。
  */
 
 /** 文件管理 > 工具设置（原 tools/file-manager/tool.manifest.json configGroups） */
@@ -23,7 +25,6 @@ export const FILE_CONFIG_GROUPS: ToolConfigGroup[] = [
           { label: '整页', value: 'page' },
         ],
         hint: '内容管理的新建/编辑容器形态（弹框=弹窗、整页=整页视图），两种形态共用同一编辑器实现；保存后下次打开生效',
-        full: true,
         default: 'dialog',
       },
     ],
@@ -40,7 +41,6 @@ export const FILE_CONFIG_GROUPS: ToolConfigGroup[] = [
         max: 1024,
         default: 50,
         hint: '上传/下载超过该大小的文件走分片 + 断点续传（1~1024，默认 50）；由文件系统传输与图片库上传（FilePicker）共用同一份配置',
-        full: true,
       },
       {
         key: 'app.fs.multipart.partSizeMb',
@@ -50,7 +50,6 @@ export const FILE_CONFIG_GROUPS: ToolConfigGroup[] = [
         max: 100,
         default: 5,
         hint: '每个分片的大小（5~100，默认 5）；分片数超上限时自动上调单片大小',
-        full: true,
       },
       {
         key: 'app.fs.multipart.partsConcurrency',
@@ -60,7 +59,6 @@ export const FILE_CONFIG_GROUPS: ToolConfigGroup[] = [
         max: 8,
         default: 3,
         hint: '单任务同时传输的分片数（1~8，默认 3）',
-        full: true,
       },
       {
         key: 'app.fs.multipart.requestTimeoutSec',
@@ -70,7 +68,6 @@ export const FILE_CONFIG_GROUPS: ToolConfigGroup[] = [
         max: 3600,
         default: 300,
         hint: '云上传/下载单请求超时（30~3600 秒，默认 300）；弱网或大文件 ACK 慢可调大。超时后自动复核服务端是否已落盘，已落盘不会误报失败',
-        full: true,
       },
     ],
   },
