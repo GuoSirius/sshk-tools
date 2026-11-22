@@ -295,11 +295,11 @@ export class UploadRuntime {
     return listUploadProfiles(this.globalConfig(), type)
   }
 
-  /** 密钥只写入 safeStorage；空串表示清除 */
-  setSecret(profileId: string, value: string): boolean {
+  /** 密钥只写入 safeStorage；空串表示清除。F-02（2026-11-22 复核）：await 落盘成功才返回 true */
+  async setSecret(profileId: string, value: string): Promise<boolean> {
     const id = String(profileId ?? '').trim()
     if (!PROFILE_ID_RE.test(id)) throw new AppError(`非法上传 profile ID：${id}`)
-    this.opts.services.setUploadSecret(id, String(value ?? ''))
+    await this.opts.services.setUploadSecret(id, String(value ?? ''))
     return true
   }
 

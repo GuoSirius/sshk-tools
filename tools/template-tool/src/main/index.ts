@@ -43,9 +43,9 @@ export default function registerToolMain(
     host.listModelsByProvider(providerId, apiKey),
   )
 
-  // 5) 写入工具专属密钥（落 safeStorage，明文永不下发）
-  ipcMain.handle(ch('setSecret'), (_event, name: string, value: string) => {
-    host.setToolSecret(deps.toolId, name, value)
+  // 5) 写入工具专属密钥（落 safeStorage，明文永不下发）。F-02：await 落盘成功才返回 true
+  ipcMain.handle(ch('setSecret'), async (_event, name: string, value: string) => {
+    await host.setToolSecret(deps.toolId, name, value)
     return true
   })
 

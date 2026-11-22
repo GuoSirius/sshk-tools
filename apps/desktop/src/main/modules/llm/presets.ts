@@ -46,8 +46,8 @@ export interface PresetConfigStore {
 export interface PresetSecretStore {
   getProviderKey(providerId: string): string
   getUploadKey(profileId: string): string
-  setProviderKey(providerId: string, key: string): void
-  setUploadKey(profileId: string, key: string): void
+  setProviderKey(providerId: string, key: string): Promise<void>
+  setUploadKey(profileId: string, key: string): Promise<void>
 }
 
 /** 预设里的密钥段（字段名避开 apiKey/secret/token 等敏感正则，避免被脱敏误剔） */
@@ -135,7 +135,7 @@ export function buildPreset(cfg: PresetConfigStore, secretStore?: PresetSecretSt
 
 /** 合并预设到当前配置（按 id 覆盖/追加；返回计数）。非法结构直接抛错（H1：调用方 handleOk 包装）
  *  secretStore 可选：提供时，预设里的 credentials 段（含密钥导出才有）会写回 safeStorage。 */
-export function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: PresetSecretStore): PresetImportResult {
+export async function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: PresetSecretStore): Promise<PresetImportResult> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new AppError('预设文件格式不正确', 'io')
   const preset = raw as Record<string, unknown>
   if (preset['kind'] !== PRESET_KIND || typeof preset['version'] !== 'number') {
@@ -211,7 +211,7 @@ export function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: 
     for (const c of rawCred.providers ?? []) {
       if (!c || typeof c.id !== 'string' || typeof c.key !== 'string' || !c.key) continue
       if (!appliedProviderIds.has(c.id)) continue
-      secretStore.setProviderKey(c.id, c.key)
+      await secretStore.setProviderKey(c.id, c.key)
       keysRestored++
     }
     const appliedUploadIds = new Set([
@@ -220,7 +220,7 @@ export function mergePreset(cfg: PresetConfigStore, raw: unknown, secretStore?: 
     for (const c of rawCred.uploads ?? []) {
       if (!c || typeof c.id !== 'string' || typeof c.key !== 'string' || !c.key) continue
       if (!appliedUploadIds.has(c.id)) continue
-      secretStore.setUploadKey(c.id, c.key)
+      await secretStore.setUploadKey(c.id, c.key)
       keysRestored++
     }
     if (keysRestored > 0) logger.warn('preset', `含密钥预设导入：已写回 ${keysRestored} 条明文密钥到 safeStorage`)
@@ -256,7 +256,7 @@ export function exportPreset(
 }
 
 /** 从 .json 导入预设（路径必须来自用户文件选择对话框，与 backup.import 同范式） */
-export function importPreset(cfg: PresetConfigStore, filePath: string, secretStore?: PresetSecretStore): PresetImportResult {
+export async function importPreset(cfg: PresetConfigStore, filePath: string, secretStore?: PresetSecretStore): Promise<PresetImportResult> {
   const source = String(filePath ?? '')
   if (!/\.json$/i.test(source)) throw new AppError('请选择 .json 预设文件', 'io')
   let raw: unknown

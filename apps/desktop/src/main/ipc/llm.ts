@@ -95,8 +95,9 @@ export function registerLlmIpc(ctx: IpcContext): void {
       ctx.readProvider(_event, provider),
       typeof apiKey === 'string' && apiKey ? apiKey : ctx.services.getApiKey(provider?._id ?? ''),
     ))
-  handleOk(IPC_CHANNELS.llmSetApiKey, (_event, providerId: string, apiKey: string) => {
-    ctx.services.setApiKey(providerId, String(apiKey ?? ''))
+  handleOk(IPC_CHANNELS.llmSetApiKey, async (_event, providerId: string, apiKey: string) => {
+    // F-02（2026-11-22 复核）：await 密钥落盘成功才返回——此前 fire-and-forget，失败被静默吞掉
+    await ctx.services.setApiKey(providerId, String(apiKey ?? ''))
     return true
   })
   // 编辑时按需查看已存密钥：用户主动点击才下发，绝不随列表默认下发

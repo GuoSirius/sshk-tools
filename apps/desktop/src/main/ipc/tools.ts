@@ -45,8 +45,9 @@ export function registerToolsIpc(ctx: IpcContext): void {
     for (const id of ctx.buildCatalog().orphans) cfg.remove(`tools.${id}`)
     return ctx.buildCatalog()
   })
-  handleOk(IPC_CHANNELS.accessKeySet, (_event, key: string) => {
-    ctx.services.setAccessKey(String(key ?? ''))
+  handleOk(IPC_CHANNELS.accessKeySet, async (_event, key: string) => {
+    // F-02：await 凭据落盘成功后才重建目录回显（此前静默吞错）
+    await ctx.services.setAccessKey(String(key ?? ''))
     return ctx.buildCatalog()
   })
 }

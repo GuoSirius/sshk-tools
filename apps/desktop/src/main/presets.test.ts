@@ -12,8 +12,8 @@ function secretStore(): PresetSecretStore & { written: Record<string, string> } 
     written,
     getProviderKey: (id) => source[id] ?? '',
     getUploadKey: (id) => source[id] ?? '',
-    setProviderKey: (id, key) => { written[id] = key },
-    setUploadKey: (id, key) => { written[id] = key },
+    setProviderKey: async (id, key) => { written[id] = key },
+    setUploadKey: async (id, key) => { written[id] = key },
   }
 }
 const presetCfg = {
@@ -86,7 +86,7 @@ describe('mergePreset（N3 导入）', () => {
     },
   }
 
-  it('Provider 按 _id 覆盖/追加；activeProviderId 合并后存在才生效；本机 local 目录不被覆盖', () => {
+  it('Provider 按 _id 覆盖/追加；activeProviderId 合并后存在才生效；本机 local 目录不被覆盖', async () => {
     const cfg = store({
       'app.llm.providers': [{ _id: 'p1', name: 'Agnes', kind: 'remote', baseURL: 'https://api.example.com/v1', model: 'gpt', enabled: true }],
       'app.llm.activeProviderId': 'p1',
@@ -97,7 +97,7 @@ describe('mergePreset（N3 导入）', () => {
         validation: { accept: [], maxSize: 0 },
       },
     })
-    const result = mergePreset(cfg, basePreset)
+    const result = await mergePreset(cfg, basePreset)
     expect(result.providersMerged).toBe(2)
     expect(result.uploadProfilesMerged).toBe(1)
     const providers = cfg.data['app.llm.providers'] as { _id: string; model: string }[]
@@ -110,25 +110,25 @@ describe('mergePreset（N3 导入）', () => {
     expect(upload.remote.profiles).toHaveLength(1)
   })
 
-  it('activeProviderId 指向不存在 Provider 时不更新当前激活', () => {
+  it('activeProviderId 指向不存在 Provider 时不更新当前激活', async () => {
     const cfg = store({
       'app.llm.providers': [],
       'app.llm.activeProviderId': null,
     })
-    mergePreset(cfg, { ...basePreset, llm: { providers: [], activeProviderId: 'ghost' } })
+    await mergePreset(cfg, { ...basePreset, llm: { providers: [], activeProviderId: 'ghost' } })
     expect(cfg.data['app.llm.activeProviderId']).toBeNull()
   })
 
-  it('kind/version 不匹配或非法 JSON 结构直接报错', () => {
+  it('kind/version 不匹配或非法 JSON 结构直接报错', async () => {
     const cfg = store({})
-    expect(() => mergePreset(cfg, { kind: 'other', version: 1 })).toThrow(/预设文件/)
-    expect(() => mergePreset(cfg, null)).toThrow(/预设文件/)
-    expect(() => mergePreset(cfg, [1, 2])).toThrow(/预设文件/)
+    await expect(mergePreset(cfg, { kind: 'other', version: 1 })).rejects.toThrow(/预设文件/)
+    await expect(mergePreset(cfg, null)).rejects.toThrow(/预设文件/)
+    await expect(mergePreset(cfg, [1, 2])).rejects.toThrow(/预设文件/)
   })
 
-  it('预设里的敏感键在导入侧再剔一次（双保险）', () => {
+  it('预设里的敏感键在导入侧再剔一次（双保险）', async () => {
     const cfg = store({})
-    const result = mergePreset(cfg, {
+    const result = await mergePreset(cfg, {
       kind: 'sshk-preset',
       version: 1,
       llm: { providers: [{ _id: 'p9', name: '带密钥', baseURL: 'https://x.com/v1', model: 'm', apiKey: 'sk-leak' }] },
@@ -156,19 +156,19 @@ describe('含密钥导出/导入（用户 2026-11-17 开关）', () => {
     expect(stripSensitiveDeep(withSecrets).removed).toEqual([])
   })
 
-  it('含密钥导入写回 safeStorage，且不把 credentials 段污染进配置', () => {
+  it('含密钥导入写回 safeStorage，且不把 credentials 段污染进配置', async () => {
     const cfg = store({})
     const sec = secretStore()
     const preset = buildPreset(store(presetCfg), sec, true)
-    mergePreset(cfg, preset, sec)
+    await mergePreset(cfg, preset, sec)
     expect(sec.written).toEqual({ p1: 'sk-provider', r1: 'ftp-pass', c1: 'oss-secret' })
     expect(cfg.data).not.toHaveProperty('credentials')
   })
 
-  it('未传 secretStore 时 credentials 段被忽略，不写任何密钥（兼容旧调用）', () => {
+  it('未传 secretStore 时 credentials 段被忽略，不写任何密钥（兼容旧调用）', async () => {
     const cfg = store({})
     const preset = buildPreset(store(presetCfg), secretStore(), true)
-    expect(() => mergePreset(cfg, preset)).not.toThrow()
+    await expect(mergePreset(cfg, preset)).resolves.toBeDefined()
     expect(cfg.data).not.toHaveProperty('credentials')
   })
 })

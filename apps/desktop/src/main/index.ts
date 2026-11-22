@@ -19,7 +19,7 @@ import {
   setPluginStatus,
   setupCatalog,
 } from './catalog'
-import { makeContentListResolver, makeContentResolver } from './content'
+import { makeContentListResolver, makeContentResolver, startContentScheduler, stopContentScheduler } from './content'
 import { compactDatabase } from './compact'
 import { registerDevTools } from './dev-tools'
 import { reloadManifestFile } from './discovery'
@@ -72,6 +72,8 @@ let fsRuntimeRef: FsRuntime | null = null
 function onBeforeQuit(): void {
   // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
   killUtilityTools()
+  // 定时发布轮询停止（F-01：定时器纳入 app 生命周期）
+  stopContentScheduler()
   // ShareHub：停止监听 + 未过期路由落盘（plans/09）
   if (shareHubHost) void shareHubHost.dispose()
   // H6：退出兜底压缩（fire-and-forget；NeDB compact 原子替换，中断安全）
@@ -135,6 +137,9 @@ void app.whenReady().then(async () => {
   migrateLegacyUserData()
   services = setupServices()
   setupCatalog(services)
+  // F-01（2026-11-22 复核）：启动即拉起定时发布轮询——扫描所有到期 scheduled 一次性翻 published，
+  // 此前仅保存定时内容时启动，重启后定时任务永久失效（静默不发布）
+  startContentScheduler(services.repository)
   installLocalResHandler(services.config)
   // app:// 渲染层静态文件服务（打包版 / dev 显式开启时替代 loadFile 的 file://）
   installAppProtocolHandler(path.join(here, '../renderer'))

@@ -39,7 +39,8 @@ export function registerBackupIpc(ctx: IpcContext): void {
       settingsPath: defaultConfigPath(app.getPath('userData')),
       migrationPassphrase: passphrase || undefined,
     })
-    if (result.secretsJson) services.importSecretsJson(result.secretsJson)
+    // F-02：await 密钥合并落盘（此前 void fire-and-forget，失败静默）
+    if (result.secretsJson) await services.importSecretsJson(result.secretsJson)
     return { counts: result.manifest.counts, secretsRestored: result.secretsRestored, secretsMessage: result.secretsMessage }
   })
 
@@ -48,6 +49,7 @@ export function registerBackupIpc(ctx: IpcContext): void {
   const presetSecrets: PresetSecretStore = {
     getProviderKey: (id) => services.getApiKey(id),
     getUploadKey: (id) => services.getUploadSecret(id),
+    // F-02：返回 Promise 由 importPreset await（写入失败向上抛变 toast）
     setProviderKey: (id, key) => services.setApiKey(id, key),
     setUploadKey: (id, key) => services.setUploadSecret(id, key),
   }

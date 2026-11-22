@@ -122,12 +122,13 @@ export interface ToolHostProviderChatRequest {
 
 /**
  * 宿主提供给工具插件的能力（工具可依赖应用，应用不强依赖工具）：
- * 密钥存 safeStorage、应用级 Provider 共享、云端视觉 chat、本机 OCR 命令。
+ * 密钥存 safeStorage、应用级 Provider 共享、云端视觉 chat。
  */
 export interface ToolHostCapabilities {
   /** 工具专属密钥；永不进入 settings.json / 渲染层 */
   getToolSecret(toolId: string, name: string): string
-  setToolSecret(toolId: string, name: string, value: string): void
+  /** 写入成功（加密落盘）才 resolve；失败 reject（IPC 经 handleOk 变错误 toast）。空串=清除 */
+  setToolSecret(toolId: string, name: string, value: string): Promise<void>
   /** OpenAI 兼容 /chat/completions，支持 image_url 多模态；返回文本 */
   chat(req: ToolHostChatRequest): Promise<string>
   /** 列出应用级 Provider（不含密钥）；所有工具共用一份配置 */

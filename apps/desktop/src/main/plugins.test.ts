@@ -19,7 +19,7 @@ function fakeHost(): PluginHost {
   } as unknown as PluginHost['ipcMain']
   const host: ToolHostCapabilities = {
     getToolSecret: () => '',
-    setToolSecret: () => {},
+    setToolSecret: async () => {},
     chat: async () => '',
     listProviders: () => [],
     chatByProvider: async () => '',

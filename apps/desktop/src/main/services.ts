@@ -35,18 +35,18 @@ export interface AppServices {
   getApiKey: (providerId: string) => string
   /** 上传通道密钥（应用级 app:upload: 命名空间，2026-11-19 由工具账下提升） */
   getUploadSecret: (profileId: string) => string
-  setUploadSecret: (profileId: string, value: string) => void
+  setUploadSecret: (profileId: string, value: string) => Promise<void>
   /** 确保密钥缓存已从 safeStorage 解密预载（幂等） */
   ensureSecrets: () => Promise<void>
-  setApiKey: (providerId: string, apiKey: string) => void
+  setApiKey: (providerId: string, apiKey: string) => Promise<void>
   /** 应用访问密钥：写入 safeStorage，settings 只留 sha256 摘要 */
-  setAccessKey: (key: string) => void
+  setAccessKey: (key: string) => Promise<void>
   /** 权限裁决输入：是否有效 + 已持有的 grants（不含明文） */
   getAccessKeyState: () => { hasAccessKey: boolean; grants: string[] }
   /** 全量密钥 JSON（zip 导出加密迁移用；默认导出路径拿不到它） */
   exportSecretsJson: () => string
   /** 导入备份后把解密出的 Provider 密钥合并回 safeStorage */
-  importSecretsJson: (json: string) => void
+  importSecretsJson: (json: string) => Promise<void>
   /** 暴露给工具插件的宿主能力；应用不依赖工具，工具可依赖这些能力 */
   host: ToolHostCapabilities
 }
@@ -92,12 +92,14 @@ export function setupServices(): AppServices {
 
   const host: ToolHostCapabilities = {
     getToolSecret: (toolId, name) => currentSecrets()[toolSecretId(toolId, name)] ?? '',
+    // F-02（2026-11-22 复核）：写失败向上抛（IPC 经 handleOk 变 toast），不再 void + 静默吞错——
+    // 此前工具 handler 无条件 return true，用户以为保存成功，与 SecretsStore「失败向上抛」契约矛盾
     setToolSecret: (toolId, name, value) => {
       const id = toolSecretId(toolId, name)
-      void secretsStore.set((secrets) => {
+      return secretsStore.set((secrets) => {
         if (!value) delete secrets[id]
         else secrets[id] = value
-      }).catch(() => { /* 失败已由 onError 落盘（logger.error），IPC 调用方以返回值判断 */ })
+      })
     },
     chat: async (req) => {
       const provider: LlmProvider = {
@@ -156,7 +158,7 @@ export function setupServices(): AppServices {
    * - 2026-11-19「上传管理」→「文件管理」：secrets `app:tool:upload-manager:<pid>` → `…file-manager:<pid>`、settings `tools.upload-manager.*` → `tools.file-manager.*`
    * 幂等：新键已存在时不覆盖（以新为准），旧键一律清掉。配置不迁移用户会"丢密钥/丢工具配置"。
    */
-  function migrateToolRenames(): void {
+  async function migrateToolRenames(): Promise<void> {
     // 迁移链：按序执行，每段只处理自己那对 旧→新（新 id 已存在则以新为准）
     const CHAIN: Array<{ legacy: string; next: string; from: string; to: string; note: string }> = [
       { legacy: 'upload-config', next: 'upload-manager', from: 'tools.upload-config', to: 'tools.upload-manager', note: 'upload-config → upload-manager' },
@@ -192,7 +194,7 @@ export function setupServices(): AppServices {
           delete secrets[key]
         }
       }
-      if (moved > 0) void secretsStore.set((next) => { Object.assign(next, secrets) }).catch(() => { /* onError 已落盘 */ })
+      if (moved > 0) await secretsStore.set((next) => { Object.assign(next, secrets) })
     } catch (err) {
       logger.error('upload', `工具改名迁移失败（不影响启动）：${(err as Error).message}`)
     }
@@ -210,26 +212,26 @@ export function setupServices(): AppServices {
     getUploadSecret: (profileId) => currentSecrets()[uploadSecretId(profileId)] ?? '',
     setUploadSecret: (profileId, value) => {
       const id = uploadSecretId(profileId)
-      void secretsStore.set((secrets) => {
+      // F-02：Promise 化，写失败向上抛（调用方 await 后才回成功）
+      return secretsStore.set((secrets) => {
         if (!value) delete secrets[id]
         else secrets[id] = value
-      }).catch(() => { /* onError 已落盘 */ })
+      })
     },
     ensureSecrets: async () => { await secretsStore.load() },
     setApiKey: (providerId, apiKey) => {
       if (!isProviderId(providerId)) throw new AppError(`非法 providerId: ${providerId}`)
-      void secretsStore.set((secrets) => {
+      return secretsStore.set((secrets) => {
         if (apiKey === '') delete secrets[providerId]
         else secrets[providerId] = apiKey
-      }).catch(() => { /* onError 已落盘 */ })
+      })
     },
     setAccessKey: (key) => {
-      // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态（P1-2：写成功后才设哈希）
-      void secretsStore.set((secrets) => {
+      // 先写凭据再广播配置变更，保证广播触发的目录刷新拿到一致状态（P1-2：写成功后才设哈希）；F-02：失败向上抛
+      return secretsStore.set((secrets) => {
         if (!key) delete secrets[ACCESS_KEY_SECRET_ID]
         else secrets[ACCESS_KEY_SECRET_ID] = key
       }).then(() => { config.set('app.accessKeyHash', key ? sha256(key) : null) })
-        .catch(() => { /* onError 已落盘；哈希未动，渲染层拿到的失败结果与存储一致 */ })
     },
     getAccessKeyState: () => {
       const key = currentSecrets()[ACCESS_KEY_SECRET_ID] ?? ''
@@ -237,16 +239,18 @@ export function setupServices(): AppServices {
       const valid = Boolean(key && hash && sha256(key) === hash)
       return { hasAccessKey: valid, grants: valid ? [ACCESS_GRANT] : [] }
     },
-    importSecretsJson: (json) => {
+    importSecretsJson: async (json) => {
       const parsed = JSON.parse(json) as { providers?: { _id?: string; apiKey?: string }[] }
       const pending: [string, string][] = []
       for (const item of parsed.providers ?? []) {
         if (!item || typeof item._id !== 'string' || !isProviderId(item._id)) continue
         if (typeof item.apiKey === 'string' && item.apiKey) pending.push([item._id, item.apiKey])
       }
-      void secretsStore.set((secrets) => {
-        for (const [id, apiKey] of pending) secrets[id] = apiKey
-      }).catch(() => { /* onError 已落盘 */ })
+      if (pending.length) {
+        await secretsStore.set((secrets) => {
+          for (const [id, apiKey] of pending) secrets[id] = apiKey
+        })
+      }
     },
     // app:* 前缀的工具密钥与访问密钥都不参与 provider 迁移
     exportSecretsJson: () => JSON.stringify({

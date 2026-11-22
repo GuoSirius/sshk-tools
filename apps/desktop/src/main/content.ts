@@ -46,7 +46,7 @@ export async function contentGet(repo: Repository, id: string): Promise<ContentR
 }
 
 /** 新建或更新：_id 存在且命中则更新，否则新建。字数/摘要强制重算，status 缺省 draft。
- *  status==='scheduled' 时 publishAt 必填且须为未来时刻；到点由定时器自动翻 published（见 ensureScheduler）。 */
+ *  status==='scheduled' 时 publishAt 必填且须为未来时刻；到点由定时器自动翻 published（见 startContentScheduler）。 */
 export async function contentSave(repo: Repository, input: ContentSaveInput): Promise<ContentRecord> {
   const name = String(input?.name ?? '').trim()
   // 表单类校验失败 = 预期业务失败，走 AppError(validation)（warn 落盘，不刷终端堆栈——#128 用户反馈）
@@ -80,12 +80,12 @@ export async function contentSave(repo: Repository, input: ContentSaveInput): Pr
   if (id) {
     const updated = await repo.update<ContentDoc>('contents', id, patch)
     if (updated) {
-      if (status === 'scheduled') void ensureScheduler(repo)
+      if (status === 'scheduled') startContentScheduler(repo)
       return toRecord(updated)
     }
   }
   const inserted = await repo.insert<ContentDoc>('contents', patch as Omit<ContentDoc, '_id' | 'createdAt' | 'updatedAt' | 'archived'>)
-  if (status === 'scheduled') void ensureScheduler(repo)
+  if (status === 'scheduled') startContentScheduler(repo)
   return toRecord(inserted)
 }
 
@@ -119,10 +119,12 @@ export function makeContentResolver(repo: Repository): (contentId: string) => Pr
 
 // ── 定时发布（plans/11 + 2026-11-19）：status==='scheduled' 的到点自动翻 published ──
 // 主进程内单例定时器，轮询扫描 scheduled 记录，命中即翻 published 并清 publishAt。
-let schedulerStarted = false
-async function ensureScheduler(repo: Repository): Promise<void> {
-  if (schedulerStarted) return
-  schedulerStarted = true
+// F-01（2026-11-22 复核）：启动链（main/index.ts whenReady）无条件调用 startContentScheduler——
+// 此前仅 contentSave(scheduled) 时启动，应用重启后定时任务永久失效（到点不翻 published、
+// 列表 resolver 只查 published，内容静默消失且无任何报错）。
+let schedulerTimer: ReturnType<typeof setInterval> | null = null
+export function startContentScheduler(repo: Repository): void {
+  if (schedulerTimer) return
   const tick = async () => {
     try {
       const now = Date.now()
@@ -143,7 +145,12 @@ async function ensureScheduler(repo: Repository): Promise<void> {
     }
   }
   void tick()
-  globalThis.setInterval(() => { void tick() }, 30_000)
+  schedulerTimer = setInterval(() => { void tick() }, 30_000)
+}
+
+/** 退出清理：停止轮询定时器（main/index.ts onBeforeQuit 调用） */
+export function stopContentScheduler(): void {
+  if (schedulerTimer) { clearInterval(schedulerTimer); schedulerTimer = null }
 }
 
 /** HTML 转义（列表页标题/摘要防 XSS） */

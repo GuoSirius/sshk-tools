@@ -201,8 +201,9 @@ export function registerBadgeIpc(ipc: IpcMain, deps: BadgeIpcDeps): void {
   }))
 
   // ①-c 视觉模型密钥：只写宿主 safeStorage，明文不进 settings.json、不回传渲染层
-  ipc.handle(IPC_CHANNELS.badgeSetVisionKey, wrap((key: string) => {
-    requireHost().setToolSecret(deps.toolId, VISION_KEY_NAME, String(key ?? '').trim())
+  ipc.handle(IPC_CHANNELS.badgeSetVisionKey, wrap(async (key: string) => {
+    // F-02（2026-11-22 复核）：await 写入成功才返回——此前无条件 true，写失败被静默吞掉
+    await requireHost().setToolSecret(deps.toolId, VISION_KEY_NAME, String(key ?? '').trim())
     return true
   }))
   ipc.handle(IPC_CHANNELS.badgeVisionState, () => ({
