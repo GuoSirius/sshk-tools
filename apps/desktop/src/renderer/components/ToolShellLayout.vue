@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onMounted, ref, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { DArrowLeft } from '@element-plus/icons-vue'
 import type { ToolMenu, ToolRuntimeState } from '@sshk/shared'
 import SidebarMenu from './SidebarMenu.vue'
 import ToolIcon from './ToolIcon.vue'
+import { collectGroupIds, useSidebarNav } from '../composables/useSidebarNav'
 
 /**
  * 工具侧栏壳（P6-8 CR-42 终拆自 App.vue）：左侧功能菜单栏——头部（图标+分类跑马灯）
@@ -32,11 +33,8 @@ const route = useRoute()
 const router = useRouter()
 const activeToolId = computed(() => (route.params.toolId as string | undefined) ?? null)
 
-/** 收起态 hover：侧栏本体平滑展开，不再弹独立浮层 */
-const sidebarHover = ref(false)
-const sideOpenIds = ref<Set<string>>(new Set())
-const sidebarExpanded = computed(() => !props.collapsed || sidebarHover.value)
-let hoverTimer: number | undefined
+// 分组开合 + 收起态 hover 就地展开（与 AppAdminPage 应用管理侧栏共用单一实现，2026-11-22 上收）
+const { hover: sidebarHover, openIds: sideOpenIds, expanded: sidebarExpanded, onEnter: onSidebarEnter, onLeave: onSidebarLeave, toggleGroup: toggleSideGroup } = useSidebarNav({ menus: () => props.menus, collapsed: toRef(props, 'collapsed') })
 
 /** 找出 active 所在的分组链，保证激活项在任何层级都可见 */
 function pathTo(items: ToolMenu[], active: string, parents: string[] = []): string[] | null {
@@ -48,19 +46,6 @@ function pathTo(items: ToolMenu[], active: string, parents: string[] = []): stri
     }
   }
   return null
-}
-function collectGroupIds(items: ToolMenu[]): string[] {
-  const ids: string[] = []
-  for (const item of items) {
-    if (item.children?.length) ids.push(item.id, ...collectGroupIds(item.children))
-  }
-  return ids
-}
-function toggleIn(target: Ref<Set<string>>, id: string): void {
-  const next = new Set(target.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  target.value = next
 }
 
 // 侧栏分类行自动循环滚动（内容超宽才启动；hover 暂停）
@@ -76,19 +61,7 @@ function measureMarquee(): void {
 watch([(): ToolRuntimeState => props.tool, (): boolean => props.collapsed], () => measureMarquee(), { immediate: true })
 onMounted(() => { void nextTick(measureMarquee) })
 
-// ── 侧栏交互：同一棵菜单树，收起后 hover 让侧栏本体平滑变宽 ──
-function onSidebarEnter(): void {
-  if (!props.collapsed) return
-  if (hoverTimer !== undefined) { window.clearTimeout(hoverTimer); hoverTimer = undefined }
-  // hover 时把分组全部展开，多级菜单一眼可见；移开后自动收成图标轨
-  sideOpenIds.value = new Set(collectGroupIds(props.menus))
-  sidebarHover.value = true
-}
-function onSidebarLeave(): void {
-  if (hoverTimer !== undefined) window.clearTimeout(hoverTimer)
-  hoverTimer = window.setTimeout(() => { sidebarHover.value = false }, 140)
-}
-function toggleSideGroup(id: string): void { toggleIn(sideOpenIds, id) }
+// ── 侧栏交互：同一棵菜单树，收起后 hover 让侧栏本体平滑变宽（enter/leave 由共享 composable 承担）──
 function selectMenu(id: string): void {
   if (!activeToolId.value) return
   sideOpenIds.value = new Set([...sideOpenIds.value, ...(pathTo(props.menus, id) ?? [])])
@@ -97,9 +70,6 @@ function selectMenu(id: string): void {
 
 // 进入工具（挂载）即全部分组预展开：与原 openTool 导航前展开的语义一致（桌面卡片进入必经挂载）
 sideOpenIds.value = new Set(collectGroupIds(props.menus))
-
-watch((): boolean => props.collapsed, (collapsed) => { if (!collapsed) sidebarHover.value = false })
-onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
 function toggleCollapsed(): void {
   emit('update:collapsed', !props.collapsed)

@@ -16,11 +16,12 @@
  *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
  *   应用本体不再 import 工具代码（边界铁律 §五.1）。
  */
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import { provideToolId } from '@sshk/ui-kit'
 import type { ToolMenu } from '@sshk/shared'
+import { useSidebarNav } from '../../composables/useSidebarNav'
 import SidebarMenu from '../../components/SidebarMenu.vue'
 import ToolSettingsPage from '../../SettingsPage.vue'
 import GeneralPage from './settings/GeneralPage.vue'
@@ -197,15 +198,10 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
 const activeMeta = computed(() => PAGE_META[activePage.value] ?? { title: '应用管理', description: '' })
 
 // ── 左菜单状态：默认全部分组折叠（2026-11-22 需求）；激活页变化时自动展开其祖先分组链，
-//    让「指定的菜单及页面」可见，其余分组不受影响；分组开合仅影响展示 ──
-function toggleIn(target: Ref<Set<string>>, id: string): void {
-  const next = new Set(target.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  target.value = next
-}
-const openIds = ref(new Set<string>())
-function toggleGroup(id: string): void { toggleIn(openIds, id) }
+//    让「指定的菜单及页面」可见，其余分组不受影响；收起态窄轨显图标 + hover 就地展开
+//    与工具侧栏（ToolShellLayout）共用同一实现（useSidebarNav）──
+const collapsed = ref(false)
+const { hover: navHover, openIds, expanded: navExpanded, onEnter: onSideEnter, onLeave: onSideLeave, toggleGroup } = useSidebarNav({ menus: () => APP_MENUS, collapsed })
 watch(activePage, (page) => {
   const chain = PAGE_CHAIN[page]
   if (!chain?.length || chain.every((id) => openIds.value.has(id))) return
@@ -217,19 +213,24 @@ function selectItem(pageId: string): void {
   const moduleId = PAGE_MODULE[pageId]
   if (moduleId) void router.push(`/app/${moduleId}/${pageId}`)
 }
-
-const collapsed = ref(false)
 </script>
 
 <template>
   <div class="admin-page">
     <div class="admin-body">
-      <aside class="admin-side" :class="{ collapsed }">
+      <!-- 收起态窄轨只留一级图标；hover 侧栏本体就地平滑展开（与工具侧栏同口径，2026-11-22 需求） -->
+      <aside
+        class="admin-side"
+        :class="{ collapsed, hover: navHover, 'is-narrow': !navExpanded }"
+        @mouseenter="onSideEnter"
+        @mouseleave="onSideLeave"
+      >
         <div class="admin-side-menu">
           <SidebarMenu
             :items="APP_MENUS"
             :active="activePage"
             :open-ids="openIds"
+            :show-children="navExpanded"
             :toggle-group="toggleGroup"
             :select-item="selectItem"
           />
@@ -243,8 +244,8 @@ const collapsed = ref(false)
             :aria-label="collapsed ? '展开菜单' : '收起菜单'"
             @click="collapsed = !collapsed"
           >
-            <el-icon :size="16"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
-            <span v-if="!collapsed" class="admin-side-toggle-text">收起菜单</span>
+            <el-icon :size="16"><Expand v-if="!navExpanded" /><Fold v-else /></el-icon>
+            <span class="admin-side-toggle-text">{{ collapsed ? (navHover ? '固定展开' : '展开菜单') : '收起菜单' }}</span>
           </button>
         </div>
       </aside>
@@ -314,7 +315,8 @@ const collapsed = ref(false)
   min-height: 0;
   display: flex;
 }
-/* 左菜单：纵向 flex——菜单区滚动、底部固定展开/收起钮（2026-11-22 需求，原在页头行块内） */
+/* 左菜单：纵向 flex——菜单区滚动、底部固定展开/收起钮（2026-11-22 需求，原在页头行块内）。
+   宽度过渡与工具侧栏（theme.css .tool-sidebar .28s）同口径，展开/收起/hover 三态手感一致 */
 .admin-side {
   flex: none;
   width: 216px;
@@ -323,14 +325,13 @@ const collapsed = ref(false)
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width .18s ease, padding .18s ease;
+  transition: width .28s cubic-bezier(.2, .8, .2, 1), padding .28s ease;
 }
 .admin-side-menu {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   overflow-y: auto;
-  transition: opacity .18s ease;
 }
 .admin-side-foot {
   flex: none;
@@ -362,16 +363,17 @@ const collapsed = ref(false)
 }
 .admin-side-toggle .el-icon { flex: none; }
 .admin-side-toggle-text { white-space: nowrap; }
-/* 收起：不缩没（宽 0 会连折叠钮一起消失）——保留窄轨放底部展开钮，菜单区隐藏 */
+/* 收起：窄轨不缩没——一级图标行照常显示（行内 label/chevron 由 theme.css .is-narrow 收起），
+   hover 时同一根侧栏平滑变宽（宽 216 与工具侧栏一致），底部钮文案切「固定展开」 */
 .admin-side.collapsed {
   width: 44px;
   padding: 10px 4px;
 }
-.admin-side.collapsed .admin-side-menu {
-  opacity: 0;
-  pointer-events: none;
+.admin-side.collapsed.hover {
+  width: 216px;
+  box-shadow: 8px 0 26px rgba(4, 8, 20, .22);
 }
-.admin-side.collapsed .admin-side-toggle-text { display: none; }
+.admin-side.is-narrow .admin-side-toggle-text { display: none; }
 .admin-content {
   flex: 1;
   min-width: 0;

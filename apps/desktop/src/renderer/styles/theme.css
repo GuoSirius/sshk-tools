@@ -336,10 +336,16 @@ body {
 .submenu-enter-from, .submenu-leave-to { opacity: 0; transform: translateY(-6px); }
 
 /* is-narrow = 用户已收起且鼠标未悬停：图标轨，文字平滑收起，不产生水平滚动 */
-.tool-sidebar.is-narrow .side-row { justify-content: center; padding: 0; gap: 0; }
+/* 窄轨（工具侧栏 .tool-sidebar / 应用管理侧栏 .admin-side 共用）：行居中只留一级图标，
+   label/chevron 平滑收起（.side-label 自带 max-width 过渡），hover 展开即还原 */
+.tool-sidebar.is-narrow .side-row,
+.admin-side.is-narrow .side-row { justify-content: center; padding: 0; gap: 0; }
 .tool-sidebar.is-narrow .side-label,
-.tool-sidebar.is-narrow .side-chevron { max-width: 0; opacity: 0; }
-.tool-sidebar.is-narrow .side-icon { width: 18px; height: 18px; }
+.tool-sidebar.is-narrow .side-chevron,
+.admin-side.is-narrow .side-label,
+.admin-side.is-narrow .side-chevron { max-width: 0; opacity: 0; }
+.tool-sidebar.is-narrow .side-icon,
+.admin-side.is-narrow .side-icon { width: 18px; height: 18px; }
 
 /* hover 就地展开时给一点品牌色投影，强调是同一根侧栏在变宽而不是新弹层 */
 .tool-sidebar.collapsed.hover { box-shadow: 8px 0 26px rgba(4, 8, 20, .22); }
