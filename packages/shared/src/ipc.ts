@@ -59,7 +59,8 @@ export const IPC_CHANNELS = {
   uploadSecretSet: 'upload:secret:set',
   uploadSecretState: 'upload:secret:state',
   /** 复用 llm:getApiKey 范式：用户主动点「查看」才下发已存密钥，不随列表默认下发 */
-  uploadSecretGet: 'upload:secret:get',  /** 每个 remote / cloud profile 独立连通性自检；可用表单里尚未保存的临时值，不落盘 */
+  uploadSecretGet: 'upload:secret:get',
+  /** 每个 remote / cloud profile 独立连通性自检；可用表单里尚未保存的临时值，不落盘 */
   uploadTest: 'upload:test',
   /** 图库/文件库：按来源列出已有文件（kind=image/document/code 按白名单、all 全部；缺省 image），供选择弹框 */
   uploadListImages: 'upload:images:list',

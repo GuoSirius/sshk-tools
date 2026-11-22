@@ -18,6 +18,7 @@ import {
 import {
   ToolPageLayout,
   ConfirmDialog,
+  FormHint,
   hostApiMissing,
   callHostApi,
   reloadHostWindow,
@@ -414,7 +415,7 @@ onMounted(() => {
           <el-input clearable v-model="cfg.local.defaultDir" size="small" placeholder="留空则使用应用当前目录" />
           <el-button size="small" :icon="FolderOpened" @click="pickLocalDir">选择目录</el-button>
         </div>
-        <div class="hint">工具可在自己的「上传通道」配置里覆盖此目录；未覆盖时统一落到这里。</div>
+        <FormHint inline detail="工具可在自己的「上传通道」配置里覆盖此目录；未覆盖时统一落到这里">可被工具覆盖</FormHint>
       </section>
 
       <section class="panel">
@@ -425,7 +426,7 @@ onMounted(() => {
           </el-form-item>
           <el-form-item label="单文件大小(MB)">
             <el-input-number v-model="maxSizeMb" :min="0" :max="2048" :step="1" />
-            <span class="hint-inline">0 = 不限制；工具只能设得更严，不能放宽</span>
+            <FormHint inline detail="0 = 不限制；工具只能设得更严，不能放宽">0 = 不限制</FormHint>
           </el-form-item>
         </el-form>
       </section>

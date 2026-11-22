@@ -364,7 +364,7 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <MenusSection :menus="form.menus" />
         </div>
 
-        <el-form v-else-if="t.id === 'plugin'" label-width="130px" size="small">
+        <el-form v-else-if="t.id === 'plugin'" label-width="auto" size="small">
           <el-form-item label="source">
             <el-select v-model="form.plugin.source" style="width: 220px">
               <el-option label="builtin（随应用分发）" value="builtin" />
@@ -385,7 +385,7 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
         </el-form>
 
         <div v-else-if="t.id === 'contract'" class="contract-pane">
-          <el-form label-width="130px" size="small">
+          <el-form label-width="auto" size="small">
             <el-form-item label="schemaVersion"><el-input clearable :model-value="String(TOOL_PACKAGE_SCHEMA_VERSION)" disabled /></el-form-item>
             <el-form-item label="requiresHost.api"><el-input clearable :model-value="`^${HOST_API_VERSION.split('.')[0]}.0`" disabled /></el-form-item>
             <el-form-item label="版本号"><el-input clearable v-model="form.pkg.version" /></el-form-item>
@@ -412,7 +412,7 @@ const title = computed(() => `工具清单配置 · ${props.toolId}`)
           <ConfigGroupsSection :groups="groupRows" />
 
           <div class="section-title">硬依赖（dependsOn）</div>
-          <el-form label-width="96px" size="small" style="margin-bottom: 10px">
+          <el-form label-width="auto" size="small" style="margin-bottom: 10px">
             <el-form-item label="硬依赖">
               <el-select v-model="form.dependsOn" multiple filterable clearable collapse-tags style="width: 100%" placeholder="默认零依赖">
                 <el-option v-for="id in toolIdOptions" :key="id" :label="id" :value="id" />

@@ -48,12 +48,9 @@ pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认
 | 我想… | 去哪 |
 |---|---|
 | 文档总览、目录规范、**决策看板** | [`docs/00-index.md`](docs/00-index.md) |
-| 第一轮原始需求与图片证据 | [`docs/01-requirements/2026-11-12-初始需求.md`](docs/01-requirements/2026-11-12-初始需求.md) |
-| 第二轮需求与拍板结论 | [`docs/01-requirements/2026-11-12-第二轮需求补充与决策.md`](docs/01-requirements/2026-11-12-第二轮需求补充与决策.md) |
-| 第三轮需求与拍板结论 | [`docs/01-requirements/2026-11-12-第三轮需求补充与决策.md`](docs/01-requirements/2026-11-12-第三轮需求补充与决策.md) |
-| 第四轮决策与开工 | [`docs/01-requirements/2026-11-12-第四轮决策与开工.md`](docs/01-requirements/2026-11-12-第四轮决策与开工.md) |
+| 原始需求与历轮拍板结论（合并归档） | [`docs/01-requirements/需求沟通记录.md`](docs/01-requirements/需求沟通记录.md) |
 | 技术选型对比、UI 分层、导入导出、目录迁移、任务拆分 | [`docs/02-architecture/2026-11-12-技术选型与任务拆分.md`](docs/02-architecture/2026-11-12-技术选型与任务拆分.md) |
-| **模块规范（ESM 优先 / 兼容 CJS）** | [`docs/02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md`](docs/02-architecture/2026-11-12-模块规范-ESM优先兼容CJS.md) |
+| **模块规范（ESM 优先 / 兼容 CJS，已归档）** | [`docs/99-archive/2026-11-12-模块规范-ESM优先兼容CJS.md`](docs/99-archive/2026-11-12-模块规范-ESM优先兼容CJS.md) |
 | 数据契约（品牌树 / 配置 / zip / IPC / 组件 / 目录迁移） | [`docs/04-api/2026-11-12-数据契约.md`](docs/04-api/2026-11-12-数据契约.md) |
 | 发布流程与本机提交钩子 | [`docs/05-release/2026-11-12-发布流程与本机提交钩子.md`](docs/05-release/2026-11-12-发布流程与本机提交钩子.md) |
 | 需求原文快照 | `requirement.txt`（只读保留，不修改） |

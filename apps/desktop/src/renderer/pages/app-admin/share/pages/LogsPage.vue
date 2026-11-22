@@ -199,11 +199,11 @@ onMounted(() => { void table.refresh() })
         <el-date-picker
           v-model="table.draft.value.range" type="datetimerange" size="small" unlink-panels
           value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间"
-          range-separator="至" :shortcuts="shortcuts" style="width: 360px" @change="doSearch" />
+          range-separator="至" :shortcuts="shortcuts" style="width: 360px" />
       </div>
       <div class="f-item">
         <span class="f-label">状态码</span>
-        <el-select v-model="table.draft.value.statusGroup" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
+        <el-select v-model="table.draft.value.statusGroup" clearable placeholder="全部" size="small" style="width: 180px">
           <el-option label="2xx 成功" value="2xx" />
           <el-option label="3xx 跳转" value="3xx" />
           <el-option label="4xx 失败" value="4xx" />
@@ -212,7 +212,7 @@ onMounted(() => { void table.refresh() })
       </div>
       <div class="f-item">
         <span class="f-label">工具</span>
-        <el-select v-model="table.draft.value.toolId" clearable placeholder="全部" size="small" style="width: 180px" @change="doSearch">
+        <el-select v-model="table.draft.value.toolId" clearable placeholder="全部" size="small" style="width: 180px">
           <el-option v-for="r in routes" :key="r.id" :label="r.toolId" :value="r.toolId" />
         </el-select>
       </div>

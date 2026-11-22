@@ -52,8 +52,9 @@
 | **打包配置** | `apps/desktop/electron-builder.config.cjs` | 已接入 | NSIS 允许选择安装目录；图标已配置；签名位留注释 |
 | **图标资源** | `apps/desktop/build/` | 已生成并**已提交** | icon.png/.ico/.svg、tray、logo.svg、logo-mark.png 全部统一在该目录（即 electron-builder 的 `buildResources`）；生成脚本 `scripts/generate-icons.py`。`docs/assets/` 已废弃删除 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
-| UI / 交互稿 | `03-design/` | 待建 | M1 产出 |
-| ADR 决策记录 | 本文件 §四 + `02-architecture/工具插件化需求台账.md` | 已收口 | 早期预留的空目录 `01-requirements/decisions/` 从未落地任何 ADR（Git 也不跟踪空目录），已删除；D1~D50 统一记在本看板，插件化相关细节记在架构文档。后续确需按主题单开 ADR 时再建目录，格式见 §六 |
+| ADR 决策记录 | 本文件 §四 + `02-architecture/工具插件化需求台账.md` | 已收口 | 早期预留的空目录 `01-requirements/decisions/` 从未落地任何 ADR（Git 也不跟踪空目录），已删除；D1~D55 统一记在本看板，插件化相关细节记在架构文档。后续确需按主题单开 ADR 时再建目录，格式见 §六 |
+| 验证会话数据 | `docs/verify-sessions/`（4 个 JSON：11-17/18/19/21） | 数据目录 | dev 运行时落盘的验证步骤结果（verify-steps 的会话快照），非沟通文档；P8-5/CR-52 曾列待删，实际为有效数据保留 |
+| 列表页/留白规范（薄壳重定向） | `02-architecture/列表页筛选与操作栏规范.md`、`页面留白与间距规范.md` | 薄壳防断链 | 正文已并入 `plans/01-UI与页面规范.md` §二/§三（P8-1 三合一），两份原路径保留 4 行重定向防外部链接断链 |
 | 归档 | `99-archive/` | **已启用（2026-11-16）** | 只移不删。已归档：实现顺序与 M6 先行方案（D26）、开发环境与热更新（D27）、模块规范 ESM/CJS（D23）、优化建议与开发计划（2026-11-16，已被 `plans/` 七份分类计划接管） |
 
 > 归档说明：D23 / D26 / D27 三份决策文档的结论已全部固化到 §四看板 + 台账，原件移入 `99-archive/` 保留可追溯；
@@ -66,7 +67,6 @@ docs/
 ├── 00-index.md          ← 本文件，唯一入口
 ├── 01-requirements/     ← 四轮需求、快照、图片证据（decisions/ 空占位已移除，ADR 统一记 00-index §四）
 ├── 02-architecture/     ← 架构、选型、任务拆分、各专项规划（R 系列与 EDM）
-├── 03-design/           ← UI 稿、交互说明、公共组件说明
 ├── 04-api/              ← 数据契约（品牌树/配置/zip/IPC/组件/目录迁移）
 ├── 05-release/          ← 发布流程、签名开关、changelog、首次安装指引、缺失项
 ├── 06-codereview/       ← CodeReview 报告/复核台账/交叉合并/敲板处置计划（2026-11-21 起，唯一存放地）
