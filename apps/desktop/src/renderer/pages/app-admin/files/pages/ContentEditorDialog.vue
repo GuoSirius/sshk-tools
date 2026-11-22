@@ -60,19 +60,28 @@ function setMode(mode: WinMode): void {
   minimized.value = false
 }
 /**
- * 最小化手柄（用户 2026-11-20 五轮定版）：默认对齐工具页主体（.tool-page-body，宿主 App 层
- * 包裹工具内容、随侧栏展开/收起伸缩）的右下角；ResizeObserver 跟随容器尺寸变化自动重锚。
- * 用户手动拖拽后（userMoved）不再自动重锚，尊重手动位置。
+ * 最小化手柄（用户 2026-11-20 五轮定版）：停靠页面主体右下角；ResizeObserver 跟随容器
+ * 尺寸变化自动重锚。用户手动拖拽后（userMoved）不再自动重锚，尊重手动位置。
+ *
+ * 2026-11-22 修复锚定容器缺失：旧实现只 query `.tool-page-body`（工具宿主时代 App 层恒有），
+ * D53 后编辑器只在应用管理使用、该元素根本不存在（ContentsPage 用 ListPageShell）——
+ * 每次最小化都走「贴窗口右下角」兜底，且 ResizeObserver 永不挂载（侧栏收展/窗口变化不跟随）。
+ * 现优先锚应用管理壳的内容主体 `.admin-module-body`（随侧栏收展伸缩），工具宿主 `.tool-page-body`
+ * 兜底；每次重锚都重新解析（不复用旧引用，页面切换后旧节点已卸载）。
  */
 const userMoved = ref(false)
 let anchorEl: HTMLElement | null = null
 let anchorRo: ResizeObserver | null = null
+function resolveAnchorEl(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.admin-module-body')
+    ?? document.querySelector<HTMLElement>('.tool-page-body')
+}
 function anchorBar(): void {
-  anchorEl ??= document.querySelector<HTMLElement>('.tool-page-body')
+  anchorEl = resolveAnchorEl()
   const w = barRef.value?.offsetWidth ?? 280
   const h = barRef.value?.offsetHeight ?? 40
   if (!anchorEl) {
-    // 兜底：找不到工具页容器（理论不可达，App 层恒有 .tool-page-body）时贴窗口右下角
+    // 兜底：找不到页面主体容器时贴窗口右下角（此时也无 ResizeObserver，仅保底可见）
     x.value = Math.max(8, (window.innerWidth ?? 1200) - w - 16)
     y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
     return
@@ -84,18 +93,19 @@ function anchorBar(): void {
 function watchAnchor(): void {
   anchorRo?.disconnect()
   anchorRo = null
-  anchorEl = null
   anchorBar()
   if (!anchorEl) return
   anchorRo = new ResizeObserver(() => { if (!userMoved.value) anchorBar() })
   anchorRo.observe(anchorEl)
 }
 onUnmounted(() => { anchorRo?.disconnect(); anchorRo = null })
-/** 最小化：停靠工具页主体右下角（位置确定可找、随侧栏展开收起跟随），手柄可拖拽走 */
+/** 最小化：停靠页面主体右下角（随侧栏展开收起跟随），手柄可拖拽走 */
 function doMinimize(): void {
   preMinimizeMode.value = winMode.value
-  minimized.value = true
   userMoved.value = false
+  // 挂载前先按估算尺寸定锚：bar 尚未渲染（barRef 空），避免首帧闪到 (0,0) 左上角
+  anchorBar()
+  minimized.value = true
   void nextTick(watchAnchor)
 }
 /** 点悬浮条复原：还原到最小化之前的窗口状态 */
