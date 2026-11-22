@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ShareRouteInfo } from '@sshk/shared'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, toFileName } from '@sshk/shared'
+import { IPC_CHANNELS, isExpiresAlive, toFileName } from '@sshk/shared'
 import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
 import { readShareTicket } from '@sshk/share-core/ui'
 import { host } from '../host'
@@ -176,12 +176,12 @@ export async function openListShare(): Promise<void> {
 
 /** 校验路由存活并返回路由信息（撤销/过期判死；list 失败时信任本地未过期记录，password 未知按无口令拼） */
 async function findAliveRoute(toolIdValue: string, ticket: { id: string; token: string; expiresAt: number }): Promise<ShareRouteInfo | null> {
-  if (ticket.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && ticket.expiresAt <= Date.now()) return null
+  if (!isExpiresAlive(ticket.expiresAt)) return null
   try {
     const routes = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolIdValue)
     const hit = routes.find((r) => r.id === ticket.id)
     if (!hit) return null
-    if (hit.expiresAt !== SHARE_PERMANENT_EXPIRES_AT && hit.expiresAt <= Date.now()) return null
+    if (!isExpiresAlive(hit.expiresAt)) return null
     return hit
   } catch {
     // list 不可用（如宿主桥接旧）时退化为信任本地票：只保「能复制」，不保口令拼接
@@ -241,7 +241,7 @@ export async function refreshShareLinks(): Promise<void> {
 }
 
 function routeAlive(id: string): boolean {
-  return shareRouteRows.value.some((r) => r.id === id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now()))
+  return shareRouteRows.value.some((r) => r.id === id && isExpiresAlive(r.expiresAt))
 }
 
 /** 行链接状态：类型（自身/顶部/未分享）+ 可访问性（可访问/已失效）。语义与 copyPosterLink 的取链优先级一致 */

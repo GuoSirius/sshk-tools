@@ -23,8 +23,10 @@ import { AppError, listUploadProfiles,
   readFsTransferSettings,
   resolveUploadTool,
   uploadVendorMeta,
+  type UploadCloudProfile,
   type UploadGlobalConfig,
   type UploadProfileOption,
+  type UploadRemoteProfile,
   type FileKind,
   normalizeFileKind, } from '@sshk/shared'
 import type { AppServices } from './services'
@@ -109,8 +111,55 @@ function toUploadFile(req: UploadRequest): UploadFile {
   return file
 }
 
+/** J-01（2026-11-22 复核）：Provider 装配字段映射单一实现——prepare/readonlyList/probe
+ *  三处此前各写一份逐字相同（仅密钥来源不同）的构造载荷 */
+function buildRemoteProviderOpts(p: UploadRemoteProfile, password: string) {
+  return {
+    protocol: p.protocol,
+    host: p.host,
+    port: p.port,
+    username: p.username,
+    password,
+    remoteDir: p.remoteDir,
+    passive: p.passive,
+    baseUrl: p.baseUrl,
+  }
+}
+
+function buildCloudProviderOpts(p: UploadCloudProfile, accessKeySecret: string, transfer: { requestTimeoutMs: number; multipart: { enabled: boolean; thresholdMb: number; partSizeMb: number; partsConcurrency: number } }) {
+  return {
+    provider: p.provider,
+    sdk: uploadVendorMeta(p.provider).sdk,
+    region: p.region,
+    endpoint: p.endpoint,
+    bucket: p.bucket,
+    accessKeyId: p.accessKeyId,
+    accessKeySecret,
+    baseUrl: p.baseUrl,
+    ...transfer,
+  }
+}
+
 export class UploadRuntime {
   constructor(private readonly opts: UploadRuntimeOptions) {}
+
+  /** J-01：按 ctx.targetType 装配 remote/cloud Provider（pickProfile + 密钥 + 回写 ctx.profileId），
+   *  prepare 与 readonlyList 共用；probe 走 build*ProviderOpts 直连版本 */
+  private registerTargetProvider(service: InstanceType<typeof UploadService>, global: UploadGlobalConfig, ctx: { targetType: UploadTargetType; profileId?: string }): void {
+    if (ctx.targetType === 'remote') {
+      const p = pickRemoteProfile(global, ctx.profileId)
+      if (!p) throw new AppError('未找到远程上传 profile：请先在「文件管理」中添加并选择', 'io')
+      service.register(new RemoteUploadProvider(buildRemoteProviderOpts(p, this.opts.services.getUploadSecret(p.id))))
+      ctx.profileId = p.id
+      return
+    }
+    if (ctx.targetType === 'cloud') {
+      const p = pickCloudProfile(global, ctx.profileId)
+      if (!p) throw new AppError('未找到云上传 profile：请先在「文件管理」中添加并选择', 'io')
+      service.register(new CloudUploadProvider(buildCloudProviderOpts(p, this.opts.services.getUploadSecret(p.id), this.cloudTransferOpts())))
+      ctx.profileId = p.id
+    }
+  }
 
   private globalConfig(): UploadGlobalConfig {
     return normalizeUploadConfig(this.opts.services.config.get('app.upload'))
@@ -162,40 +211,7 @@ export class UploadRuntime {
       onProgress: this.opts.onProgress,
     })
     service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
-
-    if (ctx.targetType === 'remote') {
-      const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new AppError('未找到远程上传 profile：请先在「文件管理」中添加并选择', 'io')
-      const password = services.getUploadSecret(p.id)
-      service.register(new RemoteUploadProvider({
-        protocol: p.protocol,
-        host: p.host,
-        port: p.port,
-        username: p.username,
-        password,
-        remoteDir: p.remoteDir,
-        passive: p.passive,
-        baseUrl: p.baseUrl,
-      }))
-      ctx.profileId = p.id
-    }
-    if (ctx.targetType === 'cloud') {
-      const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new AppError('未找到云上传 profile：请先在「文件管理」中添加并选择', 'io')
-      const accessKeySecret = services.getUploadSecret(p.id)
-      service.register(new CloudUploadProvider({
-        provider: p.provider,
-        sdk: uploadVendorMeta(p.provider).sdk,
-        region: p.region,
-        endpoint: p.endpoint,
-        bucket: p.bucket,
-        accessKeyId: p.accessKeyId,
-        accessKeySecret,
-        baseUrl: p.baseUrl,
-        ...this.cloudTransferOpts(),
-      }))
-      ctx.profileId = p.id
-    }
+    this.registerTargetProvider(service, global, ctx)
 
     return { service, ctx, file: toUploadFile(req) }
   }
@@ -226,37 +242,7 @@ export class UploadRuntime {
     }
     const service = new UploadService({})
     service.register(new LocalUploadProvider({ defaultDir: global.local.defaultDir }))
-    if (ctx.targetType === 'remote') {
-      const p = pickRemoteProfile(global, ctx.profileId)
-      if (!p) throw new AppError('未找到远程上传 profile：请先在「文件管理」中添加并选择', 'io')
-      service.register(new RemoteUploadProvider({
-        protocol: p.protocol,
-        host: p.host,
-        port: p.port,
-        username: p.username,
-        password: this.opts.services.getUploadSecret(p.id),
-        remoteDir: p.remoteDir,
-        passive: p.passive,
-        baseUrl: p.baseUrl,
-      }))
-      ctx.profileId = p.id
-    }
-    if (ctx.targetType === 'cloud') {
-      const p = pickCloudProfile(global, ctx.profileId)
-      if (!p) throw new AppError('未找到云上传 profile：请先在「文件管理」中添加并选择', 'io')
-      service.register(new CloudUploadProvider({
-        provider: p.provider,
-        sdk: uploadVendorMeta(p.provider).sdk,
-        region: p.region,
-        endpoint: p.endpoint,
-        bucket: p.bucket,
-        accessKeyId: p.accessKeyId,
-        accessKeySecret: this.opts.services.getUploadSecret(p.id),
-        baseUrl: p.baseUrl,
-        ...this.cloudTransferOpts(),
-      }))
-      ctx.profileId = p.id
-    }
+    this.registerTargetProvider(service, global, ctx)
     return { service, ctx }
   }
 
@@ -350,18 +336,10 @@ export class UploadRuntime {
     if (type === 'remote') {
       const p = pickRemoteProfile(cfg, id)
       if (!p) throw new AppError('远程配置不完整：名称 / ID / 主机不能为空')
-      return await new RemoteUploadProvider({
-        protocol: p.protocol, host: p.host, port: p.port, username: p.username,
-        password: secret, remoteDir: p.remoteDir, passive: p.passive, baseUrl: p.baseUrl,
-      }).testConnection()
+      return await new RemoteUploadProvider(buildRemoteProviderOpts(p, secret)).testConnection()
     }
     const p = pickCloudProfile(cfg, id)
     if (!p) throw new AppError('云配置不完整：ID / Bucket 不能为空')
-    return await new CloudUploadProvider({
-      provider: p.provider, sdk: uploadVendorMeta(p.provider).sdk, region: p.region,
-      endpoint: p.endpoint, bucket: p.bucket, accessKeyId: p.accessKeyId,
-      accessKeySecret: secret, baseUrl: p.baseUrl,
-      ...this.cloudTransferOpts(),
-    }).testConnection()
+    return await new CloudUploadProvider(buildCloudProviderOpts(p, secret, this.cloudTransferOpts())).testConnection()
   }
 }

@@ -1,4 +1,5 @@
 import { ElMessage } from 'element-plus'
+import { readAsDataUrl } from '@sshk/shared'
 import { createHostImageLibrary, type FilePickerLibrary } from '@sshk/file-picker'
 import type { RichTextUploadHook } from '@sshk/rich-text'
 import { extractInlineImages, replaceInlineImages, replacementFor } from '../core/inline-images.js'
@@ -16,15 +17,6 @@ import { host } from './host'
  * 支持专属桶/目录覆盖，上传后插入；也可列出该来源已有图片挑选插入。
  * 本地默认项 id 用 __local__（非真实 profile，type=local 时 profileId 不下发）。
  */
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
 /** 上传失败（如尚未配置通道）时回退 dataURL，保证离线编辑不被阻断 */
 export function createImageUploader(toolId: string): RichTextUploadHook {
   return async (file: File): Promise<string> => {

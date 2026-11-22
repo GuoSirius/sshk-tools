@@ -14,6 +14,7 @@
  *      这类是 ipcRenderer.on 包装，无 invoke 语义，preload 快照里稳定存在；
  *   3) 全部不可用：抛 HOST_API_STALE_HINT 可操作提示，不裸抛 TypeError。
  */
+import { IPC_CHANNELS } from '@sshk/shared'
 import { callHostApi, HOST_API_STALE_HINT } from './host-api'
 
 export interface SafeHostChannelMap {
@@ -26,7 +27,12 @@ function apiBag(): Record<string, Record<string, unknown> | undefined> {
   return (globalThis as unknown as { api?: Record<string, Record<string, unknown>> }).api ?? {}
 }
 
+/** J-07（2026-11-22 复核）：config get/set 在 4 份 host.ts 逐字重复 → createSafeHost 内置默认映射；
+ *  各工具 host.ts 显式传入的 config 段仍可覆盖默认 */
+const DEFAULT_CONFIG_HOST = { get: IPC_CHANNELS.configGet, set: IPC_CHANNELS.configSet }
+
 export function createSafeHost(map: SafeHostChannelMap): any {
+  const merged: SafeHostChannelMap = { config: DEFAULT_CONFIG_HOST, ...map }
   // 返回 any：Proxy 双层树在 noUncheckedIndexedAccess 下无法用索引签名表达「必存在」，
   // 且方法集随各工具 host.ts 的通道映射静态确定，调用形态由调用方 TS 按需断言（与裸调 window.api 同形）。
   const cache = new Map<string, AnyFn>()
@@ -40,7 +46,7 @@ export function createSafeHost(map: SafeHostChannelMap): any {
           let fn = cache.get(key)
           if (!fn) {
             fn = (...args: unknown[]) => {
-              const channel = map[group]?.[method]
+              const channel = merged[group]?.[method]
               if (channel) return callHostApi({ group, method, channel, label: key }, ...args)
               const named = apiBag()[group]?.[method]
               if (typeof named === 'function') return named(...args)

@@ -4,6 +4,7 @@
  * createSafeHost 的 upload 通道注入进来（EDM / 模板工具 / 内容管理共用本实现）。
  * 密钥与 profile 解析全在 main 进程，渲染层只拿 profile 概要与上传结果。
  */
+import { readAsDataUrl } from '@sshk/shared'
 import type {
   FilePickerLibrary,
   FilePickerSource,
@@ -55,15 +56,6 @@ interface ProfileOption {
 export interface HostImageLibraryOptions {
   /** 是否把 local 型 profile 也列为独立来源（EDM 历史行为=yes；模板工具=no）。缺省 false */
   includeLocalProfiles?: boolean
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'))
-    reader.readAsDataURL(file)
-  })
 }
 
 /** 单一桥接实现：来源 = 本地默认 + 已配置远程/云 profile；上传/列图/列目录均透传宿主。 */

@@ -23,6 +23,5 @@ export const host = createSafeHost({
     stop: C.shareHubControl,
     clear: C.shareHubControl,
   },
-  config: { get: C.configGet, set: C.configSet },
   os: { pickSave: C.osPickSave, pickDir: C.osPickDir, writeText: C.osWriteText, clipboardWrite: C.osClipboardWrite },
 })

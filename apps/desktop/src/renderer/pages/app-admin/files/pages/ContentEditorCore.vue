@@ -9,7 +9,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { RichTextEditor, toStoredHtml } from '@sshk/rich-text'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import type { ContentRecord, ContentSaveInput, ContentStatus } from '@sshk/shared'
-import { format, toMs, ISO_WITH_OFFSET } from '@sshk/shared'
+import { format, readAsDataUrl, toMs, ISO_WITH_OFFSET } from '@sshk/shared'
 import { ElMessage } from 'element-plus'
 import { host } from '../host'
 import { useToolId } from '@sshk/ui-kit'
@@ -61,12 +61,9 @@ function validatePublishAt(): boolean {
 }
 watch(publishMs, () => { if (publishAtTip.value) void validatePublishAt() })
 
-const onUploadImage = async (file: File): Promise<string> => {  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
-    reader.readAsDataURL(file)
-  })
+const onUploadImage = async (file: File): Promise<string> => {
+  // J-02（2026-11-22 复核）：File→dataURL 收编 @sshk/shared 单一实现（此前三处逐字重复）
+  const dataUrl = await readAsDataUrl(file, '读取图片失败')
   const result = await host.upload.single({ toolId: toolId.value, name: file.name, size: file.size, mime: file.type, dataUrl }) as { url: string }
   return result.url
 }

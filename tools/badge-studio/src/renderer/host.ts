@@ -6,7 +6,7 @@ import { createSafeHost } from '@sshk/ui-kit'
  * 通道映射=方法名→IPC_CHANNELS；事件订阅类（upload.onProgress）不登记、直通具名方法。
  */
 export const host = createSafeHost({
-  config: { get: C.configGet, set: C.configSet },
+  // config get/set 已由 createSafeHost 内置默认映射（J-07），无需重复登记
   os: {
     pickFile: C.osPickFile,
     pickSave: C.osPickSave,

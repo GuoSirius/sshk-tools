@@ -15,7 +15,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
 import { ShareDialog, readShareTicket } from '@sshk/share-core/ui'
 import { callHostApi, type HostApiSpec, useToolId } from '@sshk/ui-kit'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT, inMsRange, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
+import { IPC_CHANNELS, inMsRange, isExpiresAlive, type ContentRecord, type ContentSaveInput, type ContentStatus, type ShareRouteInfo } from '@sshk/shared'
 import { host } from '../host'
 import ContentEditorDialog from './ContentEditorDialog.vue'
 import ContentEditorPage from './ContentEditorPage.vue'
@@ -119,14 +119,14 @@ function ownTicket(row: ContentRecord) {
 }
 function ownRoute(row: ContentRecord): ShareRouteInfo | undefined {
   const t = ownTicket(row)
-  return (t && routes.value.find((r) => r.id === t.id && (t.expiresAt === SHARE_PERMANENT_EXPIRES_AT || t.expiresAt > Date.now()))) ?? undefined
+  return (t && routes.value.find((r) => r.id === t.id && isExpiresAlive(t.expiresAt))) ?? undefined
 }
 function commonTicket() {
   return readShareTicket(toolId.value, COMMON_LABEL, CONTENT_ROOT, '__list__')
 }
 function commonRoute(): ShareRouteInfo | undefined {
   const t = commonTicket()
-  return (t && routes.value.find((r) => r.id === t.id && (t.expiresAt === SHARE_PERMANENT_EXPIRES_AT || t.expiresAt > Date.now()))) ?? undefined
+  return (t && routes.value.find((r) => r.id === t.id && isExpiresAlive(t.expiresAt))) ?? undefined
 }
 type ShareState = { type: 'own' | 'common' | 'none'; alive: boolean }
 function shareState(row: ContentRecord): ShareState {

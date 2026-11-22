@@ -15,7 +15,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 import { callHostApi, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { shareDialogStorageKey, readShareTicket } from './share-ticket'
-import { IPC_CHANNELS, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { IPC_CHANNELS, isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 import type { ShareRouteTicket, ShareRouteInfo } from '@sshk/shared'
 
 const props = defineProps<{
@@ -136,12 +136,12 @@ async function loadTicket(): Promise<void> {
     allowIndex.value = await resolveAppAllowIndex()
     accessKey.value = String(props.password ?? '')
     const saved = readTicket()
-    const savedAlive = saved !== null && (saved.expiresAt === SHARE_PERMANENT_EXPIRES_AT || saved.expiresAt > Date.now())
+    const savedAlive = saved !== null && isExpiresAlive(saved.expiresAt)
     let hit: ShareRouteInfo | null = null
     if (savedAlive) {
       try {
         const routes = await callHostApi<ShareRouteInfo[]>(SPEC.list, props.toolId)
-        hit = routes.find((r) => r.id === saved!.id && (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT || r.expiresAt > Date.now())) ?? null
+        hit = routes.find((r) => r.id === saved!.id && isExpiresAlive(r.expiresAt)) ?? null
       } catch { /* 校验接口失败时信任本地未过期记录（旧路由无 allowIndex 字段视为允许） */ }
     }
     if (savedAlive && saved) {

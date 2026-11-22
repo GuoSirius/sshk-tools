@@ -16,7 +16,7 @@ import type {
   HubStatus,
   ShareContentResolverResult,
 } from '@sshk/shared'
-import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
+import { isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 import { expiresAtFor, inheritedPassword, normalizeTtl, normalizeMountAlias, type ShareRoute } from './routes'
 import { MIME, renderArticle, renderIndex, mimeOf } from './static'
 import { LogBuffer } from './logs'
@@ -434,7 +434,7 @@ export class ShareHub {
         this.logs.push(clientIp, routeId, rel, 404)
         return
       }
-      if (Date.now() > route.expiresAt) {
+      if (!isExpiresAlive(route.expiresAt)) {
         this.routes.delete(token)
         this.finish(res, 404, 'Not Found')
         this.logs.push(clientIp, routeId, rel, 404)

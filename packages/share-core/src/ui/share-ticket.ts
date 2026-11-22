@@ -1,4 +1,4 @@
-import { SHARE_PERMANENT_EXPIRES_AT, type ShareRouteTicket } from '@sshk/shared'
+import { isExpiresAlive, type ShareRouteTicket } from '@sshk/shared'
 
 /**
  * ShareDialog 分享凭证的存取（单一来源）：
@@ -28,9 +28,9 @@ export function readShareTicket(toolId: string, label: string, root: string, ent
   } catch { return null }
 }
 
-/** ticket 是否仍在有效期（永久哨兵视为永久有效） */
+/** ticket 是否仍在有效期（永久哨兵视为永久有效；谓词本体在 @sshk/shared isExpiresAlive，内核/渲染层同源） */
 export function isTicketAlive(t: ShareRouteTicket | null | undefined): boolean {
-  return Boolean(t && (t.expiresAt === SHARE_PERMANENT_EXPIRES_AT || t.expiresAt > Date.now()))
+  return Boolean(t && isExpiresAlive(t.expiresAt))
 }
 
 /** 由分享链接基址 + 文件相对 root 路径拼「文件直达 URL」。

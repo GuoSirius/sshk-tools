@@ -6,7 +6,6 @@ import { createSafeHost } from '@sshk/ui-kit'
  * 事件订阅类（llm.onDelta）不登记、直通具名方法。
  */
 export const host = createSafeHost({
-  config: { get: C.configGet, set: C.configSet },
   llm: {
     chat: C.llmChat,
     listModels: C.llmListModels,

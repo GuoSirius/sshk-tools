@@ -62,3 +62,10 @@ export const DEFAULT_TOOL_ICON = 'default'
  * 且 JSON.stringify 能精确往返（Infinity 会变 null 破坏 resume）。
  */
 export const SHARE_PERMANENT_EXPIRES_AT = Number.MAX_SAFE_INTEGER
+
+/** 裸 expiresAt 存活判定（J-04 · 2026-11-22 复核）：永久哨兵视为永久有效。
+ *  此前 9+ 处手写同一比较（ShareDialog/ContentsPage/posters/share-util/useFsShareMarks/server 内核），
+ *  useFsShareMarks 曾硬编码 8e15 近似哨兵（漂移风险）——统一收编本谓词（落 shared：内核/渲染层同源，无 ui 反向依赖） */
+export function isExpiresAlive(expiresAt: number, now = Date.now()): boolean {
+  return expiresAt === SHARE_PERMANENT_EXPIRES_AT || expiresAt > now
+}

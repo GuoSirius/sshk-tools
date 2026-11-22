@@ -1,4 +1,4 @@
-import { IPC_CHANNELS as C, SHARE_PERMANENT_EXPIRES_AT, format } from '@sshk/shared'
+import { IPC_CHANNELS as C, isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT, format } from '@sshk/shared'
 import type { ShareRouteInfo } from '@sshk/shared'
 
 /** share-manager 各页面共享的小工具函数（无状态）。 */
@@ -13,10 +13,10 @@ export function ttlLeft(expiresAt: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-/** 路由状态：有效 / 已过期 / 永久 */
+/** 路由状态：有效 / 已过期 / 永久（J-04：存活比较收编 isExpiresAlive 单一谓词） */
 export function routeState(r: ShareRouteInfo): '有效' | '已过期' | '永久' {
   if (r.expiresAt === SHARE_PERMANENT_EXPIRES_AT) return '永久'
-  return r.expiresAt > Date.now() ? '有效' : '已过期'
+  return isExpiresAlive(r.expiresAt) ? '有效' : '已过期'
 }
 
 export function routeStateTag(t: string): 'success' | 'danger' | 'warning' {

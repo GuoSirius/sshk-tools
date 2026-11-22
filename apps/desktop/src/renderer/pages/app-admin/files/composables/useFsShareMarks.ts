@@ -8,6 +8,7 @@ import {
   type ShareRouteInfo,
 } from '@sshk/shared'
 import { buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/share-core/ui'
+import { isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 
 /**
  * ShareHub 分享状态标记（用户 2026-11-19，P4-4 自 FileExplorerPage 拆出）：
@@ -64,7 +65,7 @@ export function useFsShareMarks(deps: {
     const m = shareMarkOf(entry)
     if (m.kind === 'own') {
       const r = m.route!
-      const life = r.expiresAt <= 0 || r.expiresAt > 8e15 ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
+      const life = !isExpiresAlive(r.expiresAt) ? '已过期' : r.expiresAt === SHARE_PERMANENT_EXPIRES_AT ? '永久' : `剩余 ${Math.max(0, Math.round((r.expiresAt - Date.now()) / 3600000))} 小时`
       return `自己的分享（${life}${r.allowIndex !== false && entry.kind === 'dir' ? '，目录树' : ''}）· 点击复制自己的链接`
     }
     if (m.kind === 'inherited') {
