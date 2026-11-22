@@ -53,7 +53,8 @@ const emit = defineEmits<{ 'create-tool': [] }>()
 provideToolId('file-manager')
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
-// 需求（2026-11-22）：一级顺序 = 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）
+// 需求（2026-11-22）：一级顺序 = 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）；
+// 异常/暂不开放的菜单加 hidden: true 即从菜单消失（分组下全部子级隐藏时该分组一并隐藏）
 
 // 菜单图标（需求 2026-11-22：全部菜单项显式带图标， SidebarMenu stroke 线条风格）：
 // - 复用改版前三工具 manifest 的菜单图标（files/contents/profiles/usage/logs/service/mounts/proxies
@@ -140,13 +141,52 @@ const APP_MENUS: ToolMenu[] = [
   },
 ]
 
-/** 各模块默认页（URL 只带模块段 / 页段非法时回退） */
-const MODULE_DEFAULT_PAGE: Record<string, string> = { settings: 'general', files: 'files', models: 'providers', share: 'routes' }
+/**
+ * 可见菜单树（2026-11-22 需求）：hidden 项不渲染；分组下全部子级隐藏时该分组一并隐藏（递归）。
+ * 菜单渲染 / 页面注册表（PAGE_MODULE/PAGE_CHAIN）/ 模块默认页全部从可见树派生——隐藏页直接
+ * 从导航体系消失，深链进入按「指定无效」回落到第一个有效可见页。
+ */
+function filterVisibleMenus(items: ToolMenu[]): ToolMenu[] {
+  const out: ToolMenu[] = []
+  for (const item of items) {
+    if (item.hidden) continue
+    if (item.children?.length) {
+      const children = filterVisibleMenus(item.children)
+      if (!children.length) continue // 全部子级隐藏 → 父级也不显示
+      out.push({ ...item, children })
+    } else {
+      out.push(item)
+    }
+  }
+  return out
+}
+const VISIBLE_MENUS: ToolMenu[] = filterVisibleMenus(APP_MENUS)
 
-// 页面 id → 所属模块（含三级页）+ 祖先分组链（激活页自动展开用）；父分组 id 不入 PAGE_MODULE
+/** 深度优先取首个叶子页（无 children 的项） */
+function firstLeafOf(items: ToolMenu[]): ToolMenu | null {
+  for (const item of items) {
+    if (item.children?.length) {
+      const found = firstLeafOf(item.children)
+      if (found) return found
+    } else {
+      return item
+    }
+  }
+  return null
+}
+
+/** 各模块默认页 = 可见树中该组首个叶子页（URL 只带模块段 / 页段非法时回退；隐藏页自动跳过） */
+const MODULE_DEFAULT_PAGE: Record<string, string> = {}
+for (const group of VISIBLE_MENUS) {
+  const leaf = firstLeafOf(group.children ?? [])
+  if (leaf) MODULE_DEFAULT_PAGE[group.id] = leaf.id
+}
+
+// 页面 id → 所属模块（含三级页）+ 祖先分组链（激活页自动展开用）；父分组 id 不入 PAGE_MODULE。
+// 仅登记可见树：hidden 页不在册 → 深链/点击均按「指定无效」处理，回落首个有效可见页
 const PAGE_MODULE: Record<string, string> = {}
 const PAGE_CHAIN: Record<string, string[]> = {}
-for (const group of APP_MENUS) {
+for (const group of VISIBLE_MENUS) {
   const walk = (items: ToolMenu[], chain: string[]): void => {
     for (const item of items) {
       if (item.children?.length) { walk(item.children, [...chain, item.id]); continue }
@@ -160,8 +200,8 @@ for (const group of APP_MENUS) {
 const route = useRoute()
 const router = useRouter()
 // route.params 变化经 computed 响应式同步 active（watch 显式化与 computed 等价，这里取纯推导）
-// 需求（2026-11-22）：未指定或指定无效时打开第一个有效菜单页（菜单序首组的首个有效页）
-const firstModuleId = APP_MENUS[0]?.id ?? 'settings'
+// 需求（2026-11-22）：未指定或指定无效时打开第一个有效、可见的菜单页（可见树首组的首个叶子页）
+const firstModuleId = VISIBLE_MENUS[0]?.id ?? 'settings'
 const activeModule = computed(() => {
   const m = route.params.module as string | undefined
   return m !== undefined && m in MODULE_DEFAULT_PAGE ? m : firstModuleId
@@ -201,7 +241,7 @@ const activeMeta = computed(() => PAGE_META[activePage.value] ?? { title: '应�
 //    让「指定的菜单及页面」可见，其余分组不受影响；收起态窄轨显图标 + hover 就地展开
 //    与工具侧栏（ToolShellLayout）共用同一实现（useSidebarNav）──
 const collapsed = ref(false)
-const { hover: navHover, openIds, expanded: navExpanded, onEnter: onSideEnter, onLeave: onSideLeave, toggleGroup } = useSidebarNav({ menus: () => APP_MENUS, collapsed })
+const { hover: navHover, openIds, expanded: navExpanded, onEnter: onSideEnter, onLeave: onSideLeave, toggleGroup } = useSidebarNav({ menus: () => VISIBLE_MENUS, collapsed })
 watch(activePage, (page) => {
   const chain = PAGE_CHAIN[page]
   if (!chain?.length || chain.every((id) => openIds.value.has(id))) return
@@ -227,7 +267,7 @@ function selectItem(pageId: string): void {
       >
         <div class="admin-side-menu">
           <SidebarMenu
-            :items="APP_MENUS"
+            :items="VISIBLE_MENUS"
             :active="activePage"
             :open-ids="openIds"
             :show-children="navExpanded"
