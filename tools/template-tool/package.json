@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "sshk-tools 工具包开发模板（内建版）：演示全部 7 项宿主能力与最高权限",
+  "description": "sshk-tools 工具包开发模板（内建版）：演示全部 6 项宿主能力与最高权限（本机 OCR 已移除）",
   "exports": {
     ".": "./src/index.ts",
     "./main": "./src/main/index.ts",

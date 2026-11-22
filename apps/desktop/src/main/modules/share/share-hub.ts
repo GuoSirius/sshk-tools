@@ -106,6 +106,8 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   const stateFile = join(opts.userDataDir, 'hub-state.json')
   migrateShareStateToolId(stateFile)
   const hub = new ShareHub(stateFile)
+  // 2026-11-22 复核：hub-state.json 落盘失败此前全程静默（写坏=重启后分享路由全丢），接 logger 留痕
+  hub.setPersistErrorHandler((msg) => logger.error('shareHub', msg))
   if (opts.contentResolver) hub.registerContentResolver(opts.contentResolver)
   if (opts.contentListResolver) hub.registerContentListResolver(opts.contentListResolver)
 
@@ -271,9 +273,12 @@ export function createShareHubHost(cfg: ConfigService, opts: {
         void startHub()
       }
     })
-    // 系统睡眠恢复：自动 restart（保留路由与 token）
+    // 系统睡眠恢复：自动 restart（保留路由与 token）。失败必须留痕——restart = stop→start，
+    // start 失败则分享服务静默停摆（睡眠唤醒后用户无感知），下次手动重启才恢复
     powerMonitor.on('resume', () => {
-      if (hub.running) void hub.restart().catch(() => { /* 端口短暂不可用不影响后续 */ })
+      if (hub.running) {
+        void hub.restart().catch((err) => logger.error('shareHub', `睡眠恢复重启失败（分享服务已停止，请手动重启）：${(err as Error).message}`))
+      }
     })
   }
 

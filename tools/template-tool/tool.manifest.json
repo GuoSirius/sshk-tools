@@ -171,8 +171,7 @@
         "chat",
         "listProviders",
         "chatByProvider",
-        "listModelsByProvider",
-        "runLocalOcr"
+        "listModelsByProvider"
       ]
     },
     "sandbox": "main",

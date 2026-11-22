@@ -63,7 +63,7 @@ export class ShareHub {
   private logs = new LogBuffer()
   private cleanTimer: ReturnType<typeof setInterval> | null = null
   /** 状态持久化（hub-state.json，详见 state-file.ts） */
-  private readonly persist: StateFileStore
+  private persist: StateFileStore
   /** 用户配置的展示 IP；'' = 每次生成链接时按 §4.3 自动优选 */
   private preferredIp = ''
   /** 端口回落提示回调（固定端口被占时由宿主 ElMessage 告警） */
@@ -77,8 +77,16 @@ export class ShareHub {
   /** 内容列表页入口标记（entry 值），区别于单篇 contentId */
   static readonly CONTENT_LIST_ENTRY = '__list__'
 
+  private readonly stateFilePath: string
+
   constructor(stateFile: string) {
+    this.stateFilePath = stateFile
     this.persist = new StateFileStore(stateFile, () => [...this.routes.values()])
+  }
+
+  /** 注入状态落盘失败回调（宿主接 logger）：hub-state.json 写失败/写坏曾全程静默（2026-11-22 复核） */
+  setPersistErrorHandler(fn: (msg: string) => void): void {
+    this.persist = new StateFileStore(this.stateFilePath, () => [...this.routes.values()], fn)
   }
 
   /** 注入宿主回调：固定端口被占回落时告警 */
@@ -516,8 +524,23 @@ export class ShareHub {
       if (range) {
         const m = /^bytes=(\d*)-(\d*)$/.exec(range)
         if (m) {
-          const start = m[1] ? parseInt(m[1], 10) : 0
-          const end = m[2] ? parseInt(m[2], 10) : st.size - 1
+          let start: number
+          let end: number
+          if (m[1] === '' && m[2] !== '') {
+            // F-09（2026-11-22 复核）：RFC 7233 suffix-range `bytes=-N` = 末尾 N 字节——
+            // 此前误当头部 N 字节（start=0/end=N）；bytes=-0 不可满足，回 416
+            const n = parseInt(m[2] ?? '', 10)
+            if (n === 0 || st.size === 0) {
+              res.writeHead(416, { 'content-range': `bytes */${st.size}` }).end()
+              this.logs.push(clientIp, routeId, rel, 416)
+              return
+            }
+            start = Math.max(0, st.size - n)
+            end = st.size - 1
+          } else {
+            start = m[1] ? parseInt(m[1], 10) : 0
+            end = m[2] ? parseInt(m[2], 10) : st.size - 1
+          }
           if (start >= 0 && end >= start && start < st.size) {
             const safeEnd = Math.min(end, st.size - 1)
             res.writeHead(206, {

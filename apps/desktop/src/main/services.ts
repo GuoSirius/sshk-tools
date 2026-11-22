@@ -86,7 +86,6 @@ export function setupServices(): AppServices {
   /** 同步读缓存（启动预载后恒可用）；写路径必须走 secretsStore.set */
   function currentSecrets(): Record<string, string> { return secretsStore.snapshot() }
 
-  /** 本机 OCR：无 shell、固定超时、限制输出，避免外部命令失控 */
   // O6/N5（P3-2 第一刀）：LLM 域服务拆至 llm-service.ts，密钥仍由 SecretsStore 单一收口（快照只读注入）
   const llm = createLlmService({ config, repository, currentSecrets })
 

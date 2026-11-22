@@ -1,8 +1,9 @@
 // 模板工具外部 main：编译后 ESM，零 import。默认导出 (deps) => void（外部契约，单参）。
 // 与内置版 tools/template-tool/src/main/index.ts 逻辑完全一致，仅入口签名不同：
 //   builtin -> (ipcMain, deps)        external -> (deps)（deps.ipcMain 内嵌）
-// 这里集中演示「工具包可能拥有的全部 7 项宿主能力」，每个能力注册一个通道，
+// 这里集中演示「工具包可能拥有的全部 6 项宿主能力」，每个能力注册一个通道，
 // 由宿主注入的 deps.host 落地（密钥永不下发渲染层）。
+// CF-5/P7-1：本机 OCR（runLocalOcr）能力已彻底移除，宿主不再注入。
 // 通道前缀用宿主注入的 deps.toolId（源自 manifest.id），不在源码写死 id。
 
 export default (deps) => {
@@ -31,7 +32,4 @@ export default (deps) => {
 
   // 6) 读取工具专属密钥
   deps.ipcMain.handle(ch('getSecret'), (_e, name) => host.getToolSecret(deps.toolId, name))
-
-  // 7) 本机 OCR（无 shell、带超时，stdout 作为识别文本返回）
-  deps.ipcMain.handle(ch('runOcr'), async (_e, req) => host.runLocalOcr(req))
 }

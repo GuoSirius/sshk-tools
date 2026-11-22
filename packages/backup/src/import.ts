@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { BACKUP_COLLECTIONS, resolveSafe, type BaseEntity, type CollectionName, type Repository } from '@sshk/repository'
@@ -146,14 +146,22 @@ export async function importBackup(opts: ImportOptions): Promise<ImportResult> {
     await opts.repository.replaceCollection(name, docs)
   }
 
-  // ③ settings：剔除机器相关 outputDir
+  // ③ settings：剔除机器相关 outputDir。2026-11-22 复核：tmp+rename 原子写——
+  // 此前直接覆写，导入中断/崩溃留半截文件，下次启动静默回退默认设置
   const app = { ...parsed.settingsApp }
   if ('outputDir' in app) delete app['outputDir']
   const settings = {
     app,
     tools: parsed.settingsTools,
   } as Record<string, Record<string, unknown>>
-  writeFileSync(opts.settingsPath, JSON.stringify(settings, null, 2), 'utf8')
+  const settingsTmp = `${opts.settingsPath}.tmp`
+  try {
+    writeFileSync(settingsTmp, JSON.stringify(settings, null, 2), 'utf8')
+    renameSync(settingsTmp, opts.settingsPath)
+  } catch (err) {
+    try { rmSync(settingsTmp, { force: true }) } catch { /* 忽略 */ }
+    throw err
+  }
 
   // ④ secrets（D18 §4.3 ⑤⑥）：解密结果仅内存传递，主进程 safeStorage 加密落盘
   let secretsRestored = 0

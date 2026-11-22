@@ -27,6 +27,7 @@ import { migrateLegacyUserData, migrateLegacyVisionConfig, seedDefaultProviders 
 import { installLocalResHandler } from './local-res'
 import { killUtilityTools } from './plugins'
 import { logger } from './logger'
+import { purgeExpiredUsageOnStart } from './usage'
 import { installAppProtocolHandler, registerPrivilegedSchemes } from './renderer-protocol'
 import { createTray, getTray } from './tray'
 import { setupAutoUpdate } from './updater'
@@ -68,14 +69,15 @@ let shareHubGuards: ShareHubGuards | undefined
 /** plans/10：传输队列运行时引用（ipc/fs 创建后回写；before-quit 落盘用） */
 let fsRuntimeRef: FsRuntime | null = null
 
-/** 退出清理（window.ts before-quit 回调）：沙箱回收/分享服务落盘/NeDB 压缩/传输队列落盘 */
-function onBeforeQuit(): void {
+/** 退出清理（window.ts before-quit 回调，await 完成后才真正退出）：沙箱回收/分享服务落盘/NeDB 压缩/传输队列落盘 */
+async function onBeforeQuit(): Promise<void> {
   // 退出前回收所有 utilityProcess 沙箱（外部包 main 子进程）
   killUtilityTools()
   // 定时发布轮询停止（F-01：定时器纳入 app 生命周期）
   stopContentScheduler()
-  // ShareHub：停止监听 + 未过期路由落盘（plans/09）
-  if (shareHubHost) void shareHubHost.dispose()
+  // ShareHub：停止监听 + 未过期路由落盘（plans/09）。2026-11-22 复核：await 落盘完成再退出，
+  // 此前 fire-and-forget 可能被退出中断丢最后 ≤500ms 状态
+  if (shareHubHost) await shareHubHost.dispose()
   // H6：退出兜底压缩（fire-and-forget；NeDB compact 原子替换，中断安全）
   void compactDatabase(services, 'quit')
   // plans/10：传输队列同步落盘（未完结 upload/download 持久化，重启恢复为 paused）
@@ -140,6 +142,8 @@ void app.whenReady().then(async () => {
   // F-01（2026-11-22 复核）：启动即拉起定时发布轮询——扫描所有到期 scheduled 一次性翻 published，
   // 此前仅保存定时内容时启动，重启后定时任务永久失效（静默不发布）
   startContentScheduler(services.repository)
+  // 2026-11-22 复核：用量明细「保留 90 天」此前仅手动清理兑现，启动时补齐过期清理
+  purgeExpiredUsageOnStart(services.repository)
   installLocalResHandler(services.config)
   // app:// 渲染层静态文件服务（打包版 / dev 显式开启时替代 loadFile 的 file://）
   installAppProtocolHandler(path.join(here, '../renderer'))

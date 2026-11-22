@@ -125,7 +125,7 @@ export interface BadgeIpcDeps {
   toolId: string
   repository: Repository
   outputRoot: string
-  /** 宿主能力（密钥 / 云端视觉 / 本机 OCR）；可选便于单测用最小依赖构造 */
+  /** 宿主能力（密钥 / 云端视觉）；可选便于单测用最小依赖构造（本机 OCR 已移除） */
   host?: ToolHostCapabilities
   /** 应用配置（只读）；N4 回滚快照开关（app.outputSnapshot）读取用 */
   config?: { get(key: string): unknown }

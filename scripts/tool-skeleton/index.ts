@@ -9,10 +9,10 @@ import type { ToolConfigFieldType, ToolConfigGroup, ToolConfigPage } from '@sshk
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/
 const MENU_ID_RE = /^[a-z][a-z0-9-]{0,31}$/
 
-/** 7 项宿主能力（与 ToolManifestDialog 一致） */
+/** 6 项宿主能力（CF-5/P7-1 本机 OCR 已移除；与 tool-form/types CAPABILITIES_LIST 一致） */
 export const CREATE_CAPABILITIES = [
   'getToolSecret', 'setToolSecret', 'chat', 'listProviders',
-  'chatByProvider', 'listModelsByProvider', 'runLocalOcr',
+  'chatByProvider', 'listModelsByProvider',
 ] as const
 
 export interface CreateToolRequest {

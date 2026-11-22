@@ -4,7 +4,7 @@ import type { ToolHostCapabilities } from '@sshk/shared'
 /**
  * 模板工具主进程入口（builtin 契约：默认导出 (ipcMain, deps) => void）。
  *
- * 这里集中演示「工具包可能拥有的全部 7 项宿主能力」：
+ * 这里集中演示「工具包可能拥有的全部 6 项宿主能力」（CF-5/P7-1 本机 OCR 已移除）：
  *   getToolSecret / setToolSecret / chat / listProviders /
  *   chatByProvider / listModelsByProvider
  * 每个能力都注册一个 IPC 通道，渲染层经 window.api.ipc.invoke 调用，

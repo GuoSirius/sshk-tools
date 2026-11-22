@@ -1,7 +1,7 @@
 {
   "id": "template-tool",
   "name": "工具包开发模板（全能力示例·外部包）",
-  "description": "运行时外部包（.sshktool）的完整形态示例：sandbox=main + 全部 7 项宿主能力 + 完整 ipcAllowlist + 签名。零 import 渲染层（dist/page.js）与内置版完全同构。",
+  "description": "运行时外部包（.sshktool）的完整形态示例：sandbox=main + 全部 6 项宿主能力 + 完整 ipcAllowlist + 签名。零 import 渲染层（dist/page.js）与内置版完全同构。本机 OCR 能力已随 CF-5/P7-1 移除。",
   "category": "开发",
   "tags": [
     "示例",
@@ -34,8 +34,7 @@
       "template-tool:chatByProvider",
       "template-tool:listModelsByProvider",
       "template-tool:setSecret",
-      "template-tool:getSecret",
-      "template-tool:runOcr"
+      "template-tool:getSecret"
     ]
   },
   "package": {
@@ -65,7 +64,7 @@
     "signature": {
       "algorithm": "ed25519",
       "keyId": "cb2d9e5e519e57321b3959846f0684b9",
-      "value": "dCNyAIfp9M/xJNBAWkiLaAcQXoHCkjXCnp4Z6Ov8Yfqd2ipcU1NlJTCPj/8/s/GFIEuCqbvlPH2AkuhKuJi1Dw=="
+      "value": "bakK0q0S8ug9TqGETQSZyguagJsVsiI8TM0ZBw3P8AINey9ZqoPwu2vPdS9+JHxVMFKoNzlaEinAcuvjJNCQDQ=="
     }
   },
   "dependsOn": [],
@@ -126,5 +125,6 @@
       "defaultProviderId": "",
       "systemPrompt": "你是一个乐于助人的助手。",
       "temperature": 0.7
-    }  }
+    }
+  }
 }

@@ -268,7 +268,14 @@ export class FsTransferEngine {
 
   add(inputs: FsTransferInput[], resolve: (profileId: string) => RuntimeResolved): string[] {
     const ids: string[] = []
-    for (const input of inputs.slice(0, MAX_TASKS)) {
+    // F-07（2026-11-22 复核）：总量上限 = 现存任务 + 本次入队，超出拒绝并告警——
+    // 此前只对单次入参 slice(0, MAX_TASKS)，多次 add 可无限增长撑爆队列
+    const capacity = Math.max(0, MAX_TASKS - this.tasks.size)
+    const accepted = inputs.slice(0, capacity)
+    if (accepted.length < inputs.length) {
+      logger.warn('upload', `传输队列已达上限 ${MAX_TASKS}，本次拒绝 ${inputs.length - accepted.length} 个任务`)
+    }
+    for (const input of accepted) {
       this.seq += 1
       const id = `fsx-${Date.now().toString(36)}-${this.seq}`
       const r = resolve(input.profileId)
@@ -313,6 +320,9 @@ export class FsTransferEngine {
         this.push(t)
       }
     }
+    // F-08（2026-11-22 复核）：主动唤醒分片闸门等待者，让已暂停/取消的等待任务立即让位，
+    // 不必等其他持槽任务跑到检查点才惰性醒来
+    this.flushMultipartWaiters()
     return true
   }
 
@@ -342,6 +352,8 @@ export class FsTransferEngine {
       else if (t.status === 'running') this.canceled.add(id)
       void this.cleanupResumeArtifacts(id)
     }
+    // F-08：同 pause——等待者里的取消任务立即让位
+    this.flushMultipartWaiters()
     this.schedulePersist()
     this.pump()
     return true
@@ -372,6 +384,9 @@ export class FsTransferEngine {
     for (const id of ids) {
       const t = this.tasks.get(id)
       if (!t || t.status === 'running') continue
+      // F-06（2026-11-22 复核）：移除即清理续传产物（服务端 uploadId / 本地检查点 / 下载临时文件），
+      // 此前只删内存态，paused 可续传任务移除后产物永久遗留
+      void this.cleanupResumeArtifacts(id)
       this.tasks.delete(id)
       this.samples.delete(id)
       this.canceled.delete(id)
@@ -409,6 +424,8 @@ export class FsTransferEngine {
     let removed = 0
     for (const [id, t] of [...this.tasks.entries()]) {
       if (t.status === 'queued' || t.status === 'running' || t.status === 'paused') continue
+      // F-06：完结任务（failed/canceled 可能残留检查点/临时文件）一并清理续传产物
+      void this.cleanupResumeArtifacts(id)
       this.tasks.delete(id)
       this.samples.delete(id)
       removed++
@@ -603,15 +620,17 @@ export class FsTransferEngine {
     }
   }
 
+  /** 唤醒全部分片闸门等待者——被唤醒者各自重查闸门/暂停/取消状态，抢不到的重新入队。
+   *  原实现只 shift 一个：若被唤醒者已暂停/取消（静默让位不占槽），这次唤醒被浪费，
+   *  队首之后的 waiter 全部滞留（有空槽却无人前进）（CR-39 P1-4） */
+  private flushMultipartWaiters(): void {
+    const waiters = [...this.multipartWaiters]
+    this.multipartWaiters.length = 0
+    for (const w of waiters) w()
+  }
+
   private releaseMultipartSlot(t: FsTransferTask): void {
-    if (this.multipartGate.delete(t.id)) {
-      // CR-39（P1-4）：唤醒全部等待者——被唤醒者各自重查闸门/取消状态，抢不到的重新入队。
-      // 原实现只 shift 一个：若被唤醒者已暂停/取消（静默让位不占槽），这次唤醒被浪费，
-      // 队首之后的 waiter 全部滞留（有空槽却无人前进）。
-      const waiters = [...this.multipartWaiters]
-      this.multipartWaiters.length = 0
-      for (const w of waiters) w()
-    }
+    if (this.multipartGate.delete(t.id)) this.flushMultipartWaiters()
   }
 
   private async runUploadMultipart(
@@ -878,9 +897,12 @@ export class FsTransferEngine {
     }
     this.overwrite.delete(t.id)
     const tmpFile = join(app.getPath('temp'), `fsx-${t.id}.part`)
+    // F-04（2026-11-22 复核）：两阶段按 50/50 归一化进度——此前 download sample(n) + write
+    // sample(size+n) 双计，进度先冲 200% 再跳回 100%，speed 采样同步放大
+    const size = stat.size ?? 0
     try {
-      await srcDriver.download(src, tmpFile, (n) => this.sample(t, n))
-      await destDriver.write(dest, createReadStream(tmpFile), (n) => this.sample(t, (stat.size ?? 0) + n))
+      await srcDriver.download(src, tmpFile, (n) => this.sample(t, Math.min(size, n / 2)))
+      await destDriver.write(dest, createReadStream(tmpFile), (n) => this.sample(t, Math.min(size, size / 2 + n / 2)))
       // 跨通道移动（项20）：目标写成功后删源文件；删除失败仅告警，不回滚已完成的目标写入
       if (t.moveSource) {
         try { await srcDriver.rmFile(src) }

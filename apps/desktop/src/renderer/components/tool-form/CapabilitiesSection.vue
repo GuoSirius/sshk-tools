@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 能力与权限（plans/02 T1，两壳共用）：7 项宿主能力复选 + 宿主通道白名单 + 访问门槛。
+ * 能力与权限（plans/02 T1，两壳共用）：6 项宿主能力复选 + 宿主通道白名单 + 访问门槛（本机 OCR 已移除）。
  * 数组字段就地变更；requiredGrant 经 defineModel 回传。
  */
 import { FormHint } from '@sshk/ui-kit'

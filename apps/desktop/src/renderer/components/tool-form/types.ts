@@ -9,7 +9,7 @@ export interface FieldRow { key: string; label: string; type: ToolConfigFieldTyp
 export interface GroupRow { id: string; label: string; fields: FieldRow[] }
 export interface PageRow { id: string; label: string; groups: string[] }
 
-/** 两壳共用的 7 项宿主能力（与 scripts/tool-skeleton CREATE_CAPABILITIES 一致，单一事实源在此） */
+/** 两壳共用的 6 项宿主能力（CF-5/P7-1 本机 OCR 已移除；与 scripts/tool-skeleton CREATE_CAPABILITIES 一致） */
 export const CAPABILITIES_LIST = [
   'getToolSecret', 'setToolSecret', 'chat', 'listProviders',
   'chatByProvider', 'listModelsByProvider',

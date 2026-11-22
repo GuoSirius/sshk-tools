@@ -17,10 +17,7 @@
     "main": "src/main/index.ts",
     "renderer": "src/renderer/EdmStudioPage.vue",
     "channels": [
-      "edm:api",
-      "edm:listMails",
-      "edm:generate",
-      "edm:regenerate"
+      "edm:api"
     ]
   },
   "dependsOn": [],

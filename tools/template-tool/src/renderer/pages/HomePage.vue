@@ -53,7 +53,7 @@ onMounted(() => { void loadProviders() })
 
 const providerOptions = computed(() => providers.value.map((p) => ({ value: p._id, label: `${p.name}（${p.model}）${p.hasApiKey ? ' ✓key' : ''}` })))
 
-// ── 左侧导航：7 项能力 + 调用日志 ──
+// ── 左侧导航：6 项能力 + 调用日志（CF-5/P7-1 本机 OCR 已移除）──
 const CAPS = [
   { id: 'providers', label: '列出 Provider', api: 'listProviders' },
   { id: 'chat-direct', label: '直连对话', api: 'chat' },
@@ -68,7 +68,7 @@ const activeCap = ref<string>('providers')
 <template>
   <div class="cap-page">
     <el-alert type="info" :closable="false" show-icon class="cap-alert">
-      工具包可声明的全部 7 项宿主能力演示；调用经
+      工具包可声明的全部 6 项宿主能力演示（本机 OCR 已移除）；调用经
       <code>window.api.ipc.invoke('&lt;toolId&gt;:&lt;capability&gt;')</code> 转发主进程，密钥不落地渲染层。
     </el-alert>
 
@@ -140,8 +140,6 @@ const activeCap = ref<string>('providers')
         <el-button type="info" @click="getSecret">读取回显</el-button>
         <pre class="result">{{ secretReadback || '（回显将显示在此）' }}</pre>
       </template>
-
-      <!-- ⑦ OCR -->
 
       <!-- 调用日志 -->
       <template v-else>

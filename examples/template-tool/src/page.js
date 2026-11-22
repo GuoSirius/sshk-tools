@@ -1,6 +1,7 @@
 // 模板工具外部渲染层：编译后 ESM，零 import。默认导出 Vue 组件对象（setup + render）。
 // 通过 window.SSHK 取全部 Vue API，通过 window.api 调用主进程（与内置版完全同构）。
-// 演示「工具包全部 7 项宿主能力」——外部包与内置包开发模式零差异（需求 3）。
+// 演示「工具包全部 6 项宿主能力」——外部包与内置包开发模式零差异（需求 3）。
+// CF-5/P7-1：本机 OCR（runLocalOcr）能力已彻底移除。
 export default {
   props: ['toolId', 'menu'],
   setup(props) {
@@ -16,9 +17,6 @@ export default {
     const secretName = ref('demo-key')
     const secretValue = ref('s3cr3t-123')
     const secretReadback = ref('')
-    const ocrCmd = ref('paddleocr')
-    const ocrImg = ref('')
-    const ocrResult = ref('')
     const logs = reactive([])
     const config = ref(null)
 
@@ -67,17 +65,11 @@ export default {
       const r = await call('getSecret', secretName.value)
       if (r !== undefined) secretReadback.value = r
     }
-    async function runOcr() {
-      if (!ocrCmd.value || !ocrImg.value) return
-      const r = await call('runOcr', { command: ocrCmd.value, args: ['predict', '--image_dir', ocrImg.value], imagePath: ocrImg.value, timeoutMs: 30000 })
-      if (r !== undefined) ocrResult.value = r
-    }
-
     const providerOpts = computed(() => providers.value.map((p) => `${p.name}（${p.model}）${p.hasApiKey ? ' ✓' : ''}`))
     return {
       providers, providerId, chatInput, chatOutput, models, secretName, secretValue, secretReadback,
-      ocrCmd, ocrImg, ocrResult, logs, config, providerOpts,
-      loadProviders, chatByProvider, loadModels, setSecret, getSecret, runOcr,
+      logs, config, providerOpts,
+      loadProviders, chatByProvider, loadModels, setSecret, getSecret,
     }
   },
 
@@ -127,12 +119,6 @@ export default {
         btn('写入 safeStorage', '#67c23a', s.setSecret),
         btn('读取回显', '#909399', s.getSecret),
         pre(s.secretReadback),
-      ]),
-      card('⑦ 本机 OCR（runLocalOcr）', [
-        input('ocrCmd', 'OCR 命令'),
-        input('ocrImg', '图片绝对路径'),
-        btn('执行识别', '#2f6bff', s.runOcr),
-        pre(s.ocrResult),
       ]),
       card('调用日志', s.logs.map((l) => h('div', {
         style: 'font-size:12px;padding:3px 0;border-bottom:1px dashed #ebeef5',

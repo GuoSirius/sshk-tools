@@ -91,3 +91,13 @@ export async function clearUsage(repository: Repository, keepDays = 0): Promise<
   const cutoff = format(new Date(Date.now() - keepDays * 86_400_000), 'YYYY-MM-DDTHH:mm:ss')
   return repository.removeWhere('usage', { createdAt: { $lt: cutoff } })
 }
+
+/** 明细保留天数（头注释承诺「保留 90 天」，此前只有设置页手动清理时执行——承诺未兑现） */
+const USAGE_RETENTION_DAYS = 90
+
+/** 启动清理（2026-11-22 复核）：按保留天数删除过期明细，兑现「明细保留 90 天」 */
+export function purgeExpiredUsageOnStart(repository: Repository): void {
+  void clearUsage(repository, USAGE_RETENTION_DAYS)
+    .then((n) => { if (n > 0) logger.info('usage', `启动清理：已删除 ${n} 条超过 ${USAGE_RETENTION_DAYS} 天的用量明细`) })
+    .catch((err: unknown) => logger.warn('usage', `启动清理用量明细失败：${(err as Error).message}`))
+}

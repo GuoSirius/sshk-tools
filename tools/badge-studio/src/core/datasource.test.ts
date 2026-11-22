@@ -40,7 +40,7 @@ describe('数据源解析（D10 四种）', () => {
   })
 })
 
-describe('图片识别结果归一（云端视觉 / 本机 PaddleOCR 共用）', () => {
+describe('图片识别结果归一（云端视觉模型）', () => {
   it('带 Markdown 代码块的 JSON 数组也能解析出标准 StatRow', () => {
     const text = '识别结果如下：\n```json\n[{"url":"https://a.com/p","clicks":7,"totalClicks":20}]\n```'
     const warnings: string[] = []
@@ -50,7 +50,7 @@ describe('图片识别结果归一（云端视觉 / 本机 PaddleOCR 共用）',
     expect(toCsvText(rows)).toContain('https://a.com/p,7,20')
   })
 
-  it('PaddleOCR 适配器输出 CSV 时走同一套清洗规则', () => {
+  it('CSV 文本走同一套清洗规则', () => {
     const rows = parseVisionResult('url,clicks,totalClicks\nhttps://b.com,3,9\n')
     expect(rows).toEqual([{ url: 'https://b.com', clicks: 3, totalClicks: 9 }])
   })

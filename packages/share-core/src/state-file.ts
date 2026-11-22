@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, mkdirSync } from 'node:fs'
-import { writeFile, unlink } from 'node:fs/promises'
+import { existsSync, readFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ShareRoute } from './routes'
@@ -24,6 +24,8 @@ export class StateFileStore {
     private readonly stateFile: string,
     /** 路由快照 getter：flush 时取内核当前路由表（内存态是权威） */
     private readonly getRoutes: () => ShareRoute[],
+    /** 落盘失败回调（宿主接 logger）：此前静默吞错，崩溃/重启后路由全丢且无痕迹 */
+    private readonly onError?: (msg: string) => void,
   ) {}
 
   /** 从状态文件恢复未过期路由（已过期剔除并从文件移除）。
@@ -73,10 +75,19 @@ export class StateFileStore {
     try {
       const dir = dirname(this.stateFile)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      const state: PersistedHub = { version: 1, routes: [...this.getRoutes()] }
-      await writeFile(this.stateFile, JSON.stringify(state), 'utf8')
-    } catch {
-      // 落盘失败不影响当次分享（内存态仍是权威）
+      // 2026-11-22 复核：tmp+renameSync 原子写（此前直接覆写，非原子 + 失败静默——
+      // 写坏 → resume() 返回 null → 重启全部分享路由丢失且无提示）
+      const tmp = `${this.stateFile}.tmp`
+      try {
+        writeFileSync(tmp, JSON.stringify({ version: 1, routes: [...this.getRoutes()] } satisfies PersistedHub), 'utf8')
+        renameSync(tmp, this.stateFile)
+      } catch (err) {
+        try { rmSync(tmp, { force: true }) } catch { /* 忽略 */ }
+        throw err
+      }
+    } catch (err) {
+      // 落盘失败不影响当次分享（内存态仍是权威），但必须留痕
+      this.onError?.(`hub-state.json 落盘失败（重启后分享路由可能丢失）：${(err as Error).message}`)
     }
   }
 

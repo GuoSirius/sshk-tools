@@ -115,10 +115,16 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     return { html: stages.assembled }
   })
 
-  handlers.set('mail:readFinal', async (data: Payload) => {
+  // F-03（2026-11-22 复核）：三形态产物读取——requirement.txt 明确要求「复制渲染、juice、压缩后的
+  // 最终代码」，此前 mail:readFinal 只读 final 且渲染层零调用（死代码、复制代码功能整体缺失）。
+  // form = assembled（组合后原始 HTML）/ inlined（内联资源）/ final（juice 压缩）
+  handlers.set('mail:readOutput', async (data: Payload) => {
     const mail = await repo.get<Mail>('mails', str(data, '_id'))
-    if (!mail?.outputs.final) throw new AppError('尚未生成产物')
-    return readOutput(ctx.outputRoot, mail.outputs.final)
+    if (!mail) throw new AppError('邮件不存在')
+    const form = String(data['form'] ?? 'final')
+    const rel = form === 'assembled' ? mail.outputs.assembled : form === 'inlined' ? mail.outputs.inlined : mail.outputs.final
+    if (!rel) throw new AppError('尚未生成产物')
+    return readOutput(ctx.outputRoot, rel)
   })
 
   // ── 导出（约定：单封 .html(final) / 批量 .zip 含各形态 assembled/inlined/final，§6.3） ──

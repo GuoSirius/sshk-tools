@@ -140,7 +140,7 @@ export function rowsToCsv(rows: StatRow[]): string {
   return [header.join(','), ...body].join('\n')
 }
 
-/** 表格数据源统一入口（D10）；image 走 vision.ts 的云端模型 / 本机 OCR，
+/** 表格数据源统一入口（D10）；image 走 vision.ts 的云端视觉模型（本机 OCR 已移除），
  *  仍可人工粘贴校对文本。xlsx 动态导入：本模块同时被渲染层引用，不能顶层引入 Node 侧依赖 */
 export async function parseDatasource(kind: 'xlsx' | 'csv' | 'json' | 'image', content: Buffer | string): Promise<ParsedDatasource> {
   const warnings: string[] = []

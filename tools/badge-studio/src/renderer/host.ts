@@ -19,7 +19,6 @@ export const host = createSafeHost({
   upload: { batch: C.uploadBatch },
   badge: {
     generate: C.badgeGenerate,
-    regenerate: C.badgeRegenerate,
     sourceState: C.badgeSourceState,
     parseDatasource: C.badgeParseDatasource,
     readHtml: C.badgeReadHtml,

@@ -21,7 +21,7 @@
 | **★★ 第三轮全仓彻底 Code Review 报告（2026-11-22）** | `06-codereview/2026-11-22-第三轮全仓彻底CodeReview报告.md` | **审查完成，待逐项拍板（P0~P9 整改后首轮复查）** | 19 维度分 5 组并行深读 + 主审逐条回源码复核；40 条发现（🔴0/🟡22/💭18）。核心：①功能缺陷 4（定时发布重启失效/密钥写静默吞/EDM 复制代码缺失/跨通道进度 200%）+ 健壮性 2（secrets 非原子写/续传产物遗留）；②**PaddleOCR 删除未贯穿**系统性一致性问题（docs+代码声明 14 处）；③规范债（.vue 文件名口径冲突/store.ts 未落地/三工具结构差异/README 断链）；④dev 判据高度统一无违反、三能力归属 18 项裁决 13 维持 5 调整。含大文件 Top20 + 页面规范清单 + R1~R8 处置批次 + 待拍板 Q-1~Q-6。门禁基线 466 测试全绿 |
 | **需求沟通记录（多轮合并归档）** | `01-requirements/需求沟通记录.md` | 已合并归档（原 4 份逐轮文档已删） | 需求 0~7 + 术语表 + D10 输入组合 + 逐轮决策浓缩 + 图证登记 + 开放问题；按状态分组 |
 | **技术选型与任务拆分 v0.4** | `02-architecture/2026-11-12-技术选型与任务拆分.md` | 历史设计稿（**门禁强依赖，勿删**） | 选型对比、四层 UI、导入导出、目录迁移、T1~T10、M0~M7、决策清单、风险；决策以 §四看板为准，实现以代码为准 |
-| **工具插件化与需求台账（长期维护）** | `02-architecture/工具插件化需求台账.md` | **持续演进（D37~D50 + 51.x / 52.x / 53~56 批次）** | 穿插需求台账、工具包契约、宿主能力、Badge 图片识别 / PaddleOCR、IDE 红波浪线、运行时插件路线图、依赖选型反转与 UI 视觉铁律、N14~N18 设置/工具开发体验 |
+| **工具插件化与需求台账（长期维护）** | `02-architecture/工具插件化需求台账.md` | **持续演进（D37~D50 + 51.x / 52.x / 53~56 批次）** | 穿插需求台账、工具包契约、宿主能力、Badge 云端视觉识别（PaddleOCR 已移除）、IDE 红波浪线、运行时插件路线图、依赖选型反转与 UI 视觉铁律、N14~N18 设置/工具开发体验 |
 | **★ 遗留事项与收尾总账** | `02-architecture/遗留事项与收尾总账.md` | **收尾阶段唯一入口（v1.1：77 条反馈已逐条回写）** | 按用户 6 方向归集全部未完成/待验证/待确认项，逐条标状态+来源；收尾推进以本账为准 |
 | **★ 开发计划总览** | `plans/00-规划总览.md` | **规划待用户确认** | 收尾轮 77 条反馈的规划索引：疑问解答速查、7 份分类计划、B1-B5 批次排期建议 |
 | **★ 全仓 Code Review 与重构建议（2026-11-20）** | `06-codereview/2026-11-20-全仓CodeReview与重构建议.md` | **已敲板（2026-11-21，总计划 §2.1）** | 19 项指令全面审查：8H/16M/12L + dev 判据双源 / FsRuntime 越界 / 三能力配置入口 / 时间与类型真相源等核心发现；TOP 必修 H1~H8 + 批次排期 + 待拍板 P1~P10 |
@@ -141,15 +141,15 @@ docs/
 | **D34** | **访问密钥与权限管控** | 明文只进 safeStorage，settings 仅存 sha256 摘要；工具可设「需访问密钥」（grant `tools.restricted`），未配置时不出现在桌面；grants 结构预留后续登录 / 远端校验 |
 | **D35** | **工具图标与元数据** | 卡片名称 / 描述 / 分类 / 图标 = 注册表默认 + `app.toolOverrides.<id>` 覆盖；内置 edm / badge / model 三张独立 SVG；未配置、非法协议、无效 key 或加载失败一律回退系统默认四色图标 |
 | **D36** | **应用级菜单扩展性** | 顶部栏只留高频项 + 「更多」下拉 + 「设置」；设置抽屉采用左侧分组导航（常规 / 工具与权限 / 系统与数据 / 关于），后期新增菜单只加分组，不挤占顶部栏 |
-| **D37** | **依赖方向反转** | **应用不强依赖工具，工具可强依赖应用**：宿主只认 `tool.manifest.json` 契约；宿主能力经 `ToolHostCapabilities` 注入插件（config / repository / IPC / LLM / safeStorage / 本机 OCR） |
+| **D37** | **依赖方向反转** | **应用不强依赖工具，工具可强依赖应用**：宿主只认 `tool.manifest.json` 契约；宿主能力经 `ToolHostCapabilities` 注入插件（config / repository / IPC / LLM / safeStorage；本机 OCR 已随 CF-5/P7-1 移除） |
 | **D38** | **工具零依赖与禁用隔离** | 清单默认 `dependsOn: []`；单个插件加载失败 / 禁用只影响自己，guarded IPC 每次调用实时裁决；硬依赖链可配置传播，软 `configDeps` 只预警 |
 | **D39** | **工具包自包含（推翻 D35 的宿主图标）** | 名称 / 描述 / 多分类 / 图标 / 菜单 / 配置项 / 默认配置 / 依赖 / 权限 / 插件入口**全部归工具包自己的 `tool.manifest.json` 与 `assets/icon.svg`**；宿主 `apps/desktop/src/renderer/assets/tools/` 已删除 |
 | **D40** | **构建期自动发现，零改动接入** | `import.meta.glob` 扫 `tools/*` 的清单 / 图标 / main / renderer；`electron.vite.config.ts` 与 `vitest.config.ts` 动态扫包生成 alias；新工具包放进 `tools/` 即构建可用 |
 | **D41** | **插件入口强契约** | `src/main/index.ts` 必须 `export default` 注册函数（或具名 `register`）；禁止「随便挑一个函数」，避免误挑 `parseDatasource` 导致 IPC 静默未注册 |
 | **D42** | **配置形态两选一 + 浏览器式刷新** | `configLayout: single / menu`：形态 1 `single` = 单个「工具配置」菜单进去左右布局（现有工具全用此形态）；形态 2 `menu` = 「工具配置」展开二级菜单，每个二级菜单一个真实页面、页内复用左右布局，`configPages` 声明每页含多个分组（template-tool 为示例）。历史值 `tabs` 归一为 `single`。F5 / Ctrl(Cmd)+R 刷新，Ctrl+F5 / Ctrl(Cmd)+Shift+R 忽略缓存，「更多」下拉提供入口 |
 | **D43** | **多分类 / 标签** | `category: string \| string[]` + `tags[]` → 裁决层 `categories[]`；卡片 / 侧栏 / 搜索 / 设置覆盖全链路支持多个分类 |
-| **D44** | **Badge 图片数据源** | 图片 → 云端视觉模型或本机 OCR → `parseVisionResult()` → 标准 `StatRow[]` → 回填可校对 CSV；`llm-gateway` 支持 `image_url` 多模态；**视觉模型 API Key 只进 safeStorage，绝不写仓库** |
-| **D45** | **PaddleOCR 作为可插拔识别源** | 与云端模型共用「图片识别 provider → 标准结构」抽象；宿主 `runLocalOcr`（无 shell、超时、输出上限）+ 工具包 `scripts/paddleocr_adapter.py` 参考适配器；实际绑定待用户确认本机命令与截图版式 |
+| **D44** | **Badge 图片数据源** | 图片 → 云端视觉模型 → `parseVisionResult()` → 标准 `StatRow[]` → 回填可校对 CSV（本机 OCR 已随 CF-5/P7-1 移除）；`llm-gateway` 支持 `image_url` 多模态；**视觉模型 API Key 只进 safeStorage，绝不写仓库** |
+| **D45** | ~~PaddleOCR 作为可插拔识别源~~ | **⛔ 已推翻 2026-11-21（CF-5）→ P7-1 彻底移除**：本机 OCR 能力、`runLocalOcr` 宿主通道、`paddleocr_adapter.py` 适配器全部删除；Badge 图片识别仅保留云端视觉模型 + 人工粘贴校对。原文保留作历史追溯 |
 | **D46** | **密钥标识校验纯函数化** | `app:tool:<id>:<name>` 标识抽出 `secret-ids.ts` 并放宽为大小写/下划线/连字符；修掉驼峰 `visionApiKey` 被判非法导致 Badge 加载即报错，补 3 个回归单测 |
 | **D47** | **模型预设与真实模型列表下拉** | 常用 OpenAI 兼容端点（含 Agnes AI `/v1`）由 `model-console` manifest 自带，用户只填 Key；模型名 `el-select allow-create` + 「拉取模型列表」真实请求 `/models`；保存前可用临时 key 探测且不落盘；预设不含任何密钥 |
 | **D48** | **IDE 项目归属收口** | 三套 tsconfig 全 0 错误即证明代码无误；根 `tsconfig.json` 刻意排除 apps，让 `apps/desktop/tsconfig.json` 独占 `.vue`；显式 `types: ["node","vite/client"]`；新增 `electron` paths；去掉反向作用的 Volar takeover 设置；`cspell.json` 消除拼写波浪线；换电脑后须按架构文档 §7.3 重载窗口 / 切工作区 TS 版本 / 重启 TS Server |
@@ -178,7 +178,6 @@ docs/
 | 旧工具存量数据 | 是否要 M4 附一次性迁移脚本 |
 | M1 补校验 | preload `.cjs` 产物检查、条件导出双格式冒烟 |
 | **用户执行（IDE）** | 按 `02-architecture/工具插件化需求台账.md` §7.3 七步操作：确认打开仓库根 → 装 Vue - Official → Reload Window → Use Workspace TS Version → Restart TS Server → Go to Project Configuration 验证 |
-| **用户确认（PaddleOCR）** | 本机 Python 解释器绝对路径、PaddleOCR 版本 / 调用方式、点击统计截图版式（链接与数字是否同行、有无千分位 / 合计列），用于校准 `rows_from_lines()` |
 | **用户填写（视觉模型）** | Badge Studio「图片识别」面板填入 API Key（只落本机 safeStorage，不进仓库）→ 上传截图实测 |
 | **用户执行（安装包）** | 本轮大量改动后重新 `pnpm dist` 生成 Windows 安装包做安装测试 |
 | **后期排期（#8）** | 已发布应用中导入 / 安装 / 卸载外部工具包：需先定插件包格式、签名校验、版本兼容、运行时沙箱边界 |
@@ -240,7 +239,7 @@ docs/
 | 工具 | 状态 | 复用到的 packages | 新增公共组件 | 是否出现重复实现 |
 |---|---|---|---|---|
 | `edm-studio` | 已落 | shared / repository / ui-kit / llm-gateway（经宿主能力） | `tool.manifest.json`、`src/main/index.ts` 默认注册入口 | 无 |
-| `badge-studio` | 已落 + 图片识别 | shared / repository / ui-kit + 宿主 `chat` / `runLocalOcr` / safeStorage | `core/vision.ts`、`scripts/paddleocr_adapter.py` | 无：云端与本机 OCR 共用 `parseVisionResult()` |
+| `badge-studio` | 已落 + 图片识别 | shared / repository / ui-kit + 宿主 `chat` / safeStorage | `core/vision.ts` | 无：云端视觉模型走 `parseVisionResult()`（本机 OCR 已移除） |
 | `model-console` | 已落 → P4-8 起并入应用本体（模型管理模块，模块 id `model-manager`） | shared / repository / ui-kit / llm-gateway | `tool.manifest.json`（随三工具退役） | 无 |
 
 > 判定：同一逻辑出现 ≥2 处即必须提取；`check-boundaries.mjs` + ESLint `no-restricted-imports` 卡住 `tools/*` 之间直接 import。

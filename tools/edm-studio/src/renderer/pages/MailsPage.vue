@@ -179,14 +179,41 @@ const ops = computed(() => [
 const moreOps = [
   { key: 'edit', label: '编辑', type: 'primary' as const },
   { key: 'duplicate', label: '复制为新邮件', type: 'success' as const },
+  { key: 'copyCode', label: '复制代码', type: 'warning' as const },
   { key: 'open', label: '打开产物', type: 'info' as const },
   { key: 'delete', label: '删除', type: 'danger' as const },
 ]
+
+// ── 复制代码（F-03，requirement.txt：复制渲染/juice/压缩后的最终代码）──
+// 三形态选择弹框：assembled=组合原始 / inlined=内联资源 / final=juice 压缩（邮件发送形态）
+const COPY_FORMS = [
+  { value: 'assembled', label: '原始组合（assembled）' },
+  { value: 'inlined', label: '内联资源（inlined）' },
+  { value: 'final', label: '压缩最终（final）' },
+] as const
+const copyCode = reactive({ open: false, mail: null as MailRow | null, form: 'final' as (typeof COPY_FORMS)[number]['value'], loading: false })
+function openCopyCode(row: MailRow): void {
+  if (!row.outputs?.final) { ElMessage.warning('尚未生成产物，请先「生成」'); return }
+  Object.assign(copyCode, { open: true, mail: row, form: 'final' })
+}
+async function doCopyCode(): Promise<void> {
+  if (!copyCode.mail) return
+  copyCode.loading = true
+  try {
+    const html = await api<string>('mail:readOutput', { _id: copyCode.mail._id, form: copyCode.form })
+    await osApi().clipboardWrite(html)
+    ElMessage.success(`已复制${COPY_FORMS.find((f) => f.value === copyCode.form)?.label ?? ''}代码（${html.length} 字符）`)
+    copyCode.open = false
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { copyCode.loading = false }
+}
+
 function onAction(key: string, row: MailRow): void {
   if (key === 'generate') void generateMail(row)
   else if (key === 'export') void exportMail(row)
   else if (key === 'edit') openEditor(row)
   else if (key === 'duplicate') void duplicateMail(row)
+  else if (key === 'copyCode') openCopyCode(row)
   else if (key === 'open') void openOutput(row)
   else if (key === 'delete') void confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })
 }
@@ -282,6 +309,17 @@ function onAction(key: string, row: MailRow): void {
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
     />
+    <!-- 复制代码弹框（F-03：三形态选择，写入剪贴板） -->
+    <el-dialog v-model="copyCode.open" title="复制邮件代码" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-radio-group v-model="copyCode.form">
+        <el-radio v-for="f in COPY_FORMS" :key="f.value" :value="f.value">{{ f.label }}</el-radio>
+      </el-radio-group>
+      <p class="muted" style="margin-top: 8px">取「{{ copyCode.mail?.name ?? '' }}」当前已生成的产物代码写入剪贴板。</p>
+      <template #footer>
+        <el-button @click="copyCode.open = false">取消</el-button>
+        <el-button type="primary" :loading="copyCode.loading" @click="doCopyCode">复制</el-button>
+      </template>
+    </el-dialog>
   </ListPageShell>
 </template>
 

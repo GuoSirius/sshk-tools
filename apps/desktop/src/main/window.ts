@@ -28,15 +28,25 @@ export interface WindowDeps {
   isDev: boolean
   /** 「关闭时最小化到托盘」判定（托盘可用 + 配置开启时点关闭=隐藏），宿主注入闭包 */
   hideToTrayOnClose: () => boolean
-  /** before-quit 退出清理（沙箱回收/分享服务落盘/NeDB 压缩/传输队列落盘），宿主注入 */
-  onBeforeQuit: () => void
+  /** before-quit 退出清理（沙箱回收/分享服务落盘/NeDB 压缩/传输队列落盘），宿主注入；支持异步 */
+  onBeforeQuit: () => void | Promise<void>
 }
+
+/** 退出清理完成标志：before-quit preventDefault 后 await 清理，再放行退出 */
+let quitCleanupDone = false
 
 /** 应用级生命周期事件（quit/close 链路一并随迁，P3-1）：启动时注册一次 */
 export function wireWindowLifecycle(deps: Pick<WindowDeps, 'onBeforeQuit'>): void {
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
+    // 2026-11-22 复核（F-01 同族）：退出清理改为 await 完成——此前 shareHub dispose（路由/日志落盘）
+    // fire-and-forget，最后 ≤500ms 的状态可能被退出中断；清理失败仅留痕、不阻塞退出
+    if (quitCleanupDone) return
+    event.preventDefault()
     quitting = true
-    deps.onBeforeQuit()
+    void Promise.resolve()
+      .then(() => deps.onBeforeQuit())
+      .catch((err) => logger.error('app', `退出清理失败（继续退出）：${(err as Error).message}`))
+      .finally(() => { quitCleanupDone = true; app.quit() })
   })
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()

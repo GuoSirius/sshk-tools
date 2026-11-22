@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { rename, rm, writeFile } from 'node:fs/promises'
 import { safeStorage } from 'electron'
 import { AppError } from '@sshk/shared'
+import { logger } from './logger'
 
 /**
  * 密钥库单一实现（A2/Q-02 · P1-2）：secrets.bin（safeStorage）读写唯一收口。
@@ -42,7 +43,7 @@ export class SecretsStore {
       const raw = readFileSync(this.file)
       if (!(await safeStorage.isAsyncEncryptionAvailable())) {
         // 静默丢密钥会表现为「重启后配置失效」，必须把原因留在日志里
-        console.warn('[sshk] safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
+        logger.warn('secrets', 'safeStorage 不可用，本次无法解密 secrets.bin（密钥仍在磁盘）')
         this.cache = {}
         return
       }
@@ -51,12 +52,18 @@ export class SecretsStore {
       const decrypted = await safeStorage.decryptStringAsync(raw)
       const plain = typeof decrypted === 'string' ? decrypted : (decrypted as { result: string }).result
       this.cache = JSON.parse(plain) as Record<string, string>
-      // 密钥已轮换：用当前密钥重新加密落盘，避免下次启动仍需重填
+      // 密钥已轮换：用当前密钥重新加密落盘，避免下次启动仍需重填。
+      // 重加密失败不影响本次会话（cache 已就绪），只留告警
       if ((decrypted as { shouldReEncrypt?: boolean })?.shouldReEncrypt) {
-        await this.writeSnapshot({ ...(this.cache ?? {}) })
+        try {
+          await this.writeSnapshot({ ...(this.cache ?? {}) })
+        } catch (err) {
+          logger.warn('secrets', `密钥轮换重加密失败（下次启动仍需重填）：${(err as Error).message}`)
+        }
       }
     } catch (err) {
-      console.warn('[sshk] secrets.bin 解密失败（密钥仍在磁盘，重填后即恢复）：', (err as Error).message)
+      // F-05（2026-11-22 复核）：半截文件/解密失败都表现为「重启后密钥全空」，必须 error 级留痕
+      logger.error('secrets', `secrets.bin 读取/解密失败（文件可能损坏或密钥环境变化，需重填密钥）：${(err as Error).message}`)
       this.cache = {}
     }
   }
@@ -87,6 +94,15 @@ export class SecretsStore {
     }
     // encryptString 已弃用（Electron 45+ 警告）：encryptStringAsync + 异步写盘
     const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(secrets))
-    await writeFile(this.file, encrypted)
+    // F-05（2026-11-22 复核）：tmp+rename 原子写（与 FsTransferStore.save 同口径）——此前直接
+    // 覆写，落盘中途崩溃/断电留下半截文件，下次启动 JSON.parse 失败 → 全部密钥静默丢失
+    const tmp = `${this.file}.tmp`
+    try {
+      await writeFile(tmp, encrypted)
+      await rename(tmp, this.file)
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => { /* 清理失败忽略，主错误向上抛 */ })
+      throw err
+    }
   }
 }

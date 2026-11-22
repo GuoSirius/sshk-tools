@@ -18,11 +18,6 @@ export const IPC_CHANNELS = {
   appConfirmClose: 'app:confirmClose',
   backupExport: 'backup:export',
   backupImport: 'backup:import',
-  backupRollback: 'backup:rollback',
-  storageGetDir: 'storage:getDir',
-  storageMigrate: 'storage:migrate',
-  themeGet: 'theme:get',
-  themeSet: 'theme:set',
   themeSystemChanged: 'theme:systemChanged',
   updateCheck: 'update:check',
   updateDownload: 'update:download',
@@ -142,10 +137,7 @@ export const IPC_CHANNELS = {
   osShellOpen: 'os:shellOpen',
   /** 是否管理员权限运行（Windows UIPI 拖放拦截提示用） */
   osIsElevated: 'os:isElevated',
-  edmListMails: 'edm:listMails',
-  edmGenerate: 'edm:generate',
-  edmRegenerate: 'edm:regenerate',
-  /** M4/M5：EDM 全量能力走单通道 action 白名单（brands/tpl/frg/mail/share） */
+  /** M4/M5：EDM 全量能力走单通道 action 白名单（brands/tpl/frg/mail/share）；旧三通道已删（死代码清理） */
   edmApi: 'edm:api',
   /** 工具目录：主进程单一裁决，渲染层只拿可见性结果 */
   toolsList: 'tools:list',
@@ -179,7 +171,6 @@ export const IPC_CHANNELS = {
   runtimeKeysImport: 'runtime:keysImport',
   runtimeKeysRevoke: 'runtime:keysRevoke',
   badgeGenerate: 'badge:generate',
-  badgeRegenerate: 'badge:regenerate',
   /** N5 源更新检测：对比 poster.sourceHash 与源邮件当前 sourceHash（mail 型衍生关系） */
   badgeSourceState: 'badge:sourceState',
   badgeParseDatasource: 'badge:parseDatasource',
