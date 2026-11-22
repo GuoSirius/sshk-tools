@@ -78,17 +78,17 @@ function resolveAnchorEl(): HTMLElement | null {
 }
 function anchorBar(): void {
   anchorEl = resolveAnchorEl()
-  const w = barRef.value?.offsetWidth ?? 280
+  // const w = barRef.value?.offsetWidth ?? 280
   const h = barRef.value?.offsetHeight ?? 40
   if (!anchorEl) {
     // 兜底：找不到页面主体容器时贴窗口右下角（此时也无 ResizeObserver，仅保底可见）
-    x.value = Math.max(8, (window.innerWidth ?? 1200) - w - 16)
-    y.value = Math.max(8, (window.innerHeight ?? 800) - h - 12)
+    x.value = Math.max(8, 236)
+    y.value = Math.max(8, (window.innerHeight ?? 800) - h - 40)
     return
   }
   const rect = anchorEl.getBoundingClientRect()
-  x.value = Math.max(8, rect.right - w)
-  y.value = Math.max(8, rect.bottom - h)
+  x.value = Math.max(8, rect.left + 20)
+  y.value = Math.max(8, rect.bottom - h - 12)
 }
 function watchAnchor(): void {
   anchorRo?.disconnect()
