@@ -155,11 +155,15 @@ watch(catalogTools, (list) => {
 
 // 需求（2026-11-22 · 传输面板按需显示）：面板默认隐藏、仅应用管理容器内渲染（TransferPanel 自判）。
 // 这里只在两个转换点自动亮出收起摘要条（不展开、不打断）：①进入应用管理且队列仍有活动任务；
-// ②应用管理内检测到新队列（活动任务 0→N）。用户 ✕ 关闭后不被反复顶起，路由再进入/新队列再现。
+// ②应用管理内检测到新队列（活动任务 0→N）。用户 ✕ 关闭后不被反复顶起，路由再进入或新队列再现。
 watch([isAdminRoute, transferPanel.runningCount], ([admin, count], [prevAdmin, prevCount]) => {
   if (!admin || count === 0 || transferPanel.visible.value) return
   if (!prevAdmin || prevCount === 0) transferPanel.reveal()
 })
+// 需求（2026-11-22 · 面板生命周期随页面）：未关闭的面板只在所属页面打开期间存在——离开应用管理
+// （回桌面/进工具页）即关闭传输面板（任务在主进程继续跑，不受影响）；回到应用管理且有活动队列
+// 由上方 reveal 逻辑重新亮出收起条。内容编辑类弹框/最小化手柄本就随页面组件卸载销毁，无全局态。
+watch(isAdminRoute, (admin) => { if (!admin) transferPanel.hide() })
 
 // 刷新恢复由 URL 天然承担（hash 路由），无需 sessionStorage 方案
 </script>

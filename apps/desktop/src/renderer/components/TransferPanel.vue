@@ -10,7 +10,8 @@ import { useTransferPanel } from '../composables/useTransferPanel'
 /**
  * 传输队列悬浮面板（plans/10 §3，替代旧 el-drawer；P4-7 全局化挂 App.vue 根层）：
  * - 悬浮于页面之上：非文档流、无遮罩、不锁页面；2026-11-22 起仅在应用管理容器内渲染，
- *   且默认隐藏——点「传输队列」按钮（show）或检测到有队列（App 层 reveal）才亮出
+ *   且默认隐藏——点「传输队列」按钮（show）或检测到有队列（App 层 reveal）才亮出；
+ *   面板生命周期随页面：离开应用管理由 App.vue 路由 watch 统一关闭（visible/expanded 复位）
  * - useDraggable 拖拽（手柄 ⠿），展开态与收起态均可拖；位置/分栏/过滤记忆（展开态不记忆）
  * - 任务数据与显隐由 useTransferPanel 全局单例承载（App 级订阅，页面切换任务不丢）；
  *   工具页经 App.vue provide 的控制器 inject 唤起（show），本组件与任务订阅解耦
@@ -126,7 +127,7 @@ function resetPosition(): void {
     const w = panelRef.value?.offsetWidth ?? 360
     const vw = window.innerWidth ?? 1200
     const vh = window.innerHeight ?? 800
-    x.value = Math.max(8, vw - w - 8)
+    x.value = Math.max(8, vw - w - 120)
     y.value = Math.max(8, vh - 36 - 28 - 9)
     // 展开态面板高，默认 y 会冲出视区——按实际高度拉回（既有口径）
     clampIntoView()
