@@ -9,9 +9,9 @@ import { useTransferPanel } from '../composables/useTransferPanel'
 
 /**
  * 传输队列悬浮面板（plans/10 §3，替代旧 el-drawer；P4-7 全局化挂 App.vue 根层）：
- * - 悬浮于页面之上：非文档流、无遮罩、不锁页面；2026-11-22 起仅在应用管理容器内渲染，
+ * - 悬浮于页面之上：非文档流、无遮罩、不锁页面；2026-11-22 起仅在文件系统页容器内渲染，
  *   且默认隐藏——点「传输队列」按钮（show）或检测到有队列（App 层 reveal）才亮出；
- *   面板生命周期随页面：离开应用管理由 App.vue 路由 watch 统一关闭（visible/expanded 复位）
+ *   面板生命周期随页面：切离文件系统页由 App.vue 路由 watch 统一关闭（visible/expanded 复位）
  * - useDraggable 拖拽（手柄 ⠿），展开态与收起态均可拖；位置/分栏/过滤记忆（展开态不记忆）
  * - 任务数据与显隐由 useTransferPanel 全局单例承载（App 级订阅，页面切换任务不丢）；
  *   工具页经 App.vue provide 的控制器 inject 唤起（show），本组件与任务订阅解耦
@@ -22,9 +22,10 @@ import { useTransferPanel } from '../composables/useTransferPanel'
 const { visible, expanded, showSeq, taskList, hide } = useTransferPanel()
 
 const route = useRoute()
-// 需求（2026-11-22）：面板只在应用管理（问津管理系统菜单页）容器内显示，桌面/工具页一律不渲染；
-// 默认隐藏由 useTransferPanel 承担（点「传输队列」/ 检测到有队列才亮出）
-const isAdminRoute = computed(() => route.path === '/app' || route.path.startsWith('/app/'))
+// 需求（2026-11-22 · 台账#165）：面板只在文件系统页容器内显示，其它页面（含应用管理其它页/桌面/工具页）不渲染；
+// 切走即由 App.vue 路由 watch 关闭（visible/expanded 复位），回到本页且有活动队列再亮出收起条
+const isFilesPage = computed(() =>
+  route.params.module === 'files' && ((route.params.page as string | undefined) ?? 'files') === 'files')
 
 const STORE_KEY = 'sshk.fs.transferPanel.v2' // v2：默认位置改底部（用户 2026-11-19），旧记忆作废走新默认
 type TabKey = 'all' | 'upload' | 'download' | 'other'
@@ -286,7 +287,7 @@ onMounted(() => { if (expanded.value) void loadMultipart() })
 
 <template>
   <div
-    v-if="visible && isAdminRoute"
+    v-if="visible && isFilesPage"
     ref="panelRef"
     class="fs-tpanel"
     :class="{ 'is-collapsed': !expanded, 'is-dragging': isDragging }"
