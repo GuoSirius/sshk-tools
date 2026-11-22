@@ -1,6 +1,11 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
+
+// UnoCSS 配置显式钉死为绝对路径：插件工厂被 knip 等工具链在任意 cwd 下执行时
+// 也能命中配置，不再刷 "Config file not found ... - loading default config"（dev/build 的 cwd
+// 本就是 apps/desktop 不受影响，此处只是消除 verify 日志噪音并让解析与 cwd 解耦）。
+const UNO_CONFIG_FILE = fileURLToPath(new URL('./uno.config.ts', import.meta.url))
 // Vue DevTools（用户 2026-11-18 需求）：dev 期内置调试面板（组件树/状态/路由/Pinia），
 // Alt+Shift+D 或底栏齿轮唤起；该插件仅在 dev server 下注入，build 产物零影响
 import VueDevTools from 'vite-plugin-vue-devtools'
@@ -205,7 +210,7 @@ export default defineConfig(({ mode }) => {
     root: fileURLToPath(new URL('.', import.meta.url)),
     // 局域网可访问（手机 / 其他设备调试分享页）；仅 dev 生效
     server: { host: true },
-    plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS(), VueDevTools()],
+    plugins: [builtinStubPlugin(BUILTIN.excluded), vue(), UnoCSS({ configFile: UNO_CONFIG_FILE }), VueDevTools()],
     resolve: { alias: sshkAlias },
     define: { ...DEV_DEFINE, ...BUILTIN_DEFINE, ...AUTO_UPDATE_DEFINE },
     build: {
