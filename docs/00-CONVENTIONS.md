@@ -1,8 +1,8 @@
 # 项目规范与铁律总纲（新设备必读）
 
 - 状态：**权威汇总 · 唯一入口**。本文件是所有开发规范、设计约定、文件/命名/使用/契约规范、铁律的**统一汇总**，供人及 WorkBuddy 等 AI 工具在本机或**新设备拉取代码后第一时间读取并严格落实**。
-- 版本：v1.1
-- 日期：2026-11-21（北京时间；v1.1 = P8-2 同步：§1.3 补 D53 基础能力模块例外 + §5.6 补 P4-8 配置键迁移事实与 verify-steps 现址 + §2.1/§2.3 指向 P8-1 三合一《UI 与页面规范》）
+- 版本：v1.2
+- 日期：2026-11-22（北京时间；v1.2 = 第三轮复核同步：新增 §5.7 写入与生命周期铁律〔密钥写 Promise 化/关键文件原子写/退出 await/能力删除全贯穿/死通道三处收口〕+ §1.4 docs 树去 03-design；v1.1 = P8-2 同步：§1.3 补 D53 基础能力模块例外 + §5.6 补 P4-8 配置键迁移事实与 verify-steps 现址 + §2.1/§2.3 指向 P8-1 三合一《UI 与页面规范》）
 - 配套：仓库根 `AGENTS.md`（IDE AI 必读铁律，本文件是其完整展开）；`docs/00-index.md`（文档索引与决策看板 D1~D55）。
 - 更新纪律：新增/修改规范**先改本文件**再同步到专项文档；专项文档与本文冲突时以本文为准，除非对应决策编号明确推翻。
 
@@ -194,3 +194,13 @@ docs/
 - 任何"报告结论"落到代码前必须回源码验证当前态——两份 CodeReview 报告已发现多处"当前已修复/失实"条目（CR-21/CR-51/R5/R6）。
 - **P4-8c（C-3）配置键一次性迁移已落定**：`tools.file-manager.editorMode` → `app.modules.fileManager.editorMode`、`tools.model-console.*` → `app.modules.modelManager.*`（模块 id model-manager，C-11；旧键弃用不写运行时迁移，存量数据不迁移）；`app.fs.multipart.*` / `app.upload.*` / `app.shareHub.*` / `app.llm.*` / 密钥命名空间不动。新代码禁再写旧键。
 - **verify-steps 现址 `apps/desktop/src/shared/verify-steps.ts`**（P5-2 · C-10：宿主专用，shared 回归纯契约）；其 target 白名单门禁在 `scripts/verify-structure.mjs` §3a-2（KNOWN：纯工具 3 家 + 模块 id 3 个 + share 预览路由）。
+
+### 5.7 写入与生命周期铁律（2026-11-22 第三轮复核新增，勿再犯）
+
+> 来源：第三轮 CodeReview F-02/F-05/N-1/N-10~N-13，均为"失败静默吞 / 非原子写 / fire-and-forget"导致的数据丢失隐患，已全量修复。新代码必须遵守：
+
+- **密钥/配置写必须让失败可见**：`setToolSecret`/`setApiKey`/`setUploadSecret`/`setAccessKey`/`importSecretsJson`/`importPreset` 等所有写密钥的契约一律 `Promise<void>`，IPC handler 必须 `await` 后再返回成功，交 `handleOk` 统一转错误 toast。**禁止 `void ... .catch(()=>{})` 静默吞**（`SecretsStore` 头注释承诺"失败向上抛→toast"，任何中间层截断都是违约）。get 保持同步快照语义（set 完成后下个 tick 可见，须注释说明）。
+- **关键小文件落盘一律原子写**：`secrets.bin`、`hub-state.json`、备份导入的 `settings.json` 必须 `tmp + rename` 原子替换（范本 `FsTransferStore.save`）；禁止直接 `writeFile` 覆写——崩溃/断电留半截文件，下次解析失败静默回退=数据全丢。解析/落盘失败必须 `logger.error`（非 `console.warn`），用户可见层要有提示。
+- **退出清理必须 await 完成**：`onBeforeQuit` 中 `shareHubHost.dispose()` 等落盘动作一律 `await`；`window.ts` 的 `before-quit` 用 `preventDefault()` + 清理完成后 `app.quit()`，禁止 fire-and-forget 让最后 ≤500ms 状态被退出中断。
+- **能力删除必须贯穿到所有真实调用点**：删一个宿主能力（如 P7-1 的 `runLocalOcr`）不能只删声明/注释——必须 grep 全仓（含 `examples/` 的 dist 与签名 `.sshktool` 包、测试描述、manifest capabilities/ipcAllowlist、骨架白名单、文档能力表），有真实调用的必须删通道+重建产物+重签包，否则运行外部包示例会 TypeError。历史设计稿按 §5.6 加"实现已变更"批注保留。
+- **死代码清理要一并收口契约表**：删通道/能力时同步清理 `IPC_CHANNELS` 常量、manifest `channels`、宿主 `host.ts` 映射三处，`knip` 验证零残留引用。
