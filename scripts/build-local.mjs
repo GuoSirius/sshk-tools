@@ -10,7 +10,7 @@
  * 已内置国内镜像（electron-builder 二进制 + electron），无需科学上网。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -34,7 +34,8 @@ const MIRRORS = {
 
 const PM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
-function step(name, cmd, opts = {}) {
+/** 执行一步并捕获输出（不退出进程），返回 res 供调用方做错误特征匹配（杀软瞬时锁重试） */
+function runStep(name, cmd, opts = {}) {
   console.log(`\n▶ ${name}`)
   const res = spawnSync(cmd[0], cmd.slice(1), {
     cwd: opts.cwd ?? root,
@@ -49,6 +50,11 @@ function step(name, cmd, opts = {}) {
   if (res.stderr?.trim() && res.status !== 0) {
     console.error(res.stderr.trim().split('\n').slice(-10).join('\n'))
   }
+  return res
+}
+
+function step(name, cmd, opts = {}) {
+  const res = runStep(name, cmd, opts)
   if (res.status !== 0) {
     console.error(`\n✗ ${name} 失败（exit ${res.status}）`)
     process.exit(res.status ?? 1)
@@ -63,14 +69,28 @@ step('检查 Electron 二进制', [process.execPath, join(root, 'scripts/ensure-
 step('electron-vite 构建', [PM, '--filter', '@sshk/desktop', 'build'], { timeout: 5 * 60_000 })
 
 // ③ 打包：--dir 出免安装目录；默认出 NSIS 安装包（仅 x64，arm64 本地测试不需要）
-const builderArgs = fast
-  ? ['--dir']
-  : ['--win', 'nsis:x64', '--publish', 'never']
-step(
-  fast ? 'electron-builder 打包（免安装目录）' : 'electron-builder 打包（NSIS 安装包）',
-  [PM, '--filter', '@sshk/desktop', 'exec', 'electron-builder', ...builderArgs],
-  { cwd: desktop, timeout: 20 * 60_000 },
-)
+// 杀软瞬时锁自动重试：腾讯管家（QQPCRTP）实时扫描会在解压/重写 sshk-tools.exe（~250MB）的
+// 瞬间握住文件句柄 → addWinAsarIntegrity 写 exe 报 UNKNOWN / win-unpacked 目录改名 EPERM。
+// 锁随扫描完成自动释放（已实测），识别特征后清理 win-unpacked 重试即可；根治 = 管家信任区排除项目目录。
+const BUILDER_TRANSIENT_LOCK_SIG = /addWinAsarIntegrity|directory rename failed|UNKNOWN: unknown error, open/
+const builderName = fast ? 'electron-builder 打包（免安装目录）' : 'electron-builder 打包（NSIS 安装包）'
+const builderCmd = [PM, '--filter', '@sshk/desktop', 'exec', 'electron-builder',
+  ...(fast ? ['--dir'] : ['--win', 'nsis:x64', '--publish', 'never'])]
+const BUILDER_MAX_ATTEMPTS = 3
+for (let attempt = 1; ; attempt++) {
+  const res = runStep(builderName, builderCmd, { cwd: desktop, timeout: 20 * 60_000 })
+  if (res.status === 0) {
+    console.log(`✓ ${builderName} 完成`)
+    break
+  }
+  const transient = attempt < BUILDER_MAX_ATTEMPTS && BUILDER_TRANSIENT_LOCK_SIG.test((res.stdout || '') + (res.stderr || ''))
+  if (!transient) {
+    console.error(`\n✗ ${builderName} 失败（exit ${res.status}）`)
+    process.exit(res.status ?? 1)
+  }
+  console.log(`\n⚠ 杀软实时扫描瞬时锁定构建产物，清理 win-unpacked 后自动重试（${attempt}/${BUILDER_MAX_ATTEMPTS - 1}）`)
+  rmSync(join(outDir, 'win-unpacked'), { recursive: true, force: true })
+}
 
 // ④ 列出产物
 function listArtifacts(dir, depth = 0) {

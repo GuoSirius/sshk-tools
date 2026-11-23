@@ -18,7 +18,7 @@
  * 曾用 @clack/prompts，其重绘实现在本机终端产生残影重复行（2026-11-13），
  * 同终端下 inquirer 一直正常 —— 问题在库不在终端，换库即根治。
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
@@ -44,6 +44,46 @@ function git(args, opts = {}) {
 function shThrow(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', cwd: ROOT, ...opts })
   if (r.status !== 0) throw new Error(`命令失败：${cmd} ${args.join(' ')}`)
+}
+
+/** 子命令执行 + 实时透传 + 捕获输出（tee）：透传保持过程可见，捕获供错误特征匹配（杀软瞬时锁重试） */
+function shTee(cmd, args, opts = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', env: opts.env, stdio: ['inherit', 'pipe', 'pipe'] })
+    let out = '', errOut = ''
+    child.stdout.on('data', (d) => { out += String(d); process.stdout.write(d) })
+    child.stderr.on('data', (d) => { errOut += String(d); process.stderr.write(d) })
+    child.on('error', (e) => resolve({ status: -1, stdout: out, stderr: errOut + String(e) }))
+    child.on('close', (code) => resolve({ status: code, stdout: out, stderr: errOut }))
+  })
+}
+
+/**
+ * electron-builder 打包（带杀软瞬时锁自动重试）：
+ * 根因——腾讯管家（QQPCRTP）实时扫描会在解压/重写 sshk-tools.exe（~250MB）的瞬间握住文件句柄，
+ * addWinAsarIntegrity 写 exe 报 UNKNOWN / win-unpacked 目录改名报 EPERM（日志 5 连 retry 是同源）。
+ * 锁在扫描完成后自动释放（已实测可写），故识别特征后清理 win-unpacked 重试即可；
+ * 根治手段是把项目目录加入管家信任区（见 .env.example 构建期注释），重试只是兜底。
+ */
+const BUILDER_TRANSIENT_LOCK_SIG = /addWinAsarIntegrity|directory rename failed|UNKNOWN: unknown error, open/
+const BUILDER_ENV = {
+  ...process.env,
+  ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+  ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/',
+  NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA || '1',
+  NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED || '0',
+}
+const BUILDER_ARGS = ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never']
+async function shThrowBuilderWithRetry() {
+  const MAX_ATTEMPTS = 3
+  for (let attempt = 1; ; attempt++) {
+    const r = await shTee('pnpm', BUILDER_ARGS, { env: BUILDER_ENV })
+    if (r.status === 0) return
+    const transient = attempt < MAX_ATTEMPTS && BUILDER_TRANSIENT_LOCK_SIG.test(r.stdout + r.stderr)
+    if (!transient) throw new Error(`命令失败：electron-builder（exit ${r.status}）`)
+    step(`检测到杀软实时扫描瞬时锁定构建产物（EPERM/UNKNOWN），清理 win-unpacked 后自动重试（${attempt}/${MAX_ATTEMPTS - 1}）`)
+    rmSync(join(ROOT, 'dist', 'win-unpacked'), { recursive: true, force: true })
+  }
 }
 
 /* ── @inquirer/prompts：未安装给友好提示；Ctrl+C 优雅退出 ── */
@@ -303,15 +343,8 @@ if (!DRY_RUN) {
     // 国内网络兜底（与 build-local.mjs 同款，缺了必挂）：electron-builder 不读 .npmrc 的
     // electron_mirror，直连 GitHub 下 electron x64+arm64 zip / NSIS 二进制会 600s 超时。
     // 默认值可在根目录 .env / 真实环境变量覆盖（见 .env.example），仅作用于本子进程。
-    shThrow('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
-      env: {
-        ...process.env,
-        ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
-        ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/',
-        NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA || '1',
-        NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED || '0',
-      },
-    })
+    // 杀软瞬时锁自动重试见 shThrowBuilderWithRetry 注释。
+    await shThrowBuilderWithRetry()
     const distDir = join(ROOT, 'dist')
     const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
     if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
