@@ -102,7 +102,7 @@ onMounted(() => {
     <!-- 统一分享对话框（plans/09 ShareHub）：创建/二维码/复制/倒计时/续期/撤销全在组件内 -->
     <ShareDialog
       v-model:open="shareDialog.open"
-      tool-id="badge-studio"
+      :tool-id="toolId"
       :label="shareDialog.label"
       :default-root="shareDialog.root"
       :default-entry="shareDialog.entry"
