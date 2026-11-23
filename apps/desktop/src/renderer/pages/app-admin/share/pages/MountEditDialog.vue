@@ -15,8 +15,10 @@ const props = defineProps<{
   /** 其它挂载已占用的挂载点（别名去重） */
   takenAliases: string[]
 }>()
-const emit = defineEmits<{ save: [form: MountForm] }>()
+/** save 携带 done 回调：父组件异步写盘成功后回传 true，弹框仅在成功时关闭（失败保留表单） */
+const emit = defineEmits<{ save: [form: MountForm, done: (ok: boolean) => void] }>()
 const visible = defineModel<boolean>('modelValue', { default: false })
+const saving = ref(false)
 
 function blank(): MountForm {
   return { id: window.crypto.randomUUID(), dir: '', alias: '', enabled: true, allowIndex: true, password: '' }
@@ -59,11 +61,15 @@ async function pickDir(): Promise<void> {
 function onAliasInput(v: string): void { form.value.alias = v; errors.value.alias = '' }
 
 function submit(): void {
-  if (!validate()) return
+  if (saving.value || !validate()) return
   const payload: MountForm = { ...form.value, alias: normAlias(form.value.alias), dir: form.value.dir.trim(), password: String(form.value.password ?? '') }
-  emit('save', payload)
-  baseline = JSON.stringify(payload)
-  visible.value = false
+  saving.value = true
+  emit('save', payload, (ok) => {
+    saving.value = false
+    if (!ok) return // 写盘失败：保留弹框与已填内容，由父组件已弹错误提示
+    baseline = JSON.stringify(payload)
+    visible.value = false
+  })
 }
 async function doClose(): Promise<void> {
   if (isDirty.value) {
@@ -115,23 +121,23 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
           </el-input>
           <FormHint inline detail="填写后链接自动带 ?ak=，访客需该密钥才能访问">留空则公开可访问</FormHint>
         </el-form-item>
-        <el-form-item class="full" label="允许访问目录">
+        <el-form-item label="允许访问目录">
           <div class="switch-row">
             <el-switch v-model="form.allowIndex" />
-            <span class="switch-hint">关：访客只能访问具体文件链接，裸目录路径 404（可在分享弹框按次覆盖）</span>
+            <FormHint inline detail="关闭后访客只能访问具体文件链接，裸目录路径返回 404；分享弹框可按次覆盖">{{ form.allowIndex ? '允许' : '禁止' }}</FormHint>
           </div>
         </el-form-item>
-        <el-form-item class="full" label="启用">
+        <el-form-item label="启用">
           <div class="switch-row">
             <el-switch v-model="form.enabled" />
-            <span class="switch-hint">停用后该挂载的链接立即失效，重新启用即恢复</span>
+            <FormHint inline detail="停用后该挂载的链接立即失效，重新启用即恢复">{{ form.enabled ? '启用中' : '已停用' }}</FormHint>
           </div>
         </el-form-item>
       </FormGrid>
     </el-form>
     <template #footer>
-      <el-button size="small" @click="doClose">取消</el-button>
-      <el-button size="small" type="primary" @click="submit">保存</el-button>
+      <el-button size="small" :disabled="saving" @click="doClose">取消</el-button>
+      <el-button size="small" type="primary" :loading="saving" :disabled="saving" @click="submit">保存</el-button>
     </template>
   </el-dialog>
 </template>
@@ -142,7 +148,6 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
 .grow { flex: 1; min-width: 0; }
 .field-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; margin-top: 2px; }
-.switch-row { display: flex; align-items: center; gap: 8px; }
-.switch-hint { font-size: 12px; color: var(--el-text-color-secondary); }
+.switch-row { display: flex; align-items: center; gap: 4px; }
 .full { grid-column: 1 / -1; }
 </style>

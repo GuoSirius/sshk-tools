@@ -95,10 +95,11 @@ const editing = ref<ProxyForm | null>(null)
 const takenPrefixes = computed(() => rows.value.filter((r) => r.id !== editing.value?.id).map((r) => r.prefix))
 function openCreate(): void { editing.value = null; dialogOpen.value = true }
 function openEdit(row: ProxyRow): void { editing.value = { ...row }; dialogOpen.value = true }
-async function onSave(form: ProxyForm): Promise<void> {
+async function onSave(form: ProxyForm, done: (ok: boolean) => void): Promise<void> {
   const idx = rows.value.findIndex((r) => r.id === form.id)
   const next = idx >= 0 ? rows.value.map((r) => (r.id === form.id ? { ...form } : r)) : [...rows.value, { ...form }]
-  await persist(next, idx >= 0 ? '代理规则' : '新增代理')
+  const ok = await persist(next, idx >= 0 ? '代理规则' : '新增代理')
+  done(ok) // 失败时弹框保留表单，用户可修正后重试
 }
 
 // ── 行操作 ──

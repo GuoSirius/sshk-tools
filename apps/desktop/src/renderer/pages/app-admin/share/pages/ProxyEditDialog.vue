@@ -13,8 +13,10 @@ const props = defineProps<{
   record: ProxyForm | null
   takenPrefixes: string[]
 }>()
-const emit = defineEmits<{ save: [form: ProxyForm] }>()
+/** save 携带 done 回调：父组件异步写盘成功后回传 true，弹框仅在成功时关闭（失败保留表单） */
+const emit = defineEmits<{ save: [form: ProxyForm, done: (ok: boolean) => void] }>()
 const visible = defineModel<boolean>('modelValue', { default: false })
+const saving = ref(false)
 
 /** 属性值含 http:// 字面量会触发 vue-tsc v-for 作用域解析 bug，示例文案走常量绑定 */
 const TARGET_PLACEHOLDER = '示例 http://192.168.1.10:8080/base，支持 https'
@@ -52,11 +54,15 @@ function onPrefixInput(v: string): void { form.value.prefix = v; errors.value.pr
 function onTargetInput(v: string): void { form.value.target = v; errors.value.target = '' }
 
 function submit(): void {
-  if (!validate()) return
+  if (saving.value || !validate()) return
   const payload: ProxyForm = { ...form.value, prefix: normAlias(form.value.prefix), target: form.value.target.trim() }
-  emit('save', payload)
-  baseline = JSON.stringify(payload)
-  visible.value = false
+  saving.value = true
+  emit('save', payload, (ok) => {
+    saving.value = false
+    if (!ok) return // 写盘失败：保留弹框与已填内容，由父组件已弹错误提示
+    baseline = JSON.stringify(payload)
+    visible.value = false
+  })
 }
 async function doClose(): Promise<void> {
   if (isDirty.value) {
@@ -87,7 +93,7 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
     <el-form size="small" label-width="auto" @submit.prevent>
       <FormGrid>
         <el-form-item label="路径前缀">
-          <el-input :model-value="form.prefix" maxlength="32" placeholder="如 proxy-demo" @update:model-value="onPrefixInput">
+          <el-input :model-value="form.prefix" maxlength="32" placeholder="如 proxy-demo" data-autofocus @update:model-value="onPrefixInput">
             <template #prepend>/</template>
           </el-input>
           <div v-if="errors.prefix" class="field-tip">{{ errors.prefix }}</div>
@@ -96,7 +102,7 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
         <el-form-item label="保留原始 Host">
           <div class="switch-row">
             <el-switch v-model="form.keepHost" />
-            <span class="switch-hint">转发时沿用访客请求的 Host 头</span>
+            <FormHint inline detail="开启后转发请求沿用访客原始 Host 头；关闭则由目标地址决定">{{ form.keepHost ? '沿用' : '不沿用' }}</FormHint>
           </div>
         </el-form-item>
         <el-form-item class="full" label="目标地址">
@@ -104,17 +110,17 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
           <div v-if="errors.target" class="field-tip">{{ errors.target }}</div>
           <FormHint v-else inline detail="支持 http/https，全方法含 POST，响应流式回传">全方法转发 · 流式回传</FormHint>
         </el-form-item>
-        <el-form-item class="full" label="启用">
+        <el-form-item label="启用">
           <div class="switch-row">
             <el-switch v-model="form.enabled" />
-            <span class="switch-hint">停用后该代理入口立即失效，重新启用即恢复</span>
+            <FormHint inline detail="停用后该代理入口立即失效，重新启用即恢复">{{ form.enabled ? '启用中' : '已停用' }}</FormHint>
           </div>
         </el-form-item>
       </FormGrid>
     </el-form>
     <template #footer>
-      <el-button size="small" @click="doClose">取消</el-button>
-      <el-button size="small" type="primary" @click="submit">保存</el-button>
+      <el-button size="small" :disabled="saving" @click="doClose">取消</el-button>
+      <el-button size="small" type="primary" :loading="saving" :disabled="saving" @click="submit">保存</el-button>
     </template>
   </el-dialog>
 </template>
@@ -123,7 +129,6 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
 .dialog-header { display: flex; align-items: center; justify-content: space-between; width: 100%; font-weight: 600; }
 .dlg-close { background: none; border: 0; cursor: pointer; color: var(--el-text-color-secondary); font-size: 15px; padding: 0 2px; }
 .field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; margin-top: 2px; }
-.switch-row { display: flex; align-items: center; gap: 8px; }
-.switch-hint { font-size: 12px; color: var(--el-text-color-secondary); }
+.switch-row { display: flex; align-items: center; gap: 4px; }
 .full { grid-column: 1 / -1; }
 </style>

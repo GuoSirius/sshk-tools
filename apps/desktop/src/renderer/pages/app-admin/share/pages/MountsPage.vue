@@ -94,10 +94,11 @@ const editing = ref<MountForm | null>(null)
 const takenAliases = computed(() => rows.value.filter((r) => r.id !== editing.value?.id).map((r) => r.alias))
 function openCreate(): void { editing.value = null; dialogOpen.value = true }
 function openEdit(row: MountRow): void { editing.value = { ...row }; dialogOpen.value = true }
-async function onSave(form: MountForm): Promise<void> {
+async function onSave(form: MountForm, done: (ok: boolean) => void): Promise<void> {
   const idx = rows.value.findIndex((r) => r.id === form.id)
   const next = idx >= 0 ? rows.value.map((r) => (r.id === form.id ? { ...form } : r)) : [...rows.value, { ...form }]
-  await persist(next, idx >= 0 ? '挂载目录' : '新增挂载')
+  const ok = await persist(next, idx >= 0 ? '挂载目录' : '新增挂载')
+  done(ok) // 失败时弹框保留表单，用户可修正后重试
 }
 
 // ── 行操作 ──
