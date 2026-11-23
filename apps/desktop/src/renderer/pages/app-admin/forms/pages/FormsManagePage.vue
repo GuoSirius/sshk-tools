@@ -13,7 +13,7 @@ import { ElMessage } from 'element-plus'
 import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
 import { FieldSchemaDesigner, FormFieldRenderer } from '@sshk/form-schema/ui'
 import { CodeEditor } from '@sshk/code-editor'
-import { applyDefaults, expandFields, normalizeFields, validateSchema, type FieldDef } from '@sshk/form-schema'
+import { applyDefaults, expandFields, normalizeFields, validateModel, validateSchema, type FieldDef } from '@sshk/form-schema'
 import { inMsRange, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { host } from '../host'
 
@@ -123,6 +123,16 @@ function frontValidate(): boolean {
   if (first) {
     ElMessage.error(`字段校验未通过：${first}（请在设计器中修正红字项）`)
     return false
+  }
+  // 仅「表单」tab 校验输入合法性（设计/数据 tab 不校验，2026-11-24 口径）：
+  // 失败停留不发 IPC，具体红字由 FormFieldRenderer 内联展示
+  if (editTab.value === 'form') {
+    const errs = validateModel(editExpanded.value, editModel.value)
+    const firstErr = Object.entries(errs)[0]
+    if (firstErr) {
+      ElMessage.error(`数据校验未通过：${firstErr[1]}（请修正表单中红字项后再保存）`)
+      return false
+    }
   }
   return true
 }
