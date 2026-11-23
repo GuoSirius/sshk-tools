@@ -359,7 +359,7 @@ function onPolish(f: FieldDef): void {
 .group-divider::before, .group-divider::after { content: ''; flex: 1; height: 1px; background: rgba(128, 128, 128, 0.25); }
 .field-row { display: flex; gap: 12px; align-items: flex-start; }
 .field-row.has-error .field-label { color: var(--el-color-danger); }
-.field-label { flex: none; width: 110px; text-align: right; font-size: 13px; line-height: 28px; }
+.field-label { flex: none; width: 88px; text-align: right; font-size: 13px; line-height: 28px; }
 .req { color: var(--el-color-danger); margin-left: 2px; }
 .field-control { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .image-row { display: flex; gap: 8px; align-items: center; }
