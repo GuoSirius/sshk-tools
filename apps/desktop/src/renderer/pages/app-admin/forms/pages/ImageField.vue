@@ -65,7 +65,6 @@ async function copyUrl(): Promise<void> {
         </div>
       </template>
     </el-image>
-    <el-button size="small" :icon="Search" :disabled="readonly" @click="pickerOpen = true">选择图片</el-button>
     <el-input clearable size="small"
       :model-value="modelValue"
       placeholder="图片 URL（可点「选择图片」或直填）"
@@ -75,6 +74,7 @@ async function copyUrl(): Promise<void> {
     <el-tooltip content="复制图片 URL" placement="top">
       <el-button size="small" :icon="CopyDocument" :disabled="!modelValue" @click="copyUrl" />
     </el-tooltip>
+    <el-button size="small" :icon="Search" :disabled="readonly" @click="pickerOpen = true">选择图片</el-button>
     <FilePickerDialog
       v-if="!readonly"
       v-model:open="pickerOpen"
