@@ -21,6 +21,8 @@ export const APP_MODULE_DEFAULTS = {
     modelPresets: MODEL_MANAGER_PRESETS,
   },
   shareManager: {},
+  /** 表单设计（plans/13 B1）：复合控件嵌套深度上限（默认 5，0 = 无限制），展开校验与工具设置页共用 */
+  formManager: { maxCompositeDepth: 5 },
 } as const
 
 /** 把模块默认值并入 settings 基线（app.modules 段），供 ConfigService 构造使用 */

@@ -184,6 +184,40 @@ export interface ContentDoc extends BaseEntity {
   wordCount: number
 }
 
+/**
+ * 表单定义（plans/13 表单设计模块）：fields 树存 design-time 形态——复合控件以
+ * `{ type:'repeater', controlKey }` 占位引用（渲染/校验/导出前经 @sshk/form-schema expandFields 展开）。
+ */
+export interface FormDoc extends BaseEntity {
+  name: string
+  description?: string
+  /** 每次编辑 +1 */
+  version: number
+  /** design-time 字段树（可含 controlKey 引用占位节点） */
+  fields: unknown[]
+  /** 引用的复合控件 key 集合（保存时由 collectControlKeys 重算，删除控件反查用） */
+  controlsUsed: string[]
+  /** 预览/新建时的示例数据（可空） */
+  sampleModel?: Record<string, unknown>
+}
+
+/**
+ * 复合控件（plans/13 阶段 C）：由基础控件或已有复合控件组合而成。
+ * - builtin = 系统播种（ensureSeedControls 幂等插入），只读禁删禁改；
+ * - 自定义 = 控件管理页增删改查；
+ * - root 为容器型 FieldDef（type ∈ list/repeater/table），itemFields 可含 controlKey 引用节点。
+ */
+export interface ControlDoc extends BaseEntity {
+  /** 引用键，KEY_RE 约束、跨集合唯一 */
+  key: string
+  label: string
+  icon?: string
+  description?: string
+  version: number
+  builtin: boolean
+  root: unknown
+}
+
 /** 分享访问日志（plans/12）：内核批量写入，id=内核生成的 UUID（删除稳定键），路由归属走 routeId 反查不冗余存 */
 export interface ShareLogDoc extends BaseEntity {
   id: string
@@ -204,6 +238,8 @@ export const BACKUP_COLLECTIONS = [
   'mails',
   'posters',
   'contents',
+  'forms',
+  'formControls',
   'shareLogs',
 ] as const
 

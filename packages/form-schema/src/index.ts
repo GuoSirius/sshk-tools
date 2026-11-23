@@ -33,3 +33,5 @@ export {
   type ControlResolver,
   type ExpandOptions,
 } from './expand'
+
+export { BUILTIN_CONTROLS, type BuiltinControlSpec } from './builtin-controls'

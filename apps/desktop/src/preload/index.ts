@@ -429,6 +429,20 @@ const api = {
     save: (req: import('@sshk/shared').ContentSaveInput): Promise<import('@sshk/shared').ContentRecord> => invoke(IPC_CHANNELS.contentSave, req),
     remove: (req: { id: string; hard?: boolean }): Promise<boolean> => invoke(IPC_CHANNELS.contentRemove, req),
   },
+  /** 表单设计（plans/13）：表单 CRUD（forms 集合） */
+  form: {
+    list: (): Promise<import('@sshk/shared').FormRecord[]> => invoke(IPC_CHANNELS.formList),
+    get: (id: string): Promise<import('@sshk/shared').FormRecord | null> => invoke(IPC_CHANNELS.formGet, id),
+    save: (req: import('@sshk/shared').FormSaveInput): Promise<import('@sshk/shared').FormRecord> => invoke(IPC_CHANNELS.formSave, req),
+    remove: (req: { id: string; hard?: boolean }): Promise<boolean> => invoke(IPC_CHANNELS.formRemove, req),
+  },
+  /** 表单设计（plans/13 阶段 C）：复合控件 CRUD（formControls 集合；builtin 只读） */
+  formControl: {
+    list: (): Promise<import('@sshk/shared').ControlRecord[]> => invoke(IPC_CHANNELS.formControlList),
+    get: (id: string): Promise<import('@sshk/shared').ControlRecord | null> => invoke(IPC_CHANNELS.formControlGet, id),
+    save: (req: import('@sshk/shared').ControlSaveInput): Promise<import('@sshk/shared').ControlRecord> => invoke(IPC_CHANNELS.formControlSave, req),
+    remove: (req: { id: string; hard?: boolean }): Promise<boolean> => invoke(IPC_CHANNELS.formControlRemove, req),
+  },
   /** ShareHub 常驻分享服务（plans/09）：工具侧路由管理。toolId 由调用方传入做归属鉴权 */
   shareHub: {
     create: (input: import('@sshk/shared').ShareRouteInput): Promise<import('@sshk/shared').ShareRouteTicket> =>

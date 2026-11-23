@@ -103,3 +103,22 @@ export const MODEL_CONFIG_GROUPS: ToolConfigGroup[] = [
     ],
   },
 ]
+
+/** 表单设计 > 工具设置（plans/13 B1）：复合控件展开参数等，避免代码写死常量 */
+export const FORM_CONFIG_GROUPS: ToolConfigGroup[] = [
+  {
+    id: 'form-expand',
+    label: '复合控件展开',
+    fields: [
+      {
+        key: 'app.modules.formManager.maxCompositeDepth',
+        label: '嵌套深度上限',
+        type: 'number',
+        min: 0,
+        max: 50,
+        default: 5,
+        hint: '复合控件可嵌套引用的最大层数（0~50，默认 5；0 = 无限制，仍受循环引用防护约束）；保存表单/控件时与预览展开共用此上限',
+      },
+    ],
+  },
+]

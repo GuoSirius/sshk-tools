@@ -514,6 +514,59 @@ export interface ContentSaveInput {
   publishAt?: string
 }
 
+/** 表单定义记录（plans/13 表单设计模块）：fields 存 design-time 树，复合控件为 controlKey 占位节点 */
+export interface FormRecord {
+  _id: string
+  name: string
+  description?: string
+  /** 每次编辑 +1 */
+  version: number
+  /** design-time 字段树（宽松结构，渲染层按 @sshk/form-schema FieldDef 解释） */
+  fields: unknown[]
+  /** 引用的复合控件 key 集合（主进程保存时重算） */
+  controlsUsed: string[]
+  sampleModel?: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+  archived: boolean
+}
+
+/** 新建/保存表单请求：_id 缺省=新建；version/controlsUsed 由主进程算好入库 */
+export interface FormSaveInput {
+  _id?: string
+  name: string
+  description?: string
+  fields?: unknown[]
+  sampleModel?: Record<string, unknown>
+}
+
+/** 复合控件记录：builtin=系统播种只读；自定义=控件管理页 CRUD */
+export interface ControlRecord {
+  _id: string
+  /** 引用键，跨集合唯一 */
+  key: string
+  label: string
+  icon?: string
+  description?: string
+  version: number
+  builtin: boolean
+  /** 容器型根字段（type ∈ list/repeater/table），itemFields 可含 controlKey 引用节点 */
+  root: unknown
+  createdAt: string
+  updatedAt: string
+  archived: boolean
+}
+
+/** 新建/保存复合控件请求：key/label/root 必填；builtin 行禁改（主进程拦截） */
+export interface ControlSaveInput {
+  _id?: string
+  key: string
+  label: string
+  icon?: string
+  description?: string
+  root?: unknown
+}
+
 /** 分享路由种类（plans/11 方案 B）：file=静态文件（默认）；content=文章内容（resolver 动态渲染阅读页） */
 export type ShareRouteKind = 'file' | 'content'
 

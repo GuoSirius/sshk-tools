@@ -41,7 +41,9 @@ import LogsPage from './share/pages/LogsPage.vue'
 import ServicePage from './share/pages/ServicePage.vue'
 import MountsPage from './share/pages/MountsPage.vue'
 import ProxiesPage from './share/pages/ProxiesPage.vue'
-import { FILE_CONFIG_GROUPS, MODEL_CONFIG_GROUPS } from './module-config-groups'
+import FormsManagePage from './forms/pages/FormsManagePage.vue'
+import ControlsManagePage from './forms/pages/ControlsManagePage.vue'
+import { FILE_CONFIG_GROUPS, FORM_CONFIG_GROUPS, MODEL_CONFIG_GROUPS } from './module-config-groups'
 
 defineOptions({ name: 'AppAdminPage' })
 
@@ -78,6 +80,9 @@ const MENU_ICONS = {
   service: 'M7 17h10a3.5 3.5 0 00.6-6.95A5 5 0 007.9 8.6 4 4 0 007 17z',
   mounts: 'M9.5 13.5l5-5M8 12l-2.2 2.2a3.3 3.3 0 104.7 4.7L12.7 16.7M16 12l2.2-2.2a3.3 3.3 0 10-4.7-4.7L11.3 7.3',
   proxies: 'M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3',
+  formsGroup: 'M8 4h8v3H8zM6 5H4v17h16V5h-2M9 12h6M9 16h6',
+  forms: 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6',
+  controls: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
   settingsGroup: 'M3 7h8M11 7a2 2 0 104 0 2 2 0 10-4 0M15 7h6M3 17h4M7 17a2 2 0 104 0 2 2 0 10-4 0M11 17h10',
   general: 'M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 3.1l2-.6-1-3.4-2 .6a8 8 0 00-1.2-1.2l.6-2-3.4-1-.6 2a8 8 0 00-1.7 0l-.6-2-3.4 1 .6 2a8 8 0 00-1.2 1.2l-2-.6-1 3.4 2 .6a8 8 0 000 1.7l-2 .6 1 3.4 2-.6c.4.4.8.8 1.2 1.2l-.6 2 3.4 1 .6-2a8 8 0 001.7 0l.6 2 3.4-1-.6-2c.4-.4.8-.8 1.2-1.2l2 .6 1-3.4-2-.6a8 8 0 000-1.7z',
   system: 'M3 20h18M5 16l4-5 4 3 6-8',
@@ -126,6 +131,16 @@ const APP_MENUS: ToolMenu[] = [
           { id: 'proxies', label: '代理管理', icon: MENU_ICONS.proxies },
         ],
       },
+    ],
+  },
+  {
+    id: 'forms',
+    label: '表单设计',
+    icon: MENU_ICONS.formsGroup,
+    children: [
+      { id: 'forms', label: '表单管理', icon: MENU_ICONS.forms },
+      { id: 'controls', label: '控件管理', icon: MENU_ICONS.controls },
+      { id: 'formconfig', label: '工具设置', icon: MENU_ICONS.config },
     ],
   },
   {
@@ -234,6 +249,9 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
   service: { title: '服务配置', description: '分享服务状态、启停与基础设置' },
   mounts: { title: '挂载管理', description: '分享挂载目录管理' },
   proxies: { title: '代理管理', description: '分享代理规则管理' },
+  forms: { title: '表单管理', description: '表单定义增删改查与字段设计、数据预览' },
+  controls: { title: '控件管理', description: '复合控件管理（内置控件只读，自定义控件增删改查）' },
+  formconfig: { title: '工具设置 · 表单设计', description: '复合控件嵌套深度上限等设计参数' },
 }
 const activeMeta = computed(() => PAGE_META[activePage.value] ?? { title: '应用管理', description: '' })
 
@@ -336,6 +354,16 @@ function selectItem(pageId: string): void {
             <ServicePage v-else-if="activePage === 'service'" />
             <MountsPage v-else-if="activePage === 'mounts'" />
             <ProxiesPage v-else-if="activePage === 'proxies'" />
+            <!-- 表单设计三页（plans/13 B1/C） -->
+            <ToolSettingsPage
+              v-else-if="activePage === 'formconfig'"
+              :key="'formconfig'"
+              tool-id="form-manager"
+              :groups="FORM_CONFIG_GROUPS"
+              key-base="app.modules.formManager"
+            />
+            <FormsManagePage v-else-if="activePage === 'forms'" :key="'forms'" />
+            <ControlsManagePage v-else-if="activePage === 'controls'" :key="'controls'" />
           </div>
         </template>
       </section>

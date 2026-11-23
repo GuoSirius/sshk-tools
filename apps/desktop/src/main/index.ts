@@ -37,6 +37,7 @@ import { registerBackupIpc } from './ipc/backup'
 import { registerConfigIpc } from './ipc/config'
 import type { IpcContext } from './ipc/context'
 import { registerFsIpc } from './ipc/fs'
+import { registerFormIpc } from './ipc/form'
 import { registerLlmIpc } from './ipc/llm'
 import { registerMiscIpc } from './ipc/misc'
 import { registerOsIpc } from './ipc/os'
@@ -132,6 +133,7 @@ async function registerIpc(): Promise<void> {
   registerUploadIpc(ctx)
   registerFsIpc(ctx)
   registerOsIpc(ctx)
+  await registerFormIpc(ctx)
   await registerMiscIpc(ctx)
 }
 
