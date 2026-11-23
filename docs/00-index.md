@@ -35,6 +35,7 @@
 | **UI 与页面规范（唯一清单）** | `plans/01-UI与页面规范.md` | 已定稿 | 表单/列表页/留白/弹框/按钮图标/公共组件接线/空态 + 逐页验收 |
 | `plans/02` ~ `plans/07` | 工具创建配置统一 / 健壮性加固 / 诊断可观测 / 扩展能力 / 开发体验 / 文档治理 | 规划 | 六份分类专项规划 |
 | `plans/08` ~ `plans/12` | 文件系统 / 常驻分享 / 传输队列 / 内容管理 / 分享服务工具化 | 设计（已落地） | 五大能力域的详细设计稿 |
+| **表单设计模块化设计** | `plans/13-表单设计模块化设计.md` | 草稿（待敲板实施） | 「表单设计」应用内置模块（表单管理/控件管理/复合控件）+ 位置记忆全局统一 + 遗留上传配置清除；关联 #178、D57/D58 |
 | 验证会话数据 | `docs/verify-sessions/`（4 个 JSON：11-17/18/19/21） | 数据目录 | dev 运行时落盘的验证步骤结果快照，非沟通文档 |
 | 原始需求快照 | `../requirement.txt` | 只读 | 用户原始输入，不修改；冲突时以此为准 |
 
@@ -143,6 +144,8 @@ docs/
 | **D53** | **应用/工具边界重划 + 应用管理架构** | 敲板 2026-11-21（重构新想法 1~8）：file-manager / model-console / share-manager 三个基础能力工具并入「应用管理」页面（左侧可折叠菜单 + 右侧内容；一级 = 应用设置 / 文件管理 / 模型管理 / 分享管理），成为应用本体；纯工具仅 edm-studio / badge-studio / template-tool；**工具 → 应用单向依赖，应用本体绝不依赖工具**。吸收 Q-03（FsRuntime 改判应用内 `main/modules/file/`）/Q-04/Q-22/S1/S2；**推翻 D36 设置抽屉形态**（应用设置变页面）；D39 自包含收窄为纯工具；最终菜单结构=文件/模型/分享/应用设置（沉底），模块 id `model-manager`，实现以代码为准（原敲板计划已清理） |
 | **D54** | ~~CodeReview 文档独立目录~~ | **已随 2026-11-23 文档清理作废**：历史 CodeReview 报告全部删除、结论固化于本看板；今后如需 review 报告，按主题新建 `docs/YYYY-MM-DD-主题.md`，不再单设 `06-codereview/` 目录 |
 | **D55** | **developerMode 保留 + dev 判据唯一化 + preview 归 dev（终审改判，推翻 D52）** | 用户 2026-11-21 终审：**保留** `app.developerMode` 与 `devFeatures = isDev \|\| cfg.developerMode` 机制（2026-11-14 铁律原文不变）；dev 判据唯一化照旧执行（`__SSHK_DEV__` define 注入三端 + `isSourceRepo` 分离），定值 `mode==='dev' \|\| mode==='preview'`（preview 归 dev）；恢复执行 D-2 写法收敛（shared 纯函数 + 统一下发）/ D-3 注释分节 / Q-12 图标字段 devFeatures 可改 / CR-46 订阅修复；env 烤入机制保持只修 bug（C-9）；应用管理菜单结构原样下移一级（C-6）、模块 id `model-manager`（C-11）、顶栏方案一（C-7）（原敲板计划已清理，结论以本条为准） |
+| **D57** | **「表单设计」应用内置模块立项** | 用户 2026-11-23 敲板口径（方案 `plans/13`，实现待通知）：模块形态=应用内置模块（照 D53 模式改 AppAdminPage，非 tools/ 工具包），一级菜单 表单管理/控件管理（默认进表单管理）；数据源=NeDB 双集合 `forms`/`formControls` 进 BACKUP_COLLECTIONS；schema 真相源抽包 `@sshk/form-schema`（edm-studio 与新模块双消费，纯入口零 .vue + ui 子入口）；复合控件 design-time 引用 + runtime 展开（上限 3 层，结构防环）；EDM 保持 meta.yaml fields 自存，下拉选表单=**派生拷贝**物化为普通 FieldDef、不回写新模块 |
+| **D58** | **FilePicker/UploadTarget 位置记忆全局统一** | 用户 2026-11-23 敲板：废弃按 stateKey 隔离，所有 FilePickerDialog/UploadTargetDialog 实例读写同一份全局「上次位置」（`sshk:file-picker:global`，旧键迁移探针链命中即清）；连带清除遗留上传配置——badge-studio config-upload 死配置删、edm-studio config-upload（仅 validation）删、accept/maxSize 收敛全局上传校验、shared optionsSource 收窄 `'llm:providers'`；保留 Profiles 页/getUploadSecret/FILE_CONFIG_GROUPS/presets.ts |
 
 > **覆盖说明**：D33 中「注册表真相源上移 `packages/shared/src/tool-catalog.ts`」与 D35 中「宿主内置 edm / badge / model 三张 SVG」已被 **D39 / D40 推翻**：
 > shared 现为**纯契约 / 裁决层**（零具体工具数据），真相源下沉到各工具包 manifest；`DEFAULT_SETTINGS.tools` 也已清空。
