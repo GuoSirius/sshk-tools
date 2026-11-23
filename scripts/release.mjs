@@ -7,7 +7,7 @@
  *   → 版本选择（上下箭头，实时预览 current → next）
  *   → changelog 预览 + 二次确认
  *   → bump 全部 package.json + 生成 CHANGELOG.md（快照写入前内容）
- *   → pnpm build + electron-builder --publish never（出 latest.yml + exe 并验证）
+ *   → pnpm build + electron-builder --publish never（出 latest.yml + exe + .blockmap 并验证）
  *     ✗ 构建失败 → 按快照自动回滚版本号与 CHANGELOG，同版本号可直接重发
  *   → chore(release) 提交 + 打 tag + 推送
  *   → 给出 GitHub Release 发布指引（body 只含本次版本段）
@@ -206,7 +206,7 @@ if (!featureCount && !others.length) die('上个版本以来没有任何提交�
 const changedFiles = ['package.json', 'apps/desktop/package.json', 'CHANGELOG.md', 'pnpm-lock.yaml']
 console.log(`\n${BLUE('发布预览')}`)
 console.log(`  版本      : ${GREEN(fmt(current))} → ${GREEN(next)}`)
-console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物）`)
+console.log(`  配置变更  : ${changedFiles.join('、')}（共 ${changedFiles.length} 个固定文件 + dist/* 产物，含 .blockmap）`)
 if (!DRY_RUN) {
   const go = await confirm({ message: '确认按以上内容发布？', default: false })
   if (!go) die('已取消')
@@ -313,9 +313,12 @@ if (!DRY_RUN) {
       },
     })
     const distDir = join(ROOT, 'dist')
-    const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f === 'latest.yml')
-    if (!artifacts.some((f) => f.endsWith('.exe')) || !artifacts.includes('latest.yml')) {
-      throw new Error(`产物缺失（${artifacts.join(', ') || '空'}）`)
+    const artifacts = readdirSync(distDir).filter((f) => f.endsWith('.exe') || f.endsWith('.blockmap') || f === 'latest.yml')
+    // 差分更新要求安装包有同名 .blockmap；Portable 单文件不参与更新，不要求 blockmap
+    const installers = artifacts.filter((f) => f.includes('-Setup-') && f.endsWith('.exe'))
+    const missingBlockmaps = installers.filter((f) => !artifacts.includes(`${f}.blockmap`))
+    if (!installers.length || !artifacts.includes('latest.yml') || missingBlockmaps.length) {
+      throw new Error(`产物缺失（${artifacts.join(', ') || '空'}${missingBlockmaps.length ? `；缺 blockmap：${missingBlockmaps.map((f) => `${f}.blockmap`).join(', ')}` : ''}）`)
     }
     ok(`产物就绪：${artifacts.join(', ')}`)
   } catch (err) {
@@ -359,7 +362,8 @@ if (!DRY_RUN) {
     console.log(`  1) 打开 https://github.com/GuoSirius/sshk-tools/releases/new?tag=${next}`)
   }
   console.log(`  2) 标题 ${next}；正文粘贴 ${bodyPath}（已只含本次版本段）`)
-  console.log(`  3) 上传 dist/ 下的安装器（*-Setup-*.exe）/ 便携版（*-Portable-*.exe）与 latest.yml`)
+  console.log(`  3) 上传 dist/ 下的安装器（*-Setup-*.exe）及其同名 .blockmap、便携版（*-Portable-*.exe）与 latest.yml`)
+  console.log(`     ⚠️ .blockmap 是差分更新的必需资产：每次发版都要传，且不要删除上一版的 .blockmap，否则旧用户仍会 404 回退全量`)
   console.log(`     ⚠️ 普通用户请下载「*-Setup-*.exe」安装；Portable 为免安装单文件、双击直接运行无安装向导`)
 } else {
   console.log(`\ndry-run 完成：${fmt(current)} → ${next}；changelog 全文见 ${bodyPath}`)

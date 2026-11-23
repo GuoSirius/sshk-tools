@@ -106,9 +106,9 @@ function wireAutoUpdater(services: AppServices | null): void {
     logger.info('updater', `dev 更新测试：更新源走镜像 → ${mirrorFeed}`)
   }
   autoUpdater.autoDownload = true
-  // 发布流程只上传安装包与 latest.yml，不上传 .blockmap：差分下载必 404 回退全量，
-  // 直接禁用可省一轮无效请求，并消除 dev 控制台的 fallback 报错噪音。
-  autoUpdater.disableDifferentialDownload = true
+  // 正式包发布时上传同名 .blockmap，差分更新可用（省流量且更快）；仅在 dev 伪装旧版本
+  // （如 SSHK_DEV_UPDATE_FAKE_VERSION=1.0.0）下禁用——旧版没有对应 blockmap，必然 404 回退全量。
+  autoUpdater.disableDifferentialDownload = updateDevCheck
   // 本项目发布完整安装包，不走 web installer；显式关闭消除 electron-updater 的版本默认值告警
   autoUpdater.disableWebInstaller = true
   // 复核项 10：「下载更新后重启自动安装」默认关闭，由 app.autoInstallOnAppQuit 控制；
