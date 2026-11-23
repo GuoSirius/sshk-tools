@@ -20,16 +20,14 @@ export const VISION_SYSTEM_PROMPT = [
 
 export const VISION_USER_PROMPT = '识别这张图片里的链接点击统计表，按系统要求输出 JSON 数组。'
 
-/** 兼容单图字符串调用；新链路传数组以支持一次请求多张图 */
-export function buildVisionMessages(imageDataUris: string[] | string): ToolVisionMessage[] {
-  const uris = Array.isArray(imageDataUris) ? imageDataUris : [imageDataUris]
+export function buildVisionMessages(imageDataUris: string[]): ToolVisionMessage[] {
   return [
     { role: 'system', content: VISION_SYSTEM_PROMPT },
     {
       role: 'user',
       content: [
         { type: 'text', text: VISION_USER_PROMPT },
-        ...uris.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+        ...imageDataUris.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
       ],
     },
   ]

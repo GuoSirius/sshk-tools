@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ShareHub, ttlMinutesLeft, LEGACY_SHARE_STATE_FILES } from './index'
+import { ShareHub, ttlMinutesLeft } from './index'
 import { SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 
 const dirs: string[] = []
@@ -200,8 +200,6 @@ describe('ShareHub 内核（plans/09 · A 组单测）', () => {
     expect(port).toBeGreaterThan(0)
     expect((await fetch(`http://127.0.0.1:${port}/${t.token}/`)).status).toBe(200)
     expect(ttlMinutesLeft(Date.now() + 3600_000)).toBeGreaterThanOrEqual(59)
-    expect(LEGACY_SHARE_STATE_FILES).toContain('badge-share-state.json')
-    expect(LEGACY_SHARE_STATE_FILES).toContain('edm-share-state.json')
   })
 
   it('端口治理（2026-11-22）：显式端口被占回落随机+告警回调（服务必须起来）；显式重启端口生效', async () => {

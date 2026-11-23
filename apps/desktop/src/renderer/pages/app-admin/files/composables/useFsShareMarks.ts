@@ -9,7 +9,7 @@ import {
 import {
   normalizeUploadConfig,
 } from '@sshk/upload-core/types'
-import { buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/share-core/ui'
+import { buildDirectUrl, findShareTicketById, isTicketAlive, shareFileDirectUrl } from '@sshk/share-core/ui'
 import { isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 
 /**
@@ -35,8 +35,6 @@ export function useFsShareMarks(deps: {
   async function loadShareRoutes(): Promise<void> {
     try {
       shareRoutes.value = await shareHubApi.list(deps.toolId())
-      // 工具改名（upload-manager→file-manager）后凭证缓存键失配：按路由反查迁移，保证旧链接继续复用
-      migrateShareTickets(deps.toolId(), shareRoutes.value)
     }
     catch { shareRoutes.value = [] }
   }

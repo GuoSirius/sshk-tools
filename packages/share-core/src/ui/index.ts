@@ -4,4 +4,4 @@
  * ui-kit 回归零业务纯通用组件（B10 收口）。工具与分享管理模块共同消费。
  */
 export { default as ShareDialog } from './ShareDialog.vue'
-export { shareDialogStorageKey, readShareTicket, isTicketAlive, findShareTicketById, migrateShareTickets, shareFileDirectUrl, buildDirectUrl } from './share-ticket'
+export { shareDialogStorageKey, readShareTicket, isTicketAlive, findShareTicketById, shareFileDirectUrl, buildDirectUrl } from './share-ticket'

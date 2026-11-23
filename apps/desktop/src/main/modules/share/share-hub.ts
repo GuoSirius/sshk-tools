@@ -2,7 +2,6 @@
  * ShareHub 常驻分享服务宿主封装（plans/09）。
  * - 持有主进程唯一 ShareHub 实例（@sshk/share-core），收敛生命周期：
  *   autoStart 启动 / 固定端口被占回落告警 / powerMonitor.resume 自动重启 / 退出落盘
- * - 旧状态文件（badge-share-state.json / edm-share-state.json）启动检测即静默删除（决策 11）
  * - toolId 记账鉴权：工具只能撤销/续期自己创建的路由，宿主（空 toolId）可管理全部
  *
  * 【生命周期=宿主常驻（Q-22 终审），分享管理=应用模块（P3-5 归位 modules/share/）】
@@ -11,12 +10,10 @@
  * 「分享管理」只是应用内置模块的页面归属（原 share-manager 工具页），消费本宿主暴露的 IPC，
  * 不持有服务实例。工具改名/卸载不影响服务存续（状态文件已收敛 hub-state.json）。
  */
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { powerMonitor } from 'electron'
-import { ShareHub, LEGACY_SHARE_STATE_FILES } from '@sshk/share-core'
+import { ShareHub } from '@sshk/share-core'
 import { AppError, IPC_CHANNELS,
-  TOOL_IDS,
   type   ShareRouteInput,
   type ShareHubMount,
   type ShareHubProxy,
@@ -55,42 +52,14 @@ function resolveToolId(raw: unknown): string {
 /**
  * 分享路由归属白名单（P4-8b · D53 · 台账#156）：
  * 三基础模块并入应用本体后不再是目录在册工具（MANIFESTS 只剩纯工具），但其页面仍会以
- * 模块 id 创建分享路由（如 FileExplorerPage 安全分享），存量路由/日志数据也可能带旧 id——
- * 校验口径 = 在册工具（纯工具 manifest）∪ 内置模块 id ∪ 旧 id（历史数据兼容，不写数据迁移）。
+ * 模块 id 创建分享路由（如 FileExplorerPage 安全分享）——
+ * 校验口径 = 在册工具（纯工具 manifest）∪ 内置模块 id。
  */
 const SHARE_MODULE_IDS = ['file-manager', 'model-manager', 'share-manager'] as const
-/** 旧 id 兼容（C-11 改名 model-manager 前的模块 id；存量数据不动，仅放行归属校验） */
-const SHARE_LEGACY_OWNER_IDS = ['model-console'] as const
 
 export function isKnownShareOwner(toolId: string, manifests: ReadonlyArray<{ id: string }>): boolean {
   return manifests.some((m) => m.id === toolId)
-    || (SHARE_MODULE_IDS as readonly string[]).includes(toolId)
-    || (SHARE_LEGACY_OWNER_IDS as readonly string[]).includes(toolId)
-}
-
-/**
- * hub-state.json 工具改名迁移（2026-11-19 上传管理→文件管理，幂等）：
- * 路由的 toolId 是撤销/续期的记账鉴权依据（内核 handle 校验 route.toolId === caller），
- * 不迁移的话改名后工具对自己的旧分享路由「无权操作」且列表查不到（复用原则被破坏）。
- * 在内核加载状态文件前重写 routes[].toolId；无文件/无匹配时零副作用。
- */
-function migrateShareStateToolId(stateFile: string): void {
-  try {
-    if (!existsSync(stateFile)) return
-    const raw = JSON.parse(readFileSync(stateFile, 'utf8')) as { routes?: Array<{ toolId?: string }> }
-    if (!Array.isArray(raw.routes)) return
-    let moved = 0
-    // 旧 id 链全量覆盖（upload-config 时期的路由理论上不存在，防历史遗留漏迁）
-    for (const r of raw.routes) {
-      if (r?.toolId === 'upload-manager' || r?.toolId === 'upload-config') { r.toolId = TOOL_IDS.fileManager; moved++ }
-    }
-    if (moved > 0) {
-      writeFileSync(stateFile, JSON.stringify(raw, null, 2), 'utf8')
-      logger.info('shareHub', `分享路由归属迁移：upload-manager/upload-config → ${TOOL_IDS.fileManager}（${moved} 条）`)
-    }
-  } catch (err) {
-    logger.error('shareHub', `分享路由归属迁移失败（不影响启动）：${(err as Error).message}`)
-  }
+  || (SHARE_MODULE_IDS as readonly string[]).includes(toolId)
 }
 
 export function createShareHubHost(cfg: ConfigService, opts: {
@@ -104,7 +73,6 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   repository?: Repository
 }): ShareHubHost {
   const stateFile = join(opts.userDataDir, 'hub-state.json')
-  migrateShareStateToolId(stateFile)
   const hub = new ShareHub(stateFile)
   // 2026-11-22 复核：hub-state.json 落盘失败此前全程静默（写坏=重启后分享路由全丢），接 logger 留痕
   hub.setPersistErrorHandler((msg) => logger.error('shareHub', msg))
@@ -209,13 +177,6 @@ export function createShareHubHost(cfg: ConfigService, opts: {
     return result
   }
 
-  function removeLegacyStates(): void {
-    for (const name of LEGACY_SHARE_STATE_FILES) {
-      const file = join(opts.userDataDir, name)
-      try { if (existsSync(file)) unlinkSync(file) } catch { /* 静默忽略删除失败 */ }
-    }
-  }
-
   /** 挂载目录（多目录分享，用户 2026-11-18）：配置 app.shareHub.mounts 为权威，
    *  变更即时生效（setMounts 重建别名路由，无需重启）；无效项记日志不阻断。 */
   function applyMounts(): void {
@@ -243,7 +204,6 @@ export function createShareHubHost(cfg: ConfigService, opts: {
   async function init(): Promise<void> {
     if (initialized) return
     initialized = true
-    removeLegacyStates()
     applyPreferredIp()
     applyMounts()
     applyProxies()

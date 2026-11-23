@@ -1,7 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { AppError } from '@sshk/shared'
 import { seedSystemContent, seedCustomContent } from './edm-seed.js'
-import { createEdmIpcContext, migrateLegacyCustomRoot, EDM_API_CHANNEL, type EdmIpcDeps, type Payload } from './ipc/context.js'
+import { createEdmIpcContext, EDM_API_CHANNEL, type EdmIpcDeps, type Payload } from './ipc/context.js'
 import { registerBrandActions } from './ipc/brand.js'
 import { registerTemplateActions } from './ipc/template.js'
 import { registerFragmentActions } from './ipc/fragment.js'
@@ -31,10 +31,6 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
   // R24 自定义根薄索引：扫描 custom-edm 文件根 → 同步 NeDB origin=custom（文件为真相源，邮件编辑器零改动）
   seedCustomContent(ctx.repo, ctx.resolveContentRoot('custom')).catch((err: unknown) =>
     console.warn('[edm] 自定义内容索引失败：', err instanceof Error ? err.message : err),
-  )
-  // 一次性迁移（2026-11-16）：dev 遗留自定义内容仓库目录 → userData/custom-edm
-  void migrateLegacyCustomRoot(ctx).catch((err: unknown) =>
-    console.warn('[edm] 遗留自定义内容迁移失败：', err instanceof Error ? err.message : err),
   )
 
   /** 各域 action 处理器集合（key 即白名单） */

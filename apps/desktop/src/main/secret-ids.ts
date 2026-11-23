@@ -17,9 +17,8 @@ export function toolSecretId(toolId: string, name: string): string {
 
 /**
  * 上传通道密钥（应用级命名空间，2026-11-19 用户拍板提升）：
- * 原挂工具账下（app:tool:file-manager:<pid>），但通道 profile 数据本身已是应用级
- * （app.upload，消费方含 EDM 图片上传 / 模板工具图片库 / 预设导出）——工具改名/卸载
- * 不应牵连这些能力。启动迁移：app:tool:{upload-config|upload-manager|file-manager}:<pid> → 本前缀。
+ * 通道 profile 数据在应用级（app.upload，消费方含 EDM 图片上传 / 模板工具图片库 / 预设导出），
+ * 密钥同挂应用级，工具改名/卸载不牵连这些能力。
  */
 export function uploadSecretId(profileId: string): string {
   if (!SECRET_PART_RE.test(profileId)) {

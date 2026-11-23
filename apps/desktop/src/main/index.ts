@@ -23,7 +23,7 @@ import { makeContentListResolver, makeContentResolver, startContentScheduler, st
 import { compactDatabase } from './compact'
 import { registerDevTools } from './dev-tools'
 import { reloadManifestFile } from './discovery'
-import { migrateLegacyUserData, migrateLegacyVisionConfig, seedDefaultProviders } from './migrations'
+import { seedDefaultProviders } from './provider-seed'
 import { installLocalResHandler } from './modules/file/local-res'
 import { killUtilityTools } from './plugins'
 import { logger } from './logger'
@@ -136,7 +136,6 @@ async function registerIpc(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
-  migrateLegacyUserData()
   services = setupServices()
   setupCatalog(services)
   // F-01（2026-11-22 复核）：启动即拉起定时发布轮询——扫描所有到期 scheduled 一次性翻 published，
@@ -164,7 +163,6 @@ void app.whenReady().then(async () => {
   }
   await shareHubHost.init()
   seedDefaultProviders(services)
-  migrateLegacyVisionConfig(services)
   await registerIpc()
   // H3 日志：启动清理过期文件 + 记录启动事件
   const removedLogs = logger.clean()

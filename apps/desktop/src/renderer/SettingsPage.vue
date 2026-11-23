@@ -31,8 +31,8 @@ import BadgeStylePreview from './components/BadgeStylePreview.vue'
 const props = defineProps<{
   toolId: string
   section?: string
-  /** 兼容宿主传参：历史 tabs 由目录归一为 single */
-  layout?: 'single' | 'menu' | 'tabs'
+  /** 页面形态：single=单页分组列表；menu=二级菜单驱动（manifest configLayout 已在 catalog 归一） */
+  layout?: 'single' | 'menu'
   /** 页内声明分组（P4-8c）：传入后不再读目录 configGroups（模块页 fileconfig/modelconfig） */
   groups?: ToolConfigGroup[]
   /** 页脚配置路径展示（groups 内联时用，如 app.modules.fileManager） */

@@ -1,6 +1,5 @@
 import { app } from 'electron'
 import path from 'node:path'
-import { existsSync, promises as fs } from 'node:fs'
 import type { IpcMainInvokeEvent } from 'electron'
 import { AppError, IPC_CHANNELS, TOOL_IDS, SSHK_DEV, isDevFeaturesEnabled } from '@sshk/shared'
 import type { Repository } from '@sshk/repository'
@@ -101,19 +100,6 @@ export function createEdmIpcContext(deps: EdmIpcDeps): EdmIpcContext {
 
 /** IpcMainInvokeEvent 透传（聚合入口的 ipc.handle 形参类型） */
 export type EdmInvokeEvent = IpcMainInvokeEvent
-
-/**
- * 一次性迁移（2026-11-16 用户反馈 bug 修复）：dev 曾把自定义内容写进仓库
- * `tools/edm-studio/assets/custom-edm`，现统一落 userData/custom-edm。
- * 旧目录存在且 userData 根不存在时整树拷贝（保留仓库原目录不删，由用户自行清理）。
- */
-export async function migrateLegacyCustomRoot(ctx: EdmIpcContext): Promise<void> {
-  const legacy = path.resolve(ctx.resolveEdmRoot(), '../custom-edm')
-  const target = ctx.resolveContentRoot('custom')
-  if (!existsSync(legacy) || existsSync(target)) return
-  await fs.cp(legacy, target, { recursive: true })
-  console.warn('[edm] 已迁移 dev 遗留自定义内容：' + legacy + ' → ' + target + '（仓库内旧目录可手动删除）')
-}
 
 /** IPC 通道名（聚合入口 ipc.handle 用；保持原单通道白名单分发契约） */
 export const EDM_API_CHANNEL = IPC_CHANNELS.edmApi

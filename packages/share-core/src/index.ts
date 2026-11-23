@@ -13,4 +13,3 @@
 export { ShareHub } from './server'
 export { normalizeMountAlias, ttlMinutesLeft } from './routes'
 export { DEFAULT_LOG_MAX_COUNT, DEFAULT_LOG_RETENTION_DAYS } from './logs'
-export { LEGACY_SHARE_STATE_FILES } from './state-file'

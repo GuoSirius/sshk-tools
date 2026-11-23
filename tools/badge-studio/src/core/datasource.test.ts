@@ -56,7 +56,7 @@ describe('图片识别结果归一（云端视觉模型）', () => {
   })
 
   it('构建多模态消息：system + text/image_url 分片', () => {
-    const messages = buildVisionMessages('data:image/png;base64,AAAA')
+    const messages = buildVisionMessages(['data:image/png;base64,AAAA'])
     expect(messages[0]?.role).toBe('system')
     const parts = messages[1]?.content
     expect(Array.isArray(parts)).toBe(true)

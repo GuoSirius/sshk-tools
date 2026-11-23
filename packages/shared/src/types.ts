@@ -246,7 +246,8 @@ export interface ToolRuntimeState {
   icon: string
   menus: ToolMenu[]
   entryRoute: string
-  configLayout: 'single' | 'menu' | 'tabs'
+  /** catalog 归一后恒为 'single' | 'menu'（manifest 写 'tabs' 归一为 'single'） */
+  configLayout: 'single' | 'menu'
   enabled: boolean
   /** 桌面可见（隐式基座与配置隐藏的工具恒 false） */
   visible: boolean

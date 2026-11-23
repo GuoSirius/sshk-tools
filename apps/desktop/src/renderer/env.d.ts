@@ -45,6 +45,8 @@ interface PosterRecord {
   configSnapshot: { badgeAttr: string; clicksField: string; posterWidth: number; scale: number; badgePositionText?: string; badgePositionImage?: string }
   outputs: { badged?: string; poster?: string }
   statsSnapshot?: Record<string, unknown>[]
+  /** 生成后的标记核对数据（2026-11-18 起数组形态落库，badge main 写入、workspace 回显读取） */
+  markCounts?: Array<{ url: string; count: number }>
   status: string
   lastGeneratedAt?: string
   createdAt: string

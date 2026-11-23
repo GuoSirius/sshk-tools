@@ -14,9 +14,6 @@ interface PersistedHub {
   routes: ShareRoute[]
 }
 
-/** 旧状态文件名（badge/edm）——由宿主启动时检测即静默删除，内核不读取不迁移。 */
-export const LEGACY_SHARE_STATE_FILES = ['badge-share-state.json', 'edm-share-state.json']
-
 export class StateFileStore {
   private timer: ReturnType<typeof setTimeout> | null = null
 

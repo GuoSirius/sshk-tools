@@ -12,11 +12,9 @@ export const TOOL_IDS = {
   edmStudio: 'edm-studio',
   badgeStudio: 'badge-studio',
   /** P4-8c（C-11 敲板，台账#156）：原 model-console 工具随 P4-8b 退役并入应用本体（模型管理模块），
-   *  id 定稿 model-manager；键名保留 modelConsole 避免全量改引用。旧 id 的存量分享路由/日志数据
-   *  不迁移（历史数据），分享归属校验白名单已含旧 id（见 main/modules/share/share-hub.ts）。 */
+   *  id 定稿 model-manager；键名保留 modelConsole 避免全量改引用。 */
   modelConsole: 'model-manager',
-  /** 2026-11-17 由 upload-config 改名（上传配置→上传管理）；2026-11-19 再改名（上传管理→文件管理）。
-   *  旧 id 链 upload-config → upload-manager → file-manager 的密钥/配置段/hub 路由启动时自动迁移 */
+  /** 2026-11-17 由 upload-config 改名（上传配置→上传管理）；2026-11-19 再改名（上传管理→文件管理） */
   fileManager: 'file-manager',
 } as const
 

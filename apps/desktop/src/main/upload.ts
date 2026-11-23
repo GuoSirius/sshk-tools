@@ -45,7 +45,7 @@ registerErrorClassifier(uploadErrorClassifier)
  * - 每次调用重建 Service/Provider（成本极低），保证改配置后无需重启即生效。
  * - 校验：全局默认传给 Service，工具级 ctx.validation 由 mergeValidation 收紧（不能放宽）。
  */
-// 密钥命名空间已提升为应用级 app:upload:<pid>（2026-11-19 用户拍板，见 services.ts migrateToolRenames）
+// 密钥命名空间已提升为应用级 app:upload:<pid>（2026-11-19 用户拍板，见 secret-ids.ts uploadSecretId）
 const DATA_URL_RE = /^data:[^;,]*;base64,([\s\S]+)$/
 const PROFILE_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 

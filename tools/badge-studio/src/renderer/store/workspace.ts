@@ -82,14 +82,6 @@ export async function loadConfigAndRecent(): Promise<void> {
   clicksField.value = await textConfig('clicksField', DEFAULT_CLICKS_FIELD)
   const savedStyle = (await host.config.get(configKey('badgeStyle'))) as Partial<typeof badgeStyle> | null
   if (savedStyle && typeof savedStyle === 'object') Object.assign(badgeStyle, savedStyle)
-  // 2026-11-16 定位改造一次性迁移：旧出厂偏移 (-9,-11) 是 margin 语义的外飘值，
-  // 新体系 translate(calc(-50% ± off)) 已含居中，旧值叠加会双重偏移导致角标外飘。
-  // 只清旧出厂默认值，用户手调过的其它数值不动。
-  if (badgeStyle.offsetY === -9 && badgeStyle.offsetX === -11) {
-    badgeStyle.offsetY = 0
-    badgeStyle.offsetX = 0
-    void host.config.set(configKey('badgeStyle'), { ...badgeStyle })
-  }
   const savedCss = (await host.config.get(configKey('badgeStyleCss'))) as
     | Partial<typeof badgeStyleCss>
     | null
@@ -604,14 +596,9 @@ export async function loadPosterIntoWorkspace(row: PosterRecord): Promise<void> 
       pastedHtml.value = html
       statRows.value = toStatRows(row.statsSnapshot ?? [], [])
       // 标记核对数据回显（用户 2026-11-17：标记数据随海报保存）；
-      // 2026-11-18 起落库为数组形态（url 含「.」不能作 Mongo 字段键），兼容旧 Record 形态
-      const savedMarks = (row as PosterRecord & { markCounts?: Array<{ url: string; count: number }> | Record<string, number> }).markCounts
-      if (savedMarks) {
-        const marks = Array.isArray(savedMarks)
-          ? Object.fromEntries(savedMarks.map((m) => [m.url, m.count]))
-          : savedMarks
-        for (const r of statRows.value) r.matched = marks[r.url] ?? 0
-      }
+      // 2026-11-18 起落库为数组形态（url 含「.」不能作 Mongo 字段键）
+      const marks = Object.fromEntries((row.markCounts ?? []).map((m) => [m.url, m.count]))
+      for (const r of statRows.value) r.matched = marks[r.url] ?? 0
     } catch (err) {
       ElMessage.error('载入海报失败：' + (err as Error).message)
       return
