@@ -19,6 +19,21 @@ import type { ActionHandler, EdmIpcContext, Payload } from './context'
 export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, ActionHandler>): void {
   const { repo, str, obj } = ctx
 
+  /**
+   * 跨品牌硬规定（2026-11-23）：片段不得跨品牌搭配模板。
+   * 落库 / 生成 / 预览前校验 bindings 片段品牌 === 目标品牌。
+   * 只校验"有 brandId 的片段"，历史空 brandId 不误杀、也不做迁移兼容。
+   */
+  async function assertBindingsSameBrand(brandId: string, bindings: { fragmentVersionId: string }[]): Promise<void> {
+    if (!brandId) return
+    for (const b of bindings) {
+      const fv = await repo.get<FragmentVersion>('fragmentVersions', b.fragmentVersionId)
+      if (fv?.brandId && fv.brandId !== brandId) {
+        throw new AppError('片段与模板不属于同一品牌，禁止跨品牌混用', 'validation')
+      }
+    }
+  }
+
   handlers.set('mail:list', async () => repo.list<Mail>('mails', { archived: false }))
 
   handlers.set('mail:save', async (data: Payload) => {
@@ -33,6 +48,8 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       outputs: (obj(data, 'outputs') as unknown as Mail['outputs']) ?? {},
     }
     if (!meta.name || !meta.templateVersionId) throw new AppError('邮件名称与模板版本必填')
+    // 跨品牌硬规定（第三层 · 落库前）：bindings 中每个片段须与邮件品牌一致
+    await assertBindingsSameBrand(meta.brandId, meta.bindings)
     if (id === '') return repo.insert<Mail>('mails', meta)
     return repo.update<Mail>('mails', id, meta)
   })
@@ -48,6 +65,8 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     if (!mail) throw new AppError('邮件不存在', 'io')
     const tv = await repo.get<TemplateVersion>('templateVersions', mail.templateVersionId)
     if (!tv) throw new AppError('模板版本不存在', 'io')
+    // 跨品牌硬规定（第三层 · 生成前）：以模板版本品牌为基准校验所有片段
+    await assertBindingsSameBrand(tv.brandId, mail.bindings)
     // R19 统一组合引擎：placements（per-placement data/order/repeat，Q12）→ slot_* → 三阶段
     const placements: ComposePlacement[] = []
     for (const b of mail.bindings) {
@@ -90,6 +109,8 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const tv = await repo.get<TemplateVersion>('templateVersions', str(data, 'templateVersionId'))
     if (!tv) throw new AppError('模板版本不存在', 'io')
     const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
+    // 跨品牌硬规定（第三层 · 预览前）：草稿 placements 的片段须与模板同品牌
+    await assertBindingsSameBrand(tv.brandId, raw.map((p) => ({ fragmentVersionId: String(p['fragmentVersionId'] ?? '') })))
     const placements: ComposePlacement[] = []
     for (const p of raw) {
       const fv = await repo.get<FragmentVersion>('fragmentVersions', String(p['fragmentVersionId'] ?? ''))

@@ -460,7 +460,7 @@ watch(() => props.section, (section) => {
   font-size: 13px;
 }
 .kv code { font-size: 12px; opacity: .75; word-break: break-all; }
-.warning-line { font-size: 12px; color: #ffb35c; padding: 6px 0; }
+.warning-line { font-size: 12px; color: var(--el-color-warning); padding: 6px 0; }
 .path-row { display: flex; gap: 8px; width: 100%; }
 
 .split-foot {
@@ -478,7 +478,7 @@ watch(() => props.section, (section) => {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #ffb35c;
+  color: var(--el-color-warning);
 }
 /* 开关项：文字与开关同行（2026-11-16 用户反馈） */
 .switch-row {

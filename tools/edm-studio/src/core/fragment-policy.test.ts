@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeFragmentPolicy, policyAllows, toStringList } from './fragment-policy'
+import { brandCodeOfTemplateId, foreignPolicyIds, mergeFragmentPolicy, policyAllows, toStringList } from './fragment-policy'
 
 describe('黑白名单族/版本两级叠加', () => {
   it('用户示例：族 allow{c,d}/deny{a,b} + 版本 allow{a}/deny{c} → 允许 {a,d}', () => {
@@ -47,5 +47,25 @@ describe('黑白名单族/版本两级叠加', () => {
     expect(toStringList('a，b、c')).toEqual(['a', 'b', 'c'])
     expect(toStringList([' x ', 'x', ''])).toEqual(['x'])
     expect(toStringList(undefined)).toEqual([])
+  })
+})
+
+describe('跨品牌硬规定：policy 不得引用其它品牌模板', () => {
+  it('从四种模板 ID 提取品牌 code', () => {
+    expect(brandCodeOfTemplateId('tpl_sys_elabscience_standard')).toBe('elabscience')
+    expect(brandCodeOfTemplateId('tplv_sys_elabscience_standard_v1')).toBe('elabscience')
+    expect(brandCodeOfTemplateId('cus_tpl_procell_basic')).toBe('procell')
+    expect(brandCodeOfTemplateId('cus_tplv_procell_basic_default')).toBe('procell')
+    expect(brandCodeOfTemplateId('tpl_other')).toBeNull() // 非标准 ID 不误杀
+  })
+
+  it('识别跨品牌 ID（双根同 code 不算跨品牌）', () => {
+    const policy = {
+      whitelist: ['tpl_sys_elabscience_standard', 'cus_tpl_elabscience_basic'],
+      blacklist: ['tpl_sys_procell_basic', 'tplv_sys_procell_basic_v1', 'tpl_unknown'],
+    }
+    expect(foreignPolicyIds(policy, 'elabscience')).toEqual(['tpl_sys_procell_basic', 'tplv_sys_procell_basic_v1'])
+    expect(foreignPolicyIds(policy, 'procell')).toEqual(['tpl_sys_elabscience_standard', 'cus_tpl_elabscience_basic'])
+    expect(foreignPolicyIds(policy, '')).toEqual([])
   })
 })

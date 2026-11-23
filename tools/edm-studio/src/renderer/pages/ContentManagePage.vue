@@ -128,12 +128,18 @@ const typeOptions = computed<string[]>(() => {
   return [...out].sort()
 })
 
-/** 黑白名单候选：双根全部模板族/版本 ID，下拉多选避免手输错误（#5/#6） */
+/**
+ * 黑白名单候选：仅当前片段所属品牌的模板族/版本 ID（硬规定：片段/模板不得跨品牌混用，#34）。
+ * 下拉多选避免手输错误；双根同 code 属同一逻辑品牌（方案 B，统一 brd_<code>），故两根源都纳入，不按 source 隔离。
+ */
 const templatePolicyOptions = computed<{ value: string; label: string }[]>(() => {
+  const curBrand = selected.value?.data.brandCode ?? ''
+  if (!curBrand) return []
   const out: { value: string; label: string }[] = []
   for (const [source, model] of [['system', treeDomain.sysModel.value], ['custom', treeDomain.cusModel.value]] as const) {
     for (const brand of (model?.brands ?? []) as any[]) {
       const bCode = String(brand.code ?? '')
+      if (bCode !== curBrand) continue // 硬规定：只列当前品牌的模板
       for (const fam of (brand.templates ?? []) as any[]) {
         const fCode = String(fam.code ?? '')
         const fName = String(fam.meta?.name ?? fCode)
@@ -273,6 +279,12 @@ onUnmounted(() => {
                 <FaviconField v-model="form.favicon" :readonly="!canEdit" :inherit-hint="faviconHint" :inherited-value="faviconInherited" />
               </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.tags" label="标签">
+                <el-select v-model="form.tags" multiple filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="输入后回车新增">
+                  <el-option v-for="t in form.tags" :key="t" :value="t" :label="t" />
+                </el-select>
+                <FormHint>自由标签，回车新建；写入 meta.yaml 的 tags</FormHint>
+              </el-form-item>
               <el-form-item v-if="showForm.typeField" label="类型" required>
                 <el-select v-model="form.type" filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="选择或输入，如 header / product">
                   <el-option v-for="t in typeOptions" :key="t" :value="t" :label="t" />

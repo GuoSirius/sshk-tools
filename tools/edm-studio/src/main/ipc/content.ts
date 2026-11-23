@@ -122,6 +122,13 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
     const sel = obj(data, 'selector') as unknown as SystemSelector
     if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new AppError('selector 需含 brandCode/kind/familyCode')
     const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
+    // 跨品牌硬规定（第三层 · 渲染前）：组合预览的片段 selector.brandCode 必须与模板一致
+    for (const p of raw) {
+      const ps = p['selector'] as unknown as SystemSelector
+      if (ps?.brandCode && ps.brandCode !== sel.brandCode) {
+        throw new AppError('片段与模板不属于同一品牌，禁止跨品牌混用', 'validation')
+      }
+    }
     // R28：显式 link 的 @shared / @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
     const cssRoots = { systemRoot: ctx.resolveContentRoot('system'), customRoot: ctx.resolveContentRoot('custom') }
     if (raw.length === 0) return await renderSystemPreview(root, sel, cssRoots)

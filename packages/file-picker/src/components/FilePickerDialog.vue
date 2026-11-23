@@ -525,11 +525,11 @@ function onPaneScroll(e: Event): void {
 .dir-cascader { flex: 0 1 240px; min-width: 0; }
 .dir-manual { flex: 1 1 auto; min-width: 0; }
 .dir-validation { font-size: 12px; line-height: 1.4; margin-top: -2px; }
-.dir-validation--warn { color: #e6a23c; }
-.dir-validation--warning { color: #e6a23c; }
-.dir-validation--error { color: #f56c6c; }
+.dir-validation--warn { color: var(--el-color-warning); }
+.dir-validation--warning { color: var(--el-color-warning); }
+.dir-validation--error { color: var(--el-color-danger); }
 .dir-validation--info { color: var(--el-text-color-secondary); }
-.dir-invalid :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px #f56c6c inset; }
+.dir-invalid :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
 .search-input { flex: 0 0 150px; }
 .hidden-input { display: none; }
 .lib-row-actions { flex-wrap: wrap; gap: 6px; }

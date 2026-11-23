@@ -501,8 +501,8 @@ body {
 }
 .card-tags > * { flex: none; }
 .card-warn {
-  font-size: 11px; color: #ffb35c; padding: 2px 7px; border-radius: 6px;
-  border: 1px dashed color-mix(in srgb, #ffb35c 55%, transparent);
+  font-size: 11px; color: var(--el-color-warning); padding: 2px 7px; border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--el-color-warning) 55%, transparent);
 }
 
 /* ── 顶部栏：P4-1 起顶栏按钮全部语义色胶囊化（AppHeader.vue scoped），“设置”按钮删除 ── */
@@ -610,7 +610,7 @@ body {
 .tool-manage-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--sshk-muted); }
 .meta-chip { border: 1px dashed var(--sshk-border); border-radius: 6px; padding: 2px 8px; }
 .tool-manage-body { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--sshk-border); }
-.warning-line { font-size: 12px; color: #ffb35c; padding: 6px 0 0; }
+.warning-line { font-size: 12px; color: var(--el-color-warning); padding: 6px 0 0; }
 .about-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .about-table th, .about-table td { border: 1px solid var(--sshk-border); padding: 8px; text-align: left; }
 .about-table th { background: var(--sshk-hover); }

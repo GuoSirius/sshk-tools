@@ -51,3 +51,22 @@ export function toStringList(v: unknown): string[] {
   if (typeof v !== 'string' || !v.trim()) return []
   return uniq(v.split(/[,，、]+/).map((x) => x.trim()))
 }
+
+/**
+ * 跨品牌硬规定（2026-11-23）：片段只能用本品牌模板。
+ * 从模板族/版本 ID 提取品牌 code：`tpl_sys_<brand>_…` / `tplv_sys_<brand>_…` / `cus_tpl_<brand>_…` / `cus_tplv_<brand>_…`。
+ * 非标准 ID 返回 null（无法判定品牌，交由调用方忽略，不误杀）。
+ */
+export function brandCodeOfTemplateId(id: string): string | null {
+  const m = /^(?:tpl_sys|tplv_sys|cus_tpl|cus_tplv)_([^_]+)_/.exec(id)
+  return m ? m[1]! : null
+}
+
+/** policy 中属于其它品牌的模板 ID 列表（双根同 code 属同一品牌，按 code 判定） */
+export function foreignPolicyIds(policy: FragmentPolicy | null | undefined, brandCode: string): string[] {
+  if (!policy || !brandCode) return []
+  return [...(policy.whitelist ?? []), ...(policy.blacklist ?? [])].filter((id) => {
+    const b = brandCodeOfTemplateId(id)
+    return b !== null && b !== brandCode
+  })
+}

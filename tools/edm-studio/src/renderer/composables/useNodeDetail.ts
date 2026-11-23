@@ -5,7 +5,7 @@ import type { FieldDef } from '../sample-schema'
 import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from '../sample-schema'
 import { replaceFieldsInMeta, withMetaIdentity } from '../meta-fields'
 import { isCodeReadonly, META_CODE_MODE, resolveMetaCode, validateMetaIdentity } from '../../core/meta-contract'
-import { toStringList } from '../../core/fragment-policy'
+import { foreignPolicyIds, toStringList } from '../../core/fragment-policy'
 import { api } from '../tool-api'
 import { uploadInlineImages } from '../upload.js'
 import type { Source, TreeNode } from './useContentTree'
@@ -41,8 +41,8 @@ export interface NodeDetail {
   sampleMode: Ref<'form' | 'data' | 'design'>
   sampleSchema: Ref<FieldDef[]>
   sampleObj: Ref<Record<string, unknown>>
-  form: Ref<{ name: string; code: string; description: string; favicon: string; type: string; version: number; changelog: string; policyB: string[]; policyW: string[] }>
-  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; typeField: boolean; policy: boolean; version: boolean }>
+  form: Ref<{ name: string; code: string; description: string; favicon: string; tags: string[]; type: string; version: number; changelog: string; policyB: string[]; policyW: string[] }>
+  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; tags: boolean; typeField: boolean; policy: boolean; version: boolean }>
   /** favicon 继承提示（版本→族→类型→品牌） */
   faviconHint: ComputedRef<string>
   /** 当前节点真实目录名（code 镜像源） */
@@ -100,22 +100,26 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   const sampleSchema = ref<FieldDef[]>([])
   const sampleObj = ref<Record<string, unknown>>({})
   const form = ref({
-    name: '', code: '', description: '', favicon: '', type: '',
+    name: '', code: '', description: '', favicon: '', tags: [] as string[], type: '',
     version: 1, changelog: '', policyB: [] as string[], policyW: [] as string[],
   })
 
   const showForm = computed(() => {
     const k = deps.selected.value?.kind
+    const cat = deps.selected.value?.data.cat
+    const isFragment = cat === 'fragment'
     return {
       catBase: k === 'category',
       brandBase: k === 'brand' || k === 'family',
       base: k === 'brand' || k === 'category' || k === 'family' || k === 'version',
       codeReadonly: isCodeReadonly(META_CODE_MODE),
-      // 片段侧（族/版本）不维护图标；仅品牌、类型与模板族/版本显示
-      favicon: k === 'brand' || k === 'category' || ((k === 'family' || k === 'version') && deps.selected.value?.data.cat === 'template'),
-      // 类型仅族可配；黑白名单族与版本都可配（版本在族结果上做增量修正）
-      typeField: k === 'family' && deps.selected.value?.data.cat === 'fragment',
-      policy: (k === 'family' || k === 'version') && deps.selected.value?.data.cat === 'fragment',
+      // 片段侧全线不维护图标（类目/族/版本）；仅品牌与模板侧（类目/族/版本）显示
+      favicon: k === 'brand' || ((k === 'category' || k === 'family' || k === 'version') && !isFragment),
+      // 标签：品牌 / 类型 / 族有 tags（版本 meta 无 tags 字段）
+      tags: k === 'brand' || k === 'category' || k === 'family',
+      // 类型仅片段族可配；黑白名单片段族与版本都可配（版本在族结果上做增量修正）
+      typeField: k === 'family' && isFragment,
+      policy: (k === 'family' || k === 'version') && isFragment,
       version: k === 'version',
     }
   })
@@ -155,6 +159,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       code: String(raw.code ?? ''),
       description: String(raw.description ?? ''),
       favicon: String(raw.favicon ?? ''),
+      tags: toStringList(raw.tags),
       type: String(raw.type ?? ''),
       // 版本号只读派生：取目录名 vN，不读 meta.yaml 手填值（避免 v1 目录写 version:3 造成显示/最新判定混乱）
       version: node && node.kind === 'version' ? versionOfDirName(dirNameOf(node)) : Number(raw.version ?? 1),
@@ -251,6 +256,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       if (s.favicon) patch.favicon = form.value.favicon.trim() || undefined
       patch.description = form.value.description.trim() || undefined
     }
+    if (s.tags) patch.tags = form.value.tags.filter((t) => t.trim())
     if (s.typeField) patch.type = form.value.type.trim() || undefined
     if (s.policy) patch.policy = { blacklist: [...form.value.policyB], whitelist: [...form.value.policyW] }
     if (s.version) {
@@ -295,14 +301,31 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
         return
       }
     }
+    let out = ''
     try {
-      let out = ''
       if (metaMode.value === 'form') {
         out = yaml.dump(syncFormToRaw(), { lineWidth: -1 })
       } else {
         parseYamlObject(metaText.value) // 语法校验，非法即抛；空内容视为 {}
         out = metaText.value
       }
+    } catch (err) {
+      ElMessage.error(`元数据不是合法 YAML：${(err as Error).message}`)
+      return
+    }
+    // 跨品牌硬规定（第二层）：数据模式手输的 policy 也必须只引用本品牌模板，防绕过下拉
+    if (showForm.value.policy) {
+      const rawOut = parseYamlObject(out) as { policy?: { whitelist?: unknown; blacklist?: unknown } }
+      const foreign = foreignPolicyIds(
+        { whitelist: toStringList(rawOut.policy?.whitelist), blacklist: toStringList(rawOut.policy?.blacklist) },
+        node.data.brandCode ?? '',
+      )
+      if (foreign.length) {
+        ElMessage.error(`黑白名单含跨品牌模板（${foreign.join('、')}），片段只能使用本品牌模板`)
+        return
+      }
+    }
+    try {
       await deps.write(node.data.metaPath, out, node.data.source)
       if (node.kind !== 'root') await deps.load(true) // 元数据名称/code 变更实时反馈到左树（#4）
       await deps.onAfterSave?.('meta') // 模板族 slots 声明变更同步到组合预览缓存

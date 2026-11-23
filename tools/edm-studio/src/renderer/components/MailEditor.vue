@@ -99,6 +99,13 @@ const fragmentOptions = computed<FragmentOption[]>(() => {
     .map((v) => ({ id: v._id, label: `${fragName(v.fragmentId ?? '')} / ${v.label ?? `v${v.version}`}`, type: v.type }))
 })
 
+/** 跨品牌硬规定：用户切换品牌时清空旧品牌的模板与片段布局，避免残留混用 */
+function onBrandChange(): void {
+  draft.value.templateVersionId = ''
+  placements.value = []
+  previewHtml.value = ''
+}
+
 function onTemplateChange(): void {
   const first = templateSlots.value[0]?.key ?? ''
   placements.value = placements.value.map((p, i) => ({
@@ -243,7 +250,7 @@ function savePlacementData(): void {
             </el-radio-group>
           </el-form-item>
           <el-form-item label="品牌" required>
-            <el-select v-model="draft.brandId" filterable style="width: 100%" placeholder="选择品牌">
+            <el-select v-model="draft.brandId" filterable style="width: 100%" placeholder="选择品牌" @change="onBrandChange">
               <el-option v-for="b in brandOptions" :key="b.value" :value="b.value" :label="b.label" />
             </el-select>
           </el-form-item>
