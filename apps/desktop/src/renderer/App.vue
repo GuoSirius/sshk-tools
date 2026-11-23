@@ -34,12 +34,14 @@ const router = useRouter()
 const activeToolId = computed(() => (route.params.toolId as string | undefined) ?? null)
 // 应用管理路由（P4-2）：/app/:module/:page? 独立于桌面与工具宿主的第三容器
 const isAdminRoute = computed(() => route.path === '/app' || route.path.startsWith('/app/'))
-// 台账 #181：应用管理入口二态——进入 /app 前记录最后一个非应用管理路由；应用管理内切菜单不覆盖回退点，
-// 顶栏入口「返回」无论菜单切到哪都回到进入前的页面
-const adminReturnPath = ref(isAdminRoute.value ? '/' : route.fullPath)
-watch(() => route.fullPath, (path) => {
-  if (isAdminRoute.value) return
-  adminReturnPath.value = path
+// 台账 #181：应用管理入口二态——「返回」回到进入 /app 前的路由页面。
+// beforeEach 在导航确认瞬间取 from（导航前权威快照）：仅「非 /app → /app」跨越时锁定，
+// /app 内部菜单切换的 to/from 都在 /app 内，永不触碰回退点（含落点规整 replace）
+const adminReturnPath = ref('/')
+router.beforeEach((to, from) => {
+  const toAdmin = to.path === '/app' || to.path.startsWith('/app/')
+  const fromAdmin = from.path === '/app' || from.path.startsWith('/app/')
+  if (toAdmin && !fromAdmin) adminReturnPath.value = from.fullPath || '/'
 })
 const activeMenu = computed(() => {
   const menu = route.params.menu as string | undefined
@@ -103,7 +105,10 @@ function openDataDir(): void { void window.api.app.openDataDir() }
  *  台账 #181：已在应用管理内时入口变「返回」，点击回到进入前的页面（菜单切换不影响回退点） */
 function openAppAdmin(): void {
   if (isAdminRoute.value) {
-    void router.push(adminReturnPath.value || '/')
+    const back = adminReturnPath.value || '/'
+    // 防御：回退点异常仍指向 /app 时回桌面，避免「点返回没反应」
+    const backIsAdmin = back === '/app' || back.startsWith('/app/')
+    void router.push(backIsAdmin ? '/' : back)
     return
   }
   void router.push('/app')
