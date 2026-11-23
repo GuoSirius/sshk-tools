@@ -23,8 +23,11 @@ export interface ToolConfigField {
   label: string
   type: ToolConfigFieldType
   options?: { label: string; value: string }[]
-  /** 动态选项源：从宿主能力实时拉取（应用级 Provider 清单等），避免 manifest 写死 */
-  optionsSource?: 'llm:providers'
+  /** 动态选项源：从宿主能力实时拉取（应用级 Provider 清单 / 指定 Provider 的远端模型列表），避免 manifest 写死 */
+  optionsSource?: 'llm:providers' | 'llm:providerModels'
+  /** 动态选项依赖字段（optionsSource=llm:providerModels 时必填）：同组内该字段（如 ai.providerId）
+   *  的当前值决定拉取参数；依赖字段变化时本字段选项自动重拉（SettingsPage 接线） */
+  optionsDep?: string
   /** 代码编辑器渲染（Monaco，css 高亮）：替代裸 textarea，适合 CSS 覆盖类配置 */
   codeEditor?: boolean
   min?: number

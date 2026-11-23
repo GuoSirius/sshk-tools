@@ -53,8 +53,10 @@
         {
           "key": "ai.model",
           "label": "模型覆盖",
-          "type": "string",
-          "hint": "留空 = 使用 Provider 配置的模型；填写后本工具优先使用该模型（如 deepseek-chat / gpt-4o-mini）"
+          "type": "select",
+          "optionsSource": "llm:providerModels",
+          "optionsDep": "ai.providerId",
+          "hint": "留空 = 使用 Provider 配置的模型；下拉选择（「刷新」拉取最新模型列表）或手动输入（如 deepseek-chat / gpt-4o-mini）"
         }
       ]
     },

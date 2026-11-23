@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, InfoFilled, Setting, WarningFilled } from '@element-plus/icons-vue'
+import { Check, InfoFilled, Refresh, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import { SSHK_DEV } from '@sshk/shared'
@@ -42,8 +42,11 @@ const { byId } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
 const values = reactive<Record<string, unknown>>({})
 const depValues = reactive<Record<string, unknown>>({})
-/** 动态选项：manifest 标 optionsSource 的字段从宿主能力实时拉取（如全局上传 profile） */
+/** 动态选项：manifest 标 optionsSource 的字段从宿主能力实时拉取（如全局上传 profile / Provider 模型列表） */
 const dynamicOptions = reactive<Record<string, { label: string; value: string }[]>>({})
+/** 动态选项拉取中（按字段 key）+ 拉取序号：慢请求晚到不得覆盖新结果 */
+const refreshing = reactive<Record<string, boolean>>({})
+const optionFetchSeq: Record<string, number> = {}
 const saving = ref(false)
 const dirty = ref(false)
 const activeGroup = ref('')
@@ -134,12 +137,55 @@ async function load(): Promise<void> {
       } catch {
         dynamicOptions[field.key] = [{ label: '（Provider 清单未就绪）', value: '' }]
       }
+    } else if (field.optionsSource === 'llm:providerModels') {
+      // Provider 远端模型列表（2026-11-24 用户需求）：走真实 /models 查询，不阻塞整页 load
+      //（网络慢/不可达只影响本字段下拉），行内「刷新」按钮与依赖字段变化均可重拉
+      void refreshDynamicOptions(field)
     }
   }
   for (const dep of tool.value?.configDeps ?? []) {
     depValues[`${dep.toolId}.${dep.key}`] = await window.api.config.get(`tools.${dep.toolId}.${dep.key}`)
   }
 }
+/**
+ * 拉取 optionsSource=llm:providerModels 字段的动态选项（2026-11-24 用户需求）：
+ * 依赖字段（optionsDep，如 ai.providerId）当前值决定目标 Provider——用户清空回「跟随应用激活」
+ * 时按依赖字段的 fallbackKey（app.llm.activeProviderId）兜底；依赖也未就绪则清空选项待手输。
+ * allow-create 下拉保证拉取失败/离线时仍可手输模型名（覆盖语义不受影响）。
+ */
+async function refreshDynamicOptions(field: ToolConfigField): Promise<void> {
+  if (field.optionsSource !== 'llm:providerModels') return
+  const seq = (optionFetchSeq[field.key] ?? 0) + 1
+  optionFetchSeq[field.key] = seq
+  refreshing[field.key] = true
+  try {
+    let providerId = String(values[field.optionsDep ?? ''] ?? '').trim()
+    if (!providerId && field.optionsDep) {
+      const dep = manifestFields().find((f) => f.key === field.optionsDep)
+      if (dep?.fallbackKey) providerId = String(await window.api.config.get(dep.fallbackKey) ?? '').trim()
+    }
+    if (!providerId) {
+      if (optionFetchSeq[field.key] === seq) dynamicOptions[field.key] = []
+      return
+    }
+    const models = await window.api.llm.providerModels(providerId)
+    if (optionFetchSeq[field.key] !== seq) return // 期间依赖又变了，丢弃过期结果
+    dynamicOptions[field.key] = models.map((m) => ({ label: m, value: m }))
+  } catch (err) {
+    if (optionFetchSeq[field.key] === seq) dynamicOptions[field.key] = []
+    ElMessage.warning(`拉取模型列表失败：${(err as Error).message}（可直接手动输入模型名）`)
+  } finally {
+    refreshing[field.key] = false
+  }
+}
+
+/** 下拉联动：本字段被其它动态选项字段 optionsDep 指向时，其选项随本次变更自动重拉 */
+function onSelectChange(field: ToolConfigField): void {
+  for (const f of manifestFields()) {
+    if (f.optionsSource === 'llm:providerModels' && f.optionsDep === field.key) void refreshDynamicOptions(f)
+  }
+}
+
 // catalog 首帧为空，工具就绪后必须重新拉取字段（只监听 id 避免频繁刷新）；
 // 页内声明分组（P4-8c）无目录依赖，标识取固定哨兵，挂载即拉取一次
 watch(() => (props.groups ? '__inline__' : tool.value?.id), () => {
@@ -299,7 +345,21 @@ watch(() => props.section, (section) => {
                       {{ field.type === 'dir' ? '选择目录' : '选择文件' }}
                     </el-button>
                   </div>
-                  <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" filterable clearable>
+                  <!-- 远端模型列表（optionsSource=llm:providerModels）：allow-create 保底手输 +
+                       行内「刷新」重拉最新 /models；依赖字段（optionsDep）change 时自动重拉 -->
+                  <div v-else-if="field.type === 'select' && field.optionsSource === 'llm:providerModels'" class="path-row combo">
+                    <el-select
+                      v-model="values[field.key]"
+                      filterable clearable allow-create default-first-option
+                      :loading="!!refreshing[field.key]"
+                      :placeholder="field.optionsSource === 'llm:providerModels' ? '留空 = 用 Provider 配置的模型；可下拉选择或手输' : '请选择'"
+                      @change="onSelectChange(field)"
+                    >
+                      <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+                    </el-select>
+                    <el-button size="small" :icon="Refresh" :loading="!!refreshing[field.key]" @click="refreshDynamicOptions(field)">刷新</el-button>
+                  </div>
+                  <el-select v-else-if="field.type === 'select'" v-model="values[field.key]" filterable clearable @change="onSelectChange(field)">
                     <el-option v-for="opt in dynamicOptions[field.key] ?? field.options" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
                   <el-input clearable v-else v-model="values[field.key]" />
