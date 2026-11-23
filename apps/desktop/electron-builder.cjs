@@ -42,6 +42,14 @@ const config = {
   // 在无 VS 编译链的环境直接构建失败，产物也不会进包）
   npmRebuild: false,
 
+  // 跳过 asar integrity 嵌入（addWinAsarIntegrity 重写 sshk-tools.exe）：杀软（腾讯管家 QQPCRTP）
+  // 实时扫描会在解压/重写 exe（~250MB）的瞬间握住句柄 → 写 exe 报 UNKNOWN / win-unpacked 目录改名
+  // EPERM，打包必失败（1.4.0 后连续复现；实测锁随扫描完成自动释放 = 纯竞态）。该 integrity 数据
+  // 只是嵌进 exe 资源，运行时无任何消费者（EnableAsarIntegrityValidation fuse 默认关闭，
+  // app-builder-lib 全仓不设置它；自动更新完整性走 latest.yml sha512，与此无关）——跳过零实际损失。
+  // 默认跳过解锁构建；如需恢复嵌入，设 SSHK_BUILD_DISABLE_ASAR_INTEGRITY=0。
+  disableAsarIntegrity: process.env.SSHK_BUILD_DISABLE_ASAR_INTEGRITY !== '0',
+
   directories: {
     // 安装包产物落到仓库根 dist/（.gitignore 已忽略 dist/）；相对 apps/desktop 上溯两级
     output: '../../dist',

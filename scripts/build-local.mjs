@@ -10,7 +10,7 @@
  * 已内置国内镜像（electron-builder 二进制 + electron），无需科学上网。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -45,9 +45,10 @@ function step(name, cmd, opts = {}) {
     // Node 22 起 spawn .cmd 必须 shell:true（否则 exit null）
     shell: opts.shell ?? process.platform === 'win32',
   })
-  if (res.stdout?.trim()) console.log(res.stdout.trim().split('\n').slice(-6).join('\n'))
+  // 失败时截尾打印窗口放宽：electron-builder 堆栈深且错误头在数十行之前，10 行根本看不到真实报错
+  if (res.stdout?.trim()) console.log(res.stdout.trim().split('\n').slice(-8).join('\n'))
   if (res.stderr?.trim() && res.status !== 0) {
-    console.error(res.stderr.trim().split('\n').slice(-10).join('\n'))
+    console.error(res.stderr.trim().split('\n').slice(-40).join('\n'))
   }
   if (res.status !== 0) {
     console.error(`\n✗ ${name} 失败（exit ${res.status}）`)
@@ -63,6 +64,11 @@ step('检查 Electron 二进制', [process.execPath, join(root, 'scripts/ensure-
 step('electron-vite 构建', [PM, '--filter', '@sshk/desktop', 'build'], { timeout: 5 * 60_000 })
 
 // ③ 打包：--dir 出免安装目录；默认出 NSIS 安装包（仅 x64，arm64 本地测试不需要）
+// 先清理上次运行遗留的 win-unpacked（release.mjs 每轮清 dist，本脚本此前不清）：目标目录已存在时
+// electron-builder「解压到 win-unpacked.tmp → rename 成 win-unpacked」在 Windows 必 EPERM，被迫走
+// copy+delete 覆盖旧 ~250MB exe → 再撞杀软实时扫描锁 → integrity 写入失败（失败循环的确定性来源之一）。
+rmSync(join(outDir, 'win-unpacked'), { recursive: true, force: true })
+rmSync(join(outDir, 'win-unpacked.tmp'), { recursive: true, force: true })
 const builderArgs = fast
   ? ['--dir']
   : ['--win', 'nsis:x64', '--publish', 'never']
