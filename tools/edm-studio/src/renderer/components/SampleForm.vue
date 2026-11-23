@@ -2,11 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CONTAINER_TYPES, validateModel, type FieldDef } from '../sample-schema'
-import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
+import { RichTextEditor } from '@sshk/rich-text'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
-import { createImageLibrary, createImageUploader } from '../upload.js'
+import { createImageLibrary } from '../upload.js'
 import { llmApi, type LlmProviderLite } from '../tool-api'
 import { generateSample, polishRichText, type ChatMessage } from '../ai-copy'
 
@@ -31,10 +31,8 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: Record<string, unknown>): void }>()
 
 const errors = computed(() => validateModel(props.fields, props.modelValue))
-/** 上传钩子按宿主注入的 toolId 生成，与 ImageField 共用同一实现（C2 唯一注入点） */
+/** 图片库桥接：富文本工具栏/粘贴上传/图片字段全走 FilePicker（请求级目标，不依赖工具级配置） */
 const toolId = useToolId()
-const uploader = computed<RichTextUploadHook>(() => createImageUploader(toolId.value))
-/** 图片库桥接：富文本图片菜单可选本地/远程/云来源，可上传也可列图插入 */
 const library = computed(() => createImageLibrary(toolId.value))
 
 /** 分组分隔：group 与上一字段不同时插分隔条 */
@@ -276,7 +274,6 @@ function acceptPolish(): void {
             <RichTextEditor
               :model-value="strVal(f.key)"
               :readonly="readonly"
-              :on-upload-image="uploader"
               :image-library="library"
               :state-key="`edm:${f.key}`"
               @update:model-value="(v: string) => set(f.key, v)"
@@ -386,8 +383,7 @@ function acceptPolish(): void {
                   v-if="c.cellType === 'richtext'"
                   :model-value="cellVal((row as Record<string, unknown>) ?? {}, c.key)"
                   :readonly="readonly"
-                  :on-upload-image="uploader"
-                  :image-library="library"
+                      :image-library="library"
                   :state-key="`edm:${f.key}:${i}:${c.key}`"
                   @update:model-value="(v: string) => updateRow(f.key, i, { ...((row as Record<string, unknown>) ?? {}), [c.key]: v })"
                 />

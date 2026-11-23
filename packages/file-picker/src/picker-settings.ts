@@ -1,4 +1,4 @@
-import type { FilePickerSource, FilePickerTarget } from './types'
+import type { FilePickerLibrary, FilePickerSource, FilePickerTarget } from './types'
 
 /**
  * 文件选择弹框设置（自 rich-text 图片库设置 2026-11-17 迁移泛化）：
@@ -90,6 +90,33 @@ export function saveSettings(store: Storage | null | undefined, stateKey: string
   } catch {
     // localStorage 满 / 被禁用：不影响主流程
   }
+}
+
+/** 安全取 localStorage（隐私模式 / 受限 webview 下静默降级） */
+export function safeStorage(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 读取某 stateKey 的上传目标（source + target），供无交互场景（如富文本内联 data: 图片静默转存）复用。
+ * 口径与弹框 useDirPicker.restoreSettings 一致：sourceId 失效时按 云→远程→本地 回落默认源；
+ * 无保存记录同样回落默认源。返回 null 仅代表「没有任何可用来源」。
+ */
+export async function resolveLastUploadTarget(
+  library: FilePickerLibrary,
+  stateKey: string,
+  store: Storage | null | undefined = safeStorage(),
+): Promise<{ source: FilePickerSource; target: FilePickerTarget } | null> {
+  const saved = loadSettings(store, stateKey)
+  const sources = sortSourcesByDefault(await library.sources())
+  const id = defaultSourceId(sources, saved?.sourceId)
+  const source = sources.find((s) => s.id === id)
+  if (!source) return null
+  return { source, target: saved?.targets[id] ?? {} }
 }
 
 export type DirValidationLevel = 'ok' | 'warn' | 'error'

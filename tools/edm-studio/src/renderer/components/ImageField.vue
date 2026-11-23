@@ -17,7 +17,7 @@ import { host } from '../host'
  * 由主进程白名单放行；存储值保持 file://。预览失败显示图标占位（非裸 FAILED 裂图块）。
  *
  * 图片上传能力统一（用户 2026-11-23 口径）：图片/富文本/粘贴上传全部收敛到 FilePicker，
- * 本组件不再自带裸 <input type=file> + createImageUploader（那条路径依赖工具级上传配置，待删）。
+ * 本组件不带裸 <input type=file>；工具级上传配置已删，只留 validation（见 manifest config-upload）。
  */
 const props = withDefaults(
   defineProps<{ modelValue?: string; readonly?: boolean }>(),

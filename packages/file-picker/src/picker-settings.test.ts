@@ -6,6 +6,7 @@ import {
   loadSettings,
   matchFileKeyword,
   normalizeDirInput,
+  resolveLastUploadTarget,
   saveSettings,
   settingsKey,
   sortSourcesByDefault,
@@ -54,6 +55,24 @@ describe('picker-settings', () => {
     expect(loadSettings(store, 'instance-A')).toEqual(a)
     expect(loadSettings(store, 'instance-B')).toEqual(b)
     expect(settingsKey('instance-A')).not.toBe(settingsKey('instance-B'))
+  })
+
+  it('resolveLastUploadTarget：读上次 source+target；无记录/来源失效回落默认源，空来源返回 null', async () => {
+    const store = memoryStore()
+    const library = { sources: async () => sources } as any
+    // 无保存记录 → 回落最高优先级云源，target 为空
+    const fallback = await resolveLastUploadTarget(library, 'fresh', store)
+    expect(fallback).toEqual({ source: byId('cloud-1'), target: {} })
+    // 有保存记录 → 还原选中的源与其专属 target
+    saveSettings(store, 'inst', { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm/mail' } } })
+    expect(await resolveLastUploadTarget(library, 'inst', store)).toEqual({
+      source: byId('remote-1'), target: { remotePath: 'edm/mail' },
+    })
+    // 保存的源已被删除 → 回落默认源
+    saveSettings(store, 'gone', { sourceId: 'deleted', targets: {} })
+    expect((await resolveLastUploadTarget(library, 'gone', store))?.source.id).toBe('cloud-1')
+    // 无任何来源 → null
+    expect(await resolveLastUploadTarget({ sources: async () => [] } as any, 'none', store)).toBeNull()
   })
 
   it('损坏数据返回 null，不抛错', () => {

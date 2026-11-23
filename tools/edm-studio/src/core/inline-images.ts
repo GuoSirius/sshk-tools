@@ -42,6 +42,18 @@ export function replacementFor(img: InlineImage, url: string): string {
   return `${img.head}${img.quote}${url}${img.quote}`
 }
 
+/**
+ * data: URL → File（内联图片静默转存用；纯 base64 解码，不依赖 fetch）。
+ * 渲染进程 File/atob 均可用；Node 测试环境（18+）也支持。
+ */
+export function dataUrlToFile(dataUrl: string, name: string, mime: string): File {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new File([bytes], name, { type: mime })
+}
+
 /** 全部替换用 split/join，避免 $ 等特殊字符在 String.replace 里被当替换模式 */
 export function replaceInlineImages(
   html: string,

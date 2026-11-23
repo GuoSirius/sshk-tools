@@ -75,55 +75,13 @@
     },
     {
       "id": "config-upload",
-      "label": "上传通道",
+      "label": "上传校验",
       "fields": [
-        {
-          "key": "upload.targetType",
-          "label": "目标类型",
-          "type": "select",
-          "options": [
-            { "value": "local", "label": "本地目录" },
-            { "value": "remote", "label": "远程" },
-            { "value": "cloud", "label": "云存储" }
-          ],
-          "hint": "连接信息在「上传配置」工具里统一预设，这里只选目标"
-        },
-        {
-          "key": "upload.profileId",
-          "label": "全局配置",
-          "type": "select",
-          "optionsSource": "upload:all",
-          "hint": "留空则使用该类型的默认 profile；下拉来自应用级上传配置"
-        },
-        {
-          "key": "upload.overrides.localDir",
-          "label": "本地目录覆盖",
-          "type": "dir",
-          "hint": "目标类型=本地目录时生效，留空沿用全局默认目录"
-        },
-        {
-          "key": "upload.overrides.remoteFolder",
-          "label": "远端位置覆盖",
-          "type": "string",
-          "hint": "如 /2026/campaign；远端服务器上的位置，不是本机目录"
-        },
-        {
-          "key": "upload.overrides.bucket",
-          "label": "Bucket 覆盖",
-          "type": "string",
-          "hint": "云存储时可选覆盖"
-        },
-        {
-          "key": "upload.overrides.prefix",
-          "label": "对象前缀",
-          "type": "string",
-          "hint": "如 mail/，云存储对象 key 前缀"
-        },
         {
           "key": "upload.validation.accept",
           "label": "允许扩展名",
           "type": "string",
-          "hint": "逗号分隔，如 .png,.jpg；只能比全局更严，不能放宽"
+          "hint": "逗号分隔，如 .png,.jpg；只能比全局更严，不能放宽。上传目标在各图片/富文本控件的 FilePicker 里选择"
         },
         {
           "key": "upload.validation.maxSize",
@@ -152,9 +110,6 @@
       "openAfterGenerate": false
     },
     "upload": {
-      "targetType": "local",
-      "profileId": "",
-      "overrides": {},
       "validation": {}
     }
   },

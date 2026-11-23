@@ -24,6 +24,8 @@ export {
   loadSettings,
   matchFileKeyword,
   normalizeDirInput,
+  resolveLastUploadTarget,
+  safeStorage,
   saveSettings,
   sortSourcesByDefault,
   validateDirInput,

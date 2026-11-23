@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractInlineImages, replaceInlineImages, replacementFor } from './inline-images'
+import { dataUrlToFile, extractInlineImages, replaceInlineImages, replacementFor } from './inline-images'
 
 describe('T8 HTML 内联图片提取与回写', () => {
   it('识别 data: 图片，跳过外链与富文本正常 URL', () => {
@@ -25,5 +25,13 @@ describe('T8 HTML 内联图片提取与回写', () => {
   it('无内联图片时原样返回', () => {
     expect(extractInlineImages('<img src="a.png">')).toHaveLength(0)
     expect(replaceInlineImages('<p>x</p>', [])).toBe('<p>x</p>')
+  })
+
+  it('dataUrlToFile 正确解码 base64 并保留 name/mime', async () => {
+    const file = dataUrlToFile('data:image/png;base64,aGVsbG8=', 'inline-1.png', 'image/png')
+    expect(file.name).toBe('inline-1.png')
+    expect(file.type).toBe('image/png')
+    expect(file.size).toBe(5)
+    expect(new TextDecoder().decode(await file.arrayBuffer())).toBe('hello')
   })
 })
