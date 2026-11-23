@@ -10,6 +10,7 @@ export const { autoUpdater } = electronUpdaterPkg
 import { IPC_CHANNELS } from '@sshk/shared'
 import { getMainWindow } from './window'
 import { logger } from './logger'
+import { normalizeUpdatePercent } from './update-progress'
 import type { AppServices } from './services'
 
 /**
@@ -35,6 +36,32 @@ let latestVersion: string | undefined
 let progressLogMark = 0
 /** 下载阶段标记：error 事件无阶段上下文，用它区分「下载失败」与「检查失败」文案（渲染层横幅直接展示） */
 let downloadStarted = false
+/** 最近一次 download-progress 时间：用于识别「有请求但无字节」的停滞（GitHub 直连常见） */
+let lastProgressAt = 0
+let stallTimer: ReturnType<typeof setInterval> | undefined
+/** 停滞只提示一次，避免每 30s 覆盖 UI 提示 */
+let stallNotified = false
+const STALL_MS = 30_000
+
+function stopStallWatch(): void {
+  if (stallTimer) clearInterval(stallTimer)
+  stallTimer = undefined
+}
+
+function startStallWatch(): void {
+  stopStallWatch()
+  lastProgressAt = Date.now()
+  stallNotified = false
+  stallTimer = setInterval(() => {
+    if (downloadStarted && Date.now() - lastProgressAt >= STALL_MS && !stallNotified) {
+      stallNotified = true
+      logger.warn('updater', `下载 ${STALL_MS / 1000}s 无进度（网络或镜像可能不可用）`)
+      // 保持 downloading 阶段，只在 tooltip 给出可操作提示（UI 横幅仍显示真实进度）
+      pushUpdate({ error: '下载速度过慢或连接中断，请检查网络 / 镜像设置' })
+    }
+  }, STALL_MS)
+  stallTimer.unref?.()
+}
 /** P1-3：checkForUpdates 互斥闸门（手动检查 + 启动自动检查共用） */
 let updateCheckInFlight = false
 
@@ -79,10 +106,16 @@ function wireAutoUpdater(services: AppServices | null): void {
     logger.info('updater', `dev 更新测试：更新源走镜像 → ${mirrorFeed}`)
   }
   autoUpdater.autoDownload = true
+  // 发布流程只上传安装包与 latest.yml，不上传 .blockmap：差分下载必 404 回退全量，
+  // 直接禁用可省一轮无效请求，并消除 dev 控制台的 fallback 报错噪音。
+  autoUpdater.disableDifferentialDownload = true
+  // 本项目发布完整安装包，不走 web installer；显式关闭消除 electron-updater 的版本默认值告警
+  autoUpdater.disableWebInstaller = true
   // 复核项 10：「下载更新后重启自动安装」默认关闭，由 app.autoInstallOnAppQuit 控制；
   // dev 测试模式强制关自动安装（用户验收项7：只验下载流程，不执行安装）。
   autoUpdater.autoInstallOnAppQuit = updateDevCheck ? false : Boolean(services?.config.get('app.autoInstallOnAppQuit'))
   autoUpdater.on('checking-for-update', () => {
+    stopStallWatch()
     progressLogMark = 0
     downloadStarted = false
     pushUpdate({ phase: 'checking', error: undefined })
@@ -94,6 +127,7 @@ function wireAutoUpdater(services: AppServices | null): void {
     // 要等首字节到达——GitHub 直连经常长时间挂起（2026-11-18 实测 available 卡几分钟无进度）。
     // 乐观推 downloading 0%：UI 立刻进入「下载中」，首字节后真实进度覆盖；出错由 error 事件纠正。
     downloadStarted = true
+    startStallWatch()
     pushUpdate({ phase: 'downloading', version: info.version, percent: 0, error: undefined })
   })
   autoUpdater.on('update-not-available', (info: { version: string }) => {
@@ -101,8 +135,9 @@ function wireAutoUpdater(services: AppServices | null): void {
     pushUpdate({ phase: 'not-available', version: info.version, percent: undefined, error: undefined })
   })
   autoUpdater.on('download-progress', (p: { percent: number }) => {
-    const percent = Math.round(p.percent)
-    if (!Number.isFinite(percent)) return // 防 NaN 污染进度条（?? 不兜 NaN）
+    const percent = normalizeUpdatePercent(p.percent)
+    if (percent === null) return // 防 NaN 污染进度条（?? 不兜 NaN）
+    lastProgressAt = Date.now()
     downloadStarted = true
     pushUpdate({ phase: 'downloading', version: latestVersion, percent, error: undefined })
     // 节流落盘：每 10% 记一条，便于诊断「下载中无进度」类网络问题（GitHub 直连卡顿）
@@ -112,9 +147,11 @@ function wireAutoUpdater(services: AppServices | null): void {
     }
   })
   autoUpdater.on('update-downloaded', (info: { version: string }) => {
+    stopStallWatch()
     pushUpdate({ phase: 'downloaded', version: info.version, percent: 100, error: undefined })
   })
   autoUpdater.on('error', (err: Error) => {
+    stopStallWatch()
     console.warn('[sshk] 更新出错：', err)
     // P1-3：error 事件不区分阶段——下载进行中（downloading）的检查类错误不覆盖进度状态，
     // 否则一次后台检查失败会把正在跑的下载进度条踩成 error
