@@ -16,7 +16,7 @@
  *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
  *   应用本体不再 import 工具代码（边界铁律 §五.1）。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import { provideToolId } from '@sshk/ui-kit'
@@ -228,11 +228,22 @@ const activePage = computed<string>(() => {
 })
 
 // 落点规整（2026-11-22 需求）：/app 裸路径或指定无效（模块/页面段非法）时，按「第一个有效菜单页」
-// 解析并把 URL 规整为 /app/<module>/<page>（replace 不留历史）；指定有效时 URL 原样保留
+// 解析并把 URL 规整为 /app/<module>/<page>（replace 不留历史）；指定有效时 URL 原样保留。
+// KeepAlive 缓存期守卫（2026-11-23 · 用户实测「返回没修好」根因）：本页失活不卸载（KeepAlive
+// 只挪 DOM 不停 watcher），watch 仍会响应全局路由——路由一离开 /app，params 回落默认值，
+// canonicalPath 变为 /app/files/files ≠ 当前 fullPath → replace 把外部导航（返回/桌面/打开工具）
+// 劫持回应用管理。必须限定「当前路由在 /app 内」才规整；重入时 canonicalPath 值已回落默认值、
+// watch 因值未变不触发，由 onActivated 补一次同步。
 const canonicalPath = computed(() => `/app/${activeModule.value}/${activePage.value}`)
+const isOnAdminRoute = (): boolean => route.path === '/app' || route.path.startsWith('/app/')
 watch(canonicalPath, (target) => {
+  if (!isOnAdminRoute()) return
   if (route.fullPath !== target) void router.replace(target)
 }, { immediate: true })
+onActivated(() => {
+  const target = canonicalPath.value
+  if (isOnAdminRoute() && route.fullPath !== target) void router.replace(target)
+})
 
 /** 页面标题 + 说明（仅三模块过渡页用；应用设置 4 页 P4-3 起自管页头，不在此登记） */
 const PAGE_META: Record<string, { title: string; description: string }> = {
