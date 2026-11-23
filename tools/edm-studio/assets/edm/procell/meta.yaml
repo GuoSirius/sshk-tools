@@ -1,5 +1,8 @@
 code: procell
-name: Procell
-description: 冻存与细胞治疗品牌邮件模板
+name: 普诺赛
+description: 普诺赛邮件模板体系
 defaultTemplateFamily: standard
-tags: [细胞, 冻存]
+tags:
+  - 细胞
+  - 冻存
+favicon: https://oss.pri-cella.com/favicon-5c24b0e8.ico

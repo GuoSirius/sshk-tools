@@ -1,39 +1,26 @@
-version: 2
+version: 1
 changelog: 改为响应式内联结构
-
-# ============================================================
-# 示例数据 schema 示例（R15 · 可直接在「示例数据」Tab 试填）
-# 规则：在「版本」或「族」的 meta.yaml 里加 fields: 即驱动表单。
-#       版本级优先，族级兜底；下方覆盖全部 10 种控件 + 常用校验。
-# 字段属性见 tools/edm-studio/src/renderer/sample-schema.ts 的 FieldDef。
-# ============================================================
 fields:
-  # —— 文本类 ——
   - key: title
     label: 主标题
     type: input
     required: true
     placeholder: 请输入邮件主标题
     maxLength: 30
-
   - key: subtitle
     label: 副标题
     type: input
     maxLength: 40
     placeholder: 选填
-
   - key: intro
     label: 引导文案
     type: textarea
     placeholder: 一段简短的引导文字
     maxLength: 120
-
   - key: body
     label: 正文
-    type: richtext          # 富文本，已接入 wangEditor
+    type: richtext
     placeholder: 可加粗 / 列表 / 链接
-
-  # —— 单选 / 多选 ——
   - key: theme
     label: 主题色
     type: radio
@@ -45,7 +32,6 @@ fields:
         value: green
       - label: 暖橙
         value: orange
-
   - key: channels
     label: 投放渠道
     type: checkbox
@@ -57,7 +43,6 @@ fields:
       - label: 官网
         value: web
     maxChecked: 2
-
   - key: category
     label: 内容分类
     type: select
@@ -68,7 +53,6 @@ fields:
         value: promo
       - label: 品牌活动
         value: event
-
   - key: tags
     label: 标签
     type: select-multi
@@ -80,19 +64,14 @@ fields:
       - label: 蛋白
         value: protein
     maxSelected: 3
-
-  # —— 图片类 ——
   - key: hero
     label: 头图
     type: image
     required: true
-
   - key: gallery
     label: 图片墙
     type: image-list
-    max: 3                # 最多 3 张
-
-  # —— 动态列表（可嵌套 itemFields）——
+    max: 3
   - key: products
     label: 推荐产品
     type: list
@@ -106,7 +85,9 @@ fields:
       - key: url
         label: 链接
         type: input
-        pattern: '^https?://'   # 必须以 http(s):// 开头
+        pattern: ^https?://
       - key: cover
         label: 产品图
         type: image
+name: 新版v1
+code: v1

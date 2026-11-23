@@ -1,5 +1,9 @@
 code: elabscience
-name: Elabscience
-description: 普诺赛生物科技品牌视觉与邮件模板体系
+name: 伊莱瑞特
+description: 伊莱瑞特邮件模板体系
 defaultTemplateFamily: standard
-tags: [生物, 科研, 试剂]
+tags:
+  - 生物
+  - 科研
+  - 试剂
+favicon: https://file.elabscience.com/favicon-cd1844de.ico

@@ -9,4 +9,5 @@ slots:
   - key: footer
     type: footer
 dataSchema: {}
-tags: [通用]
+tags:
+  - 通用

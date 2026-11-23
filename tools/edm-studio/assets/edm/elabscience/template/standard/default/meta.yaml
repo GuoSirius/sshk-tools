@@ -1,2 +1,4 @@
 version: 1
 changelog: 初始默认版本
+name: 默认版本
+code: default
