@@ -14,9 +14,10 @@ const MODULE_IDS = {
   fileManager: 'file-manager',
   modelManager: 'model-manager',
   shareManager: 'share-manager',
+  formManager: 'form-manager',
 } as const
 
-export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M' | 'T'
+export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M' | 'T' | 'FM'
 
 /** 自动判定类别：hostCapability 前端判；其余三类 main 判（verify:autoCheck） */
 export type VerifyAutoKind = 'hostCapability' | 'fileExists' | 'catalogState' | 'logScan'
@@ -50,6 +51,7 @@ export const VERIFY_GROUP_LABELS: Record<VerifyGroup, string> = {
   S: 'S · 常驻分享服务（ShareHub · plans/09）',
   M: 'M · 内容管理（plans/11）',
   T: 'T · 分享管理工具化（plans/12）',
+  FM: 'FM · 表单设计（plans/13）',
 }
 
 export const VERIFY_STEPS: VerifyStep[] = [
@@ -235,6 +237,17 @@ export const VERIFY_STEPS: VerifyStep[] = [
   { id: 'M13', group: 'M', title: '图片库单一实现三处共用', guide: '内容管理 / EDM / 模板工具的图片库来源与上传行为一致（同一份 @sshk/file-picker 桥接），无工具内重复实现', entry: { type: 'route', target: MODULE_IDS.fileManager }, relates: 'plans/11 C14/S2' },
   { id: 'M14', group: 'M', title: 'editorMode 双容器 + dev 铁律', guide: 'app.modules.fileManager.editorMode=dialog 用弹框壳、=page 用整页壳（文件管理>工具设置切换，P4-8c 键迁移），两壳共用 ContentEditorCore（切换只换容器）；dev 下两种模式代码路径全量可达，配置仅决定打包版默认', entry: { type: 'route', target: MODULE_IDS.fileManager }, relates: 'plans/11 #8/S4' },
   { id: 'M15', group: 'M', title: '定时发布 + 列表筛选 + 默认根目录（2026-11-19）', guide: '状态选「定时发布」仅当前以后可选时分秒；到点自动翻已发布；列表顶部搜索/时间/标签/分享/发布五重筛选；复制/移动/解压弹框默认根目录回显；分页信息中文展示', entry: { type: 'route', target: MODULE_IDS.fileManager }, relates: '2026-11-19 用户反馈 6 项' },
+
+  // ── FM 组：表单设计（plans/13，2026-11-23）──
+  { id: 'FM1', group: 'FM', title: '模块入口与工具配置页', guide: '应用管理→表单设计三菜单齐全；工具设置页「嵌套深度上限」默认 5、改 0 保存后重启仍为 0（0=无限制）', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 B1' },
+  { id: 'FM2', group: 'FM', title: '表单 CRUD 与双层校验', guide: '新建表单：名称空时停留不发请求且红 tip；设计器加字段/改类型/拖拽排序/红字校验；保存后列表字段数/版本正确', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 B1' },
+  { id: 'FM3', group: 'FM', title: '预览展开复合控件', guide: '表单设计器「复合控件」下拉插入内置控件 → 预览弹框展开为原子字段并可填写；删除引用的控件后该表单保存/预览报「不存在」', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 C' },
+  { id: 'FM4', group: 'FM', title: '内置控件只读 + 自定义 CRUD', guide: '控件管理：内置两行（联系人组/产品卡）只读、删除按钮禁用；自定义控件新建/编辑/删除正常；key 重复/非法格式前端拦截不发请求', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 C' },
+  { id: 'FM5', group: 'FM', title: '删除拦截（引用反查）', guide: '被表单引用的自定义控件点删除 → 报「被表单 X 引用，请先解除引用」；解除引用后可删除', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 C' },
+  { id: 'FM6', group: 'FM', title: '深度上限配置生效', guide: '嵌套引用超上限的控件保存报「超过配置上限（N 层）」；上限改 0（无限制）后同结构可保存但循环引用仍被拦截', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 C/工具配置' },
+  { id: 'FM7', group: 'FM', title: 'EDM 从表单库导入', guide: 'EDM 内容管理→版本节点→示例数据→设计模式「从表单库导入」：选表单导入字段（复合控件已物化）；已有字段时先确认覆盖；保存字段定义写入 meta.yaml，重开回显', entry: { type: 'route', target: TOOL_IDS.edmStudio }, relates: 'plans/13 D' },
+  { id: 'FM8', group: 'FM', title: 'forms/formControls 随备份进出', guide: '系统设置导出备份→zip data/ 含 forms.db 与 formControls.db；清空后导入备份→表单与控件恢复', entry: { type: 'route', target: MODULE_IDS.formManager }, relates: 'plans/13 B1' },
+  { id: 'FM9', group: 'FM', title: 'EDM AI 助手工具级 Provider/模型', guide: 'EDM 工具配置页「AI 助手」组：Provider 默认（跟随应用激活）+ 模型覆盖留空；单独指定 Provider/填模型后 AI 填充/润色按指定调用（日志 llm chat start models 可核）', entry: { type: 'route', target: TOOL_IDS.edmStudio }, relates: '需求 2026-11-23' },
 ]
 
 /** 步骤总数（页脚展示用） */

@@ -156,6 +156,7 @@ const APP_ADMIN_MODULE_ROUTES: Record<string, string> = {
   'file-manager': '/app/files/files',
   'model-manager': '/app/models/providers',
   'share-manager': '/app/share/routes',
+  'form-manager': '/app/forms/forms',
 }
 function goEntry(step: VerifyStep): void {
   if (!step.entry) return

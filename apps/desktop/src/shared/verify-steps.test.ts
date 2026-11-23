@@ -5,7 +5,7 @@ import { VERIFY_STEPS } from './verify-steps'
 const PURE_TOOL_IDS = new Set(['edm-studio', 'badge-studio', 'template-tool'])
 /** 应用内置模块 id（P4-8 · D53）：三基础模块并入应用本体，verify-steps 直达目标仍用这些 id，
  *  VerifyGuidePage 将其映射到 /app/<module>/<page>（不再经 /tool/<id> 工具宿主） */
-const MODULE_IDS = new Set(['file-manager', 'model-manager', 'share-manager'])
+const MODULE_IDS = new Set(['file-manager', 'model-manager', 'share-manager', 'form-manager'])
 /** route 直达 target 合法集合 = 纯工具 ∪ 模块 id */
 const REAL_ROUTE_TARGETS = new Set([...PURE_TOOL_IDS, ...MODULE_IDS])
 /** catalogState 判定器的特殊 spec（非工具 id） */

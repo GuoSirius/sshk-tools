@@ -95,14 +95,14 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   // 'share' = 局域网分享预览页（分享管理路由产物，非工具 id 但同为合法路由目标）
   // P4-8c（C-11）：file-manager/share-manager/model-manager = 应用模块 id（verify-steps 直达目标，
   // VerifyGuidePage 映射到应用管理页）；原 model-console 工具 id 已退役
-  const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-manager', 'file-manager', 'share-manager', 'share'])
+  const KNOWN = new Set(['edm-studio', 'badge-studio', 'template-tool', 'model-manager', 'file-manager', 'share-manager', 'form-manager', 'share'])
   // P8-4（A7/CR-08 常量化）：target 允许两种形态——①字面量（settings 分组名 / 'share' / app.* / tools.*）；
   // ②常量引用（TOOL_IDS.* / TEMPLATE_TOOL_ID = shared/constants.ts；MODULE_IDS.* = verify-steps.ts 顶部单一定义点）。
   // 白名单「值」不变；常量引用按成员名校验拼写（值本身由 verify-steps.test.ts 字面量集合锚定），漏拼成员名同样红
   const KNOWN_REF_ROOTS = new Set(['TEMPLATE_TOOL_ID'])
   const KNOWN_REF_MEMBERS = {
     TOOL_IDS: new Set(['edmStudio', 'badgeStudio']),
-    MODULE_IDS: new Set(['fileManager', 'modelManager', 'shareManager']),
+    MODULE_IDS: new Set(['fileManager', 'modelManager', 'shareManager', 'formManager']),
   }
   // P5-2（C-10）：verify-steps 外迁宿主 apps/desktop/src/shared/（shared 回归纯契约）
   const vsPath = join(ROOT, 'apps/desktop/src/shared/verify-steps.ts')
