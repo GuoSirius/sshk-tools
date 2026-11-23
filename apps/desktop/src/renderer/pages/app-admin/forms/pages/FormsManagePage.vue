@@ -1,16 +1,18 @@
 <script setup lang="ts">
 /**
- * 表单管理页（plans/13 B1）：表单定义 CRUD + 字段设计器 + 数据预览。
+ * 表单管理页（plans/13 B1）：表单定义 CRUD + 字段设计器。
  * - 列表铁律口径：筛选 .f-item（180px/时间 360px datetimerange）、末尾 查询(primary)+重置、
  *   操作栏独立行居右、顺序 筛选栏→操作栏→表格→分页；草稿/生效分离（useTablePage）
  * - 双层校验：前端 validateSchema 不过不发 IPC（停留 + toast）；后端另有白名单收口兜底
  * - 危险操作（删除/批量删除）ConfirmDialog 二次确认
- * - 预览：expandFields 展开复合控件占位后交给 FormFieldRenderer（applyDefaults 补默认值）
+ * - 编辑弹框三态（2026-11-24，设计/表单/数据）：设计器 ↔ 试填表单 ↔ 数据 JSON 同步；
+ *   sampleModel 随保存落库（无独立预览入口）；弹框尺寸走非 scoped 全局块 + 内联兜底
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
 import { FieldSchemaDesigner, FormFieldRenderer } from '@sshk/form-schema/ui'
+import { CodeEditor } from '@sshk/code-editor'
 import { applyDefaults, expandFields, normalizeFields, validateSchema, type FieldDef } from '@sshk/form-schema'
 import { inMsRange, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { host } from '../host'
@@ -70,6 +72,9 @@ function openCreate(): void {
   editDesc.value = ''
   editFields.value = []
   nameTip.value = ''
+  editTab.value = 'design'
+  editModel.value = {}
+  editDataText.value = ''
   editOpen.value = true
 }
 function openEdit(row: FormRecord): void {
@@ -78,7 +83,35 @@ function openEdit(row: FormRecord): void {
   editDesc.value = row.description ?? ''
   editFields.value = normalizeFields(row.fields)
   nameTip.value = ''
+  editTab.value = 'design'
+  editModel.value = { ...(row.sampleModel ?? {}) }
+  editDataText.value = ''
   editOpen.value = true
+}
+
+// ── 编辑弹框三态（设计/表单/数据，2026-11-24 口径，类似 EDM 示例）：设计器改字段后，
+//    表单 tab 可交互试填；数据 tab 只读 JSON 代码编辑器实时镜像表单数据 ──
+const editTab = ref<'design' | 'form' | 'data'>('design')
+const editModel = ref<Record<string, unknown>>({})
+const editDataText = ref('')
+const editControlMap = computed(() => new Map(controls.value.map((c) => [c.key, c.root as FieldDef])))
+/** 设计器字段展开复合控件占位（引用失效时回退原字段，不阻断试填） */
+const editExpanded = computed<FieldDef[]>(() => {
+  try {
+    return expandFields(normalizeFields(editFields.value), (key) => editControlMap.value.get(key))
+  } catch {
+    return normalizeFields(editFields.value)
+  }
+})
+function switchEditTab(mode: 'design' | 'form' | 'data'): void {
+  if (mode === editTab.value) return
+  if (mode === 'form') editModel.value = applyDefaults(editExpanded.value, { ...editModel.value })
+  if (mode === 'data') editDataText.value = JSON.stringify(editModel.value, null, 2)
+  editTab.value = mode
+}
+function onEditFormUpdate(v: Record<string, unknown>): void {
+  editModel.value = v
+  editDataText.value = JSON.stringify(v, null, 2)
 }
 
 /** 前端校验（双层校验第一层）：不过直接停留，不发 IPC */
@@ -102,6 +135,7 @@ async function onSave(): Promise<void> {
       name: editName.value.trim(),
       description: editDesc.value.trim() || undefined,
       fields: editFields.value,
+      sampleModel: editModel.value,
     })
     editOpen.value = false
     await load()
@@ -109,52 +143,6 @@ async function onSave(): Promise<void> {
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
-}
-
-// ── 预览弹框（用户 2026-11-24 口径）：固定高度 60vh；表单/数据双 tab；
-//    表单可交互（改值实时同步数据 tab）；数据 tab 编辑 JSON，合法即回写表单 ──
-const previewOpen = ref(false)
-const previewRow = ref<FormRecord | null>(null)
-const previewFields = ref<FieldDef[]>([])
-const previewModel = ref<Record<string, unknown>>({})
-const previewError = ref('')
-const previewTab = ref<'form' | 'data'>('form')
-const previewDataText = ref('')
-const previewDataTip = ref('')
-
-function syncDataText(): void {
-  previewDataText.value = JSON.stringify(previewModel.value, null, 2)
-  previewDataTip.value = ''
-}
-function onPreviewFormUpdate(v: Record<string, unknown>): void {
-  previewModel.value = v
-  syncDataText()
-}
-function onPreviewDataInput(): void {
-  try {
-    const parsed = JSON.parse(previewDataText.value) as Record<string, unknown>
-    previewModel.value = parsed ?? {}
-    previewDataTip.value = ''
-  } catch {
-    previewDataTip.value = 'JSON 解析失败，修正后自动同步到表单'
-  }
-}
-
-function openPreview(row: FormRecord): void {
-  previewRow.value = row
-  previewError.value = ''
-  previewTab.value = 'form'
-  try {
-    const controlMap = new Map(controls.value.map((c) => [c.key, c.root as FieldDef]))
-    const expanded = expandFields(normalizeFields(row.fields), (key) => controlMap.get(key))
-    previewFields.value = expanded
-    previewModel.value = applyDefaults(expanded, { ...(row.sampleModel ?? {}) })
-    syncDataText()
-  } catch (err) {
-    previewError.value = (err as Error).message
-    previewFields.value = []
-  }
-  previewOpen.value = true
 }
 
 // ── 删除 / 批量删除（二次确认）──
@@ -236,11 +224,10 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
       </el-table-column>
       <el-table-column label="创建时间" width="150"><template #default="{ row }"><TimeText :value="row.createdAt" /></template></el-table-column>
       <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="操作" width="130" align="center" fixed="right">
         <template #default="{ row }">
           <div class="op-row">
             <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="success" plain @click="openPreview(row)">预览</el-button>
             <el-button size="small" type="danger" plain @click="removeOne(row)">删除</el-button>
           </div>
         </template>
@@ -248,9 +235,10 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
     </el-table>
     <EmptyState v-else description="还没有表单定义；新建表单并设计字段，供 EDM 等工具按库取用" action-text="新建表单" @action="openCreate" />
 
-    <!-- 新建/编辑弹框：元信息 + 字段设计器 -->
+    <!-- 新建/编辑弹框：元信息 + 设计/表单/数据三态（表单可试填 ↔ 数据 JSON 同步） -->
     <el-dialog
       v-model="editOpen"
+      class="preview-dialog"
       :title="editing ? '编辑表单' : '新建表单'"
       width="860px"
       top="6vh"
@@ -269,33 +257,26 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
           <el-input v-model="editDesc" placeholder="用途说明（可选）" />
         </el-form-item>
       </el-form>
-      <div class="designer-wrap">
+      <div class="preview-switch">
+        <el-radio-group :model-value="editTab" size="small" @change="(m: unknown) => switchEditTab(m as 'design' | 'form' | 'data')">
+          <el-radio-button value="design">设计</el-radio-button>
+          <el-radio-button value="form" :disabled="!editFields.length">表单</el-radio-button>
+          <el-radio-button value="data">数据</el-radio-button>
+        </el-radio-group>
+        <span v-if="editTab === 'data'" class="muted" style="font-size: 12px">数据只读；在「表单」tab 试填后自动同步</span>
+      </div>
+      <div v-show="editTab === 'design'" class="designer-wrap">
         <FieldSchemaDesigner v-model="editFields" :controls="controlOptions" />
+      </div>
+      <div v-show="editTab === 'form'" class="preview-body" style="height: 440px">
+        <FormFieldRenderer :fields="editExpanded" :model-value="editModel" @update:model-value="onEditFormUpdate" />
+      </div>
+      <div v-show="editTab === 'data'" class="preview-data-wrap" style="height: 440px">
+        <CodeEditor :model-value="editDataText" language="json" path="form-sample.json" readonly height="100%" />
       </div>
       <template #footer>
         <el-button size="small" @click="editOpen = false">取消</el-button>
         <el-button size="small" type="primary" @click="onSave">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 预览弹框：展开复合控件后渲染；表单可交互 ↔ 数据 JSON 双向同步 -->
-    <el-dialog v-model="previewOpen" :title="`预览：${previewRow?.name ?? ''}`" width="720px" top="6vh" destroy-on-close :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-alert v-if="previewError" type="error" :title="previewError" :closable="false" />
-      <template v-else>
-        <div class="preview-switch">
-          <el-radio-group v-model="previewTab" size="small">
-            <el-radio-button value="form">表单</el-radio-button>
-            <el-radio-button value="data">数据</el-radio-button>
-          </el-radio-group>
-          <span v-if="previewTab === 'data'" class="muted" style="font-size: 12px">编辑 JSON，合法后自动同步到表单</span>
-        </div>
-        <div v-show="previewTab === 'form'" class="preview-body">
-          <FormFieldRenderer :fields="previewFields" :model-value="previewModel" @update:model-value="onPreviewFormUpdate" />
-        </div>
-        <div v-show="previewTab === 'data'" class="preview-data-wrap">
-          <el-input v-model="previewDataText" type="textarea" class="preview-data-input" @input="onPreviewDataInput" />
-          <div v-if="previewDataTip" class="ce-field-tip">{{ previewDataTip }}</div>
-        </div>
       </template>
     </el-dialog>
 
@@ -316,7 +297,12 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
 .designer-wrap > * { flex: 1; }
 .preview-switch { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .preview-body { height: 60vh; overflow: auto; padding: 4px 2px; box-sizing: border-box; }
-.preview-data-wrap { height: 60vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; }
-.preview-data-input { flex: 1; min-height: 0; }
-.preview-data-input :deep(.el-textarea__inner) { height: 100%; resize: none; font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 12px; }
+.preview-data-wrap { height: 60vh; box-sizing: border-box; }
+</style>
+
+<!-- 弹框内容区尺寸走非 scoped 全局块（teleport 弹框节点样式 scoped 选择器不可靠，项目口径）；
+     关键高度同时内联兜底，防 tab 切换弹框高度坍塌 -->
+<style>
+.preview-dialog .preview-body { height: 60vh; overflow: auto; padding: 4px 2px; box-sizing: border-box; }
+.preview-dialog .preview-data-wrap { height: 60vh; box-sizing: border-box; }
 </style>

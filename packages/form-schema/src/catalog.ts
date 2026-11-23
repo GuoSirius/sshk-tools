@@ -30,8 +30,8 @@ export const FIELD_CATALOG: readonly FieldTypeInfo[] = [
   { type: 'select-multi', label: '下拉多选', group: '选择', description: '下拉选多项（可限数量）' },
   { type: 'image', label: '单图', group: '媒体', description: '单张图片（上传/选择 + 预览）' },
   { type: 'image-list', label: '多图', group: '媒体', description: '多张图片列表（可限张数）' },
-  { type: 'list', label: '动态列表', group: '容器', description: '一个可加行的清单：行数不固定，每行填一组内容（如多个卖点）' },
-  { type: 'repeater', label: '重复项（组合）', group: '容器', description: '一套固定字段作为整体成块重复（如联系人组）；复合控件插入后就是它' },
+  { type: 'list', label: '重复条目', group: '容器', description: '逐条添加同类内容（如多个卖点），一行一条目；想沉淀成控件请用重复块' },
+  { type: 'repeater', label: '重复块（组合）', group: '容器', description: '一组固定字段作为一个整块反复出现（如联系人组：姓名+电话+邮箱）；复合控件插入后就是它' },
   { type: 'table', label: '数据表格', group: '容器', description: '按列定义平铺的表格（input/url/richtext 单元格）' },
 ]
 
