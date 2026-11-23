@@ -50,7 +50,7 @@ pnpm release    # ★ 发布流程：前置检验 → 选版本 → 预览确认
 | 文档总览、目录规范、**决策看板** | [`docs/00-index.md`](docs/00-index.md) |
 | 原始需求与历轮拍板结论（合并归档） | [`docs/01-requirements/需求沟通记录.md`](docs/01-requirements/需求沟通记录.md) |
 | 技术选型对比、UI 分层、导入导出、目录迁移、任务拆分 | [`docs/02-architecture/2026-11-12-技术选型与任务拆分.md`](docs/02-architecture/2026-11-12-技术选型与任务拆分.md) |
-| **模块规范（ESM 优先 / 兼容 CJS，已归档）** | [`docs/99-archive/2026-11-12-模块规范-ESM优先兼容CJS.md`](docs/99-archive/2026-11-12-模块规范-ESM优先兼容CJS.md) |
+| 规范与铁律总纲（新设备首读） | [`docs/00-CONVENTIONS.md`](docs/00-CONVENTIONS.md) |
 | 数据契约（品牌树 / 配置 / zip / IPC / 组件 / 目录迁移） | [`docs/04-api/2026-11-12-数据契约.md`](docs/04-api/2026-11-12-数据契约.md) |
 | 发布流程与本机提交钩子 | [`docs/05-release/2026-11-12-发布流程与本机提交钩子.md`](docs/05-release/2026-11-12-发布流程与本机提交钩子.md) |
 | 需求原文快照 | `requirement.txt`（只读保留，不修改） |
@@ -71,13 +71,13 @@ Electron + Vue 3 + **Element Plus** + UnoCSS + TypeScript + pnpm workspace
 
 ## 全局规范
 
-1. **ESM 优先、兼容 CJS**：所有包 `"type": "module"`；条件导出同时给 `import`/`require`；**Electron preload 因 `sandbox: true` 必须用 `.cjs`**；CJS 依赖用 `createRequire`。详见模块规范文档。
+1. **ESM 优先、兼容 CJS**：所有包 `"type": "module"`；条件导出同时给 `import`/`require`；**Electron preload 因 `sandbox: true` 必须用 `.cjs`**；CJS 依赖用 `createRequire`。
 2. **时间一律北京时间（Asia/Shanghai, UTC+8），不使用 UTC**；统一 `packages/shared/time.ts`（dayjs），禁 `toISOString()`。
 3. **应用配置可自定义产物目录** `app.outputDir`；改目录只迁移 `outputs/` + `assets/`，成功后按清单清理旧数据，**绝不递归删用户目录本身**。
 4. 所有 HTML / 海报产物**直接覆盖、不留历史副本**（D19）；后悔药只有手动导出 zip 快照。
 5. 导入导出 zip 包内**全相对路径**；模型密钥默认不进包，导出端填「迁移口令」即加密携带密钥、可 100% 还原（D18，2026-11-17 起无 env 开关）。
 6. `docs/` 是**唯一**沟通文档区；一次性记录 `YYYY-MM-DD-主题.md`，长期维护用 `NN-` 前缀；头部写 `状态/版本/最后更新/关联需求`。
-7. 定稿后不原地大改，改结论按主题新开 ADR；过期文档移入 `99-archive/`，**不删除**。
+7. 定稿后不原地大改，改结论按主题新开 ADR；过期文档移入 `99-archive/`，**不删除**（2026-11-23 做过一次性清理特例：历史 CodeReview 报告与过程稿已删，结论固化到 `00-index.md` §四看板）。
 8. **能共用的必须提取到 `packages/`，禁止重复实现**（需求 15，监督清单在 `00-index.md` 第八节）。
 9. 临时产物统一 `.tmp/<用途>/`，用完即删。
 10. Git 小步提交 + 推送；husky pre-commit 已生效（`.husky/` 钩子跑门禁），**绝不用 `--no-verify`**（`.git/cph` 为历史方案，已废弃）。

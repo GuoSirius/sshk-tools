@@ -12,7 +12,7 @@
 
 1. 读 `AGENTS.md` → 本文件 → `docs/00-index.md`。
 2. 跑 `pnpm install` → `pnpm verify`（13 门禁 + typecheck + lint + build + vitest）全绿才算环境就绪。
-3. 任何新需求/新 bug：先看本文 §铁律与 §契约，确认不违反再动手；涉及待决策项先查 `06-codereview/2026-11-21-CodeReview敲板裁决与重构实施总计划.md` §三/§四（CodeReview 敲板裁决入口；2026-11-21 起全部 CodeReview 文档统一落 `docs/06-codereview/`）。
+3. 任何新需求/新 bug：先看本文 §铁律与 §契约，确认不违反再动手；所有历史决策已敲板并固化到 `docs/00-index.md` §四决策看板（D1~D55），以看板为准，实现以代码为准。
 4. 破坏性改动不需要兼容性兜底（应用未正式大批量发布），但**危险操作必须二次确认**、**每批 verify 全绿后立即 commit + push + 核验 message**。
 
 ---
@@ -78,15 +78,16 @@ tools/<id>/
 ```
 docs/
 ├── 00-CONVENTIONS.md    ← 本文件，规范总纲（新设备首读）
-├── 00-index.md          ← 文档索引与决策看板
+├── 00-index.md          ← 文档索引与决策看板（D1~D55 唯一权威）
 ├── 01-requirements/     ← 需求与快照
-├── 02-architecture/     ← 架构、专项规划、台账、CodeReview 报告
+├── 02-architecture/     ← 现行架构规范、长期台账、工具开发/安全/EDM 权威文档
 ├── 04-api/              ← 数据契约（门禁强依赖勿删）
-├── 05-release/          ← 发布流程
-├── 06-codereview/       ← CodeReview 报告/复核台账/交叉合并/敲板处置计划（2026-11-21 起，唯一存放地）
+├── 05-release/          ← 发布流程、签名、安装指引、依赖升级 SOP
 ├── plans/               ← 分类计划 00~12
-└── 99-archive/          ← 归档，**只移不删**
+└── verify-sessions/     ← 验证步骤结果快照（数据）
 ```
+
+> 2026-11-23 文档清理：历史 CodeReview 报告与归档过程稿已删除，结论固化于 `00-index.md` §四。今后新增归档走 `99-archive/`（只移不删）。
 
 命名：一次性 `YYYY-MM-DD-主题.md`；长期维护 `NN-主题.md`。元信息头写 `状态/版本/最后更新/关联需求`。状态机 `草稿→讨论中→已定稿→已归档`。
 
@@ -133,7 +134,7 @@ docs/
 
 ## 3. 文件 / 命名规范
 
-- 组件文件/目录 kebab-case，组件名 PascalCase；IPC channel `namespace:action`（全走 `IPC_CHANNELS` 常量，无裸字符串）。
+- **`.vue` 文件名 PascalCase、目录名 kebab-case**（O-02 方案 A 定版 2026-11-23：全库 95 个 `.vue` 现状即 PascalCase，规范与 §1.2 `XxxPage.vue` 对齐）；`.ts/.js` 文件与目录 kebab-case（composable `useXxx.ts` 例外）；IPC channel `namespace:action`（全走 `IPC_CHANNELS` 常量，无裸字符串）。
 - 包名 `@sshk/*` 前缀零例外；工具 id kebab-case 且与目录名一致。
 - composable 文件 `useXxx.ts` 允许 camelCase（约定例外，CR-50）。
 - 禁 `shared.ts` 做工具内文件名（易与 packages/shared 混淆），用 `store.ts` 或按域命名。
