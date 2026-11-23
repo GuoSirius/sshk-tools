@@ -7,7 +7,7 @@ import { CodeEditor } from '@sshk/code-editor'
 import { useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
 import { createImageLibrary } from '../upload.js'
-import { llmApi, type LlmProviderLite } from '../tool-api'
+import { llmApi, configApi, AI_PROVIDER_KEY, AI_MODEL_KEY, type LlmProviderLite } from '../tool-api'
 import { generateSample, polishRichText, type ChatMessage } from '../ai-copy'
 
 /**
@@ -39,15 +39,29 @@ function strVal(key: string): string {
 }
 
 // ── D-Q2 AI 文案助手：无 Provider 降级 + diff 预览（接受 / 放弃） ──
+// Provider/模型选择（需求 2026-11-23）：EDM 工具级配置 tools.edm-studio.ai.providerId / ai.model
+// （工具配置页「AI 助手」组）优先；未指定时回落应用激活 Provider，再回落清单首个启用项。
 const aiLoading = ref(false)
 const noProvider = ref(true)
 let provider: LlmProviderLite | null = null
+let modelOverride = ''
 async function ensureProvider(): Promise<boolean> {
   try {
+    let wantId = ''
+    try { wantId = String(await configApi().get(AI_PROVIDER_KEY) ?? '').trim() } catch { /* 旧宿主无 config 通道时忽略 */ }
     const list = await llmApi().providers()
-    provider = list.find((p) => p.enabled) ?? null
+    if (wantId) {
+      provider = list.find((p) => p.enabled && p._id === wantId) ?? null
+    } else {
+      // 跟随应用激活：读 app.llm.activeProviderId；拿不到再回落清单首个启用项
+      let activeId = ''
+      try { activeId = String(await configApi().get('app.llm.activeProviderId') ?? '').trim() } catch { /* 忽略 */ }
+      provider = list.find((p) => p.enabled && p._id === activeId) ?? list.find((p) => p.enabled) ?? null
+    }
+    try { modelOverride = String(await configApi().get(AI_MODEL_KEY) ?? '').trim() } catch { modelOverride = '' }
   } catch {
     provider = null
+    modelOverride = ''
   }
   noProvider.value = !provider
   return Boolean(provider)
@@ -56,7 +70,8 @@ onMounted(() => { void ensureProvider() })
 
 async function chat(messages: ChatMessage[]): Promise<string> {
   if (!provider) throw new Error('请先在「模型管理」配置并启用模型 Provider')
-  const res = await llmApi().chat(provider, messages)
+  // 模型链：工具级 ai.model 覆盖（options.model）→ Provider 默认模型 → Provider 回退模型（main 侧组装）
+  const res = await llmApi().chat(provider, messages, modelOverride ? { model: modelOverride } : undefined)
   return res.content
 }
 

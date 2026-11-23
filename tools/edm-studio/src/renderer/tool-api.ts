@@ -19,7 +19,12 @@ interface SshkOsApi {
 }
 interface SshkLlmApi {
   providers(): Promise<LlmProviderLite[]>
-  chat(provider: unknown, messages: { role: 'system' | 'user' | 'assistant'; content: string }[], options?: { onDelta?: boolean }): Promise<{ content: string; model: string }>
+  chat(provider: unknown, messages: { role: 'system' | 'user' | 'assistant'; content: string }[], options?: { onDelta?: boolean; model?: string }): Promise<{ content: string; model: string }>
+}
+/** 应用级配置读写（工具级配置键 tools.<toolId>.* 与应用键 app.* 均经此通道） */
+interface SshkConfigApi {
+  get(key: string): Promise<unknown>
+  set(key: string, value: unknown): Promise<boolean>
 }
 /** D-Q2 AI 文案助手用的 Provider 只读视图（不含密钥） */
 export interface LlmProviderLite {
@@ -35,6 +40,7 @@ interface SshkApi {
   edm: { api(action: string, data?: Record<string, unknown>): Promise<unknown> }
   os: SshkOsApi
   llm: SshkLlmApi
+  config: SshkConfigApi
 }
 function sshkApi(): SshkApi {
   return (window as unknown as { api: SshkApi }).api
@@ -45,6 +51,12 @@ export const api = <T = unknown>(action: string, data?: Record<string, unknown>)
 export const osApi = (): SshkOsApi => sshkApi().os
 /** llm 通道（D-Q2 AI 文案助手：应用级 Provider 清单 + 按能力调用 chat） */
 export const llmApi = (): SshkLlmApi => sshkApi().llm
+/** config 通道（EDM 工具级 AI Provider/模型覆盖：tools.edm-studio.ai.*） */
+export const configApi = (): SshkConfigApi => sshkApi().config
+
+/** EDM 工具级 AI 配置键（manifest configGroups 声明，SettingsPage 渲染） */
+export const AI_PROVIDER_KEY = 'tools.edm-studio.ai.providerId'
+export const AI_MODEL_KEY = 'tools.edm-studio.ai.model'
 
 /** 系统内容（R8 播种，origin='system'）只读：编辑/删除不可用，派生走「另存为」 */
 export function isSystem(row: Named): boolean {

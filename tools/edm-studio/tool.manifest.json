@@ -39,6 +39,26 @@
   ],
   "configGroups": [
     {
+      "id": "config-ai",
+      "label": "AI 助手",
+      "fields": [
+        {
+          "key": "ai.providerId",
+          "label": "Provider",
+          "type": "select",
+          "optionsSource": "llm:providers",
+          "fallbackKey": "app.llm.activeProviderId",
+          "hint": "AI 填充 / AI 润色使用的模型 Provider；默认跟随应用激活的 Provider，也可为本工具单独指定"
+        },
+        {
+          "key": "ai.model",
+          "label": "模型覆盖",
+          "type": "string",
+          "hint": "留空 = 使用 Provider 配置的模型；填写后本工具优先使用该模型（如 deepseek-chat / gpt-4o-mini）"
+        }
+      ]
+    },
+    {
       "id": "config-render",
       "label": "渲染",
       "fields": [
@@ -81,6 +101,10 @@
     "render": {
       "strict": true,
       "autoEscape": true
+    },
+    "ai": {
+      "providerId": "",
+      "model": ""
     },
     "export": {
       "defaultStages": [

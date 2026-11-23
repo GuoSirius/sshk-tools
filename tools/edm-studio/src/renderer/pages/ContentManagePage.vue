@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../tool-api'
-import { EmptyState, FormHint, useToolId } from '@sshk/ui-kit'
+import { EmptyState, FormHint, TimeText, callHostApi, useToolId } from '@sshk/ui-kit'
+import { IPC_CHANNELS, type ControlRecord, type FormRecord } from '@sshk/shared'
+import { expandFields, normalizeFields, type FieldDef } from '@sshk/form-schema'
 import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../components/SampleForm.vue'
 import { FieldSchemaDesigner } from '@sshk/form-schema/ui'
@@ -106,6 +109,55 @@ const { composeTemplate, composePlacements, composeOpen, composeHostLabel, hostT
 const { cssTabs, activeCss, openCssTab, onCssEdit, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
 const { menu, menuItems, onContextMenu, onDocMouseDown, onMenu } = ctxDomain
 const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
+
+/* ── 从表单库导入（plans/13 阶段 D）：选库表单 → expandFields 物化为普通 FieldDef → 写入本地设计器 ──
+ * 不保留 controlKey 引用：meta.yaml 是对外持久契约，EDM 须独立演进；覆盖已有字段先 confirm。
+ * 保存仍走 saveFields → meta.yaml replaceFieldsInMeta 外科手术式替换（该链路零改动）。 */
+const importOpen = ref(false)
+const importForms = ref<FormRecord[]>([])
+const importLoading = ref(false)
+const importSel = ref<FormRecord | null>(null)
+
+async function openImportFromLibrary(): Promise<void> {
+  importSel.value = null
+  importLoading.value = true
+  importOpen.value = true
+  try {
+    importForms.value = await callHostApi<FormRecord[]>({ group: 'form', method: 'list', channel: IPC_CHANNELS.formList, label: '表单库' })
+  } catch (err) {
+    importOpen.value = false
+    ElMessage.error((err as Error).message)
+  } finally {
+    importLoading.value = false
+  }
+}
+
+async function onImportConfirm(): Promise<void> {
+  const picked = importSel.value
+  if (!picked) { ElMessage.warning('请先选择一个表单'); return }
+  if (sampleSchema.value.length) {
+    try {
+      await ElMessageBox.confirm(
+        `将从「${picked.name}」导入字段定义并覆盖现有 ${sampleSchema.value.length} 个字段，覆盖后不可撤销。继续？`,
+        '覆盖现有字段定义',
+        { type: 'warning', confirmButtonText: '覆盖导入', cancelButtonText: '取消', closeOnClickModal: false, closeOnPressEscape: false },
+      )
+    } catch {
+      return
+    }
+  }
+  try {
+    // 复合控件物化：引用占位节点展开为控件 root 深拷贝（meta.yaml 不携带 controlKey）
+    const controls = await callHostApi<ControlRecord[]>({ group: 'formControl', method: 'list', channel: IPC_CHANNELS.formControlList, label: '复合控件' })
+    const controlMap = new Map(controls.map((c) => [c.key, c.root as FieldDef]))
+    const materialized = expandFields(normalizeFields(picked.fields), (key) => controlMap.get(key))
+    sampleSchema.value = materialized
+    importOpen.value = false
+    ElMessage.success(`已导入「${picked.name}」：${materialized.length} 个字段（复合控件已物化展开）；点「保存字段定义」写入 meta.yaml`)
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  }
+}
 
 /** 片段类型候选：双根模板族 meta.slots 的 type 聚合，供片段族 type 下拉；仍允许自定义输入 */
 const typeOptions = computed<string[]>(() => {
@@ -324,6 +376,7 @@ onUnmounted(() => {
               <el-tag v-if="sampleMode !== 'design' && !sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
               <el-tag v-else-if="sampleMode === 'design' && !sampleSchema.length" size="small" type="warning">尚无字段，点「新增字段」开始设计</el-tag>
               <FormHint v-if="sampleMode === 'design'" inline>拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</FormHint>
+              <el-button v-if="sampleMode === 'design'" size="small" type="warning" plain :disabled="!canEdit" @click="openImportFromLibrary">从表单库导入</el-button>
               <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
               <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
             </div>
@@ -374,6 +427,35 @@ onUnmounted(() => {
     <!-- 另存为弹框（R24；状态与确认逻辑在 useSaveAs 域） -->
     <SaveAsDialog :state="saveAsState" :target-options="saveAsTargetOptions" :css-dirs="allCssDirs" @confirm="confirmSaveAs" />
     <CodeNameDialog :state="codeNameState" @confirm="confirmCodeName" @cancel="cancelCodeName" />
+
+    <!-- 从表单库导入弹框（plans/13 阶段 D）：列出表单库定义，选中后物化展开写入设计器 -->
+    <el-dialog v-model="importOpen" title="从表单库导入" width="640px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-table
+        v-loading="importLoading"
+        :data="importForms"
+        size="small"
+        height="320px"
+        highlight-current-row
+        @current-change="(row: FormRecord | null) => (importSel = row)"
+      >
+        <el-table-column prop="name" label="表单名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }"><span v-if="row.description">{{ row.description }}</span><span v-else style="opacity:.5">—</span></template>
+        </el-table-column>
+        <el-table-column label="字段数" width="80" align="center">
+          <template #default="{ row }">{{ (row.fields ?? []).length }}</template>
+        </el-table-column>
+        <el-table-column label="引用控件" width="90" align="center">
+          <template #default="{ row }">{{ (row.controlsUsed ?? []).length }}</template>
+        </el-table-column>
+        <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" /></template></el-table-column>
+      </el-table>
+      <FormHint inline>导入会把复合控件引用物化展开为普通字段（meta.yaml 不携带引用）；已有字段将被覆盖前会二次确认</FormHint>
+      <template #footer>
+        <el-button @click="importOpen = false">取消</el-button>
+        <el-button type="primary" @click="onImportConfirm">导入</el-button>
+      </template>
+    </el-dialog>
 
     <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
     <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
