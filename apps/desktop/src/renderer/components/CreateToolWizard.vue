@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { buildSkeletonFiles, pascalCase } from '../../../../../scripts/tool-skeleton/index'
+import { buildSkeletonFiles, pascalCase } from '@sshk/shared/tool-skeleton'
 import { useToolCatalog } from '../composables/useToolCatalog'
 import BasicInfoSection from './tool-form/BasicInfoSection.vue'
 import MenusSection from './tool-form/MenusSection.vue'

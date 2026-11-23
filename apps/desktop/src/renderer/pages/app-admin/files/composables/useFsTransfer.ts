@@ -1,7 +1,8 @@
 import { fsApi, osApi, uploadApi } from './fsHost'
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { normalizeUploadConfig, type FsChannelInfo, type FsEntry } from '@sshk/shared'
+import { type FsChannelInfo, type FsEntry } from '@sshk/shared'
+import { normalizeUploadConfig } from '@sshk/upload-core/types'
 import { friendlyError } from './useFsListing'
 
 /**

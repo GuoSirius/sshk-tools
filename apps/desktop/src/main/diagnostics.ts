@@ -7,12 +7,12 @@ import { listOutputFiles } from '@sshk/repository'
 import { AppError, getEnvHas } from '@sshk/shared'
 import {
   format,
-  normalizeUploadConfig,
   now,
   type DiagnosisData,
   type ToolCatalogPayload,
   type ToolPluginStatus,
 } from '@sshk/shared'
+import { normalizeUploadConfig } from '@sshk/upload-core/types'
 import type { AppServices } from './services'
 import { logger } from './logger'
 

@@ -136,7 +136,7 @@ const api = {
     },
     getConfig: (): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerGet),
     setConfig: (cfg: unknown): Promise<unknown> => invoke(IPC_CHANNELS.uploadManagerSet, cfg),
-    profiles: (type?: 'remote' | 'cloud'): Promise<import('@sshk/shared').UploadProfileOption[]> =>
+    profiles: (type?: 'remote' | 'cloud'): Promise<import('@sshk/upload-core/types').UploadProfileOption[]> =>
       invoke(IPC_CHANNELS.uploadProfiles, type),
     setSecret: (profileId: string, value: string): Promise<boolean> =>
       invoke(IPC_CHANNELS.uploadSecretSet, profileId, value),

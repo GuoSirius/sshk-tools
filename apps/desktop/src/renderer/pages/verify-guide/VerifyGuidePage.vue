@@ -17,7 +17,7 @@ import {
   type VerifySession,
   type VerifyStep,
   type VerifyStepResult,
-} from '../../../shared/verify-steps'
+} from '@app/shared/verify-steps'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()

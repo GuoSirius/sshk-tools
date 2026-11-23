@@ -1,6 +1,6 @@
 import { app, ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@sshk/shared'
-import type { VerifySession } from '../../shared/verify-steps'
+import type { VerifySession } from '@app/shared/verify-steps'
 import { contentList, contentGet, contentSave, contentRemove } from '../modules/file/content'
 import { collectDiagnostics, exportDiagnosisZip } from '../diagnostics'
 import { toolRecentErrors } from '../health'

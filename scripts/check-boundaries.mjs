@@ -68,6 +68,19 @@ for (const file of files) {
     if (fromLayer === 'packages' && (toLayer === 'apps' || toLayer === 'tools')) {
       violations.push({ file: rel, spec, reason: 'packages/* 禁止反向依赖 apps / tools' })
     }
+
+    // D56（2026-11-23）：≥3 级 ../ 相对引入一律别名化（@main/@renderer/@app/@build/@sshk/*）
+    if (/^(\.\.\/){3,}/.test(spec)) {
+      violations.push({ file: rel, spec, reason: '禁止 ≥3 级相对引入（D56），请改用 @main/@renderer/@app/@build/@sshk/* 别名' })
+    }
+    // D56：别名不得绕过分层——renderer 禁引 @main/@app/main，main 禁引 @renderer/@app/renderer
+    const segs = rel.split(sep)
+    if (segs.includes('renderer') && /^(@main\/|@app\/main\/)/.test(spec)) {
+      violations.push({ file: rel, spec, reason: 'renderer 禁止 import main 层（D56 别名不得绕过分层）' })
+    }
+    if (segs.includes('main') && /^(@renderer\/|@app\/renderer\/)/.test(spec)) {
+      violations.push({ file: rel, spec, reason: 'main 禁止 import renderer 层（D56 别名不得绕过分层）' })
+    }
   }
 }
 

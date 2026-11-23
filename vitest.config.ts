@@ -10,6 +10,13 @@ const alias: { find: RegExp; replacement: string }[] = [
   { find: /^@sshk\/upload-core\/types$/, replacement: join(ROOT, 'packages/upload-core/src/upload-types.ts') },
   // 包内聚子入口（B10 · P5-3/C-4）：ShareDialog/share-ticket 渲染子入口（与 electron.vite.config 同口径）
   { find: /^@sshk\/share-core\/ui$/, replacement: join(ROOT, 'packages/share-core/src/ui/index.ts') },
+  // 包内聚子入口（D49/D56）：骨架生成单一事实源（与 electron.vite.config 同口径）
+  { find: /^@sshk\/shared\/tool-skeleton$/, replacement: join(ROOT, 'packages/shared/src/tool-skeleton/index.ts') },
+  // D56（2026-11-23）：app 内部跨目录别名（与 electron.vite.config 同口径）
+  { find: /^@main\//, replacement: `${join(ROOT, 'apps/desktop/src/main')}/` },
+  { find: /^@renderer\//, replacement: `${join(ROOT, 'apps/desktop/src/renderer')}/` },
+  { find: /^@app\//, replacement: `${join(ROOT, 'apps/desktop/src')}/` },
+  { find: /^@build\//, replacement: `${join(ROOT, 'apps/desktop/build')}/` },
 ]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)
@@ -29,13 +36,11 @@ for (const layer of ['packages', 'tools']) {
 export default defineConfig({
   resolve: { alias },
   test: {
+    // scripts/ 只剩 backup-smoke（专属 vitest.smoke.config.ts，发布前/夜间手动跑，不进 verify）
     include: [
       'packages/*/src/**/*.test.ts',
       'tools/*/src/**/*.test.ts',
       'apps/*/src/**/*.test.ts',
-      // P5-1（C-5）：tool-skeleton 迁 scripts/ 后测试随迁；backup-smoke 专属 smoke 配置仍排除在 verify 外
-      'scripts/**/*.test.ts',
     ],
-    exclude: ['scripts/backup-smoke.test.ts'],
   },
 })

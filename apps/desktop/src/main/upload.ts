@@ -16,19 +16,22 @@ import type {
   UploadTargetType,
   UploadValidation,
 } from '@sshk/upload-core'
-import { AppError, listUploadProfiles,
+import { AppError,
+  readFsTransferSettings,
+  type FileKind,
+  normalizeFileKind, } from '@sshk/shared'
+import {
+  listUploadProfiles,
   normalizeUploadConfig,
   pickCloudProfile,
   pickRemoteProfile,
-  readFsTransferSettings,
   resolveUploadTool,
   uploadVendorMeta,
   type UploadCloudProfile,
   type UploadGlobalConfig,
   type UploadProfileOption,
   type UploadRemoteProfile,
-  type FileKind,
-  normalizeFileKind, } from '@sshk/shared'
+} from '@sshk/upload-core/types'
 import type { AppServices } from './services'
 
 // B16（P0-4）：云 SDK 错误归类器注册制——upload-core 自我申报，ipc-wrap 只调度

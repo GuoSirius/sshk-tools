@@ -1,7 +1,7 @@
 /**
  * R26：应用级上传配置的纯数据层（全局预设 + 工具覆盖）——B6/P0-5 唯一真相源。
  * 经 upload-core 的零依赖子入口 `@sshk/upload-core/types` 暴露给「不想拖 dayjs」的
- * 渲染消费者；@sshk/shared 桶导出本文件保持既有消费面。
+ * 渲染消费者；Q-23 第三步（2026-11-23）：shared 兼容转发壳已删除，全部消费者已直连本子入口。
  * 渲染层（配置页 / 工具配置表单）也读这里的类型与纯函数，但绝不能拖进 Node 侧依赖
  * （basic-ftp / ssh2 / ali-oss）——本文件与 upload-vendors.ts 均不 import 任何 Node 模块，
  * profile 里也**不含密钥**——密钥只存 safeStorage。

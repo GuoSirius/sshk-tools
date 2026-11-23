@@ -42,21 +42,43 @@ export function useSidebarNav(options: {
   const openIds = ref<Set<string>>(new Set())
   const expanded = computed(() => !collapsed.value || hover.value)
   let hoverTimer: number | undefined
+  /** 收起前分组开合快照：收起态 hover 全展开是临时的，离开/展开后必须原样还原（用户口径） */
+  let preCollapseOpenIds: Set<string> | null = null
 
+  function restoreOpenIds(): void {
+    if (preCollapseOpenIds) {
+      openIds.value = new Set(preCollapseOpenIds)
+      preCollapseOpenIds = null
+    }
+  }
   function onEnter(): void {
     if (!collapsed.value) return
     if (hoverTimer !== undefined) { window.clearTimeout(hoverTimer); hoverTimer = undefined }
+    // 首次 hover 才快照（收起态多次 hover 不覆盖原始状态）
+    if (!preCollapseOpenIds) preCollapseOpenIds = new Set(openIds.value)
     openIds.value = new Set(collectGroupIds(menus()))
     hover.value = true
   }
   function onLeave(): void {
     if (hoverTimer !== undefined) window.clearTimeout(hoverTimer)
-    hoverTimer = window.setTimeout(() => { hover.value = false }, 140)
+    hoverTimer = window.setTimeout(() => {
+      hover.value = false
+      restoreOpenIds() // 离开窄轨：还原收起前的分组开合
+    }, 140)
   }
   function toggleGroup(id: string): void { toggleIn(openIds, id) }
 
-  // 手动展开（footer 钮）后复位 hover 态，回到常规展开语义
-  watch(collapsed, (value) => { if (!value) hover.value = false })
+  watch(collapsed, (value) => {
+    if (value) {
+      // 刚收起：快照当前开合（hover 未介入时的真实状态）
+      preCollapseOpenIds = new Set(openIds.value)
+    } else {
+      // 手动展开（footer 钮）：清延时、复位 hover、还原快照，回到收起前原样
+      if (hoverTimer !== undefined) { window.clearTimeout(hoverTimer); hoverTimer = undefined }
+      restoreOpenIds()
+      hover.value = false
+    }
+  })
   onBeforeUnmount(() => { if (hoverTimer !== undefined) window.clearTimeout(hoverTimer) })
 
   return { hover, openIds, expanded, onEnter, onLeave, toggleGroup }

@@ -8,8 +8,6 @@ import {
   normalizeRootRel,
 } from '@sshk/upload-core'
 import {
-  normalizeUploadConfig,
-  uploadVendorMeta,
   type FsChannelInfo,
   type FsChmodRequest,
   type FsConvertTextRequest,
@@ -41,9 +39,13 @@ import {
   type FsZipRequest,
   type FsZipResult,
 } from '@sshk/shared'
+import {
+  normalizeUploadConfig,
+  uploadVendorMeta,
+} from '@sshk/upload-core/types'
 import type { FsSearchBatchFn } from '@sshk/upload-core'
-import { logger } from '../../logger'
-import type { AppServices } from '../../services'
+import { logger } from '@main/logger'
+import type { AppServices } from '@main/services'
 import * as archive from './archive'
 import * as browser from './browser'
 import * as media from './media'

@@ -19,8 +19,13 @@
     "types": ["node"],
     "paths": {
       "@sshk/shared": ["./packages/shared/src/index.ts"],
+      "@sshk/shared/tool-skeleton": ["./packages/shared/src/tool-skeleton/index.ts"],
       "@sshk/upload-core/types": ["./packages/upload-core/src/upload-types.ts"],
       "@sshk/share-core/ui": ["./packages/share-core/src/ui/index.ts"],
+      "@main/*": ["./apps/desktop/src/main/*"],
+      "@renderer/*": ["./apps/desktop/src/renderer/*"],
+      "@app/*": ["./apps/desktop/src/*"],
+      "@build/*": ["./apps/desktop/build/*"],
       "@sshk/rich-text/pure": ["./packages/rich-text/src/pure.ts"],
       "@sshk/repository": ["./packages/repository/src/index.ts"],
       "@sshk/backup": ["./packages/backup/src/index.ts"],

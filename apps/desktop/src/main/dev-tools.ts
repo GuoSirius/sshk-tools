@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { dirname, join } from 'node:path'
 import { AppError, IPC_CHANNELS } from '@sshk/shared'
 import { handleOk } from './ipc-wrap'
-import { buildSkeletonFiles, type CreateToolRequest } from '../../../../scripts/tool-skeleton/index'
+import { buildSkeletonFiles, type CreateToolRequest } from '@sshk/shared/tool-skeleton'
 import type { ToolDescriptor } from '@sshk/shared'
 import { MANIFESTS } from './discovery'
 

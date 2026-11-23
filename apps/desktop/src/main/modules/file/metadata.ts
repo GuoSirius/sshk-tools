@@ -13,7 +13,7 @@ import {
 } from '@sshk/shared'
 import { fsBasename } from '@sshk/upload-core'
 import type { FsAnnotationDoc, FsFavoriteDoc } from '@sshk/repository'
-import { logger } from '../../logger'
+import { logger } from '@main/logger'
 import type { FsCore } from './runtime'
 
 /**

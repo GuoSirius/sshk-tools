@@ -25,7 +25,7 @@ import {
   type FsWriteRequest,
 } from '@sshk/shared'
 import type { FsSearchBatchFn } from '@sshk/upload-core'
-import { logger } from '../../logger'
+import { logger } from '@main/logger'
 import { migrateAnnotations, readSearchMaxPages, readUploadCap } from './metadata'
 import type { FsCore } from './runtime'
 

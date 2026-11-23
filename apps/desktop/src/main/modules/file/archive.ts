@@ -9,7 +9,7 @@ import {
   type FsZipRequest,
   type FsZipResult,
 } from '@sshk/shared'
-import { logger } from '../../logger'
+import { logger } from '@main/logger'
 import type { FsCore } from './runtime'
 
 /**

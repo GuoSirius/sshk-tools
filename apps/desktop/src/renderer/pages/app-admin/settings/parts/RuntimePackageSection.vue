@@ -5,7 +5,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useToolCatalog } from '../../../../composables/useToolCatalog'
+import { useToolCatalog } from '@renderer/composables/useToolCatalog'
 
 type InstalledPackageRecord = import('@sshk/shared').InstalledPackageRecord
 type InstallPreview = import('@sshk/shared').InstallPreview

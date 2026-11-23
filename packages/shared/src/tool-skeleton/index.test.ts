@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS } from '@sshk/shared'
+import { IPC_CHANNELS } from '../ipc'
 import { assertCreateRequest, buildSkeletonFiles } from './index'
 import type { CreateToolRequest } from './index'
 

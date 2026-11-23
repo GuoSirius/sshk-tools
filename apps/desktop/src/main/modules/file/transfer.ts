@@ -16,7 +16,7 @@ import {
   type FsTransferTask,
 } from '@sshk/shared'
 import type { FsDriver } from '@sshk/upload-core'
-import { logger } from '../../logger'
+import { logger } from '@main/logger'
 
 /**
  * 统一传输队列（plans/10 · P3-3 自 fs.ts 拆出）：

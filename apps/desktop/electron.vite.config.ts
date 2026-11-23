@@ -132,6 +132,13 @@ const sshkAlias: Alias[] = [
   { find: /^@sshk\/upload-core\/types$/, replacement: pkg('packages/upload-core/src/upload-types.ts') },
   // 包内聚子入口（B10 · P5-3/C-4）：ShareDialog/share-ticket 渲染子入口（ui-kit 零业务收口）
   { find: /^@sshk\/share-core\/ui$/, replacement: pkg('packages/share-core/src/ui/index.ts') },
+  // 包内聚子入口（D49/D56）：骨架生成单一事实源迁入 shared，app 以子入口引入
+  { find: /^@sshk\/shared\/tool-skeleton$/, replacement: pkg('packages/shared/src/tool-skeleton/index.ts') },
+  // D56（2026-11-23）：app 内部跨目录别名——禁止 ≥3 级 ../ 相对引入（check-boundaries.mjs 卡）
+  { find: /^@main\//, replacement: `${join(ROOT, 'apps/desktop/src/main')}/` },
+  { find: /^@renderer\//, replacement: `${join(ROOT, 'apps/desktop/src/renderer')}/` },
+  { find: /^@app\//, replacement: `${join(ROOT, 'apps/desktop/src')}/` },
+  { find: /^@build\//, replacement: `${join(ROOT, 'apps/desktop/build')}/` },
 ]
 for (const layer of ['packages', 'tools']) {
   const dir = join(ROOT, layer)

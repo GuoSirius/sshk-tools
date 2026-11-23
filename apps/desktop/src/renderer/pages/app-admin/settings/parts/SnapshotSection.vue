@@ -7,7 +7,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { IPC_CHANNELS } from '@sshk/shared'
 import { callHostApi, type HostApiSpec } from '@sshk/ui-kit'
-import { appConfig } from '../../../../composables/useAppConfig'
+import { appConfig } from '@renderer/composables/useAppConfig'
 
 const SNAPSHOT_LIST_SPEC: HostApiSpec = { group: 'snapshots', method: 'list', channel: IPC_CHANNELS.snapshotList, label: '回滚快照' }
 const SNAPSHOT_RESTORE_SPEC: HostApiSpec = { group: 'snapshots', method: 'restore', channel: IPC_CHANNELS.snapshotRestore, label: '快照恢复' }

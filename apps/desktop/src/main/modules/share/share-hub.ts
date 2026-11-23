@@ -26,8 +26,8 @@ import { AppError, IPC_CHANNELS,
   type ShareAccessLog,
   format, } from '@sshk/shared'
 import type { ConfigService, Repository, ShareLogDoc } from '@sshk/repository'
-import { handleOk } from '../../ipc-wrap'
-import { logger } from '../../logger'
+import { handleOk } from '@main/ipc-wrap'
+import { logger } from '@main/logger'
 
 export interface ShareHubHost {
   hub: ShareHub

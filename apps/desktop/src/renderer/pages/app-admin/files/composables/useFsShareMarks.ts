@@ -2,11 +2,13 @@ import { osApi, shareHubApi, uploadApi } from './fsHost'
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  normalizeUploadConfig,
   type FsChannelInfo,
   type FsEntry,
   type ShareRouteInfo,
 } from '@sshk/shared'
+import {
+  normalizeUploadConfig,
+} from '@sshk/upload-core/types'
 import { buildDirectUrl, findShareTicketById, isTicketAlive, migrateShareTickets, shareFileDirectUrl } from '@sshk/share-core/ui'
 import { isExpiresAlive, SHARE_PERMANENT_EXPIRES_AT } from '@sshk/shared'
 

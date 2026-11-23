@@ -25,14 +25,16 @@ import {
   type HostApiSpec,
 } from '@sshk/ui-kit'
 import {
-  DEFAULT_UPLOAD_CONFIG,
   IPC_CHANNELS,
+} from '@sshk/shared'
+import {
+  DEFAULT_UPLOAD_CONFIG,
   newProfileId,
   uploadVendorMeta,
   type UploadCloudProfile,
   type UploadGlobalConfig,
   type UploadRemoteProfile,
-} from '@sshk/shared'
+} from '@sshk/upload-core/types'
 import RemoteProfileForm from '../RemoteProfileForm.vue'
 import CloudProfileForm from '../CloudProfileForm.vue'
 import { host } from '../host'

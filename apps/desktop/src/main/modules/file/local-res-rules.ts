@@ -1,6 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
-import { TOOL_IDS, normalizeUploadConfig, resolveUploadTool } from '@sshk/shared'
+import { TOOL_IDS } from '@sshk/shared'
+import { normalizeUploadConfig, resolveUploadTool } from '@sshk/upload-core/types'
 
 /**
  * localres:// 白名单纯逻辑（无 electron 依赖，供单测）：

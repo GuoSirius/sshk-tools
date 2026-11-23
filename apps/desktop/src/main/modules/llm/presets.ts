@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { AppError, normalizeUploadConfig, now, type UploadGlobalConfig } from '@sshk/shared'
-import { logger } from '../../logger'
+import { AppError, now } from '@sshk/shared'
+import { normalizeUploadConfig, type UploadGlobalConfig } from '@sshk/upload-core/types'
+import { logger } from '@main/logger'
 
 /**
  * N3 配置预设分享（plans/05 §八）：

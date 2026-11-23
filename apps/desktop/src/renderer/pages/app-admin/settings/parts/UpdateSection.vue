@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useUpdater } from '../../../../composables/useUpdater'
+import { useUpdater } from '@renderer/composables/useUpdater'
 
 const props = defineProps<{ version: string }>()
 

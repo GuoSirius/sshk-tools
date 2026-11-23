@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FormHint, FormGrid, SecretField, ConnectivityField, SIGN_URL_HINT } from '@sshk/ui-kit'
-import type { UploadRemoteProfile } from '@sshk/shared'
+import type { UploadRemoteProfile } from '@sshk/upload-core/types'
 
 /** 远程 profile 编辑表单：profile 是响应式数组内的对象，直接改属性即可回写父级。
  *  P4-4 迁即重构：密钥 combo/连通性区块替换为 ui-kit SecretField/ConnectivityField（P2-4 组件），

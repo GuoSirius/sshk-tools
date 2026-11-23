@@ -9,9 +9,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { IPC_CHANNELS, SSHK_DEV, type ToolCatalogPayload, type ToolRuntimeState } from '@sshk/shared'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
-import { useToolCatalog } from '../../../composables/useToolCatalog'
-import ToolIcon from '../../../components/ToolIcon.vue'
-import ToolManifestDialog from '../../../components/ToolManifestDialog.vue'
+import { useToolCatalog } from '@renderer/composables/useToolCatalog'
+import ToolIcon from '@renderer/components/ToolIcon.vue'
+import ToolManifestDialog from '@renderer/components/ToolManifestDialog.vue'
 
 const emit = defineEmits<{ 'create-tool': [] }>()
 

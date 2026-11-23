@@ -11,8 +11,6 @@ export * from './baked-env'
 export * from './constants'
 export * from './ipc'
 export * from './ipc-result'
-export * from './upload-manager'
-export * from './upload-vendors'
 export * from './fs'
 /** 文件内容类别（kind）：列取过滤与选择弹框默认 accept 共用的扩展名白名单 */
 export * from './file-kinds'

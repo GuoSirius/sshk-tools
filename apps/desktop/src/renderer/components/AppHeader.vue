@@ -13,7 +13,7 @@ import { DEFAULT_THEME_MODE, SSHK_DEV } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
 import { useTheme } from '../composables/useTheme'
 import { useUpdateBanner } from '../composables/useUpdateBanner'
-import logoUrl from '../../../build/icon.svg'
+import logoUrl from '@build/icon.svg'
 
 defineOptions({ name: 'AppHeader' })
 

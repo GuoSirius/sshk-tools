@@ -10,9 +10,9 @@ import { ElMessage } from 'element-plus'
 import { callHostApi, FormGrid, FormHint, type HostApiSpec } from '@sshk/ui-kit'
 import { IPC_CHANNELS, SSHK_DEV } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
-import { appConfig, loadAppConfig, saveAppConfig } from '../../../composables/useAppConfig'
-import { useTheme } from '../../../composables/useTheme'
-import { promptSecret } from '../../../components/secret-prompt'
+import { appConfig, loadAppConfig, saveAppConfig } from '@renderer/composables/useAppConfig'
+import { useTheme } from '@renderer/composables/useTheme'
+import { promptSecret } from '@renderer/components/secret-prompt'
 
 const isDev = SSHK_DEV
 const { mode, setMode } = useTheme()
