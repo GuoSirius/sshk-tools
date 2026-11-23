@@ -92,23 +92,23 @@ const dialogVisible = computed({ get: () => visible.value, set: () => {} })
     </template>
     <el-form size="small" label-width="auto" @submit.prevent>
       <FormGrid>
-        <el-form-item label="路径前缀">
+        <el-form-item class="full" label="路径前缀">
           <el-input :model-value="form.prefix" maxlength="32" placeholder="如 proxy-demo" data-autofocus @update:model-value="onPrefixInput">
             <template #prepend>/</template>
           </el-input>
           <div v-if="errors.prefix" class="field-tip">{{ errors.prefix }}</div>
           <FormHint v-else inline detail="访问 http://IP:端口/前缀/… 转发到目标；前缀不得与分享链接/挂载点重复">小写字母/数字/连字符</FormHint>
         </el-form-item>
+        <el-form-item class="full" label="目标地址">
+          <el-input :model-value="form.target" :placeholder="TARGET_PLACEHOLDER" @update:model-value="onTargetInput" />
+          <div v-if="errors.target" class="field-tip">{{ errors.target }}</div>
+          <FormHint v-else inline detail="支持 http/https，全方法含 POST，响应流式回传">全方法转发 · 流式回传</FormHint>
+        </el-form-item>
         <el-form-item label="保留原始 Host">
           <div class="switch-row">
             <el-switch v-model="form.keepHost" />
             <FormHint inline detail="开启后转发请求沿用访客原始 Host 头；关闭则由目标地址决定">{{ form.keepHost ? '沿用' : '不沿用' }}</FormHint>
           </div>
-        </el-form-item>
-        <el-form-item class="full" label="目标地址">
-          <el-input :model-value="form.target" :placeholder="TARGET_PLACEHOLDER" @update:model-value="onTargetInput" />
-          <div v-if="errors.target" class="field-tip">{{ errors.target }}</div>
-          <FormHint v-else inline detail="支持 http/https，全方法含 POST，响应流式回传">全方法转发 · 流式回传</FormHint>
         </el-form-item>
         <el-form-item label="启用">
           <div class="switch-row">
