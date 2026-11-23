@@ -2,6 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
 import { api } from '../tool-api'
+import { replaceTopLevelField } from '../meta-fields'
 import { contextMenuItems, type MenuItem } from './context-menu-items'
 import type { Cat, Source, TreeNode } from './useContentTree'
 
@@ -39,6 +40,8 @@ export interface ContextMenuDeps {
   pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean>
   /** 删除节点后清理其子路径下的已开 css tab */
   dropTabsUnder(pathPrefix: string): void
+  /** 重命名后迁移已开 css tab 的 file/id */
+  renameTabsUnder(oldPath: string, newPath: string): void
   /** 另存为（useSaveAs 提供） */
   openSaveAs(node: TreeNode): void
 }
@@ -140,15 +143,33 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
         return
       }
       if (key === 'rename') {
-        const tip = node.kind === 'cssDir' || node.kind === 'cssFile' ? '' : '（目录 meta.yaml 内的 code 不会自动修改，请随后自行同步）'
+        if (node.kind === 'category' || node.kind === 'cssDir') {
+          ElMessage.warning(
+            node.kind === 'category'
+              ? '类型目录（template / fragment）是固定语义，不能重命名；显示名请改元数据 name'
+              : 'css 目录名固定为 css，不能重命名；可重命名其下的 css 文件',
+          )
+          return
+        }
+        const tip = node.kind === 'cssFile' ? '' : '（目录 code 会自动同步为新名称；其余元数据不变）'
         const newName = String(
           (await ElMessageBox.prompt(`新名称${tip}`, '重命名', { inputValue: deps.basename(node.data.path) })).value ?? '',
         ).trim()
         if (!newName || newName === deps.basename(node.data.path)) return
-        await api('content:rename', { source: node.data.source, file: node.data.path, newName })
+        const oldPath = node.data.path
+        const slash = oldPath.lastIndexOf('/')
+        const newPath = slash >= 0 ? `${oldPath.slice(0, slash)}/${newName}` : newName
+        await api('content:rename', { source: node.data.source, file: oldPath, newName })
+        // code = 目录名的只读镜像：品牌/族/版本重命名后同步 meta.yaml 的 code，其他元数据不动
+        // （单版本折叠时版本 meta 与族 meta 是同一份文件，跳过，避免覆盖族的 code）
+        if (['brand', 'family', 'version'].includes(node.kind) && !(node.kind === 'version' && !node.data.versionDir)) {
+          const metaPath = `${newPath}/meta.yaml`
+          const raw = await deps.read(metaPath, node.data.source)
+          await deps.write(metaPath, replaceTopLevelField(raw, 'code', newName), node.data.source)
+        }
+        deps.renameTabsUnder(oldPath, newPath)
         ElMessage.success('已重命名')
-        if (deps.selected.value?.data.path === node.data.path) deps.selected.value = null
-        await deps.load(true)
+        await deps.load(true) // load 按 (source, 新路径) 恢复选中，详情不丢
         return
       }
       if (key === 'remove') {
@@ -193,7 +214,7 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
         const finalDir = dirInput || `v${deps.nextVersionOf(famPath, src)}`
         if (!deps.validCode(finalDir)) { ElMessage.error('版本目录名仅限字母 / 数字 / 下划线 / 连字符'); return }
         if (await deps.existsIn(`${famPath}/${finalDir}/meta.yaml`, src)) { ElMessage.error(`版本「${finalDir}」已存在`); return }
-        await deps.write(`${famPath}/${finalDir}/meta.yaml`, yaml.dump({ version: parseVersion(finalDir) }, { lineWidth: -1 }), src)
+        await deps.write(`${famPath}/${finalDir}/meta.yaml`, yaml.dump({ code: finalDir, name: finalDir, version: parseVersion(finalDir) }, { lineWidth: -1 }), src)
         await deps.write(`${famPath}/${finalDir}/source.njk`, '', src)
         await deps.write(`${famPath}/${finalDir}/sample.yaml`, '', src)
         ElMessage.success('已创建版本'); await deps.load(true); return

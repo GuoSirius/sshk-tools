@@ -3,6 +3,7 @@ import { computed, getCurrentInstance, shallowRef } from 'vue'
 import { Editor, loader } from '@guolao/vue-monaco-editor'
 import { monaco, setupMonaco, setYamlSchema } from '../monaco-setup'
 import { monacoLanguageFor } from '../languages'
+import { bindSaveShortcut, type SaveCommandEditor } from '../save-shortcut'
 
 const props = withDefaults(
   defineProps<{
@@ -21,7 +22,11 @@ const props = withDefaults(
   { language: '', path: '', readonly: false, schema: null, height: '320px', dark: true, minimap: false },
 )
 
-const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: string): void
+  /** Ctrl/Cmd+S：宿主若有保存动作请接此事件；无监听时仅拦截浏览器默认保存框 */
+  (e: 'save'): void
+}>()
 
 // F4：必须用本地 monaco 实例，避免 loader 默认从 CDN 拉取（断网不可达）
 setupMonaco()
@@ -61,7 +66,11 @@ const options = computed(() => ({
 
 /** 编辑器实例暴露：供页面级搜索定位（setSelection / revealRangeInCenter）等高级用法 */
 const editorInstance = shallowRef<unknown>(null)
-function onMount(instance: unknown): void { editorInstance.value = instance }
+function onMount(instance: unknown): void {
+  editorInstance.value = instance
+  // Ctrl/Cmd+S：统一在共享编辑器层注册，所有宿主自动获得；宿主通过 @save 接自己的保存函数
+  bindSaveShortcut(instance as SaveCommandEditor | null, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => emit('save'))
+}
 defineExpose({ getEditor: () => editorInstance.value })
 
 function onBeforeMount(): void {

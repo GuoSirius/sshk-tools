@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Repository } from '@sshk/repository'
 import type { Brand, FragmentVersion, TemplateVersion } from '@sshk/repository'
 import { seedSystemContent } from './edm-seed'
+import { loadEdmModel } from './edm-manifest'
 
 const dirs: string[] = []
 const EDM_ROOT = fileURLToPath(new URL('../../assets/edm', import.meta.url))
@@ -43,18 +44,23 @@ describe('R8 系统内容播种', () => {
     const repo = makeRepo()
     await seedSystemContent(repo, EDM_ROOT)
 
+    // 期望值从真实资产解析而非硬编码：用户在应用里改了 meta 也不会误报（文件才是真相源）
+    const model = await loadEdmModel(EDM_ROOT)
+    const srcBrand = model.brands.find((b) => b.code === 'elabscience')
+    const srcFv = srcBrand?.fragments.find((f) => f.code === 'banner')?.versions.find((v) => v.dir === 'v1')
+
     const brand = await repo.get<Brand>('brands', 'brd_sys_elabscience')
     if (!brand) throw new Error('播种品牌缺失')
     expect(brand.origin).toBe('system')
-    expect(brand.name).toBe('Elabscience')
+    expect(brand.name).toBe(String(srcBrand?.meta.name ?? 'Elabscience'))
 
     const fv = await repo.get<FragmentVersion>('fragmentVersions', 'frgv_sys_elabscience_banner_v1')
     if (!fv) throw new Error('播种片段版本缺失')
     expect(fv.origin).toBe('system')
     expect(fv.type).toBe('header')
     expect(fv.policy).toEqual({ blacklist: [], whitelist: [] })
-    // 版本号取 meta.version（v1 目录声明 version: 2）
-    expect(fv.version).toBe(2)
+    // 版本号取 meta.version（用户可在应用里改，故以解析出的文件值为期望）
+    expect(fv.version).toBe(Number((srcFv?.meta as { version?: number } | undefined)?.version ?? 1))
     // njk 源码已读入 + 顶层/品牌/族就近 css 内联（含 base-reset 与 template.css 同链规则）
     expect(fv.source.html).toContain('{{')
     expect(fv.source.cssMode).toBe('inline')

@@ -1,6 +1,7 @@
-import { computed, nextTick, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, nextTick, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../tool-api'
+import { formatNodeLabel } from './node-label'
 
 /**
  * 内容树域（P6-4 自 ContentManagePage 拆出，搬代码不改行为）：
@@ -121,7 +122,7 @@ function versionNode(brand: string, cat: Cat, fam: string, v: any, source: Sourc
   const verCss = (v.css as string[]).filter((c) => c.startsWith('css/')).map((c) => c.slice(4))
   return {
     id: `ver:${source}:${brand}:${cat}:${fam}:${v.dir || 'default'}`,
-    label: v.dir || 'default',
+    label: formatNodeLabel(v.dir || 'default', v.meta?.name),
     kind: 'version',
     data: {
       kind: 'version',
@@ -144,8 +145,8 @@ function familyNode(brand: string, cat: Cat, f: any, source: Source): TreeNode {
   const id = `fam:${source}:${brand}:${cat}:${f.code}`
   return {
     id,
-    // meta.code 是展示别名（可编辑）；目录名 f.code 才是真实路径/身份
-    label: f.meta.code && f.meta.code !== f.code ? `${f.code}（${f.meta.code} · ${f.meta.name ?? ''}）` : (f.meta.name ? `${f.code}（${f.meta.name}）` : f.code),
+    // 左树恒以真实目录名为第一段；meta.code 已降为目录名镜像，不参与标签
+    label: formatNodeLabel(f.code, f.meta?.name),
     kind: 'family',
     data: { kind: 'family', source, path: famPath, brandCode: brand, cat, familyCode: f.code, metaPath: `${famPath}/meta.yaml` },
     children: [
@@ -157,8 +158,9 @@ function familyNode(brand: string, cat: Cat, f: any, source: Source): TreeNode {
 
 function brandNode(b: any, source: Source): TreeNode {
   const id = `brand:${source}:${b.code}`
-  const catNode = (cat: Cat, label: string, cssFiles: string[], families: any[], metaPath: string): TreeNode => {
+  const catNode = (cat: Cat, cssFiles: string[], families: any[], metaPath: string, catMeta: any): TreeNode => {
     const cid = `cat:${source}:${b.code}:${cat}`
+    const label = formatNodeLabel(cat, catMeta?.name)
     return {
       id: cid,
       label,
@@ -169,14 +171,14 @@ function brandNode(b: any, source: Source): TreeNode {
   }
   return {
     id,
-    // 左树以真实目录名为准；meta.code 改了立即反映在标签上，但不会让路径指向不存在的目录
-    label: `${b.code}${b.meta.code && b.meta.code !== b.code ? `（目录别名 ${b.meta.code}）` : ''}${b.meta.name ? `（${b.meta.name}）` : ''}`,
+    // 统一口径：真实目录名 +（meta.name）；meta.code 只是目录名镜像，不再单独展示
+    label: formatNodeLabel(b.code, b.meta?.name),
     kind: 'brand',
     data: { kind: 'brand', source, path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
       cssDirNode(b.code, b.css ?? [], id, source),
-      catNode('template', '模板', b.templateCss ?? [], b.templates ?? [], `${b.code}/template/meta.yaml`),
-      catNode('fragment', '片段', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`),
+      catNode('template', b.templateCss ?? [], b.templates ?? [], `${b.code}/template/meta.yaml`, b.templateMeta),
+      catNode('fragment', b.fragmentCss ?? [], b.fragments ?? [], `${b.code}/fragment/meta.yaml`, b.fragmentMeta),
     ],
   }
 }
@@ -317,6 +319,19 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
     treeRef = el as { setCurrentKey: (key: string) => void } | null
   }
 
+  /** 选中键 (source:path) 跨 load 保留：重命名后 id 变了也能按真实路径找回节点 */
+  let lastSelectedKey = ''
+  watch(selected, (n) => { lastSelectedKey = n ? `${n.data.source}:${n.data.path}` : '' }, { immediate: true })
+
+  function findInTree(nodes: TreeNode[], match: (n: TreeNode) => boolean): TreeNode | null {
+    for (const n of nodes) {
+      if (match(n)) return n
+      const hit = n.children ? findInTree(n.children, match) : null
+      if (hit) return hit
+    }
+    return null
+  }
+
   async function load(silent = false): Promise<void> {
     if (!silent) loading.value = true
     try {
@@ -328,7 +343,16 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
       cusModel.value = cus
       const prevId = selected.value?.id
       await nextTick()
-      if (prevId) treeRef?.setCurrentKey(prevId)
+      const sameNode = prevId ? findInTree(tree.value, (n) => n.id === prevId) : null
+      if (sameNode) {
+        treeRef?.setCurrentKey(prevId!)
+      } else if (lastSelectedKey) {
+        const found = findInTree(tree.value, (n) => `${n.data.source}:${n.data.path}` === lastSelectedKey)
+        if (found) {
+          selected.value = found
+          treeRef?.setCurrentKey(found.id)
+        }
+      }
       deps.onLoaded?.() // 组合预览选项用（后台，不阻塞）
     } catch (err) {
       ElMessage.error((err as Error).message)

@@ -12,6 +12,7 @@ import * as yaml from 'js-yaml'
 import type {
   BrandMeta,
   BrandNode,
+  CategoryMeta,
   EdmModel,
   FragmentFamilyMeta,
   FragmentFamilyNode,
@@ -72,11 +73,23 @@ async function readFamilyMeta<TFamily extends object>(familyDir: string): Promis
   return { ...(raw ?? {}), code: raw?.code || dirName, name: raw?.name || dirName } as TFamily
 }
 
-/** 版本 meta：整份缺失或 version 非法时用目录名补齐 */
+/** 版本 meta：整份缺失、code/name 缺失或 version 非法时用目录名补齐（单版本折叠 = default） */
 async function readVersionMeta<TMeta extends object>(vdir: string, dir: string): Promise<TMeta> {
-  const raw = await readYaml<Partial<TMeta> & { version?: number }>(path.join(vdir, 'meta.yaml'))
+  const raw = await readYaml<Partial<TMeta> & { code?: string; name?: string; version?: number }>(path.join(vdir, 'meta.yaml'))
   const n = raw?.version
-  return { ...(raw ?? {}), version: typeof n === 'number' && n > 0 ? n : versionOfDir(dir) } as TMeta
+  const dirName = dir || 'default'
+  return {
+    ...(raw ?? {}),
+    code: raw?.code || dirName,
+    name: raw?.name || dirName,
+    version: typeof n === 'number' && n > 0 ? n : versionOfDir(dir),
+  } as TMeta
+}
+
+/** 类型 meta：文件缺失或 code/name 缺失时用类型目录名（fragment/template）补齐 */
+async function readCategoryMeta(catDir: string, catName: string): Promise<CategoryMeta> {
+  const raw = await readYaml<Partial<CategoryMeta>>(path.join(catDir, 'meta.yaml'))
+  return { ...(raw ?? {}), code: raw?.code || catName, name: raw?.name || catName }
 }
 
 /** 某层级 css/ 目录下的文件名列表（不递归；目录不存在返回空，v5 各级 css 目录） */
@@ -178,8 +191,8 @@ async function loadBrand(brandDir: string, dirName: string): Promise<BrandNode> 
     css: brandCss,
     fragmentCss: await cssFilesIn(path.join(brandDir, 'fragment', 'css')),
     templateCss: await cssFilesIn(path.join(brandDir, 'template', 'css')),
-    fragmentMeta: await readYaml(path.join(brandDir, 'fragment', 'meta.yaml')),
-    templateMeta: await readYaml(path.join(brandDir, 'template', 'meta.yaml')),
+    fragmentMeta: await readCategoryMeta(path.join(brandDir, 'fragment'), 'fragment'),
+    templateMeta: await readCategoryMeta(path.join(brandDir, 'template'), 'template'),
     fragments: fragmentFamilies,
     templates: templateFamilies,
   }

@@ -39,7 +39,7 @@ const content = defineModel<string>('content', { required: true })
       <span class="fs-editor-title">{{ editor.name }}<span class="fs-editor-meta">{{ fsFormatSize(editor.size) }}</span></span>
     </template>
     <div class="fs-editor-body">
-      <CodeEditor v-model="content" :path="editor.path" :readonly="editor.readonly" :height="'100%'" :dark="themeDark" :minimap="true" />
+      <CodeEditor v-model="content" :path="editor.path" :readonly="editor.readonly" :height="'100%'" :dark="themeDark" :minimap="true" @save="!editor.readonly && !editor.saving && emit('save')" />
     </div>
     <template #footer>
       <span v-if="editor.conflict" class="fs-conflict-hint">远端已变化，可覆盖保存</span>

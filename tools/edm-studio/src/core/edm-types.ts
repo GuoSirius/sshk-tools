@@ -25,7 +25,8 @@ export interface BrandMeta {
   code: string
   name: string
   description?: string
-  logo?: string
+  /** 品牌图标（旧 logo 字段已丢弃，不兼容读取） */
+  favicon?: string
   defaultTemplateFamily?: string
   tags?: string[]
 }
@@ -35,6 +36,8 @@ export interface FragmentFamilyMeta {
   code: string
   name: string
   description?: string
+  /** 族图标；空则继承所属类型（再回退品牌） */
+  favicon?: string
   type?: string
   /** 黑白名单：本族片段可服务的模板族/版本 ID（D14） */
   policy?: FragmentPolicy
@@ -46,6 +49,12 @@ export interface FragmentFamilyMeta {
 
 /** 片段版本元数据：<family>/<version>/meta.yaml；可覆盖族级 policy */
 export interface FragmentVersionMeta {
+  /** 与版本目录名同步（当前只读镜像，未来可独立成业务编码） */
+  code: string
+  /** 人可读显示名，左树以「目录名（name）」展示 */
+  name: string
+  /** 版本图标；空则继承所属族 */
+  favicon?: string
   version: number
   changelog?: string
   policy?: FragmentPolicy
@@ -58,6 +67,8 @@ export interface TemplateFamilyMeta {
   code: string
   name: string
   description?: string
+  /** 族图标；空则继承所属类型（再回退品牌） */
+  favicon?: string
   slots?: Slot[]
   dataSchema?: Record<string, unknown>
   tags?: string[]
@@ -65,6 +76,12 @@ export interface TemplateFamilyMeta {
 
 /** 模板版本元数据：<family>/<version>/meta.yaml */
 export interface TemplateVersionMeta {
+  /** 与版本目录名同步（当前只读镜像，未来可独立成业务编码） */
+  code: string
+  /** 人可读显示名，左树以「目录名（name）」展示 */
+  name: string
+  /** 版本图标；空则继承所属族 */
+  favicon?: string
   version: number
   changelog?: string
   /** 模板级字段 schema（可选） */
@@ -105,10 +122,13 @@ export interface TemplateFamilyNode {
   versions: VersionNode<TemplateVersionMeta>[]
 }
 
-/** 类目（片段/模板）元数据：<brand>/<fragment|template>/meta.yaml（2026-11-15 用户拍板：类目也有元数据） */
+/** 类型（片段/模板）元数据：<brand>/<fragment|template>/meta.yaml（旧称类目，统一叫类型） */
 export interface CategoryMeta {
-  name?: string
+  code: string
+  name: string
   description?: string
+  /** 类型图标；空则继承所属品牌 */
+  favicon?: string
   tags?: string[]
 }
 
@@ -142,6 +162,7 @@ export interface MetaFieldDef {
   required: boolean
 }
 
+/** 四级元数据统一必填 code/name（favicon/version 按实体类型附加） */
 export const META_FIELDS: Record<'brand' | 'fragmentFamily' | 'fragmentVersion' | 'templateFamily' | 'templateVersion', MetaFieldDef[]> = {
   brand: [
     { name: 'code', required: true },
@@ -151,12 +172,20 @@ export const META_FIELDS: Record<'brand' | 'fragmentFamily' | 'fragmentVersion' 
     { name: 'code', required: true },
     { name: 'name', required: true },
   ],
-  fragmentVersion: [{ name: 'version', required: true }],
+  fragmentVersion: [
+    { name: 'code', required: true },
+    { name: 'name', required: true },
+    { name: 'version', required: true },
+  ],
   templateFamily: [
     { name: 'code', required: true },
     { name: 'name', required: true },
   ],
-  templateVersion: [{ name: 'version', required: true }],
+  templateVersion: [
+    { name: 'code', required: true },
+    { name: 'name', required: true },
+    { name: 'version', required: true },
+  ],
 }
 
 export type EntityKind = keyof typeof META_FIELDS

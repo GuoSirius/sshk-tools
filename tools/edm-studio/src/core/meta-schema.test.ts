@@ -20,10 +20,11 @@ describe('R2 validateMeta', () => {
     expect(META_JSON_SCHEMAS.templateFamily).not.toHaveProperty('properties.policy')
   })
 
-  it('片段版本：version 必须 ≥1 的整数', () => {
-    expect(validateMeta('fragmentVersion', { version: 2 }).valid).toBe(true)
-    expect(validateMeta('fragmentVersion', { version: 0 }).valid).toBe(false)
-    expect(validateMeta('fragmentVersion', {}).valid).toBe(false)
+  it('片段版本：code/name 必填 + version 必须 ≥1 的整数', () => {
+    expect(validateMeta('fragmentVersion', { code: 'v2', name: '双十一版', version: 2 }).valid).toBe(true)
+    expect(validateMeta('fragmentVersion', { code: 'v2', name: '双十一版', version: 0 }).valid).toBe(false)
+    expect(validateMeta('fragmentVersion', { code: 'v2', version: 1 }).valid).toBe(false)
+    expect(validateMeta('fragmentVersion', { version: 1 }).valid).toBe(false)
   })
 
   it('模板族：slots 每项必须含 key/type', () => {
@@ -34,7 +35,8 @@ describe('R2 validateMeta', () => {
     expect(bad.valid).toBe(false)
   })
 
-  it('模板版本：version + changelog 通过', () => {
-    expect(validateMeta('templateVersion', { version: 1, changelog: '初始' }).valid).toBe(true)
+  it('模板版本：code/name/version + changelog 通过，favicon 不冲突', () => {
+    expect(validateMeta('templateVersion', { code: 'v1', name: '首版', version: 1, changelog: '初始', favicon: 'a.ico' }).valid).toBe(true)
+    expect(validateMeta('templateVersion', { code: '  ', name: '首版', version: 1 }).valid).toBe(false)
   })
 })

@@ -302,6 +302,7 @@ watch(() => props.section, (section) => {
                     language="css"
                     height="120px"
                     :path="`config-${toolId}-${field.key}`"
+                    @save="save"
                   />
                   <el-input v-else-if="field.type === 'textarea'" v-model="values[field.key]" type="textarea" :rows="3" />
                   <div v-else-if="field.type === 'dir' || field.type === 'file'" class="path-row combo">

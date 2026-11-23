@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../tool-api'
 import { EmptyState, FormHint, useToolId } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
@@ -8,12 +8,14 @@ import FieldSchemaDesigner from '../components/FieldSchemaDesigner.vue'
 import ComposeEditor from '../components/ComposeEditor.vue'
 import CssTabsEditor from '../components/CssTabsEditor.vue'
 import SaveAsDialog from '../components/SaveAsDialog.vue'
+import FaviconField from '../components/FaviconField.vue'
 import { NODE_ICON, nodeIcon, useContentTree, type TreeNode } from '../composables/useContentTree'
 import { useNodeDetail } from '../composables/useNodeDetail'
 import { useComposePreview, type ComposePreview } from '../composables/useComposePreview'
 import { useCssTabs } from '../composables/useCssTabs'
 import { useContextMenu } from '../composables/useContextMenu'
 import { useSaveAs } from '../composables/useSaveAs'
+import { inheritedFavicon } from '../composables/node-favicon'
 
 /**
  * 系统内容页（R12–R14 效果版）：
@@ -89,17 +91,34 @@ const ctxDomain = useContextMenu({
   resolveConflict: treeDomain.resolveConflict,
   pasteFileInto: treeDomain.pasteFileInto,
   dropTabsUnder: cssTabsDomain.dropTabsUnder,
+  renameTabsUnder: cssTabsDomain.renameTabsUnder,
   openSaveAs: saveAsDomain.openSaveAs,
 })
 
 /* ── 模板绑定解构 ── */
 const { canEditSystem, canEdit, loading, selected, defaultExpandedKeys, treeReady, stats, allCssDirs, setTreeRef, load } = treeDomain
 const treeData = treeDomain.tree
-const { metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing, sampleMode, sampleSchema, sampleObj, form, showForm, switchSampleMode, switchMetaMode, saveMeta, saveSource, saveStyle, saveSample, saveFields } = detail
+const { metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing, sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, switchSampleMode, switchMetaMode, saveMeta, saveSource, saveStyle, saveSample, saveFields } = detail
 const { composeTemplate, composePlacements, composeOpen, composeHostLabel, hostTemplateOptions, composeFragmentOptions, composeSlotDefs, onHostTemplateChange, renderComposePreview, closeComposeDialog, placementData, openPlacementData, savePlacementData } = compose
 const { cssTabs, activeCss, openCssTab, onCssEdit, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
 const { menu, menuItems, onContextMenu, onDocMouseDown, onMenu } = ctxDomain
 const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
+
+/** favicon 继承预览：版本 → 族 → 类型 → 品牌；自身空时显示上级实际图标 */
+const faviconInherited = computed(() => {
+  const n = selected.value
+  if (!n) return ''
+  const model = n.data.source === 'custom' ? treeDomain.cusModel.value : treeDomain.sysModel.value
+  const brand = (model.brands as any[]).find((b) => b.code === n.data.brandCode)
+  const catMeta = n.data.cat === 'fragment' ? brand?.fragmentMeta : brand?.templateMeta
+  const famList = n.data.cat === 'fragment' ? brand?.fragments : brand?.templates
+  const fam = (famList ?? []).find((f: any) => f.code === n.data.familyCode)
+  return inheritedFavicon(n.kind, {
+    brand: String(brand?.meta?.favicon ?? ''),
+    category: String((catMeta as any)?.favicon ?? ''),
+    family: String((fam?.meta as any)?.favicon ?? ''),
+  })
+})
 
 async function onNode(node: TreeNode): Promise<void> {
   selected.value = node
@@ -187,14 +206,20 @@ onUnmounted(() => {
               </el-radio-group>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveMeta">保存</el-button>
             </div>
-            <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
-              <el-form-item label="名称" required><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="showForm.brandBase" label="code">
-                <el-input clearable v-model="form.code" :disabled="!canEdit" />
-                <FormHint inline>展示别名；目录名以左树为准，改目录名请右键重命名</FormHint>
+            <el-form v-if="metaMode === 'form' && showForm.base" label-width="auto" class="meta-form">
+              <el-form-item label="code" required>
+                <el-input v-model="form.code" :disabled="!canEdit || showForm.codeReadonly" />
+                <div v-if="!form.code.trim()" class="meta-field-tip">code 必填</div>
+                <FormHint>目录名的只读镜像；重命名自动同步，后续可切换为独立业务编码</FormHint>
+              </el-form-item>
+              <el-form-item label="名称" required>
+                <el-input clearable v-model="form.name" :disabled="!canEdit" />
+                <div v-if="!form.name.trim()" class="meta-field-tip">名称必填</div>
+              </el-form-item>
+              <el-form-item label="图标">
+                <FaviconField v-model="form.favicon" :readonly="!canEdit" :inherit-hint="faviconHint" :inherited-value="faviconInherited" />
               </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input clearable v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
               <template v-if="showForm.policy">
                 <el-form-item label="类型" required><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
                 <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
@@ -203,7 +228,7 @@ onUnmounted(() => {
               <el-form-item v-if="showForm.version" label="版本号"><el-input-number v-model="form.version" :min="1" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>
-            <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" />
+            <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" @save="saveMeta" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
             <div class="editor-toolbar">
@@ -222,7 +247,7 @@ onUnmounted(() => {
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
               <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
             </div>
-            <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" />
+            <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" @save="saveSample" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览">
             <div class="editor-toolbar">
@@ -242,14 +267,14 @@ onUnmounted(() => {
               <FormHint inline>内联 css 也可直接写在 njk 的 &lt;style&gt; 内</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
-            <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" />
+            <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" @save="saveSource" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式">
             <div class="editor-toolbar">
               <FormHint inline>内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>
             </div>
-            <CodeEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" />
+            <CodeEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" @save="saveStyle" />
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -268,7 +293,7 @@ onUnmounted(() => {
     <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
     <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
       <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
-      <CodeEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" />
+      <CodeEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" @save="savePlacementData" />
       <template #footer>
         <el-button @click="placementData.open = false">取消</el-button>
         <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>
@@ -349,6 +374,8 @@ onUnmounted(() => {
   border-color: var(--el-color-primary) !important;
 }
 .meta-form { overflow: auto; }
+/* 必填校验提示：与控件同列、红色，校验失败不发 IPC */
+.meta-field-tip { color: var(--el-color-danger); font-size: 12px; line-height: 1.3; }
 /* #2 表单 label 防换行：长 label（如「code（目录名）」）不再折行破坏行对齐 */
 .meta-form :deep(.el-form-item__label) { white-space: nowrap; }
 .sample-wrap { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }

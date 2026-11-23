@@ -44,6 +44,10 @@ describe('EDM 解析缺失字段补齐', () => {
     const ver = fam.versions[0]!
     expect(ver.dir).toBe('v1')
     expect(ver.meta.version).toBe(1)
+    expect((ver.meta as { code: string; name: string }).code).toBe('v1')
+    expect((ver.meta as { code: string; name: string }).name).toBe('v1')
+    expect(brand.fragmentMeta?.code).toBe('fragment')
+    expect(brand.templateMeta?.name).toBe('template')
     expect(ver.source).toBe('fragment.njk')
     expect(ver.sourcePath).toBe(join(verDir, 'fragment.njk'))
     expect(existsSync(ver.sourcePath)).toBe(false) // 只补内存，不主动写文件

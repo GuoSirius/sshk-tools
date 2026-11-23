@@ -11,10 +11,10 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
     type: 'object',
     required: ['code', 'name'],
     properties: {
-      code: { type: 'string' },
-      name: { type: 'string' },
+      code: { type: 'string', minLength: 1, pattern: '\\S' },
+      name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
-      logo: { type: 'string' },
+      favicon: { type: 'string' },
       defaultTemplateFamily: { type: 'string' },
       tags: { type: 'array', items: { type: 'string' } },
     },
@@ -24,9 +24,10 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
     type: 'object',
     required: ['code', 'name'],
     properties: {
-      code: { type: 'string' },
-      name: { type: 'string' },
+      code: { type: 'string', minLength: 1, pattern: '\\S' },
+      name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
+      favicon: { type: 'string' },
       type: { type: 'string' },
       policy: {
         type: 'object',
@@ -44,8 +45,11 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
   },
   fragmentVersion: {
     type: 'object',
-    required: ['version'],
+    required: ['code', 'name', 'version'],
     properties: {
+      code: { type: 'string', minLength: 1, pattern: '\\S' },
+      name: { type: 'string', minLength: 1, pattern: '\\S' },
+      favicon: { type: 'string' },
       version: { type: 'integer', minimum: 1 },
       changelog: { type: 'string' },
       policy: {
@@ -63,9 +67,10 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
     type: 'object',
     required: ['code', 'name'],
     properties: {
-      code: { type: 'string' },
-      name: { type: 'string' },
+      code: { type: 'string', minLength: 1, pattern: '\\S' },
+      name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
+      favicon: { type: 'string' },
       slots: {
         type: 'array',
         items: {
@@ -82,8 +87,11 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
   },
   templateVersion: {
     type: 'object',
-    required: ['version'],
+    required: ['code', 'name', 'version'],
     properties: {
+      code: { type: 'string', minLength: 1, pattern: '\\S' },
+      name: { type: 'string', minLength: 1, pattern: '\\S' },
+      favicon: { type: 'string' },
       version: { type: 'integer', minimum: 1 },
       changelog: { type: 'string' },
     },

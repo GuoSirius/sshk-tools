@@ -31,6 +31,8 @@ export interface CssTabs {
   openCssTab(file: string, source?: Source): Promise<void>
   /** 删除节点后清理其子路径下的已开 tab */
   dropTabsUnder(pathPrefix: string): void
+  /** 重命名目录后迁移已开 tab 的 file/id（tab 不丢，未保存内容保留） */
+  renameTabsUnder(oldPath: string, newPath: string): void
   onCssEdit(file: string, v: string): void
   saveCss(tab: CssTab): Promise<void>
   saveAllCss(): Promise<void>
@@ -55,6 +57,16 @@ export function useCssTabs(deps: CssTabsDeps): CssTabs {
   function dropTabsUnder(pathPrefix: string): void {
     cssTabs.value = cssTabs.value.filter((t) => !t.file.startsWith(`${pathPrefix}/`))
     if (!cssTabs.value.some((t) => t.id === activeCss.value)) activeCss.value = cssTabs.value[0]?.id ?? ''
+  }
+  function renameTabsUnder(oldPath: string, newPath: string): void {
+    for (const tab of cssTabs.value) {
+      if (tab.file === oldPath || tab.file.startsWith(`${oldPath}/`)) {
+        tab.file = `${newPath}${tab.file.slice(oldPath.length)}`
+        tab.id = tabId(tab.source, tab.file)
+      }
+    }
+    const active = cssTabs.value.find((t) => t.file.startsWith(newPath))
+    if (active) activeCss.value = active.id
   }
   function onCssEdit(id: string, v: string): void {
     const tab = cssTabs.value.find((t) => t.id === id)
@@ -89,7 +101,7 @@ export function useCssTabs(deps: CssTabsDeps): CssTabs {
     if (activeCss.value === id) activeCss.value = cssTabs.value[0]?.id ?? ''
   }
 
-  return { cssTabs, activeCss, activeTab, openCssTab, dropTabsUnder, onCssEdit, saveCss, saveAllCss, closeCssTab }
+  return { cssTabs, activeCss, activeTab, openCssTab, dropTabsUnder, renameTabsUnder, onCssEdit, saveCss, saveAllCss, closeCssTab }
 }
 
 /** 路径末段（本地 helper：与 useContentTree.basename 同实现） */

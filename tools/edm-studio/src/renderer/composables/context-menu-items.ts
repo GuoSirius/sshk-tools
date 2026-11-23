@@ -15,9 +15,10 @@ export function contextMenuItems(node: TreeNode, editable: boolean): MenuItem[] 
   if (k === 'cssDir' || k === 'cssFile') items.push({ key: 'copy', label: '复制' })
   if (editable) {
     if (k === 'cssDir') items.push({ key: 'paste', label: '粘贴' })
-    // 删除 / 重命名（除根外均可）
+    // 删除 / 重命名：根、类型目录（template/fragment 为硬编码语义）、css 目录一律禁止重命名；
+    // 类型改名走 meta.name；css 目录名固定为 css，只有其下的 css 文件可重命名。
     if (k !== 'root') items.push({ key: 'remove', label: '删除', danger: true })
-    if (k !== 'root') items.push({ key: 'rename', label: '重命名' })
+    if (k !== 'root' && k !== 'category' && k !== 'cssDir') items.push({ key: 'rename', label: '重命名' })
   }
   // 另存为（实体 / css；只读源也可另存到可写目标）
   if (isSaveAsKind(k)) items.push({ key: 'saveAs', label: '另存为' })
@@ -25,7 +26,7 @@ export function contextMenuItems(node: TreeNode, editable: boolean): MenuItem[] 
   // 新建（逐个对应：品牌→新建品牌、片段→新建片段族、模板→新建模板族；族额外加新建版本）
   if (k === 'root') items.push({ key: 'newBrand', label: '新建品牌' })
   if (k === 'brand') {
-    items.push({ key: 'newBrand', label: '新建品牌' })
+    items.push({ key: 'newBrand', label: '新建品牌（同级）' })
     items.push({ key: 'newFragmentFamily', label: '新建片段族' })
     items.push({ key: 'newTemplateFamily', label: '新建模板族' })
   }

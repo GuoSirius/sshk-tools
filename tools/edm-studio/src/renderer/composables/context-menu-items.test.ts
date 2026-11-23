@@ -24,12 +24,16 @@ describe('右键菜单可见性', () => {
     expect(contextMenuItems(node('root'), false)).toEqual([])
   })
 
-  it('可编辑节点保持原功能与顺序', () => {
+  it('可编辑节点保持原功能与顺序（类型 / css 目录禁止重命名）', () => {
     expect(contextMenuItems(node('cssDir', 'custom'), true).map((x) => x.key)).toEqual([
-      'copy', 'paste', 'remove', 'rename', 'saveAs', 'newFile',
+      'copy', 'paste', 'remove', 'saveAs', 'newFile',
+    ])
+    expect(contextMenuItems(node('category', 'custom', 'fragment'), true).map((x) => x.key)).toEqual([
+      'remove', 'newFragmentFamily',
     ])
     expect(contextMenuItems(node('brand', 'custom'), true).map((x) => x.key)).toEqual([
       'remove', 'rename', 'saveAs', 'newBrand', 'newFragmentFamily', 'newTemplateFamily',
     ])
+    expect(contextMenuItems(node('brand', 'custom'), true).find((x) => x.key === 'newBrand')?.label).toBe('新建品牌（同级）')
   })
 })

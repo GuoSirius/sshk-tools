@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fieldsBlock, replaceFieldsInMeta } from './meta-fields'
+import { fieldsBlock, replaceFieldsInMeta, replaceTopLevelField, withMetaIdentity } from './meta-fields'
 import type { FieldDef } from './sample-schema'
 
 const sample: FieldDef[] = [
@@ -64,5 +64,24 @@ describe('replaceFieldsInMeta', () => {
     expect(out).toContain('fields: []')
     expect(out).toContain('other: x')
     expect(out).not.toContain('key: a')
+  })
+})
+
+describe('重命名同步 code / 必填补齐', () => {
+  it('replaceTopLevelField 保留注释与其余键', () => {
+    const raw = '# 注释\ncode: "demo"\nname: Demo\nchangelog: x\n'
+    const out = replaceTopLevelField(raw, 'code', 'demo-v2')
+    expect(out).toContain('# 注释')
+    expect(out).toContain('name: Demo')
+    expect(out).toContain('code: "demo-v2"')
+    expect(out).not.toContain('code: "demo"')
+  })
+
+  it('withMetaIdentity 仅补齐缺失的 code/name', () => {
+    const out = withMetaIdentity('version: 2\nname: 首版\n', 'v2', '第二版')
+    expect(out).toContain('code: "v2"')
+    expect(out).toContain('name: 首版')
+    expect(out).not.toContain('name: 第二版')
+    expect(withMetaIdentity('code: a\nname: b\n', 'x', 'y')).toBe('code: a\nname: b\n')
   })
 })

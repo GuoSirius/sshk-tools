@@ -1,7 +1,9 @@
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
+import * as yaml from 'js-yaml'
 import { AppError } from '@sshk/shared'
 import { loadEdmModel } from '../edm-manifest.js'
+import { validateMetaIdentity } from '../../core/meta-contract.js'
 import { renderSystemPreview, renderSystemCompose, type SystemSelector } from '../../core/system-css.js'
 import { SYSTEM_FILE_EXTS, type ActionHandler, type EdmIpcContext, type Payload } from './context'
 
@@ -32,6 +34,19 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
     const root = ctx.resolveContentRoot(source)
     const file = str(data, 'file')
     if (!SYSTEM_FILE_EXTS.has(path.extname(file))) throw new AppError(`不允许的文件类型：${path.extname(file) || '(无扩展名)'}`, 'io')
+    // 后端第二层校验（前端表单校验只拦正常路径，IPC 直接调用也必须挡住）：
+    // 四级 meta.yaml 一律要求非空 code/name，缺一即 validation 类错误，不写盘、不刷 unknown 堆栈。
+    if (path.basename(file) === 'meta.yaml') {
+      const content = String(data['content'] ?? '')
+      let parsed: unknown
+      try {
+        parsed = yaml.load(content)
+      } catch (err) {
+        throw new AppError(`meta.yaml 不是合法 YAML：${(err as Error).message}`, 'validation')
+      }
+      const errors = validateMetaIdentity(parsed)
+      if (errors.length) throw new AppError(`元数据校验未通过：${errors.join('、')}`, 'validation')
+    }
     const abs = ctx.confine(root, file)
     await fs.mkdir(path.dirname(abs), { recursive: true })
     await fs.writeFile(abs, String(data['content'] ?? ''), 'utf8')

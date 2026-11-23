@@ -7,3 +7,4 @@ export { DEFAULT_LANGUAGE, LANGUAGES, languageForPath, monacoLanguageFor } from 
 export type { LanguageDef } from './languages'
 export { monaco, setYamlSchema, setupMonaco } from './monaco-setup'
 export { formatHtml, compactHtml } from './format'
+export { bindSaveShortcut, type SaveCommandEditor } from './save-shortcut'

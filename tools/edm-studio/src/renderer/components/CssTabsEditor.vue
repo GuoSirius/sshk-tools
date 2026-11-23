@@ -50,6 +50,7 @@ function basename(p: string): string {
         :readonly="!canEdit"
         height="calc(100% - 80px)"
         @update:model-value="(v: string) => emit('edit', activeTab!.id, v)"
+        @save="activeTab && emit('save', activeTab)"
       />
     </template>
   </div>

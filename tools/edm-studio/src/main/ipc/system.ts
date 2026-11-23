@@ -168,7 +168,7 @@ export function registerSystemActions(ctx: EdmIpcContext, handlers: Map<string, 
       const v = fam?.versions.find((x) => x.dir === versionDir)
       if (!fam || !v) throw new AppError(`系统${cat === 'template' ? '模板' : '片段'}版本「${familyCode}/${versionDir || 'default'}」不存在`, 'io')
       await copyTree(`${brandCode}/${cat}/${familyCode}/${versionDir}`, `${dstBrand}/${cat}/${familyCode}/${name}`)
-      await patchMeta(`${dstBrand}/${cat}/${familyCode}/${name}`, { version: versionNumberOf(name, v.meta.version) })
+      await patchMeta(`${dstBrand}/${cat}/${familyCode}/${name}`, { code: name, name, version: versionNumberOf(name, v.meta.version) })
       if (cat === 'template') counts.templateVersions++
       else counts.fragmentVersions++
     } else {

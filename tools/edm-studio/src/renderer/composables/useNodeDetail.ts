@@ -3,7 +3,8 @@ import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
 import type { FieldDef } from '../sample-schema'
 import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from '../sample-schema'
-import { replaceFieldsInMeta } from '../meta-fields'
+import { replaceFieldsInMeta, withMetaIdentity } from '../meta-fields'
+import { isCodeReadonly, META_CODE_MODE, resolveMetaCode, validateMetaIdentity } from '../../core/meta-contract'
 import { api } from '../tool-api'
 import { uploadInlineImages } from '../upload.js'
 import type { Source, TreeNode } from './useContentTree'
@@ -37,8 +38,12 @@ export interface NodeDetail {
   sampleMode: Ref<'form' | 'data' | 'design'>
   sampleSchema: Ref<FieldDef[]>
   sampleObj: Ref<Record<string, unknown>>
-  form: Ref<{ name: string; code: string; description: string; logo: string; type: string; version: number; changelog: string; policyB: string; policyW: string }>
-  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; policy: boolean; version: boolean }>
+  form: Ref<{ name: string; code: string; description: string; favicon: string; type: string; version: number; changelog: string; policyB: string; policyW: string }>
+  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; policy: boolean; version: boolean }>
+  /** favicon 继承提示（版本→族→类型→品牌） */
+  faviconHint: ComputedRef<string>
+  /** 当前节点真实目录名（code 镜像源） */
+  dirNameOf(node: TreeNode): string
   /** 选中节点填充右侧详情（原文 onNode 的读取/回显段；compose 初始化与预览渲染由壳编排，顺序不变） */
   loadNode(node: TreeNode): Promise<void>
   renderPreview(node: TreeNode): Promise<void>
@@ -50,6 +55,22 @@ export interface NodeDetail {
   saveSample(): Promise<void>
   /** 字段设计器写回：把 fields 外科手术式替换进 meta.yaml（保留其余键与注释） */
   saveFields(): Promise<void>
+}
+
+/** 节点真实目录名：类型取 cat，版本取版本目录（折叠版 = default），其余取路径末段 */
+function dirNameOf(node: TreeNode): string {
+  if (node.kind === 'category') return node.data.cat ?? ''
+  if (node.kind === 'version') return node.data.versionDir || 'default'
+  return (node.data.path || '').split(/[/\\]/).pop() ?? ''
+}
+
+/** 仅供必填校验使用：非法 YAML 当作空对象，由后续正规 parse 抛出可读错误 */
+function safeParseYaml(text: string): unknown {
+  try {
+    return (yaml.load(text) as Record<string, unknown>) ?? {}
+  } catch {
+    return {}
+  }
 }
 
 /** 名单文本（顿号/逗号分隔）→ 数组（原文 syncFormToRaw 用） */
@@ -71,16 +92,31 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   const sampleSchema = ref<FieldDef[]>([])
   const sampleObj = ref<Record<string, unknown>>({})
   const form = ref({
-    name: '', code: '', description: '', logo: '', type: '',
+    name: '', code: '', description: '', favicon: '', type: '',
     version: 1, changelog: '', policyB: '', policyW: '',
   })
 
-  const showForm = computed(() => ({
-    catBase: deps.selected.value?.kind === 'category',
-    brandBase: deps.selected.value?.kind === 'brand' || deps.selected.value?.kind === 'family',
-    policy: deps.selected.value?.kind === 'family' && deps.selected.value?.data.cat === 'fragment',
-    version: deps.selected.value?.kind === 'version',
-  }))
+  const showForm = computed(() => {
+    const k = deps.selected.value?.kind
+    return {
+      catBase: k === 'category',
+      brandBase: k === 'brand' || k === 'family',
+      base: k === 'brand' || k === 'category' || k === 'family' || k === 'version',
+      codeReadonly: isCodeReadonly(META_CODE_MODE),
+      favicon: k === 'brand' || k === 'category' || k === 'family' || k === 'version',
+      policy: k === 'family' && deps.selected.value?.data.cat === 'fragment',
+      version: k === 'version',
+    }
+  })
+
+  const faviconHint = computed(() => {
+    const k = deps.selected.value?.kind
+    if (k === 'brand') return '品牌图标；无上级可继承'
+    if (k === 'category') return '留空回退所属品牌 favicon'
+    if (k === 'family') return '留空回退所属类型 favicon（再回退品牌）'
+    if (k === 'version') return '留空回退所属族 favicon（再回退类型 / 品牌）'
+    return ''
+  })
 
   async function renderPreview(node: TreeNode): Promise<void> {
     if (node.kind !== 'version') return
@@ -107,7 +143,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       name: String(raw.name ?? ''),
       code: String(raw.code ?? ''),
       description: String(raw.description ?? ''),
-      logo: String(raw.logo ?? ''),
+      favicon: String(raw.favicon ?? ''),
       type: String(raw.type ?? ''),
       version: Number(raw.version ?? 1),
       changelog: String(raw.changelog ?? ''),
@@ -129,6 +165,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       try {
         metaRaw.value = (yaml.load(metaText.value) as Record<string, unknown>) ?? {}
         fillForm(metaRaw.value)
+        // code 当前 = 真实目录名镜像；旧文件缺 code 时这里就能显示可保存的默认值
+        form.value.code = resolveMetaCode(dirNameOf(node), metaRaw.value?.code)
       } catch {
         metaRaw.value = null
         metaMode.value = 'data'
@@ -187,12 +225,17 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   function syncFormToRaw(): Record<string, unknown> {
     const patch: Record<string, unknown> = {}
     const s = showForm.value
-    if (s.catBase || s.brandBase || s.version) {
-      if (form.value.name !== '') patch.name = form.value.name.trim()
+    const node = deps.selected.value
+    // 单版本折叠时 version 的 meta.yaml 就是族的 meta.yaml，不能覆盖族的 code/name/favicon
+    const foldedVersion = node?.kind === 'version' && !node.data.versionDir
+    if (s.base) {
+      if (!foldedVersion && node) {
+        patch.name = form.value.name.trim()
+        patch.code = resolveMetaCode(dirNameOf(node), form.value.code)
+        patch.favicon = form.value.favicon.trim() || undefined
+      }
       patch.description = form.value.description.trim() || undefined
-      if (s.brandBase && form.value.code !== '') patch.code = form.value.code.trim()
     }
-    if (s.brandBase && form.value.logo !== '') patch.logo = form.value.logo.trim()
     if (s.policy) {
       patch.type = form.value.type.trim() || undefined
       patch.policy = { blacklist: splitList(form.value.policyB), whitelist: splitList(form.value.policyW) }
@@ -226,6 +269,18 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   async function saveMeta(): Promise<void> {
     const node = deps.selected.value
     if (!node?.data.metaPath) return
+    // 第一层校验（前端）：四级元数据 code/name 必填，失败直接停留，不发 IPC
+    // 单版本折叠时 meta.yaml 与族共用，identity 属于族，不在版本 tab 校验/覆盖
+    const foldedVersion = node.kind === 'version' && !node.data.versionDir
+    if (!foldedVersion) {
+      const errors = metaMode.value === 'form'
+        ? validateMetaIdentity({ code: form.value.code, name: form.value.name })
+        : validateMetaIdentity(safeParseYaml(metaText.value))
+      if (errors.length) {
+        ElMessage.error(`元数据校验未通过：${errors.join('、')}`)
+        return
+      }
+    }
     try {
       let out = ''
       if (metaMode.value === 'form') {
@@ -316,7 +371,11 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     }
     try {
       const raw = metaText.value || (await deps.read(node.data.metaPath, node.data.source))
-      const updated = replaceFieldsInMeta(raw, fields)
+      // 字段设计器写回不能因旧文件缺 code/name 被后端第二层校验挡下：补齐目录名默认值
+      const foldedVersion = node.kind === 'version' && !node.data.versionDir
+      const updated = foldedVersion
+        ? replaceFieldsInMeta(raw, fields)
+        : withMetaIdentity(replaceFieldsInMeta(raw, fields), dirNameOf(node), form.value.name || dirNameOf(node))
       await deps.write(node.data.metaPath, updated, node.data.source)
       metaText.value = updated
       metaRaw.value = (yaml.load(updated) as Record<string, unknown>) ?? {}
@@ -329,7 +388,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
 
   return {
     metaRaw, metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing,
-    sampleMode, sampleSchema, sampleObj, form, showForm,
+    sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, dirNameOf,
     loadNode, renderPreview,
     switchSampleMode, switchMetaMode,
     saveMeta, saveSource, saveStyle, saveSample, saveFields,

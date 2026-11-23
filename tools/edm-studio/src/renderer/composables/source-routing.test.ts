@@ -30,6 +30,17 @@ describe('详情编辑写入自定义根', () => {
     expect(load).toHaveBeenCalledWith(true)
   })
 
+  it('name 必填校验失败时停留，不发 IPC', async () => {
+    const read = vi.fn().mockResolvedValue('code: demo\nname: demo\n')
+    const write = vi.fn().mockResolvedValue(undefined)
+    const node = brandNode()
+    const detail = useNodeDetail({ selected: ref(node), read, write, load: vi.fn(), toolId: ref('edm-studio') })
+    await detail.loadNode(node)
+    detail.form.value.name = '   '
+    await detail.saveMeta()
+    expect(write).not.toHaveBeenCalled()
+  })
+
   it('字段定义读取/写回也带 source', async () => {
     const read = vi.fn().mockResolvedValue('code: demo\nname: demo\n')
     const write = vi.fn().mockResolvedValue(undefined)
@@ -60,5 +71,14 @@ describe('css 多 tab 读写自定义根', () => {
     await tabs.saveCss(active!)
     expect(messages.error).not.toHaveBeenCalled()
     expect(write).toHaveBeenCalledWith('demo/css/a.css', 'body{color:red}', 'custom')
+  })
+
+  it('目录重命名后已开 tab 迁移路径与 id，选中态不丢', async () => {
+    const read = vi.fn().mockResolvedValue('body{}')
+    const tabs = useCssTabs({ read, write: vi.fn(), selected: ref(null), renderPreview: vi.fn() })
+    await tabs.openCssTab('demo/css/a.css', 'custom')
+    tabs.renameTabsUnder('demo', 'demo-v2')
+    expect(tabs.cssTabs.value[0]?.file).toBe('demo-v2/css/a.css')
+    expect(tabs.activeCss.value).toBe('custom:demo-v2/css/a.css')
   })
 })

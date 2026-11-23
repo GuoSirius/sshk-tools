@@ -19,6 +19,34 @@ export function fieldsBlock(fields: FieldDef[]): string {
   return `fields:\n${body}`
 }
 
+/**
+ * 外科手术式替换 meta.yaml 顶层标量字段（重命名时同步 code 用）：保留注释与其余键。
+ * 值统一 JSON 引号写出，避免特殊字符破坏 YAML；缺失则追加到文末。
+ */
+export function replaceTopLevelField(raw: string, key: string, value: string): string {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n')
+  const idx = lines.findIndex((l) => new RegExp(`^${key}:(\\s|$)`).test(l))
+  const line = `${key}: ${JSON.stringify(value)}`
+  if (idx === -1) return `${raw.replace(/\s+$/, '')}\n${line}\n`
+  lines[idx] = line
+  return `${lines.join('\n')}\n`
+}
+
+/** 补齐 meta.yaml 缺失的 code/name（保留注释与其余键），供后端必填校验前的兜底 */
+export function withMetaIdentity(raw: string, code: string, name: string): string {
+  let out = raw
+  let parsed: Record<string, unknown> = {}
+  try {
+    parsed = (yaml.load(out) as Record<string, unknown>) ?? {}
+  } catch {
+    /* 非法 YAML 交给后续正规流程报错，这里不覆盖原文 */
+    return out
+  }
+  if (typeof parsed['code'] !== 'string' || !parsed['code'].trim()) out = replaceTopLevelField(out, 'code', code)
+  if (typeof parsed['name'] !== 'string' || !parsed['name'].trim()) out = replaceTopLevelField(out, 'name', name)
+  return out
+}
+
 /** 在 meta.yaml 原文中替换顶层 `fields:` 块；不存在则追加到文末 */
 export function replaceFieldsInMeta(raw: string, fields: FieldDef[]): string {
   const lines = raw.replace(/\r\n/g, '\n').split('\n')
