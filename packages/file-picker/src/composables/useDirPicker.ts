@@ -18,7 +18,8 @@ export type PickerTab = 'upload' | 'gallery' | 'selected'
 
 /**
  * 目录/来源选择域（P6-3 自 FilePickerDialog 拆出，搬代码不改行为）：
- * 来源列表 + 桶/目录 target（级联懒加载 + 手输归一化）+ 全局一份持久化（来源/目录/页签，D58）。
+ * 来源列表 + 桶/目录 target（级联懒加载 + 手输归一化）+ 按 stateKey 持久化（来源/目录/页签，
+ * 2026-11-23 用户终审保留分桶）。
  * 壳组件负责编排：open 时 restoreSettings → 设页签 → finishRestore；换源/换目录经事件回调驱动重列。
  */
 export interface DirPickerProps {
@@ -26,6 +27,8 @@ export interface DirPickerProps {
   library: FilePickerLibrary
   /** 无已保存设置时的预设桶/目录（打开即定位；已保存的设置优先） */
   defaultTarget?: FilePickerTarget
+  /** 多实例隔离键：不同实例各存各的来源/目录设置（壳层 withDefaults 已给 'default' 兜底） */
+  stateKey: string
 }
 
 export interface DirPickerDeps {
@@ -240,17 +243,17 @@ export function useDirPicker(props: DirPickerProps, deps: DirPickerDeps): DirPic
     dirModel.value = v ?? ''
   }
 
-  /** 来源内只做缓存镜像（sourceId → target）；真正持久化在 localStorage 全局键（D58） */
-  const targetCache: Record<string, FilePickerTarget> = {}
+  /** 模块内只做缓存镜像；真正持久化在 localStorage，按 stateKey 隔离 */
+  const targetCache: Record<string, Record<string, FilePickerTarget>> = {}
 
   function persist(): void {
     if (!restored.value) return
-    saveSettings(storage(), undefined, {
+    saveSettings(storage(), props.stateKey, {
       sourceId: sourceId.value,
-      targets: { ...targetCache, [sourceId.value]: { ...target.value } },
+      targets: { ...(targetCache[props.stateKey] ?? {}), [sourceId.value]: { ...target.value } },
       tab: deps.tab.value,
     })
-    targetCache[sourceId.value] = { ...target.value }
+    targetCache[props.stateKey] = { ...(targetCache[props.stateKey] ?? {}), [sourceId.value]: { ...target.value } }
   }
 
   async function loadSources(): Promise<void> {
@@ -269,7 +272,7 @@ export function useDirPicker(props: DirPickerProps, deps: DirPickerDeps): DirPic
     if (!restored.value) return
     target.value = {
       ...(props.defaultTarget ?? {}),
-      ...(targetCache[id] ?? {}),
+      ...(targetCache[props.stateKey]?.[id] ?? {}),
     }
     normalizeRestoredDir()
     // 换源后无已存目录时同样默认根选中（与首次打开口径一致）
@@ -296,14 +299,13 @@ export function useDirPicker(props: DirPickerProps, deps: DirPickerDeps): DirPic
   async function restoreSettings(): Promise<PickerTab | undefined> {
     restored.value = false
     await loadSources()
-    const saved = loadSettings(storage())
-    Object.keys(targetCache).forEach((k) => delete targetCache[k])
-    Object.assign(targetCache, saved?.targets ?? {})
+    const saved = loadSettings(storage(), props.stateKey)
+    targetCache[props.stateKey] = saved?.targets ?? {}
     sourceId.value = defaultSourceId(sources.value, saved?.sourceId)
     // 已保存设置优先；没有时回落到应用方预设的桶/目录（defaultTarget）
     target.value = {
       ...(props.defaultTarget ?? {}),
-      ...(targetCache[sourceId.value] ?? {}),
+      ...(targetCache[props.stateKey]?.[sourceId.value] ?? {}),
     }
     normalizeRestoredDir()
     // 初次打开无已存目录时默认选中根目录（用户 2026-11-19 反馈）：

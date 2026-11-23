@@ -27,9 +27,10 @@ export async function uploadInlineImages(html: string, toolId: string): Promise<
   const images = extractInlineImages(html)
   if (images.length === 0) return html
   const library = createImageLibrary(toolId)
-  // D58 全局统一位置记忆：直接读全局「上次位置」，无记录回落默认源。
-  // 读不到（无任何来源）时保留原内联图片，不阻断保存。
-  const picked = await resolveLastUploadTarget(library)
+  // 按 stateKey 分桶（2026-11-23 用户终审保留）：复用图片字段的 stateKey（edm::image-field，
+  // 用户在 ImageField 选图/上传时保存的目标），使内联转存落到同一位置；
+  // 从未选过则回落默认源。读不到（无任何来源）时保留原内联图片，不阻断保存。
+  const picked = await resolveLastUploadTarget(library, 'edm::image-field')
   if (!picked) return html
   beginUploadSession(images.length)
   const pairs: { raw: string; replacement: string }[] = []

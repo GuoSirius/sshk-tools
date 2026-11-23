@@ -82,6 +82,8 @@ const props = withDefaults(
     imageRule?: RichTextImageRule
     /** 图片库桥接（来源/上传/列图）；不传则不显示「图片库」菜单 */
     imageLibrary?: RichTextImageLibrary
+    /** 图片库设置隔离键：多实例各传不同值，来源/桶/目录设置互不串扰（2026-11-23 用户终审保留） */
+    stateKey?: string
   }>(),
   {
     modelValue: '',
@@ -89,6 +91,7 @@ const props = withDefaults(
     onUploadImage: undefined,
     imageRule: undefined,
     imageLibrary: undefined,
+    stateKey: 'default',
   },
 )
 
@@ -439,11 +442,12 @@ onBeforeUnmount(() => {
     v-model:open="libraryOpen"
     mode="image"
     :library="imageLibrary"
+    :state-key="stateKey"
     :resolve-src="toDisplaySrc"
     confirm-text="插入所选"
     @confirm="onLibraryConfirm"
   />
-  <!-- #133 视频选择框：独立标题「选择视频」+ mode=video（accept=video/* / VIDEO_EXTS 校验），位置与图片库共用全局一份（D58） -->
+  <!-- #133 视频选择框：独立标题「选择视频」+ mode=video（accept=video/* / VIDEO_EXTS 校验），stateKey 后缀隔离图片选择状态 -->
   <FilePickerDialog
     v-if="imageLibrary"
     v-model:open="videoOpen"
@@ -452,6 +456,7 @@ onBeforeUnmount(() => {
     confirm-text="插入视频"
     :multiple="false"
     :library="imageLibrary"
+    :state-key="stateKey + '::video'"
     :resolve-src="toDisplaySrc"
     @confirm="onVideoConfirm"
   />
@@ -460,6 +465,7 @@ onBeforeUnmount(() => {
     v-if="imageLibrary"
     v-model:open="targetDialogOpen"
     :library="imageLibrary"
+    :state-key="stateKey"
     title="选择粘贴图片的上传位置"
     @confirm="onUploadTargetConfirm"
   />

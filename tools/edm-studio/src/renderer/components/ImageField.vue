@@ -89,6 +89,7 @@ async function copyUrl(): Promise<void> {
       :library="library"
       :multiple="false"
       :resolve-src="toDisplaySrc"
+      state-key="edm::image-field"
       @confirm="onConfirm"
     />
   </div>

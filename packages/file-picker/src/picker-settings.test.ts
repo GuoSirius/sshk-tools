@@ -46,63 +46,56 @@ describe('picker-settings', () => {
     expect(defaultSourceId(sources, 'remote-1')).toBe('remote-1')
   })
 
-  it('全局统一存取（D58）：stateKey 形参已废弃被忽略，任何键名读写同一份', () => {
+  it('按 stateKey 隔离存取，重启（新 store 对象同底层）可回显', () => {
     const store = memoryStore()
     const a = { sourceId: 'cloud-1', targets: { 'cloud-1': { bucket: 'a-bucket', prefix: 'a/b' } } }
+    const b = { sourceId: 'local-1', targets: {} }
     saveSettings(store, 'instance-A', a)
-    // 换一个「键名」读（形参被忽略）：回显同一份全局位置
-    expect(loadSettings(store, 'instance-B')).toEqual(a)
-    expect(loadSettings(store)).toEqual(a)
-    expect(settingsKey('anything')).toBe('sshk:file-picker:global')
+    saveSettings(store, 'instance-B', b)
+    expect(loadSettings(store, 'instance-A')).toEqual(a)
+    expect(loadSettings(store, 'instance-B')).toEqual(b)
+    expect(settingsKey('instance-A')).not.toBe(settingsKey('instance-B'))
   })
 
   it('resolveLastUploadTarget：读上次 source+target；无记录/来源失效回落默认源，空来源返回 null', async () => {
     const store = memoryStore()
     const library = { sources: async () => sources } as any
     // 无保存记录 → 回落最高优先级云源，target 为空
-    const fallback = await resolveLastUploadTarget(library, store)
+    const fallback = await resolveLastUploadTarget(library, 'fresh', store)
     expect(fallback).toEqual({ source: byId('cloud-1'), target: {} })
     // 有保存记录 → 还原选中的源与其专属 target
-    saveSettings(store, undefined, { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm/mail' } } })
-    expect(await resolveLastUploadTarget(library, store)).toEqual({
+    saveSettings(store, 'inst', { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm/mail' } } })
+    expect(await resolveLastUploadTarget(library, 'inst', store)).toEqual({
       source: byId('remote-1'), target: { remotePath: 'edm/mail' },
     })
     // 保存的源已被删除 → 回落默认源
-    saveSettings(store, undefined, { sourceId: 'deleted', targets: {} })
-    expect((await resolveLastUploadTarget(library, store))?.source.id).toBe('cloud-1')
+    saveSettings(store, 'gone', { sourceId: 'deleted', targets: {} })
+    expect((await resolveLastUploadTarget(library, 'gone', store))?.source.id).toBe('cloud-1')
     // 无任何来源 → null
-    expect(await resolveLastUploadTarget({ sources: async () => [] } as any, store)).toBeNull()
+    expect(await resolveLastUploadTarget({ sources: async () => [] } as any, 'none', store)).toBeNull()
   })
 
   it('损坏数据返回 null，不抛错', () => {
     const store = memoryStore()
-    store.setItem('sshk:file-picker:global', '{bad json')
-    expect(loadSettings(store)).toBeNull()
+    store.setItem(settingsKey('x'), '{bad json')
+    expect(loadSettings(store, 'x')).toBeNull()
   })
 
-  it('旧分桶键自动迁移（D58）：按优先序命中，命中后整链清理，含动态键', () => {
+  it('旧版 rich-text 图片库键自动迁移读取（不丢已保存的来源/目录）', () => {
     const store = memoryStore()
-    const preferred = { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm' } }, tab: 'gallery' as const }
-    const dyn = { sourceId: 'local-1', targets: {}, tab: 'upload' as const }
-    // 动态键（edm:<字段> / 记录 id）不在优先表内；edm::image-field 优先级最高
-    store.setItem('sshk:file-picker:edm:brief', JSON.stringify(dyn))
-    store.setItem('sshk:file-picker:edm::image-field', JSON.stringify(preferred))
-    store.setItem('sshk:rich-text:image-library:default', JSON.stringify(dyn))
-    expect(loadSettings(store)).toEqual(preferred)
-    // 整链清理：旧键全部摘除，只有全局键落盘
-    expect(store.getItem('sshk:file-picker:edm:brief')).toBeNull()
-    expect(store.getItem('sshk:file-picker:edm::image-field')).toBeNull()
-    expect(store.getItem('sshk:rich-text:image-library:default')).toBeNull()
+    const legacy = { sourceId: 'remote-1', targets: { 'remote-1': { remotePath: 'edm' } }, tab: 'gallery' as const }
+    store.setItem('sshk:rich-text:image-library:inst', JSON.stringify(legacy))
+    expect(loadSettings(store, 'inst')).toEqual(legacy)
   })
 
-  it('旧键迁移：无优先命中时取扫到的第一个；首次保存自然落全局键', () => {
+  it('新键写入后优先于旧键（首次保存即完成迁移）', () => {
     const store = memoryStore()
     const legacy = { sourceId: 'local-1', targets: {}, tab: 'upload' as const }
-    store.setItem('sshk:rich-text:image-library:inst', JSON.stringify(legacy))
-    expect(loadSettings(store)).toEqual(legacy)
     const fresh = { sourceId: 'cloud-1', targets: {}, tab: 'gallery' as const }
-    saveSettings(store, undefined, fresh)
-    expect(loadSettings(store)).toEqual(fresh)
+    store.setItem('sshk:rich-text:image-library:inst', JSON.stringify(legacy))
+    expect(loadSettings(store, 'inst')).toEqual(legacy)
+    saveSettings(store, 'inst', fresh)
+    expect(loadSettings(store, 'inst')).toEqual(fresh)
   })
 
   it('文件名搜索：忽略大小写，命中 name / key / url 任一，空关键词全通过', () => {
