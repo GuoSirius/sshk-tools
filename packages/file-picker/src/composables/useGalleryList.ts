@@ -42,6 +42,8 @@ export interface GalleryList {
   scanCapped: Ref<boolean>
   /** 终止在途搜索扫描 */
   cancelScan(): void
+  /** 作废在途列表请求 + 搜索扫描（切源/桶/目录/关闭时调用，过期结果一律丢弃） */
+  cancelPending(): void
   /** 关键词变化后的跨页全量扫描入口（壳层防抖调用） */
   runSearchScan(): Promise<void>
   /** 刷新列表（拉首页；带关键词且来源侧还有剩余页时自动续扫） */
@@ -66,10 +68,21 @@ export function useGalleryList(props: GalleryListProps, deps: GalleryListDeps): 
   const scanTotal = ref(0)
   const scanCapped = ref(false)
   let scanSeq = 0
+  /** 列表请求序号：切源/桶/目录后作废旧响应（与 useFsListing.listSeq 同范式） */
+  let listSeq = 0
 
   function cancelScan(): void {
     scanSeq++
     scanning.value = false
+  }
+
+  /** 作废在途列表 + 扫描：序号递增让在途 await 的旧结果被丢弃（底层 RPC 无法 abort，靠逻辑取消） */
+  function cancelPending(): void {
+    listSeq++
+    cancelScan()
+    // 在途请求的 finally 因序号过期不再复位标志位，这里统一归零，避免「取消后无新请求」时卡在 loading
+    loadingList.value = false
+    loadingMore.value = false
   }
 
   /** 从已加载页的游标开始分块续拉，直到扫完/达上限/被新上下文取代；匹配结果随 items 增长即时过滤呈现 */
@@ -101,21 +114,24 @@ export function useGalleryList(props: GalleryListProps, deps: GalleryListDeps): 
   async function loadGallery(): Promise<void> {
     const source = deps.activeSource.value
     if (!source) return
-    scanSeq++ // 上下文重置：进行中的搜索扫描立即失效
+    const seq = ++listSeq // 上下文重置：在途列表/扫描结果一律失效
+    scanSeq++
     scanning.value = false
     loadingList.value = true
     deps.renderedCount.value = PAGE_SIZE
     try {
       // 不清空 pool：重选目录得到新列表后，此前已选仍保留，可继续累积
       const page = await props.library.list(source, deps.target.value, { limit: FETCH_LIMIT, kind: props.mode })
+      if (seq !== listSeq) return // 切源/桶/目录已发生，旧列表丢弃
       items.value = page.items
       galleryCursor.value = page.nextCursor ?? null
     } catch (err) {
+      if (seq !== listSeq) return // 过期请求不弹错、不清空新上下文列表
       items.value = []
       galleryCursor.value = null
       ElMessage.error(`读取文件列表失败：${(err as Error).message}`)
     } finally {
-      loadingList.value = false
+      if (seq === listSeq) loadingList.value = false
     }
     // 带关键词进入/刷新列表：来源侧还有未加载页时自动续扫，保证搜索能命中后面页
     if (deps.keyword.value && galleryCursor.value) void runSearchScan()
@@ -125,22 +141,24 @@ export function useGalleryList(props: GalleryListProps, deps: GalleryListDeps): 
   async function loadMoreGallery(): Promise<void> {
     const source = deps.activeSource.value
     if (!source || !galleryCursor.value || loadingMore.value) return
+    const seq = listSeq
     loadingMore.value = true
     try {
       const page = await props.library.list(source, deps.target.value, { limit: FETCH_LIMIT, cursor: galleryCursor.value, kind: props.mode })
+      if (seq !== listSeq) return // 上下文已切换，旧分页丢弃
       items.value = [...items.value, ...page.items]
       galleryCursor.value = page.nextCursor ?? null
       deps.renderedCount.value += PAGE_SIZE
     } catch (err) {
-      ElMessage.error(`加载更多失败：${(err as Error).message}`)
+      if (seq === listSeq) ElMessage.error(`加载更多失败：${(err as Error).message}`)
     } finally {
-      loadingMore.value = false
+      if (seq === listSeq) loadingMore.value = false
     }
   }
 
   return {
     items, loadingList, galleryCursor, loadingMore,
     scanning, scanTotal, scanCapped,
-    cancelScan, runSearchScan, loadGallery, loadMoreGallery,
+    cancelScan, cancelPending, runSearchScan, loadGallery, loadMoreGallery,
   }
 }

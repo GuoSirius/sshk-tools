@@ -713,6 +713,21 @@ body {
   border-radius: 4px;
 }
 
+/* ── Tooltip 气泡跟随主题（2026-11-23 用户截图反馈：hint 显示未适配主题色）──
+   EP 默认 effect=dark 的 .el-popper.is-dark 是「反色气泡」：背景绑 --el-text-color-primary、
+   文字绑 --el-bg-color。暗色主题下primary 是浅色、bg 是深色 → 浅底深字，与界面脱节。
+   这里统一改为 overlay 背景 + 主文字色（三态换肤自动跟随），箭头同步。
+   非 scoped 全局块：popper teleport 到 body，scoped 无法命中。 */
+.el-popper.is-dark {
+  background: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  border-color: var(--el-border-color-light);
+}
+.el-popper.is-dark > .el-popper__arrow:before {
+  background: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color-light);
+}
+
 /* ── 图片预览大图查看器暗色适配（viewer 传送挂到 body，必须写全局） ──
    EP 默认把 actions/关闭/箭头底色写死为 var(--el-text-color-regular)（暗色下是浅灰）
    配白色图标 → 暗色主题下出现白块白图标。这里统一改为跟随 --sshk-* 主题。 */

@@ -125,12 +125,14 @@ const renderedCount = ref(PAGE_SIZE)
 
 /** ── 目录/来源域（composable）── */
 function onSourceChanged(): void {
+  cancelPending() // 搜索中切源：立即作废在途列表/扫描，旧源结果不再混入
   gallery.items.value = [] // 仅清当前列表；统一选择池保留，跨来源累积
   renderedCount.value = PAGE_SIZE
-  if (tab.value === 'gallery') void loadGallery()
+  scheduleReload() // 防抖后重新列取（带关键词时 loadGallery 末尾自动续扫）
 }
 function onTargetChanged(): void {
-  scheduleGalleryReload()
+  cancelPending() // 搜索中切桶/目录：立即作废在途列表/扫描
+  scheduleReload()
 }
 const cascaderRef = ref<CascaderInstance | null>(null)
 const dirPicker = useDirPicker(props, { tab, cascaderRef, onSourceChanged, onTargetChanged })
@@ -148,7 +150,7 @@ const gallery = useGalleryList(props, {
   keyword,
   renderedCount,
 })
-const { items, loadingList, galleryCursor, loadingMore, scanning, scanTotal, scanCapped, cancelScan, runSearchScan, loadGallery, loadMoreGallery } = gallery
+const { items, loadingList, galleryCursor, loadingMore, scanning, scanTotal, scanCapped, cancelScan, cancelPending, loadGallery, loadMoreGallery } = gallery
 
 /** ── 统一选择池 + 上传队列域（composable）── */
 const uploadPool = useUploadPool(props, {
@@ -268,43 +270,42 @@ watch(
   },
 )
 
-/** 列表页改桶/目录后自动重列（防抖，避免逐字输入时反复请求） */
-let galleryReloadTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleGalleryReload(): void {
+/** 上下文变化（切源/桶/目录/搜索条件）统一防抖重列：取消入口由调用方先行 cancelPending，本函数只负责延迟触发 */
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleReload(): void {
   if (!props.open || !restored.value || tab.value !== 'gallery') return
-  if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
-  galleryReloadTimer = setTimeout(() => { galleryReloadTimer = null; void loadGallery() }, 300)
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => { reloadTimer = null; void loadGallery() }, 300)
 }
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(tab, async (v) => {
   renderedCount.value = PAGE_SIZE
   if (v === 'gallery' && props.open && restored.value) await loadGallery()
 })
 watch(keyword, (kw) => {
   renderedCount.value = PAGE_SIZE
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = null
-  if (!kw) {
-    cancelScan() // 清空关键词：终止扫描，回到分页浏览
-    return
-  }
+  cancelPending() // 搜索条件变化：立即作废在途列表/扫描（不等防抖，避免旧结果混入）
+  if (!kw) return // 清空关键词：回到分页浏览，loadGallery 只拉首页不再续扫
   // 仅列表 tab 需要跨页扫描（上传/已选择数据全在内存）；防抖 400ms 避免逐字触发
   if (tab.value !== 'gallery') return
-  searchTimer = setTimeout(() => { searchTimer = null; void runSearchScan() }, 400)
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => {
+    reloadTimer = null
+    // 重新列首页再续扫：保证新关键词覆盖「已加载页 + 后续页」，且旧扫描已被 cancelPending 作废
+    void loadGallery()
+  }, 400)
 })
 
 function close(): void {
-  if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
-  galleryReloadTimer = null
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = null
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = null
+  cancelPending() // 关闭即作废在途请求，避免关闭后旧结果回写
   emit('update:open', false)
 }
 
 onBeforeUnmount(() => {
-  if (galleryReloadTimer) clearTimeout(galleryReloadTimer)
-  if (searchTimer) clearTimeout(searchTimer)
+  if (reloadTimer) clearTimeout(reloadTimer)
+  cancelPending()
   disposeUploadPool()
 })
 
