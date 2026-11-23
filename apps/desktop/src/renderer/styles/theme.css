@@ -512,7 +512,7 @@ body {
 .switch-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* justify-content: space-between; */
   gap: 10px;
   width: 100%;
 }
@@ -538,7 +538,7 @@ body {
   text-align: right;
   margin-right: 10px;
 }
-.switch-row > .el-switch { flex: none; margin-left: auto; }
+.switch-row > .el-switch { flex: none; }
 
 /* 应用设置卡片（原 AppSettingsDrawer 壳层样式随 P4-3 删抽屉移除，卡片类由
    应用管理 4 页与 AboutDialog 继续共用） */
