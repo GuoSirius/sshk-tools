@@ -166,7 +166,9 @@ const preloadAlias: Alias[] = [
 // 运行时依赖保持 dependencies（语义正确），但主进程要内联打进产物：
 // 配合 electron-builder files 的 '!node_modules/**'，安装包零 node_modules，
 // 构建期原生二进制（@oxc-parser 等）因此永远进不了包（mac universal 曾因此失败）。
-const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'iconv-lite', 'electron-updater']
+// marked/turndown：@sshk/rich-text/pure 的 Markdown 互转依赖。主进程经 pure 入口引入，
+// 若被 externalize 会残留裸 import，在零 node_modules 的安装包里触发 ERR_MODULE_NOT_FOUND。
+const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'iconv-lite', 'electron-updater', 'marked', 'turndown']
 
 /**
  * ssh2 的 optional 原生加速模块 cpu-features 在打包环境没有编译产物（allowBuilds:false），
