@@ -80,15 +80,15 @@ async function copyUrl(): Promise<void> {
         </div>
       </template>
     </el-image>
-    <el-button v-if="!readonly" :icon="Upload" :loading="uploading" @click="pick">上传</el-button>
-    <el-input clearable
+    <el-button v-if="!readonly" size="small" :icon="Upload" :loading="uploading" @click="pick">上传</el-button>
+    <el-input clearable size="small"
       :model-value="modelValue"
       placeholder="图片 URL，或点「上传」选本地图片"
       :disabled="readonly"
       @update:model-value="(v: string) => emit('update:modelValue', v)"
     />
     <el-tooltip content="复制图片 URL" placement="top">
-      <el-button :icon="CopyDocument" :disabled="!modelValue" @click="copyUrl" />
+      <el-button size="small" :icon="CopyDocument" :disabled="!modelValue" @click="copyUrl" />
     </el-tooltip>
     <input ref="fileInput" type="file" accept="image/*" hidden @change="onFile" />
   </div>
