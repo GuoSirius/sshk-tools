@@ -73,16 +73,19 @@ async function readFamilyMeta<TFamily extends object>(familyDir: string): Promis
   return { ...(raw ?? {}), code: raw?.code || dirName, name: raw?.name || dirName } as TFamily
 }
 
-/** 版本 meta：整份缺失、code/name 缺失或 version 非法时用目录名补齐（单版本折叠 = default） */
+/**
+ * 版本 meta：整份缺失或 code/name 缺失时用目录名补齐（单版本折叠 = default）。
+ * 版本号只读派生（2026-11-23 用户拍板）：恒取版本目录名 vN，忽略 meta.yaml 手填的 version——
+ * 手填值与目录漂移会让邮件编辑器显示错版本、latestVersionId 误判（v1 目录写 version:3 即实例）。
+ */
 async function readVersionMeta<TMeta extends object>(vdir: string, dir: string): Promise<TMeta> {
   const raw = await readYaml<Partial<TMeta> & { code?: string; name?: string; version?: number }>(path.join(vdir, 'meta.yaml'))
-  const n = raw?.version
   const dirName = dir || 'default'
   return {
     ...(raw ?? {}),
     code: raw?.code || dirName,
     name: raw?.name || dirName,
-    version: typeof n === 'number' && n > 0 ? n : versionOfDir(dir),
+    version: versionOfDir(dir),
   } as TMeta
 }
 

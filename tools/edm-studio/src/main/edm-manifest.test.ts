@@ -66,12 +66,13 @@ describe('EDM 解析缺失字段补齐', () => {
     expect(fam.versions[0]!.sourcePath).toBe(join(famDir, 'template.njk'))
   })
 
-  it('meta 已有 code/name/version 时原值优先，不被默认值覆盖', async () => {
+  it('meta 已有 code/name 时原值优先；版本号恒取目录名派生，忽略手填 version', async () => {
     const root = makeRoot()
     const verDir = join(root, 'acme', 'fragment', 'hero', 'v2')
     mkdirSync(verDir, { recursive: true })
     writeFileSync(join(root, 'acme', 'meta.yaml'), 'code: acme\nname: Acme Corp\n')
     writeFileSync(join(root, 'acme', 'fragment', 'hero', 'meta.yaml'), 'code: hero\nname: 顶部横幅\n')
+    // 手填 version:7 与目录 v2 漂移：解析层必须忽略，恒为 2（避免邮件编辑器显示错版本）
     writeFileSync(join(verDir, 'meta.yaml'), 'version: 7\n')
     writeFileSync(join(verDir, 'custom.njk'), 'hi')
 
@@ -81,7 +82,7 @@ describe('EDM 解析缺失字段补齐', () => {
     const fam = brand.fragments[0]!
     expect(fam.meta.name).toBe('顶部横幅')
     const ver = fam.versions[0]!
-    expect(ver.meta.version).toBe(7)
+    expect(ver.meta.version).toBe(2)
     expect(ver.source).toBe('custom.njk')
   })
 

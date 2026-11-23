@@ -64,6 +64,16 @@ function dirNameOf(node: TreeNode): string {
   return (node.data.path || '').split(/[/\\]/).pop() ?? ''
 }
 
+/**
+ * 版本号只读派生（用户 2026-11-23 拍板）：恒取版本目录名 vN（default=1），
+ * 手改 meta.yaml 的 version 会与目录名漂移、邮件编辑器误判最新版本，故表单不再手填。
+ * 与 edm-manifest.versionOfDir / edm-seed.versionNumberOf 同口径。
+ */
+function versionOfDirName(dir: string): number {
+  const m = /v(\d+)/i.exec(dir)
+  return m ? Number(m[1]) : 1
+}
+
 /** 仅供必填校验使用：非法 YAML 当作空对象，由后续正规 parse 抛出可读错误 */
 function safeParseYaml(text: string): unknown {
   try {
@@ -137,7 +147,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     }
   }
 
-  function fillForm(raw: Record<string, unknown>): void {
+  function fillForm(raw: Record<string, unknown>, node: TreeNode | null): void {
     const policy = (raw.policy ?? {}) as { blacklist?: string[]; whitelist?: string[] }
     form.value = {
       name: String(raw.name ?? ''),
@@ -145,7 +155,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       description: String(raw.description ?? ''),
       favicon: String(raw.favicon ?? ''),
       type: String(raw.type ?? ''),
-      version: Number(raw.version ?? 1),
+      // 版本号只读派生：取目录名 vN，不读 meta.yaml 手填值（避免 v1 目录写 version:3 造成显示/最新判定混乱）
+      version: node && node.kind === 'version' ? versionOfDirName(dirNameOf(node)) : Number(raw.version ?? 1),
       changelog: String(raw.changelog ?? ''),
       policyB: (policy.blacklist ?? []).join('、'),
       policyW: (policy.whitelist ?? []).join('、'),
@@ -163,9 +174,12 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     if (node.data.metaPath) {
       metaText.value = await deps.read(node.data.metaPath, node.data.source)
       try {
-        metaRaw.value = (yaml.load(metaText.value) as Record<string, unknown>) ?? {}
-        fillForm(metaRaw.value)
-        // code 当前 = 真实目录名镜像；旧文件缺 code 时这里就能显示可保存的默认值
+        // 类型层（template/fragment）meta.yaml 常不存在 → read 返回空串；js-yaml 5.x 的 load('') 抛
+        // "expected a document"，会让整节点掉进 catch 变数据模式、code 空且不可编辑（用户实测无法保存）。
+        // parseYamlObject 对空文档返回 {}，保留表单模式并由下方补齐目录名 code。
+        metaRaw.value = parseYamlObject(metaText.value)
+        fillForm(metaRaw.value, node)
+        // code 当前 = 真实目录名镜像；旧文件缺 code / 文件不存在时这里就填可保存的默认值
         form.value.code = resolveMetaCode(dirNameOf(node), metaRaw.value?.code)
       } catch {
         metaRaw.value = null
@@ -241,7 +255,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       patch.policy = { blacklist: splitList(form.value.policyB), whitelist: splitList(form.value.policyW) }
     }
     if (s.version) {
-      patch.version = form.value.version
+      // 版本号恒取目录名派生值：meta.yaml 里手填的 version 不会写回，避免与 vN 目录漂移
+      patch.version = node ? versionOfDirName(dirNameOf(node)) : form.value.version
       patch.changelog = form.value.changelog.trim() || undefined
     }
     return { ...(metaRaw.value ?? {}), ...patch }
@@ -261,7 +276,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
         return
       }
       metaRaw.value = parsed
-      fillForm(parsed)
+      fillForm(parsed, deps.selected.value)
     }
     metaMode.value = mode
   }

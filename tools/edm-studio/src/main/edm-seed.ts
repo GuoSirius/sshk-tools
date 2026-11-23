@@ -42,10 +42,13 @@ async function readText(file: string): Promise<string | null> {
   }
 }
 
-/** 版本号取 meta.version；缺失时按目录名 vN 兜底，default 记 1（system:derive 派生亦复用） */
-export function versionNumberOf(dir: string, metaVersion: unknown): number {
-  if (typeof metaVersion === 'number' && Number.isFinite(metaVersion) && metaVersion > 0) return metaVersion
-  const m = /v(\d+)/.exec(dir)
+/**
+ * 版本号恒取目录名 vN（default / 无数字记 1；2026-11-23 用户拍板只读派生）。
+ * metaVersion 参数保留仅为兼容既有调用点，不再参与取值——手填 version 与目录漂移会
+ * 让邮件编辑器显示错版本、latestVersionId 误判。system:derive 派生亦复用本函数。
+ */
+export function versionNumberOf(dir: string, _metaVersion?: unknown): number {
+  const m = /v(\d+)/i.exec(dir)
   return m ? Number(m[1]) : 1
 }
 
