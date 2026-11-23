@@ -4,6 +4,7 @@
  * 替代原先两次 ElMessageBox.prompt 串联（用户误以为要点两次才成功）。
  * state 由 useContentTree 域持有；校验错误文案由域内 confirmCodeName 填入（不发 IPC）。
  */
+import { FormHint } from '@sshk/ui-kit'
 import type { CodeNameState } from '../composables/useContentTree'
 
 defineProps<{ state: CodeNameState }>()
@@ -24,6 +25,7 @@ const emit = defineEmits<{
     <el-form label-width="auto" @submit.prevent>
       <el-form-item :label="state.codeHint || 'code'" required>
         <el-input v-model="state.code" data-autofocus placeholder="英文目录名，如 my-brand" />
+        <FormHint>真实目录名；后续重命名会自动同步</FormHint>
         <div v-if="state.codeError" class="code-name-tip">{{ state.codeError }}</div>
       </el-form-item>
       <el-form-item label="名称" required>

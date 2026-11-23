@@ -184,7 +184,7 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
       /* ── R24 新建动作（写入节点所属 source 根） ── */
       if (key === 'newBrand') {
         const src = node.data.source
-        const got = await deps.promptCodeAndName('新建品牌', '品牌代码（目录名，英文）', '')
+        const got = await deps.promptCodeAndName('新建品牌', '品牌代码', '')
         if (!got) return
         if (await deps.existsIn(`${got.code}/meta.yaml`, src)) { ElMessage.error(`品牌「${got.code}」已存在`); return }
         await deps.write(`${got.code}/meta.yaml`, yaml.dump({ code: got.code, name: got.name }, { lineWidth: -1 }), src)
@@ -195,7 +195,7 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
         const cat: Cat = key === 'newFragmentFamily' ? 'fragment' : 'template'
         const brandCode = node.data.brandCode ?? ''
         if (!brandCode) { ElMessage.error('无法确定所属品牌'); return }
-        const got = await deps.promptCodeAndName('新建族', '族代码（目录名，英文）', '')
+        const got = await deps.promptCodeAndName('新建族', '族代码', '')
         if (!got) return
         const parent = `${brandCode}/${cat}`
         if (await deps.existsIn(`${parent}/${got.code}/meta.yaml`, src)) { ElMessage.error(`族「${got.code}」已存在`); return }

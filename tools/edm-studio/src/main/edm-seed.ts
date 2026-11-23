@@ -92,7 +92,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             fragmentId: fragId,
             brandId,
             version: versionNumberOf(v.dir, v.meta.version),
-            label: `v${versionNumberOf(v.dir, v.meta.version)}`,
+            label: v.dir || 'default',
             type: fam.meta.type || 'product',
             source: {
               html: (await readText(v.sourcePath)) ?? '',
@@ -106,6 +106,9 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             origin: 'system',
           })
           counts.fragmentVersions++
+        } else {
+          // label 是目录名派生值：刷新旧索引，避免 default/standard 与真实 v1 都显示 v1
+          await repo.update<FragmentVersion>('fragmentVersions', fvId, { label: v.dir || 'default' })
         }
         const n = versionNumberOf(v.dir, v.meta.version)
         if (!latestFv || n > latestFv.version) latestFv = { id: fvId, version: n }
@@ -135,7 +138,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             templateId: tplId,
             brandId,
             version: n,
-            label: `v${n}`,
+            label: v.dir || 'default',
             source: {
               html: (await readText(v.sourcePath)) ?? '',
               css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
@@ -148,6 +151,8 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             origin: 'system',
           })
           counts.templateVersions++
+        } else {
+          await repo.update<TemplateVersion>('templateVersions', tvId, { label: v.dir || 'default' })
         }
         const n = versionNumberOf(v.dir, v.meta.version)
         if (!latestTv || n > latestTv.version) latestTv = { id: tvId, version: n }
@@ -214,7 +219,7 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
         const n = versionNumberOf(v.dir, v.meta.version)
         const policy = v.meta.policy ?? fam.meta.policy
         const patch = {
-          fragmentId: fragId, brandId, version: n, label: `v${n}`, type: fam.meta.type || 'product',
+          fragmentId: fragId, brandId, version: n, label: v.dir || 'default', type: fam.meta.type || 'product',
           source: {
             html: (await readText(v.sourcePath)) ?? '',
             css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
@@ -255,7 +260,7 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
         want.templateVersions.add(tvId)
         const n = versionNumberOf(v.dir, v.meta.version)
         const patch = {
-          templateId: tplId, brandId, version: n, label: `v${n}`,
+          templateId: tplId, brandId, version: n, label: v.dir || 'default',
           source: {
             html: (await readText(v.sourcePath)) ?? '',
             css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),

@@ -99,19 +99,25 @@ export interface ContentTree {
   pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean>
 }
 
-/* ── 图标（与宿主 SidebarMenu 同一视觉语言，铁律 #19） ── */
-type IconKind = 'root' | 'brand' | 'fragment' | 'template' | 'version' | 'cssDir' | 'cssFile'
+/* ── 图标（与宿主 SidebarMenu 同一视觉语言，铁律 #19） ──
+ * 每级/每类一形一色：根=灰立方体、品牌=蓝店铺、片段类型=绿拼图、模板类型=紫文档、
+ * 族=青文件夹、版本=橙分支、css 目录=蓝调色板、css 文件=灰文档。type 区分类型节点。 */
+type IconKind = 'root' | 'brand' | 'fragment' | 'template' | 'family' | 'version' | 'cssDir' | 'cssFile'
 export const NODE_ICON: Record<IconKind, { path: string; color: string }> = {
   root: { path: 'M12 2L2 7v10l10 5 10-5V7z', color: '#909399' },
-  brand: { path: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z', color: '#409eff' },
-  fragment: { path: 'M4 4h7v7H4zM13 11h7v7h-7zM4 13h7v7H4zM13 4h4v4h4', color: '#67c23a' },
-  template: { path: 'M4 5h16v14H4zM4 9h16M9 9v10', color: '#b882e8' },
-  version: { path: 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 3', color: '#e6a23c' },
-  cssDir: { path: 'M3 5h6l2 2h10v12H3zM8 13h8M12 10v6', color: '#e6a23c' },
-  cssFile: { path: 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6', color: '#909399' },
+  brand: { path: 'M4 21V6l8-4 8 4v15h-6v-6h-4v6H4zM7 8h2v2H7zm8 0h2v2h-2z', color: '#409eff' },
+  fragment: { path: 'M10 3a3 3 0 016 0v1h3a2 2 0 012 2v3h-1a2 2 0 100 4h1v3a2 2 0 01-2 2h-3v-1a2 2 0 10-4 0v1H6a2 2 0 01-2-2v-3h1a2 2 0 100-4H4V6a2 2 0 012-2h4V3z', color: '#67c23a' },
+  template: { path: 'M6 2h9l5 5v15H6V2zm8 1.5V8h4.5L14 3.5zM9 12h6v2H9v-2zm0 4h6v2H9v-2z', color: '#b882e8' },
+  family: { path: 'M3 6h6l2 2h10v11H3V6zm2 2v9h14V9h-9.8L7.8 8H5z', color: '#13a8a8' },
+  version: { path: 'M6 3a3 3 0 100 6 3 3 0 000-6zm0 8a3 3 0 100 6 3 3 0 000-6zm12-8a3 3 0 110 6 3 3 0 010-6zM8 6h3a4 4 0 014 4v4M8 14h3a4 4 0 004-4V6', color: '#e6a23c' },
+  cssDir: { path: 'M12 3a9 9 0 000 18h1.2a1.8 1.8 0 000-3.6H12a2.4 2.4 0 010-4.8h1.2a1.8 1.8 0 000-3.6H12a2.4 2.4 0 010-4.8h.6A9 9 0 0012 3z', color: '#409eff' },
+  cssFile: { path: 'M6 2h9l5 5v15H6V2zm8 1.5V8h4.5L14 3.5zM9 12h6v2H9v-2zm0 4h4v2H9v-2z', color: '#909399' },
 }
-export function nodeIcon(kind: unknown): { path: string; color: string } {
-  const key = (kind as IconKind) in NODE_ICON ? (kind as IconKind) : 'version'
+/** 类型节点按 fragment/template 分形分色，其余按 kind；未知 kind 回退版本图标 */
+export function nodeIcon(kind: unknown, cat?: string): { path: string; color: string } {
+  const key: IconKind = kind === 'category' && cat === 'fragment' ? 'fragment'
+    : kind === 'category' && cat === 'template' ? 'template'
+    : (kind as IconKind) in NODE_ICON ? (kind as IconKind) : 'version'
   return NODE_ICON[key]
 }
 

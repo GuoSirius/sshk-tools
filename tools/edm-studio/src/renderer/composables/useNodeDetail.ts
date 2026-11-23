@@ -113,7 +113,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       brandBase: k === 'brand' || k === 'family',
       base: k === 'brand' || k === 'category' || k === 'family' || k === 'version',
       codeReadonly: isCodeReadonly(META_CODE_MODE),
-      favicon: k === 'brand' || k === 'category' || k === 'family' || k === 'version',
+      // 片段侧（族/版本）不维护图标；仅品牌、类型与模板族/版本显示
+      favicon: k === 'brand' || k === 'category' || ((k === 'family' || k === 'version') && deps.selected.value?.data.cat === 'template'),
       policy: k === 'family' && deps.selected.value?.data.cat === 'fragment',
       version: k === 'version',
     }
@@ -246,8 +247,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       if (!foldedVersion && node) {
         patch.name = form.value.name.trim()
         patch.code = resolveMetaCode(dirNameOf(node), form.value.code)
-        patch.favicon = form.value.favicon.trim() || undefined
       }
+      if (s.favicon) patch.favicon = form.value.favicon.trim() || undefined
       patch.description = form.value.description.trim() || undefined
     }
     if (s.policy) {

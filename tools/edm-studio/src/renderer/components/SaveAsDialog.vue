@@ -30,8 +30,9 @@ const isCssFile = computed(() => props.state.node?.kind === 'cssFile')
     <el-form label-width="auto">
       <template v-if="isEntity">
         <el-form-item label="新名称"><el-input clearable v-model="state.name" placeholder="默认带 -copy 后缀" /></el-form-item>
-        <el-form-item v-if="state.node?.kind !== 'version' && state.origin === 'system'" label="code（目录名）">
+        <el-form-item v-if="state.node?.kind !== 'version' && state.origin === 'system'" label="code">
           <el-input clearable v-model="state.code" placeholder="留空则用新名称" />
+          <FormHint>真实目录名，留空则用新名称</FormHint>
         </el-form-item>
         <el-form-item v-if="state.node?.kind === 'family' || state.node?.kind === 'version'" label="目标位置">
           <el-select v-model="state.target" filterable style="width: 100%">
@@ -75,6 +76,6 @@ const isCssFile = computed(() => props.state.node?.kind === 'cssFile')
 </template>
 
 <style scoped>
-/* #2 表单 label 防换行：长 label（如「code（目录名）」）不再折行破坏行对齐 */
+/* 表单 label 防换行：说明文字一律进 FormHint，label 本身保持简短 */
 :deep(.el-form-item__label) { white-space: nowrap; }
 </style>

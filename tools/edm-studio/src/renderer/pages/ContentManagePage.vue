@@ -116,9 +116,20 @@ const typeOptions = computed<string[]>(() => {
           if (t) out.add(t)
         }
       }
+      // 自定义输入的片段类型也在选项里：保存后 load 刷新模型，切到其他片段即可复用该选项（#2）
+      for (const fam of (brand.fragments ?? []) as any[]) {
+        const t = String(fam.meta?.type ?? '').trim()
+        if (t) out.add(t)
+      }
     }
   }
   return [...out].sort()
+})
+
+/** 版本字段直接回显真实目录名：default / standard / v1 各自独立，避免都显示 v1 的歧义（#1） */
+const versionDirLabel = computed(() => {
+  const n = selected.value
+  return n?.kind === 'version' ? (n.data.versionDir || 'default') : ''
 })
 
 /** favicon 继承预览：版本 → 族 → 类型 → 品牌；自身空时显示上级实际图标 */
@@ -189,7 +200,7 @@ onUnmounted(() => {
         >
           <template #default="{ data }">
             <span class="tree-node" :class="`is-${String(data.kind)}`">
-              <svg class="node-icon" viewBox="0 0 24 24" aria-hidden="true" :style="{ color: nodeIcon(data.kind).color }"><path :d="nodeIcon(data.kind).path" /></svg>
+              <svg class="node-icon" viewBox="0 0 24 24" aria-hidden="true" :style="{ color: nodeIcon(data.kind, data.data.cat).color }"><path :d="nodeIcon(data.kind, data.data.cat).path" /></svg>
               <span class="node-label">{{ data.label }}</span>
             </span>
           </template>
@@ -233,7 +244,7 @@ onUnmounted(() => {
                 <el-input clearable v-model="form.name" :disabled="!canEdit" />
                 <div v-if="!form.name.trim()" class="meta-field-tip">名称必填</div>
               </el-form-item>
-              <el-form-item label="图标">
+              <el-form-item v-if="showForm.favicon" label="图标">
                 <FaviconField v-model="form.favicon" :readonly="!canEdit" :inherit-hint="faviconHint" :inherited-value="faviconInherited" />
               </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
@@ -248,9 +259,9 @@ onUnmounted(() => {
                 <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
                 <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>
-              <el-form-item v-if="showForm.version" label="版本号">
-                <el-input :model-value="`v${form.version}`" disabled />
-                <FormHint>由版本目录名自动派生，无需手填；改名请右键重命名版本目录</FormHint>
+              <el-form-item v-if="showForm.version" label="版本目录名">
+                <el-input :model-value="versionDirLabel" disabled />
+                <FormHint>直接回显真实目录名，default / v1 各自独立</FormHint>
               </el-form-item>
               <el-form-item v-if="showForm.version" label="变更说明"><el-input v-model="form.changelog" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
             </el-form>

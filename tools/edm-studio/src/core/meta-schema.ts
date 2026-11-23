@@ -27,7 +27,6 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
       code: { type: 'string', minLength: 1, pattern: '\\S' },
       name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
-      favicon: { type: 'string' },
       type: { type: 'string' },
       policy: {
         type: 'object',
@@ -49,7 +48,6 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
     properties: {
       code: { type: 'string', minLength: 1, pattern: '\\S' },
       name: { type: 'string', minLength: 1, pattern: '\\S' },
-      favicon: { type: 'string' },
       version: { type: 'integer', minimum: 1 },
       changelog: { type: 'string' },
       policy: {
