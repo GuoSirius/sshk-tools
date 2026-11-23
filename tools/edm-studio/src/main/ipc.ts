@@ -1,7 +1,6 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { AppError } from '@sshk/shared'
 import { seedSystemContent, seedCustomContent } from './edm-seed.js'
-import { migrateBrandIdentity } from './edm-brand-identity.js'
 import { createEdmIpcContext, EDM_API_CHANNEL, type EdmIpcDeps, type Payload } from './ipc/context.js'
 import { registerBrandActions } from './ipc/brand.js'
 import { registerTemplateActions } from './ipc/template.js'
@@ -18,21 +17,16 @@ export type { EdmIpcDeps } from './ipc/context.js'
  *
  * P6-5 拆分（#156 · B37-F7）：action 处理器按域收进 `ipc/` 目录——
  * brand / template（含 version:render）/ fragment（含 candidates:pick）/ mail（含 share:resolve）/
- * system（含 system:derive）/ content，本文件只做装配入口：建上下文、注册期播种与遗留迁移、
+ * system（含 system:derive）/ content，本文件只做装配入口：建上下文、注册期播种、
  * 单通道 edm:api 白名单分发（handler 集合即白名单，与原 ACTIONS set + switch 语义一致）。
  * H1 契约保持现状：工具 main 不走 handleOk/wrapIpcHandler 属现状，仅拆文件不改分发语义。
  */
 export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
   const ctx = createEdmIpcContext(deps)
 
-  // 启动顺序：旧品牌身份迁移 → 系统播种 → 自定义索引（串行避免双根同 code 品牌竞态）
+  // 启动顺序：系统播种 → 自定义索引（串行避免双根同 code 品牌竞态）
+  // 品牌 ID 恒为 brd_<code>（无启动迁移）；旧 ID 已彻底改指，不再兼容。
   void (async () => {
-    try {
-      const migrated = await migrateBrandIdentity(ctx.repo)
-      if (migrated.merged) console.info(`[edm] 品牌身份已统一：迁移 ${migrated.merged} 个旧品牌`)
-    } catch (err) {
-      console.warn('[edm] 品牌身份迁移失败：', err instanceof Error ? err.message : err)
-    }
     try {
       // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种）
       await seedSystemContent(ctx.repo, ctx.resolveEdmRoot())

@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
 import type { PlacementItem, SlotDef } from '../compose-types'
@@ -6,6 +6,7 @@ import { normalizeFields, type FieldDef } from '../sample-schema'
 import { parseYamlObject } from '../sample-schema'
 import { api } from '../tool-api'
 import { mergeFragmentPolicy, policyAllows, type FragmentPolicy } from '../../core/fragment-policy'
+import { extractSlotKeysFromSource, mergeSourceSlots, type SourceSlotDef } from '../../core/slots'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -65,6 +66,8 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   const familyMetaCache = ref<Record<string, FamilyMetaLite>>({})
   /** 版本级 policy 缓存：key = <族路径>/<版本目录>，与族 policy 叠加后参与过滤 */
   const versionPolicyCache = ref<Record<string, FragmentPolicy>>({})
+  /** 模板 njk 源码里的 slot_* 缓存：key = <source>:<sourcePath>，源码保存后由 prefetch 刷新 */
+  const templateSourceSlotCache = ref<Record<string, string[]>>({})
   /* R22：布局配置收进弹框（预览页只留预览，避免 header 过多挤占 iframe） */
   const composeOpen = ref(false)
 
@@ -79,19 +82,26 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   async function prefetchFamilyMetas(): Promise<void> {
     const out: Record<string, FamilyMetaLite> = {}
     const vpol: Record<string, FragmentPolicy> = {}
+    const tslots: Record<string, string[]> = {}
     const walk = async (nodes: TreeNode[]): Promise<void> => {
       for (const n of nodes) {
         if (n.kind === 'family' && n.data.metaPath) {
           try {
             out[n.data.path] = ((yaml.load(await deps.read(n.data.metaPath, n.data.source)) as Record<string, unknown>) ?? {}) as FamilyMetaLite
             // 片段族下每个版本的 policy 也预读，供「族 + 版本」叠加过滤
-            if (n.data.cat === 'fragment') {
-              for (const ver of n.children ?? []) {
-                if (ver.kind !== 'version' || !ver.data.metaPath) continue
+            // 模板族下每个版本预读 njk 里的 slot_*，让源码新增 slot 立即出现在布局配置/落点下拉
+            for (const ver of n.children ?? []) {
+              if (ver.kind !== 'version' || !ver.data.sourcePath) continue
+              if (n.data.cat === 'fragment' && ver.data.metaPath) {
                 try {
                   const vm = ((yaml.load(await deps.read(ver.data.metaPath, ver.data.source)) as Record<string, unknown>) ?? {}) as { policy?: FragmentPolicy }
                   vpol[`${n.data.path}/${ver.data.versionDir || 'default'}`] = vm.policy ?? {}
                 } catch { /* 忽略单版本解析失败 */ }
+              }
+              if (n.data.cat === 'template') {
+                try {
+                  tslots[slotCacheKey(ver)] = extractSlotKeysFromSource(await deps.read(ver.data.sourcePath, ver.data.source))
+                } catch { /* 忽略单版本源码读取失败 */ }
               }
             }
           } catch { /* 忽略单族解析失败 */ }
@@ -102,6 +112,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     await walk(deps.tree.value)
     familyMetaCache.value = out
     versionPolicyCache.value = vpol
+    templateSourceSlotCache.value = tslots
   }
 
   /** R24：按 source 定位品牌节点（双顶层树，根不再恒为 tree.value[0]） */
@@ -119,6 +130,19 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     }
   }
 
+  /** 双根同路径需带 source 区分缓存键 */
+  const slotCacheKey = (node: TreeNode): string => `${node.data.source}:${node.data.sourcePath ?? node.data.path}`
+
+  /** 区块清单统一收敛：meta.slots 声明优先，源码新增 slot_* 追加其后 */
+  function slotDefsOf(declared: SourceSlotDef[] | undefined, versionNode: TreeNode | null): SlotDef[] {
+    const keys = versionNode ? templateSourceSlotCache.value[slotCacheKey(versionNode)] ?? [] : []
+    return mergeSourceSlots(declared ?? [], keys).map((s) => ({
+      key: s.key,
+      label: s.type || s.label || s.key,
+      type: s.type ?? '',
+    }))
+  }
+
   /** 片段预览：宿主模板选项（本品牌模板族×版本，按当前片段黑白名单过滤） */
   const hostTemplateOptions = computed<{ id: string; label: string; slots: SlotDef[] }[]>(() => {
     const node = deps.selected.value
@@ -131,14 +155,14 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     const tplCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'template')
     for (const fam of tplCat?.children?.filter((n) => n.kind === 'family') ?? []) {
       const famCode = fam.data.familyCode ?? ''
-      const slots = (familyMetaCache.value[fam.data.path]?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key }))
+      const declared = familyMetaCache.value[fam.data.path]?.slots as SourceSlotDef[] | undefined
       for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
         const dir = ver.data.versionDir ?? ''
         if (!policyAllows(policy, templateIds(brand, famCode, dir))) continue
         out.push({
           id: JSON.stringify({ brandCode: brand, kind: 'template', familyCode: famCode, versionDir: dir }),
           label: `${fam.label} / ${ver.label}`,
-          slots,
+          slots: slotDefsOf(declared, ver),
         })
       }
     }
@@ -175,9 +199,15 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     const node = deps.selected.value
     if (node?.kind === 'version' && node.data.cat === 'template') {
       const famMeta = familyMetaCache.value[`${node.data.brandCode}/template/${node.data.familyCode}`]
-      return (famMeta?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key }))
+      return slotDefsOf(famMeta?.slots as SourceSlotDef[] | undefined, node)
     }
     return []
+  })
+
+  /** 宿主模板源码保存后 hostTemplateOptions 的 slots 变了，已选模板的落点下拉同步刷新（不清空选择） */
+  watch(hostTemplateOptions, (options) => {
+    if (!composeTemplate.value) return
+    composeSlots.value = options.find((t) => t.id === composeTemplate.value)?.slots ?? []
   })
 
   /** R19 组合预览初始化（原 onNode version 分支尾段）：片段=预置自身 placement（待选宿主模板）；模板=空布局 */

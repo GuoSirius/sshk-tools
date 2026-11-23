@@ -46,6 +46,8 @@ const detail = useNodeDetail({
   write: treeDomain.write,
   load: treeDomain.load,
   toolId,
+  // meta.slots / 源码 slot_* 变更后刷新组合预览的区块缓存（弹框开着也即时生效）
+  onAfterSave: () => compose?.prefetchFamilyMetas(),
 })
 /* ── css 多 tab 域 ── */
 const cssTabsDomain = useCssTabs({
@@ -334,7 +336,7 @@ onUnmounted(() => {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码">
             <div class="editor-toolbar">
-              <FormHint inline>内联 css 也可直接写在 njk 的 &lt;style&gt; 内</FormHint>
+              <FormHint inline detail="在 njk 源码写 &lt;link rel=&quot;stylesheet&quot; href=&quot;@shared/xxx.css&quot;&gt; 引入 css：@shared/=系统根 css/（公共层，跨品牌共用）；@root/=当前来源根（系统自带或自定义）；@system/=系统根；@custom/=自定义根；./=当前版本目录。禁止 ..，外链会被跳过。内联 css 也可直接写在 &lt;style&gt; 内。">内联 css 也可写在 njk 的 &lt;style&gt; 内</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
             <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" @save="saveSource" />

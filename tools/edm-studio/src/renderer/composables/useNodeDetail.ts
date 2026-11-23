@@ -24,6 +24,8 @@ export interface NodeDetailDeps {
   load(silent?: boolean): Promise<void>
   /** 工具 id（T8 内联图片上传通道归属） */
   toolId: Ref<string>
+  /** 元数据/源码保存后的派生缓存刷新（组合预览 slot 定义来自模板 njk 源码） */
+  onAfterSave?(kind: 'meta' | 'source'): void | Promise<void>
 }
 
 export interface NodeDetail {
@@ -303,6 +305,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       }
       await deps.write(node.data.metaPath, out, node.data.source)
       if (node.kind !== 'root') await deps.load(true) // 元数据名称/code 变更实时反馈到左树（#4）
+      await deps.onAfterSave?.('meta') // 模板族 slots 声明变更同步到组合预览缓存
       ElMessage.success('元数据已保存')
       if (node.kind === 'version') await renderPreview(node)
     } catch (err) {
@@ -315,6 +318,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     if (!node?.data.sourcePath) return
     try {
       await deps.write(node.data.sourcePath, sourceText.value, node.data.source)
+      await deps.onAfterSave?.('source') // njk 新增 {{ slot_x }} 后，布局配置/落点下拉立即刷新
       ElMessage.success('源码已保存')
       await renderPreview(node)
     } catch (err) {

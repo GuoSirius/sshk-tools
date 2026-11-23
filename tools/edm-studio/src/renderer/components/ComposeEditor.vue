@@ -4,15 +4,16 @@ export type { SlotDef, FragmentOption, PlacementItem } from '../compose-types'
 </script>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
 import { VueDraggable } from 'vue-draggable-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Rank } from '@element-plus/icons-vue'
 import { FormHint } from '@sshk/ui-kit'
 
 /**
  * 统一组合编辑器（R19/R20）：区块布局 + 片段摆放 —— 拖拽排序 / 重复次数 / 移动区块。
- * 区块清单（slots）来自模板族 meta slots:（B1）；fragmentOptions 已由父级按黑白名单过滤；
+ * 区块清单（slots）= 模板族 meta slots: + 模板 njk 源码 slot_*（源码新增即时生效）；fragmentOptions 已由父级按黑白名单过滤；
  * placement.data 的编辑由父级处理（edit-data 事件），本组件只管布局。
  */
 const props = withDefaults(
@@ -35,6 +36,12 @@ const pickOptions = computed<FragmentOption[]>(() => {
   return props.fragmentOptions.filter((o) => !o.type || o.type === slotType)
 })
 
+/** 源码新增/删除 slot 后下拉项变化：仍有效的选择保留，失效才回退首项（不因连续添加而清空） */
+watch(() => props.slots, (slots) => {
+  const first = slots[0]?.key
+  if (first && !slots.some((s) => s.key === pickSlot.value)) pickSlot.value = first
+}, { immediate: true })
+
 function itemsOf(slot: string): PlacementItem[] {
   return props.modelValue.filter((p) => p.slot === slot).sort((a, b) => a.order - b.order)
 }
@@ -50,23 +57,44 @@ function onSlotReorder(slotKey: string, arr: PlacementItem[]): void {
 function addPlacement(): void {
   if (props.readonly) return
   const opt = props.fragmentOptions.find((o) => o.id === pickFragment.value)
-  if (!opt) return
+  if (!opt) {
+    ElMessage.warning('请先选择片段')
+    return
+  }
   const slotKey = pickSlot.value || props.slots[0]?.key || ''
-  if (!slotKey) return
+  if (!slotKey) {
+    ElMessage.warning('请先选择落点区块')
+    return
+  }
   const slotType = props.slots.find((s) => s.key === slotKey)?.type
-  if (slotType && opt.type && opt.type !== slotType) return // 槽位类型不匹配（下拉已过滤，双保险）
+  if (slotType && opt.type && opt.type !== slotType) {
+    ElMessage.warning(`片段类型「${opt.type}」与区块类型「${slotType}」不匹配`)
+    return
+  }
   emitChange([
     ...props.modelValue,
     { uid: `p_${Date.now()}_${uidSeed++}`, fragmentId: opt.id, label: opt.label, slot: slotKey, order: itemsOf(slotKey).length, repeat: 1 },
   ])
-  pickFragment.value = ''
+  // 连续添加保留片段与落点选择；仅在原先未指定落点时把自动落点回显到下拉
+  if (!pickSlot.value) pickSlot.value = slotKey
 }
 function moveTo(p: PlacementItem, slotKey: string): void {
   if (slotKey === p.slot) return
   emitChange(props.modelValue.map((x) => (x.uid === p.uid ? { ...x, slot: slotKey, order: itemsOf(slotKey).length } : x)))
 }
-function removePlacement(p: PlacementItem): void {
+async function removePlacement(p: PlacementItem): Promise<void> {
   if (props.readonly) return
+  try {
+    await ElMessageBox.confirm(`确定删除布局中的「${p.label}」？`, '删除片段', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
+  } catch {
+    return
+  }
   const rest = props.modelValue.filter((x) => x.uid !== p.uid).map((x) => ({ ...x }))
   for (const s of props.slots) {
     rest.filter((x) => x.slot === s.key).sort((a, b) => a.order - b.order).forEach((x, i) => { x.order = i })
