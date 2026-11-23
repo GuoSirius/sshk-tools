@@ -7,20 +7,31 @@
  * - 危险操作（删除/批量删除）ConfirmDialog 二次确认
  * - 编辑弹框三态（2026-11-24，设计/表单/数据）：设计器 ↔ 试填表单 ↔ 数据 JSON 同步；
  *   sampleModel 随保存落库（无独立预览入口）；弹框尺寸走非 scoped 全局块 + 内联兜底
+ * - 表单 tab 注入 EDM 同源图片能力（2026-11-24）：ImageField（选择图片/URL 直填/复制）+
+ *   富文本 imageLibrary 桥接，全部收敛共享 FilePicker
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage, provideToolId, useToolId } from '@sshk/ui-kit'
 import { FieldSchemaDesigner, FormFieldRenderer } from '@sshk/form-schema/ui'
+import { createHostImageLibrary } from '@sshk/file-picker'
 import { CodeEditor } from '@sshk/code-editor'
 import { applyDefaults, expandFields, normalizeFields, validateModel, validateSchema, type FieldDef } from '@sshk/form-schema'
 import { inMsRange, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { host } from '../host'
+import ImageField from './ImageField.vue'
 
 const rows = ref<FormRecord[]>([])
 const controls = ref<ControlRecord[]>([])
 const loading = ref(false)
 const selected = ref<FormRecord[]>([])
+
+// 工具 id 注入（#129 铁律）：壳 AppAdminPage 统一 provide 'file-manager'（文件管理子树用），
+// 本页（表单设计模块 id = form-manager）就近覆盖 provide，子树 ImageField/useToolId 读到正确命名空间
+provideToolId('form-manager')
+const toolId = useToolId()
+/** 图片库桥接：表单 tab 富文本上传/图片库 + 图片字段 FilePicker 全走共享 FilePicker（与 EDM 同源） */
+const library = computed(() => createHostImageLibrary(toolId.value, host.upload, { includeLocalProfiles: true }))
 
 // ── 列表状态（草稿/生效分离 + 分页，2026-11-20 定版口径）──
 const table = useTablePage<FormRecord, { kw: string; dateRange: [string, string] | null }>({
@@ -279,7 +290,14 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
         <FieldSchemaDesigner v-model="editFields" :controls="controlOptions" />
       </div>
       <div v-show="editTab === 'form'" class="preview-body" style="height: 440px">
-        <FormFieldRenderer :fields="editExpanded" :model-value="editModel" @update:model-value="onEditFormUpdate" />
+        <FormFieldRenderer
+          :fields="editExpanded"
+          :model-value="editModel"
+          :image-library="library"
+          rich-state-key-prefix="forms:"
+          :image-field="ImageField"
+          @update:model-value="onEditFormUpdate"
+        />
       </div>
       <div v-show="editTab === 'data'" class="preview-data-wrap" style="height: 440px">
         <CodeEditor :model-value="editDataText" language="json" path="form-sample.json" readonly height="100%" />
@@ -305,7 +323,7 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
 .ce-field-tip { font-size: 12px; color: var(--el-color-danger); line-height: 1.4; }
 .designer-wrap { height: 440px; display: flex; }
 .designer-wrap > * { flex: 1; }
-.preview-switch { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.preview-switch { display: flex; align-items: center; gap: 10px; margin-left: 1px; margin-bottom: 8px; }
 .preview-body { height: 60vh; overflow: auto; padding: 4px 2px; box-sizing: border-box; }
 .preview-data-wrap { height: 60vh; box-sizing: border-box; }
 </style>

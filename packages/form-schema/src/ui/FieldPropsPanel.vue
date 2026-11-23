@@ -7,6 +7,8 @@ import { CONTAINER_TYPES, FIELD_CATALOG, FIELD_TYPE_LABEL, type FieldDef, type F
 /**
  * 字段属性面板（plans/13 B0 自 FieldSchemaDesigner 拆出）：右侧选中字段的属性编辑。
  * 设计器（画布）持有字段数组与选中态，本面板只做单字段的 patch / retype / 解除控件引用。
+ * 复合控件引用节点（controlKey）只保留 expandFields 会透传覆盖的属性（key/标签/分组名/必填）
+ * 与「解除引用」；类型/行数上下限/子字段由控件定义决定，编辑会被展开层丢弃（2026-11-24 用户口径）。
  */
 const props = withDefaults(
   defineProps<{
@@ -116,13 +118,14 @@ const type = (): FieldType => cf.value.type
         <el-input clearable :model-value="cf.label" :disabled="readonly" @update:model-value="(v: string) => patch({ label: v })" />
         <div v-if="errAt('label')" class="field-err">{{ errAt('label') }}</div>
       </el-form-item>
-      <el-form-item label="类型">
-        <el-select :model-value="cf.type" :disabled="readonly || !!cf.controlKey" style="width: 100%" @update:model-value="(v: unknown) => onTypeChange(v as FieldType)">
+      <!-- 引用节点不维护子类型：类型由复合控件定义决定，改了也会被 expandFields 覆盖（2026-11-24 用户口径） -->
+      <el-form-item v-if="!cf.controlKey" label="类型">
+        <el-select :model-value="cf.type" :disabled="readonly" style="width: 100%" @update:model-value="(v: unknown) => onTypeChange(v as FieldType)">
           <el-option v-for="t in TYPES" :key="t" :value="t" :label="LABEL[t]" />
         </el-select>
-        <div v-if="cf.controlKey" class="ctl-actions">
-          <el-button size="small" text type="warning" @click="detachControl">解除引用</el-button>
-        </div>
+      </el-form-item>
+      <el-form-item v-else label="引用">
+        <el-button size="small" type="warning" plain @click="detachControl">解除引用</el-button>
       </el-form-item>
       <el-form-item label="分组名">
         <el-input clearable :model-value="cf.group ?? ''" :disabled="readonly" placeholder="相邻同名分组折叠为分隔" @update:model-value="(v: string) => patch({ group: v || undefined })" />
@@ -179,8 +182,8 @@ const type = (): FieldType => cf.value.type
         <el-input-number :model-value="cf.max ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patch({ max: v || undefined })" />
       </el-form-item>
 
-      <!-- 容器通用：list / repeater / table 的行数上下限 -->
-      <template v-if="CONTAINER_TYPES.includes(type())">
+      <!-- 容器通用：list / repeater / table 的行数上下限；引用节点的行数由控件定义决定，编辑无效 -->
+      <template v-if="CONTAINER_TYPES.includes(type()) && !cf.controlKey">
         <el-form-item label="最少行">
           <el-input-number :model-value="cf.minRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patch({ minRows: v || undefined })" />
         </el-form-item>
@@ -190,12 +193,15 @@ const type = (): FieldType => cf.value.type
         </el-form-item>
       </template>
 
-      <!-- list / repeater：嵌套子字段（由设计器递归渲染，经 slot 交回画布） -->
+      <!-- list / repeater：嵌套子字段（由设计器递归渲染，经 slot 交回画布）；引用节点子字段由控件定义维护，此处编辑会被展开层丢弃 -->
       <el-form-item v-if="type() === 'repeater'" label="子字段">
-        <div class="nested">
-          <slot name="nested" />
-        </div>
-        <div v-if="nestedErrorCount > 0" class="field-err">子字段有 {{ nestedErrorCount }} 项待修正</div>
+        <div v-if="cf.controlKey" class="ref-hint">子字段由复合控件「{{ controlLabel || cf.controlKey }}」定义维护，此处编辑无效；如需自行调整请先解除引用</div>
+        <template v-else>
+          <div class="nested">
+            <slot name="nested" />
+          </div>
+          <div v-if="nestedErrorCount > 0" class="field-err">子字段有 {{ nestedErrorCount }} 项待修正</div>
+        </template>
       </el-form-item>
 
       <!-- table：列定义（第一版平铺，不做合并单元格） -->
@@ -222,7 +228,7 @@ const type = (): FieldType => cf.value.type
 <style scoped>
 .prop-title { font-weight: 600; font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .ctl-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--el-color-warning) 16%, transparent); color: var(--el-color-warning); }
-.ctl-actions { width: 100%; }
+.ref-hint { font-size: 12px; opacity: .65; line-height: 1.5; width: 100%; }
 .prop-form { max-width: 520px; }
 .opts { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .opt-row { display: flex; gap: 6px; align-items: center; }
