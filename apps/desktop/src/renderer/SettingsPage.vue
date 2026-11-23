@@ -121,19 +121,7 @@ async function load(): Promise<void> {
     }
     // default：仍为空时回显 manifest 声明的默认值（如新建/编辑形式默认弹框）
     if ((values[field.key] ?? '') === '' && field.default) values[field.key] = field.default
-    if (field.optionsSource?.startsWith('upload:')) {
-      const kind = field.optionsSource === 'upload:remote' ? 'remote'
-        : field.optionsSource === 'upload:cloud' ? 'cloud' : undefined
-      try {
-        const list = await window.api.upload.profiles(kind)
-        dynamicOptions[field.key] = [
-          { label: '（跟随全局默认）', value: '' },
-          ...list.map((p) => ({ label: p.label, value: p.id })),
-        ]
-      } catch {
-        dynamicOptions[field.key] = [{ label: '（上传能力未就绪）', value: '' }]
-      }
-    } else if (field.optionsSource === 'llm:providers') {
+    if (field.optionsSource === 'llm:providers') {
       // 应用级 Provider 清单（手输 id 易错，改下拉选择，2026-11-18 用户反馈）：
       // 列表第一项「跟随应用激活 Provider」即默认值（value='' 走 fallbackKey 生效值）；
       // 已禁用的 Provider 不进下拉（禁用语义 = 所有工具不可用）

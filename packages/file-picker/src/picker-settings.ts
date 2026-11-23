@@ -4,7 +4,8 @@ import type { FilePickerLibrary, FilePickerSource, FilePickerTarget } from './ty
  * 文件选择弹框设置（自 rich-text 图片库设置 2026-11-17 迁移泛化）：
  * - 默认来源优先级：云 → 远程 → 本地；
  * - 来源与桶/目录等专属项跨页面切换、应用重启回显；
- * - 多实例以 stateKey 隔离（template 双实例页 A/B、EDM 各字段各用独立 key）。
+ * - **全局统一一份**（plans/13 §三 D58，2026-11-23 敲板）：所有 FilePickerDialog/UploadTargetDialog
+ *   实例读写同一份「上次位置」，任何一处确认后其余入口下次打开回显；废弃按 stateKey 隔离。
  */
 export interface FilePickerSettings {
   sourceId: string
@@ -25,12 +26,25 @@ export function defaultSourceId(sources: FilePickerSource[], savedId?: string): 
   return ordered.find((s) => s.id === savedId)?.id ?? ordered[0]?.id ?? ''
 }
 
-export function settingsKey(stateKey: string): string {
-  return `sshk:file-picker:${stateKey || 'default'}`
+/** 全局统一键（D58）：所有实例共用一份「上次位置」 */
+export const GLOBAL_SETTINGS_KEY = 'sshk:file-picker:global'
+
+/**
+ * @deprecated 全局统一后不再按 stateKey 分桶，形参保留只为兼容旧调用签名，内部一律忽略。
+ */
+export function settingsKey(_stateKey?: string): string {
+  return GLOBAL_SETTINGS_KEY
 }
 
-/** 旧版 rich-text 图片库的存储键：首次读取从这里迁移，避免老用户丢已选来源/目录 */
-const LEGACY_SETTINGS_KEY = (stateKey: string): string => `sshk:rich-text:image-library:${stateKey || 'default'}`
+/**
+ * 旧版分桶存储键前缀（2026-11-23 起废弃）：首次读取按优先序迁移，命中即整链清理。
+ * - `sshk:file-picker:<stateKey>`：分桶时代主键（stateKey 含动态键：edm:<字段>、内容记录 id 等，
+ *   无法枚举，故按前缀全扫）；
+ * - `sshk:rich-text:image-library:<stateKey>`：file-picker 立项前的 rich-text 图片库键。
+ */
+const LEGACY_PREFIXES = ['sshk:file-picker:', 'sshk:rich-text:image-library:']
+/** 迁移优先序：越靠前越代表「用户最近手动选过的位置」语义（file-picker: 前缀内匹配） */
+const LEGACY_PRIORITY = ['edm::image-field', 'template:a', 'template:b', 'edm::favicon', 'default']
 
 /**
  * 手输目录归一化：统一正斜杠、去首尾斜杠、压掉重复段。
@@ -74,19 +88,46 @@ function parseSettings(raw: string | null): FilePickerSettings | null {
   }
 }
 
-/** localStorage 不可用（隐私模式/受限 webview）时静默降级为内存态，不阻断编辑 */
-export function loadSettings(store: Storage | null | undefined, stateKey: string): FilePickerSettings | null {
-  if (!store) return null
-  const direct = parseSettings(store.getItem(settingsKey(stateKey)))
-  if (direct) return direct
-  // 新键未写入过：回落读旧版 rich-text 图片库键（读取不改写，等首次 saveSettings 自然迁移）
-  return parseSettings(store.getItem(LEGACY_SETTINGS_KEY(stateKey)))
+/**
+ * 从旧键整链迁移：全局键未命中时扫两个废弃前缀，按 LEGACY_PRIORITY 取优先命中者（无命中取扫到的第一个），
+ * 命中后**整链 removeItem 清理**（含动态键），首次 persist 自然落全局键。
+ */
+function migrateFromLegacy(store: Storage): FilePickerSettings | null {
+  const found: { key: string; priority: number; order: number }[] = []
+  for (let i = 0; i < store.length; i++) {
+    const key = store.key(i)
+    if (!key) continue
+    const prefix = LEGACY_PREFIXES.find((p) => key.startsWith(p))
+    if (!prefix) continue
+    const rest = key.slice(prefix.length)
+    const priority = prefix === LEGACY_PREFIXES[0] ? LEGACY_PRIORITY.indexOf(rest) : -1
+    found.push({ key, priority, order: found.length })
+  }
+  if (found.length === 0) return null
+  const best =
+    found.filter((f) => f.priority >= 0).sort((a, b) => a.priority - b.priority || a.order - b.order)[0] ?? found[0]!
+  const parsed = parseSettings(store.getItem(best.key))
+  // 迁移即清理：无论解析成败都摘掉整链旧键，避免每次打开重复扫描
+  for (const f of found) {
+    try { store.removeItem(f.key) } catch { /* 隐私模式等异常忽略 */ }
+  }
+  return parsed
 }
 
-export function saveSettings(store: Storage | null | undefined, stateKey: string, settings: FilePickerSettings): void {
+/**
+ * 读取全局「上次位置」。@param stateKey 已废弃，保留形参只为兼容旧调用签名，内部忽略。
+ */
+export function loadSettings(store: Storage | null | undefined, _stateKey?: string): FilePickerSettings | null {
+  if (!store) return null
+  const direct = parseSettings(store.getItem(GLOBAL_SETTINGS_KEY))
+  if (direct) return direct
+  return migrateFromLegacy(store)
+}
+
+export function saveSettings(store: Storage | null | undefined, _stateKey: string | undefined, settings: FilePickerSettings): void {
   if (!store) return
   try {
-    store.setItem(settingsKey(stateKey), JSON.stringify(settings))
+    store.setItem(GLOBAL_SETTINGS_KEY, JSON.stringify(settings))
   } catch {
     // localStorage 满 / 被禁用：不影响主流程
   }
@@ -102,16 +143,16 @@ export function safeStorage(): Storage | null {
 }
 
 /**
- * 读取某 stateKey 的上传目标（source + target），供无交互场景（如富文本内联 data: 图片静默转存）复用。
+ * 读取全局最近一次上传目标（source + target），供无交互场景（如富文本内联 data: 图片静默转存）复用。
  * 口径与弹框 useDirPicker.restoreSettings 一致：sourceId 失效时按 云→远程→本地 回落默认源；
  * 无保存记录同样回落默认源。返回 null 仅代表「没有任何可用来源」。
+ * 旧签名第二参 stateKey 已废弃（D58 全局统一），本参直接是存储（缺省 safeStorage）。
  */
 export async function resolveLastUploadTarget(
   library: FilePickerLibrary,
-  stateKey: string,
   store: Storage | null | undefined = safeStorage(),
 ): Promise<{ source: FilePickerSource; target: FilePickerTarget } | null> {
-  const saved = loadSettings(store, stateKey)
+  const saved = loadSettings(store)
   const sources = sortSourcesByDefault(await library.sources())
   const id = defaultSourceId(sources, saved?.sourceId)
   const source = sources.find((s) => s.id === id)

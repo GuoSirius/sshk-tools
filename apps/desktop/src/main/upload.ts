@@ -202,7 +202,7 @@ export class UploadRuntime {
       targetType,
       profileId: profileId || undefined,
       overrides,
-      validation: tool.validation,
+      // plans/13 A2：工具级 validation 已删——校验收敛为应用级 app.upload.validation 单一来源
       onProgress: (percent) => this.opts.onProgress({ name: progressName, percent, status: 'uploading' }),
     }
     const globalValidation: UploadValidation = {

@@ -82,8 +82,6 @@ const props = withDefaults(
     imageRule?: RichTextImageRule
     /** 图片库桥接（来源/上传/列图）；不传则不显示「图片库」菜单 */
     imageLibrary?: RichTextImageLibrary
-    /** 图片库设置隔离键：多实例各传不同值，来源/桶/目录设置互不串扰 */
-    stateKey?: string
   }>(),
   {
     modelValue: '',
@@ -91,7 +89,6 @@ const props = withDefaults(
     onUploadImage: undefined,
     imageRule: undefined,
     imageLibrary: undefined,
-    stateKey: 'default',
   },
 )
 
@@ -179,23 +176,63 @@ const pasteQueue: { file: File; insertFn: (url: string) => void }[] = []
 let batchTarget: { source: FilePickerSource; target: FilePickerTarget } | null = null
 type ImageInsertFn = (url: string) => void
 
+/**
+ * 图片直插通道（plans/13 §9.1 修复①，2026-11-23）：绕开 wangEditor insertFn（=insertImageNode）
+ * 的静默守卫（selection 丢失/选区非折叠/光标在 header·blockquote·list·link·pre·void 内时
+ * oa(t) ? [2] 直接丢弃、无报错）。有 editor 实例时 restoreSelection + insertNode 直插
+ * （与工具栏 dangerouslyInsertHtml 同源思路）；editor 不可用才回落 insertFn。
+ */
+function insertImageToEditor(url: string): boolean {
+  const editor = editorRef.value
+  if (!editor) return false
+  const node = { type: 'image', src: url, alt: '', style: {}, children: [{ text: '' }] }
+  try {
+    editor.restoreSelection()
+    if (!editor.selection) editor.focus() // 选区快照丢失：聚焦兜底，仍无选区则插到起始处（不静默丢弃）
+    editor.insertNode(node)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function uploadPastedImage(file: File, insertFn: ImageInsertFn, picked: { source: FilePickerSource; target: FilePickerTarget }): Promise<void> {
   let url: string
+  let uploaded = true
   try {
     url = await props.imageLibrary!.upload(file, picked.source, picked.target)
   } catch {
+    // 修复③：dataURL 回退不再静默——离线兜底可用，但必须让用户感知这次没有上传成功
     url = await fallbackDataUrl(file)
+    uploaded = false
   }
   // 本地 file:// 直显会被 Chromium 拦，转 localres://；回写由 toStoredHtml 对称还原
-  insertFn(toDisplaySrc(url))
+  const shown = toDisplaySrc(url)
+  if (!insertImageToEditor(shown) && insertFn) insertFn(shown)
+  if (!uploaded) ElMessage.warning('图片上传失败，已以内联方式插入（未上传到目标位置）')
 }
 
-/** 目标确认：本批次队列按同一目标传完，随后清空 → 下次粘贴重新弹框 */
+/** 目标确认（修复②）：本批次逐张容错，单张失败 toast 并继续；finally 复位批次，杜绝坏批次粘滞 */
 async function onUploadTargetConfirm(picked: { source: FilePickerSource; target: FilePickerTarget }): Promise<void> {
   batchTarget = picked
   const queued = pasteQueue.splice(0)
-  for (const q of queued) await uploadPastedImage(q.file, q.insertFn, picked)
-  batchTarget = null
+  let ok = 0
+  try {
+    for (const q of queued) {
+      try {
+        await uploadPastedImage(q.file, q.insertFn, picked)
+        ok++
+      } catch (err) {
+        ElMessage.error(`图片上传失败：${(err as Error)?.message ?? String(err)}（已跳过，其余继续）`)
+      }
+    }
+  } finally {
+    batchTarget = null
+  }
+  if (queued.length > 0) {
+    if (ok === queued.length) ElMessage.success(`已插入 ${ok} 张图片`)
+    else ElMessage.warning(`本批 ${queued.length} 张：成功 ${ok} 张、失败 ${queued.length - ok} 张`)
+  }
 }
 
 // 用户取消目标框（未确认）：丢弃本批次排队图片，避免残留到下次粘贴误传
@@ -402,12 +439,11 @@ onBeforeUnmount(() => {
     v-model:open="libraryOpen"
     mode="image"
     :library="imageLibrary"
-    :state-key="stateKey"
     :resolve-src="toDisplaySrc"
     confirm-text="插入所选"
     @confirm="onLibraryConfirm"
   />
-  <!-- #133 视频选择框：独立标题「选择视频」+ mode=video（accept=video/* / VIDEO_EXTS 校验），stateKey 后缀隔离图片选择状态 -->
+  <!-- #133 视频选择框：独立标题「选择视频」+ mode=video（accept=video/* / VIDEO_EXTS 校验），位置与图片库共用全局一份（D58） -->
   <FilePickerDialog
     v-if="imageLibrary"
     v-model:open="videoOpen"
@@ -416,7 +452,6 @@ onBeforeUnmount(() => {
     confirm-text="插入视频"
     :multiple="false"
     :library="imageLibrary"
-    :state-key="stateKey + '::video'"
     :resolve-src="toDisplaySrc"
     @confirm="onVideoConfirm"
   />
@@ -425,7 +460,6 @@ onBeforeUnmount(() => {
     v-if="imageLibrary"
     v-model:open="targetDialogOpen"
     :library="imageLibrary"
-    :state-key="stateKey"
     title="选择粘贴图片的上传位置"
     @confirm="onUploadTargetConfirm"
   />

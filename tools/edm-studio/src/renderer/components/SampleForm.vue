@@ -275,7 +275,6 @@ function acceptPolish(): void {
               :model-value="strVal(f.key)"
               :readonly="readonly"
               :image-library="library"
-              :state-key="`edm:${f.key}`"
               @update:model-value="(v: string) => set(f.key, v)"
             />
             <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
@@ -383,8 +382,7 @@ function acceptPolish(): void {
                   v-if="c.cellType === 'richtext'"
                   :model-value="cellVal((row as Record<string, unknown>) ?? {}, c.key)"
                   :readonly="readonly"
-                      :image-library="library"
-                  :state-key="`edm:${f.key}:${i}:${c.key}`"
+                  :image-library="library"
                   @update:model-value="(v: string) => updateRow(f.key, i, { ...((row as Record<string, unknown>) ?? {}), [c.key]: v })"
                 />
                 <el-input v-else clearable

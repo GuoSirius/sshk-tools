@@ -46,9 +46,9 @@ function reset(): void {
       </FormHint>
     </div>
     <div class="rt-label">实例 A</div>
-    <RichTextEditor v-model="htmlA" :readonly="readonly" :image-library="library" state-key="template:a" />
+    <RichTextEditor v-model="htmlA" :readonly="readonly" :image-library="library" />
     <div class="rt-label">实例 B</div>
-    <RichTextEditor v-model="htmlB" :readonly="readonly" :image-library="library" state-key="template:b" />
+    <RichTextEditor v-model="htmlB" :readonly="readonly" :image-library="library" />
   </div>
 </template>
 

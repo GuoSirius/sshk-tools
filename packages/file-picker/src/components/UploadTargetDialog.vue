@@ -2,9 +2,9 @@
 /**
  * 轻量「上传目标选择框」（#43，2026-11-23）：只保留 FilePicker 头部的
  * 来源下拉 + 桶/目录级联/手输，用于富文本粘贴图片时确认「传到哪里」。
- * - 复用 useDirPicker 的全部目录能力（懒加载/归一化/校验/持久化按 stateKey），零重复实现；
+ * - 复用 useDirPicker 的全部目录能力（懒加载/归一化/校验/全局持久化 D58），零重复实现；
  * - 不列文件、不选文件、不上传——图片已在剪贴板，确认后由调用方静默上传；
- * - 与 FilePickerDialog 共用 stateKey 存储，选中目标会被主弹框回显（体验一致）。
+ * - 与 FilePickerDialog 共用全局一份「上次位置」存储（D58），选中目标会被主弹框回显（体验一致）。
  */
 import { ref, watch } from 'vue'
 import type { CascaderInstance } from 'element-plus'
@@ -15,11 +15,10 @@ const props = withDefaults(
   defineProps<{
     open: boolean
     library: FilePickerLibrary
-    stateKey?: string
     defaultTarget?: FilePickerTarget
     title?: string
   }>(),
-  { stateKey: 'default', defaultTarget: undefined, title: '选择上传位置' },
+  { defaultTarget: undefined, title: '选择上传位置' },
 )
 const emit = defineEmits<{
   (e: 'update:open', v: boolean): void

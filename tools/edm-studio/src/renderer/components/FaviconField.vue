@@ -73,7 +73,6 @@ function onConfirm(items: { url: string }[]): void {
       :allowed-exts="[...FAVICON_EXTS]"
       :multiple="false"
       :resolve-src="toDisplaySrc"
-      state-key="edm::favicon"
       @confirm="onConfirm"
     />
   </div>

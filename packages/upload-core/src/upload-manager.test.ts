@@ -50,19 +50,20 @@ describe('R26 全局上传配置', () => {
     expect(pickCloudProfile(DEFAULT_UPLOAD_CONFIG)).toBeNull()
   })
 
-  it('工具配置：未设限字段必须是 undefined，不能把空交集当成收紧', () => {
+  it('工具配置：targetType/profileId/overrides 兜底；历史 validation 段忽略（plans/13 A2 收敛全局）', () => {
     const empty = resolveUploadTool({})
     expect(empty.targetType).toBe('local')
-    expect(empty.validation.accept).toBeUndefined()
-    expect(empty.validation.maxSize).toBeUndefined()
+    expect(empty.overrides.prefix).toBeUndefined()
     const strict = resolveUploadTool({
       targetType: 'cloud',
       profileId: 'c1',
       overrides: { prefix: 'mail/' },
       validation: { accept: ['.JPG'], maxSize: 500 },
     })
-    expect(strict.validation).toEqual({ accept: ['.jpg'], maxSize: 500 })
+    expect(strict.targetType).toBe('cloud')
+    expect(strict.profileId).toBe('c1')
     expect(strict.overrides.prefix).toBe('mail/')
+    expect((strict as unknown as Record<string, unknown>)['validation']).toBeUndefined()
   })
 
   it('profile ID 符合 safeStorage 命名约束', () => {

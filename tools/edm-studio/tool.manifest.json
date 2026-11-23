@@ -72,26 +72,6 @@
           "type": "boolean"
         }
       ]
-    },
-    {
-      "id": "config-upload",
-      "label": "上传校验",
-      "fields": [
-        {
-          "key": "upload.validation.accept",
-          "label": "允许扩展名",
-          "type": "string",
-          "hint": "逗号分隔，如 .png,.jpg；只能比全局更严，不能放宽。上传目标在各图片/富文本控件的 FilePicker 里选择"
-        },
-        {
-          "key": "upload.validation.maxSize",
-          "label": "大小上限(字节)",
-          "type": "number",
-          "min": 0,
-          "max": 104857600,
-          "hint": "0 = 沿用全局上限；工具只能设得更小"
-        }
-      ]
     }
   ],
   "defaults": {
@@ -108,9 +88,6 @@
       ],
       "defaultFileName": "edm.html",
       "openAfterGenerate": false
-    },
-    "upload": {
-      "validation": {}
     }
   },
   "package": {

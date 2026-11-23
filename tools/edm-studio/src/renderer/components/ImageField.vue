@@ -17,7 +17,7 @@ import { host } from '../host'
  * 由主进程白名单放行；存储值保持 file://。预览失败显示图标占位（非裸 FAILED 裂图块）。
  *
  * 图片上传能力统一（用户 2026-11-23 口径）：图片/富文本/粘贴上传全部收敛到 FilePicker，
- * 本组件不带裸 <input type=file>；工具级上传配置已删，只留 validation（见 manifest config-upload）。
+ * 本组件不带裸 <input type=file>；工具级上传配置已全部删除（plans/13 A2），校验收敛应用级全局。
  */
 const props = withDefaults(
   defineProps<{ modelValue?: string; readonly?: boolean }>(),
@@ -89,7 +89,6 @@ async function copyUrl(): Promise<void> {
       :library="library"
       :multiple="false"
       :resolve-src="toDisplaySrc"
-      state-key="edm::image-field"
       @confirm="onConfirm"
     />
   </div>

@@ -2,12 +2,12 @@
 /**
  * 通用文件选择弹框（自 rich-text ImageLibraryDialog 2026-11-17 泛化抽取）：
  * - 模式（=内容类别）：image 图片库 / document 文档库 / code 代码库 / all 文件库（全部文件）；标题/文案/默认 accept 按类别推导，应用方可覆盖
- * - 来源：本地 / 远程 profile / 云 profile；默认云→远程→本地；设置按 stateKey 持久化，多实例隔离
+ * - 来源：本地 / 远程 profile / 云 profile；默认云→远程→本地；设置全局一份持久化（D58，2026-11-23）
  * - 统一选择池：上传项与已有项共用一份「已选」，跨 tab / 跨目录 / 跨来源累积，确认时一并交付
  * - 上传项并入列表可见（按 url 去重，标「本次上传」）；切页/重列不清空已选
  * - 列表一次拉足（桥接层提高 limit）+ 前端分批渲染 + 懒加载；文件名搜索支持跨页全量扫描
  * - 定制面：accept / allowedExts / maxSize / maxUploads / maxCount / multiple / naming / conflict /
- *   confirmText / initialTab / defaultTarget / resolveSrc / stateKey；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
+ *   confirmText / initialTab / defaultTarget / resolveSrc；确认行为完全交给应用方（@confirm 交付条目，不替应用方拼接）
  *
  * P6-3 拆分（读码后真实结构）：本组件收缩为壳（tab 切换 + 公共状态编排）——
  * - composables/useDirPicker：来源/桶/目录 + 级联懒加载 + 设置持久化
@@ -63,8 +63,6 @@ const props = withDefaults(
     defaultTarget?: FilePickerTarget
     /** 预览 URL 解析钩子（rich-text 传 localres 显示形态转换；其他应用可不传） */
     resolveSrc?: (url: string) => string
-    /** 多实例隔离键：不同实例各存各的来源/目录设置 */
-    stateKey?: string
   }>(),
   {
     mode: 'image',
@@ -81,7 +79,6 @@ const props = withDefaults(
     initialTab: 'upload',
     defaultTarget: undefined,
     resolveSrc: undefined,
-    stateKey: 'default',
   },
 )
 

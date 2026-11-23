@@ -61,7 +61,9 @@ export interface UploadProfileOption {
   label: string
 }
 
-/** 工具级配置：只选 profile + 覆盖非固定信息 + 收紧校验，不能放宽 */
+/** 工具级配置：只选 profile + 覆盖非固定信息（请求级兜底）。
+ *  校验字段已删除（plans/13 A2，2026-11-23）：accept/maxSize 收敛为应用级 `app.upload.validation`
+ *  单一来源，工具级不再收紧——上传位置在各控件的 FilePicker/UploadTarget 里选。 */
 export interface UploadToolConfig {
   targetType: UploadTargetType
   profileId: string
@@ -71,7 +73,6 @@ export interface UploadToolConfig {
     bucket?: string
     prefix?: string
   }
-  validation: { accept?: string[]; maxSize?: number }
 }
 
 export const DEFAULT_UPLOAD_CONFIG: UploadGlobalConfig = {
@@ -178,26 +179,13 @@ export function pickCloudProfile(cfg: UploadGlobalConfig, id?: string): UploadCl
 }
 
 /**
- * 工具级配置归一化。
- * 关键：工具未设限的字段必须是 undefined 而不是空数组 / 0 —— 否则
- * mergeValidation 会把「空交集」当成更严的规则，反而抹掉全局白名单（等于放宽）。
+ * 工具级配置归一化（校验字段已随 plans/13 A2 删除，历史脏数据里的 validation 段直接忽略）。
  */
 export function resolveUploadTool(raw: unknown): UploadToolConfig {
   const r = isObj(raw) ? raw : {}
   const o = isObj(r['overrides']) ? r['overrides'] : {}
-  const v = isObj(r['validation']) ? r['validation'] : {}
   const t = r['targetType']
   const targetType: UploadTargetType = t === 'remote' || t === 'cloud' ? t : 'local'
-  // manifest 字段可能是逗号分隔字符串（工具配置页只有 string 控件），也可能是数组
-  const rawAccept = v['accept']
-  const acceptItems: unknown[] = Array.isArray(rawAccept)
-    ? rawAccept
-    : typeof rawAccept === 'string' ? rawAccept.split(/[,，\s]+/) : []
-  const accept = acceptItems
-    .filter((e): e is string => typeof e === 'string')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-  const maxSize = num(v['maxSize']) ?? 0
   return {
     targetType,
     profileId: str(r['profileId']),
@@ -207,10 +195,6 @@ export function resolveUploadTool(raw: unknown): UploadToolConfig {
       remotePath: str(o['remotePath']) || str(o['remoteFolder']) || undefined,
       bucket: str(o['bucket']) || undefined,
       prefix: str(o['prefix']) || undefined,
-    },
-    validation: {
-      accept: accept.length > 0 ? [...new Set(accept)] : undefined,
-      maxSize: maxSize > 0 ? maxSize : undefined,
     },
   }
 }
