@@ -16,8 +16,8 @@ describe('normalizeFields', () => {
     expect(fields[0]!.maxLength).toBe(10)
   })
 
-  it('list 归一化 itemFields 并保留行数约束；旧 list 类型统一为 repeater（2026-11-24 合并）', () => {
-    const fields = normalizeFields([{ key: 'items', type: 'list', minRows: 1, maxRows: 3, itemFields: [{ key: 'name', type: 'input' }] }])
+  it('repeater 归一化 itemFields 并保留行数约束（list 已并入 repeater，不兼容旧 type）', () => {
+    const fields = normalizeFields([{ key: 'items', type: 'repeater', minRows: 1, maxRows: 3, itemFields: [{ key: 'name', type: 'input' }] }])
     expect(fields[0]!.type).toBe('repeater')
     expect(fields[0]!.itemFields?.[0]!.key).toBe('name')
     expect(fields[0]!.maxRows).toBe(3)

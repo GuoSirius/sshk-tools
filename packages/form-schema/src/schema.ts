@@ -18,7 +18,7 @@ export const FIELD_TYPES: ReadonlySet<string> = new Set<FieldType>([
 ])
 
 /** 容器控件：内部含子字段 itemFields，可递归组合原子控件（产品卡/图文卡/表格行）；
- *  历史 list 与 repeater 行为/数据/校验完全一致，2026-11-24 统一为 repeater（normalizeFields 兼容转换旧数据） */
+ *  历史 list 与 repeater 行为/数据/校验完全一致，2026-11-24 彻底合并为 repeater（不做旧 type 兼容，normalizeFields 白名单直接丢弃） */
 export const CONTAINER_TYPES: readonly FieldType[] = ['repeater', 'table']
 
 export interface FieldOption {
