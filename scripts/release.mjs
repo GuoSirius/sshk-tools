@@ -300,12 +300,14 @@ if (!DRY_RUN) {
     step('pnpm build（main / preload / renderer）')
     shThrow('pnpm', ['build'])
     step('electron-builder 打包（--publish never，先验证可出包）')
-    // 公司网络 TLS 中间人：electron-builder 下载打包工具（NSIS/winCodeSign）时证书校验失败。
-    // 按既定约定「证书非必须，绕过优先于阻断」：先试系统 CA，再放宽 TLS 校验兜底。
-    // 默认值可在根目录 .env 覆盖（见 .env.example），仅作用于本子进程。
+    // 国内网络兜底（与 build-local.mjs 同款，缺了必挂）：electron-builder 不读 .npmrc 的
+    // electron_mirror，直连 GitHub 下 electron x64+arm64 zip / NSIS 二进制会 600s 超时。
+    // 默认值可在根目录 .env / 真实环境变量覆盖（见 .env.example），仅作用于本子进程。
     shThrow('pnpm', ['--filter', '@sshk/desktop', 'exec', 'electron-builder', '--publish', 'never'], {
       env: {
         ...process.env,
+        ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+        ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/',
         NODE_USE_SYSTEM_CA: process.env.NODE_USE_SYSTEM_CA || '1',
         NODE_TLS_REJECT_UNAUTHORIZED: process.env.NODE_TLS_REJECT_UNAUTHORIZED || '0',
       },
