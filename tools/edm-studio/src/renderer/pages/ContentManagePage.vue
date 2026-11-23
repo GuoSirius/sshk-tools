@@ -113,6 +113,30 @@ const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
 /* ── 从表单库导入（plans/13 阶段 D）：选库表单 → expandFields 物化为普通 FieldDef → 写入本地设计器 ──
  * 不保留 controlKey 引用：meta.yaml 是对外持久契约，EDM 须独立演进；覆盖已有字段先 confirm。
  * 保存仍走 saveFields → meta.yaml replaceFieldsInMeta 外科手术式替换（该链路零改动）。 */
+/* ── 复合控件清单（用户 2026-11-24）：示例表单设计器「复合控件」下拉数据源，挂载时加载一次 ──
+ * 设计器插入的 controlKey 占位经 designFields 桥「即时物化展开」——EDM 契约（plans/13 阶段 D）：
+ * meta.yaml 不携带引用、EDM 独立演进，故保存/表单渲染拿到的永远是展开后的普通字段。 */
+const controlsLoaded = ref<ControlRecord[]>([])
+const controlMap = computed(() => new Map(controlsLoaded.value.map((c) => [c.key, c.root as FieldDef])))
+const controlOptions = computed(() => controlsLoaded.value.map((c) => ({ key: c.key, label: c.label })))
+const designFields = computed<FieldDef[]>({
+  get: () => sampleSchema.value,
+  set: (v) => {
+    try {
+      sampleSchema.value = expandFields(v, (key) => controlMap.value.get(key))
+    } catch (err) {
+      sampleSchema.value = v // 展开失败（引用缺失/成环/超深）：保留原样便于删除该引用，提示用户
+      ElMessage.error((err as Error).message)
+    }
+  },
+})
+
+async function loadControls(): Promise<void> {
+  try {
+    controlsLoaded.value = await callHostApi<ControlRecord[]>({ group: 'formControl', method: 'list', channel: IPC_CHANNELS.formControlList, label: '复合控件' })
+  } catch { /* 清单加载失败下拉置空，不影响其它功能 */ }
+}
+
 const importOpen = ref(false)
 const importForms = ref<FormRecord[]>([])
 const importLoading = ref(false)
@@ -149,6 +173,7 @@ async function onImportConfirm(): Promise<void> {
   try {
     // 复合控件物化：引用占位节点展开为控件 root 深拷贝（meta.yaml 不携带 controlKey）
     const controls = await callHostApi<ControlRecord[]>({ group: 'formControl', method: 'list', channel: IPC_CHANNELS.formControlList, label: '复合控件' })
+    controlsLoaded.value = controls // 顺带刷新设计器下拉清单
     const controlMap = new Map(controls.map((c) => [c.key, c.root as FieldDef]))
     const materialized = expandFields(normalizeFields(picked.fields), (key) => controlMap.get(key))
     sampleSchema.value = materialized
@@ -244,6 +269,7 @@ async function onNode(node: TreeNode): Promise<void> {
 
 onMounted(async () => {
   document.addEventListener('mousedown', onDocMouseDown)
+  void loadControls()
   try {
     canEditSystem.value = ((await api('system:canEdit')) as { canEdit: boolean }).canEdit
   } catch {
@@ -380,7 +406,7 @@ onUnmounted(() => {
               <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
               <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
             </div>
-            <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="sampleSchema" :readonly="!canEdit" />
+            <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="designFields" :readonly="!canEdit" :controls="controlOptions" />
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
               <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
             </div>

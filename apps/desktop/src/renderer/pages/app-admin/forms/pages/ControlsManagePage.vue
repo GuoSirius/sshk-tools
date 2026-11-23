@@ -213,10 +213,10 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
       <el-table-column type="index" label="#" width="42" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
       <el-table-column type="selection" width="38" reserve-selection :selectable="(row: ControlRecord) => !row.builtin" />
       <el-table-column prop="label" label="名称" min-width="140" show-overflow-tooltip />
-      <el-table-column label="key" min-width="130">
+      <el-table-column label="key" width="100">
         <template #default="{ row }"><code>{{ row.key }}</code></template>
       </el-table-column>
-      <el-table-column label="根类型" width="90" align="center">
+      <el-table-column label="根类型" width="130" align="center">
         <template #default="{ row }">{{ FIELD_TYPE_LABEL[(row.root as FieldDef)?.type] ?? '—' }}</template>
       </el-table-column>
       <el-table-column label="来源" width="80" align="center">

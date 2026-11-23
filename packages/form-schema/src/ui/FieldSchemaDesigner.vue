@@ -53,11 +53,20 @@ let keySeq = ((): number => {
 })()
 const selectedUid = ref<number | null>(rowUid.value[0] ?? null)
 
-// 父级外部重置（如 saveFields 丢弃非法字段后回写）时同步内部副本，避免脏字段"复活"（体检 #4）
+// 父级外部重置（如 saveFields 丢弃非法字段后回写）时同步内部副本，避免脏字段"复活"（体检 #4）。
+// 选中态保持（用户 2026-11-24）：v-model 回显 echo 不再把选中重置到第一个——
+// 按 key 定位原选中项（拖拽排序后仍跟得住）；key 正被编辑（旧 key 不在）且行数未变时按原下标保持；
+// 字段真被删了/外部重置收缩了列表才回落第一个。
 watch(() => props.modelValue, (v) => {
+  const prevIdx = selIndex()
+  const prevKey = prevIdx >= 0 ? fields.value[prevIdx]?.key ?? null : null
+  const prevLen = fields.value.length
   fields.value = deepClone(v ?? [])
   rowUid.value = fields.value.map(() => uid())
-  selectedUid.value = rowUid.value[0] ?? null
+  const byKey = prevKey != null ? fields.value.findIndex((f) => f.key === prevKey) : -1
+  const keep = byKey >= 0 ? byKey
+    : (fields.value.length === prevLen && prevIdx >= 0 && prevIdx < fields.value.length ? prevIdx : -1)
+  selectedUid.value = keep >= 0 ? rowUid.value[keep]! : (rowUid.value[0] ?? null)
 })
 
 function emitChange(): void {

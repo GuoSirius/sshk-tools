@@ -111,21 +111,45 @@ async function onSave(): Promise<void> {
   }
 }
 
-// ── 预览弹框 ──
+// ── 预览弹框（用户 2026-11-24 口径）：固定高度 60vh；表单/数据双 tab；
+//    表单可交互（改值实时同步数据 tab）；数据 tab 编辑 JSON，合法即回写表单 ──
 const previewOpen = ref(false)
 const previewRow = ref<FormRecord | null>(null)
 const previewFields = ref<FieldDef[]>([])
 const previewModel = ref<Record<string, unknown>>({})
 const previewError = ref('')
+const previewTab = ref<'form' | 'data'>('form')
+const previewDataText = ref('')
+const previewDataTip = ref('')
+
+function syncDataText(): void {
+  previewDataText.value = JSON.stringify(previewModel.value, null, 2)
+  previewDataTip.value = ''
+}
+function onPreviewFormUpdate(v: Record<string, unknown>): void {
+  previewModel.value = v
+  syncDataText()
+}
+function onPreviewDataInput(): void {
+  try {
+    const parsed = JSON.parse(previewDataText.value) as Record<string, unknown>
+    previewModel.value = parsed ?? {}
+    previewDataTip.value = ''
+  } catch {
+    previewDataTip.value = 'JSON 解析失败，修正后自动同步到表单'
+  }
+}
 
 function openPreview(row: FormRecord): void {
   previewRow.value = row
   previewError.value = ''
+  previewTab.value = 'form'
   try {
     const controlMap = new Map(controls.value.map((c) => [c.key, c.root as FieldDef]))
     const expanded = expandFields(normalizeFields(row.fields), (key) => controlMap.get(key))
     previewFields.value = expanded
     previewModel.value = applyDefaults(expanded, { ...(row.sampleModel ?? {}) })
+    syncDataText()
   } catch (err) {
     previewError.value = (err as Error).message
     previewFields.value = []
@@ -207,15 +231,6 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
       <el-table-column label="字段数" width="80" align="center">
         <template #default="{ row }">{{ (row.fields ?? []).length }}</template>
       </el-table-column>
-      <el-table-column label="引用控件" min-width="120">
-        <template #default="{ row }">
-          <template v-if="(row.controlsUsed ?? []).length">
-            <el-tag v-for="k in (row.controlsUsed ?? []).slice(0, 2)" :key="k" size="small" type="warning" effect="plain" style="margin-right: 4px">{{ controls.find((c) => c.key === k)?.label ?? k }}</el-tag>
-            <el-tag v-if="(row.controlsUsed ?? []).length > 2" size="small" type="info">+{{ (row.controlsUsed ?? []).length - 2 }}</el-tag>
-          </template>
-          <span v-else style="opacity:.5">—</span>
-        </template>
-      </el-table-column>
       <el-table-column label="版本" width="64" align="center">
         <template #default="{ row }">v{{ row.version }}</template>
       </el-table-column>
@@ -263,12 +278,25 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
       </template>
     </el-dialog>
 
-    <!-- 预览弹框：展开复合控件后渲染（不联动上传/AI，纯数据预览） -->
+    <!-- 预览弹框：展开复合控件后渲染；表单可交互 ↔ 数据 JSON 双向同步 -->
     <el-dialog v-model="previewOpen" :title="`预览：${previewRow?.name ?? ''}`" width="720px" top="6vh" destroy-on-close :close-on-click-modal="false" :close-on-press-escape="false">
       <el-alert v-if="previewError" type="error" :title="previewError" :closable="false" />
-      <div v-else class="preview-body">
-        <FormFieldRenderer :fields="previewFields" v-model="previewModel" readonly />
-      </div>
+      <template v-else>
+        <div class="preview-switch">
+          <el-radio-group v-model="previewTab" size="small">
+            <el-radio-button value="form">表单</el-radio-button>
+            <el-radio-button value="data">数据</el-radio-button>
+          </el-radio-group>
+          <span v-if="previewTab === 'data'" class="muted" style="font-size: 12px">编辑 JSON，合法后自动同步到表单</span>
+        </div>
+        <div v-show="previewTab === 'form'" class="preview-body">
+          <FormFieldRenderer :fields="previewFields" :model-value="previewModel" @update:model-value="onPreviewFormUpdate" />
+        </div>
+        <div v-show="previewTab === 'data'" class="preview-data-wrap">
+          <el-input v-model="previewDataText" type="textarea" class="preview-data-input" @input="onPreviewDataInput" />
+          <div v-if="previewDataTip" class="ce-field-tip">{{ previewDataTip }}</div>
+        </div>
+      </template>
     </el-dialog>
 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" confirm-text="删除" @confirm="onConfirmed" />
@@ -286,5 +314,9 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
 .ce-field-tip { font-size: 12px; color: var(--el-color-danger); line-height: 1.4; }
 .designer-wrap { height: 440px; display: flex; }
 .designer-wrap > * { flex: 1; }
-.preview-body { max-height: 62vh; overflow: auto; padding: 4px 2px; }
+.preview-switch { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.preview-body { height: 60vh; overflow: auto; padding: 4px 2px; box-sizing: border-box; }
+.preview-data-wrap { height: 60vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; }
+.preview-data-input { flex: 1; min-height: 0; }
+.preview-data-input :deep(.el-textarea__inner) { height: 100%; resize: none; font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 12px; }
 </style>
