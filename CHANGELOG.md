@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.1](https://github.com/GuoSirius/sshk-tools/compare/v2.0.0...v2.0.1) (2026-11-23)
+
+### 🐛 缺陷修复 (Bug Fixes)
+
+* **build:** 内联 marked/turndown 修复安装包启动 ERR_MODULE_NOT_FOUND ([655aba4](https://github.com/GuoSirius/sshk-tools/commit/655aba4b52a79d0ec5172e3207eeb7d1b87ab232))
+
+### 📚 文档 (Documentation)
+
+* 用途、可选值、定义 ([814a006](https://github.com/GuoSirius/sshk-tools/commit/814a00629800e5c42a53c1543bcf7f8140e178f6))
+* **build:** SSHK_BUILD_DISABLE_ASAR_INTEGRITY 注释改为三段式规范 ([af80194](https://github.com/GuoSirius/sshk-tools/commit/af80194c843689383f47057050f9b3e26d034282))
+
 ## [2.0.0](https://github.com/GuoSirius/sshk-tools/compare/v1.4.0...v2.0.0) (2026-11-23)
 
 ### ♻️ 代码重构 (Refactors)
