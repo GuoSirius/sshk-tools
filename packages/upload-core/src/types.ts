@@ -5,8 +5,10 @@
  */
 
 import type { FileKind } from '@sshk/shared'
+import type { UploadTargetType } from './upload-manager'
 
-export type UploadTargetType = 'local' | 'remote' | 'cloud'
+/** Q-23 第二步：UploadTargetType 真相源统一到 upload-manager，本入口仅 re-export（消除重复定义） */
+export type { UploadTargetType } from './upload-manager'
 
 /** 校验规则：全局默认 + 工具级收紧 */
 export interface UploadValidation {
