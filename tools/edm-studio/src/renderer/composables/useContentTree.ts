@@ -78,7 +78,8 @@ export interface ContentTree {
   uniqueName(dir: string, name: string): Promise<string>
   /** 冲突抉择：覆盖（原名）/ 自动改名保留两者（唯一名）/ 关闭 = 放弃 */
   resolveConflict(dir: string, name: string): Promise<string | null>
-  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<void>
+  /** 拷贝成功返回 true；同名冲突用户关闭弹框放弃时返回 false */
+  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean>
 }
 
 /* ── 图标（与宿主 SidebarMenu 同一视觉语言，铁律 #19） ── */
@@ -143,7 +144,8 @@ function familyNode(brand: string, cat: Cat, f: any, source: Source): TreeNode {
   const id = `fam:${source}:${brand}:${cat}:${f.code}`
   return {
     id,
-    label: f.meta.name ? `${f.code}（${f.meta.name}）` : f.code,
+    // meta.code 是展示别名（可编辑）；目录名 f.code 才是真实路径/身份
+    label: f.meta.code && f.meta.code !== f.code ? `${f.code}（${f.meta.code} · ${f.meta.name ?? ''}）` : (f.meta.name ? `${f.code}（${f.meta.name}）` : f.code),
     kind: 'family',
     data: { kind: 'family', source, path: famPath, brandCode: brand, cat, familyCode: f.code, metaPath: `${famPath}/meta.yaml` },
     children: [
@@ -167,7 +169,8 @@ function brandNode(b: any, source: Source): TreeNode {
   }
   return {
     id,
-    label: `${b.code}（${b.meta.name}）`,
+    // 左树以真实目录名为准；meta.code 改了立即反映在标签上，但不会让路径指向不存在的目录
+    label: `${b.code}${b.meta.code && b.meta.code !== b.code ? `（目录别名 ${b.meta.code}）` : ''}${b.meta.name ? `（${b.meta.name}）` : ''}`,
     kind: 'brand',
     data: { kind: 'brand', source, path: b.code, brandCode: b.code, metaPath: `${b.code}/meta.yaml` },
     children: [
@@ -364,14 +367,15 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
       return null
     }
   }
-  async function pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<void> {
+  async function pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean> {
     let finalName = name
     if (await existsIn(dir ? `${dir}/${name}` : name, dest)) {
       const resolved = await resolveConflict(dir, name)
-      if (!resolved) return
+      if (!resolved) return false
       finalName = resolved
     }
     await write(dir ? `${dir}/${finalName}` : finalName, await read(src, srcSource), dest)
+    return true
   }
 
   return {

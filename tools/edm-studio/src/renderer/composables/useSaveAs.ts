@@ -1,7 +1,8 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
 import { api } from '../tool-api'
+import { defaultSaveAsName, pickValidTarget, shouldDerive } from './save-as-routing'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -40,7 +41,8 @@ export interface SaveAsDeps {
   allCssDirs: ComputedRef<{ path: string; label: string; source: Source }[]>
   /** 双顶层树（目标位置下拉构造） */
   tree: ComputedRef<TreeNode[]>
-  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<void>
+  /** 拷贝成功返回 true；同名冲突用户选「关闭」放弃时返回 false */
+  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean>
 }
 
 export interface SaveAs {
@@ -90,8 +92,9 @@ export function useSaveAs(deps: SaveAsDeps): SaveAs {
     }
     const isEntity = ['brand', 'family', 'version'].includes(node.kind)
     // 默认目标根=同源（同根副本），用户可切到另一根
-    const origin: Source = node.data.source
-    saveAsState.value = { visible: true, node, name: `${deps.basename(node.data.path)}-copy`, code: '', target: '', origin, raw }
+    // 只读系统节点默认落可写目标（自定义），避免弹框里先撞一次「系统只读」
+    const origin: Source = node.data.source === 'system' && !deps.canEditSystem.value ? 'custom' : node.data.source
+    saveAsState.value = { visible: true, node, name: defaultSaveAsName(node.kind, node.data.path), code: '', target: '', origin, raw }
     // 默认目标落点：实体按类型过滤后的首个候选（目标根内）；css 取目标根首个 css 目录（#1/#5）
     const opts = saveAsTargetOptions.value
     saveAsState.value.target = isEntity
@@ -99,8 +102,21 @@ export function useSaveAs(deps: SaveAsDeps): SaveAs {
       : (deps.allCssDirs.value.find((d) => d.source === origin)?.path ?? '')
   }
 
+  // 目标根切换后旧 target 属于另一根（如系统品牌 css → 自定义根），自动回落到新根候选，避免写到错根同路径。
+  watch(
+    () => [saveAsState.value.origin, saveAsState.value.node?.id ?? ''] as const,
+    ([origin]) => {
+      const state = saveAsState.value
+      if (!state.node || !state.visible) return
+      const candidates = saveAsIsEntity.value
+        ? saveAsTargetOptions.value.map((o) => o.path)
+        : deps.allCssDirs.value.filter((d) => d.source === origin).map((d) => d.path)
+      state.target = pickValidTarget(state.target, candidates)
+    },
+  )
+
   async function confirmSaveAs(): Promise<void> {
-    const { node, name, code, target, raw, origin } = saveAsState.value
+    const { node, name, code, raw, origin } = saveAsState.value
     if (!node) return
     const fromSource = node.data.source
     const cleanName = name.trim()
@@ -108,14 +124,14 @@ export function useSaveAs(deps: SaveAsDeps): SaveAs {
       ElMessage.warning('名称必填')
       return
     }
-    // 写入系统根必须 dev / developerMode 门控通过
+    // 写入系统根必须 dev / developerMode 门控通过（只校验目标根；只读源仍可另存到可写目标）
     if (origin === 'system' && !deps.canEditSystem.value) {
       ElMessage.error('系统内容只读：写入系统根需开启开发者模式（dev）')
       return
     }
     try {
-      // system→custom：派生（重写 custom-edm 文件根，文件为真相源；详见 ipc system:derive）
-      if (fromSource === 'system' && origin === 'custom') {
+      // 仅实体 system→custom 走派生；css 目录/文件不属于品牌模型，统一走逐文件拷贝（任意根/层级互存）
+      if (shouldDerive(fromSource, origin, node.kind)) {
         const res = await api<DeriveCounts>('system:derive', {
           kind: node.kind, name: cleanName,
           brandCode: node.data.brandCode ?? '', cat: node.data.cat ?? '',
@@ -134,7 +150,9 @@ export function useSaveAs(deps: SaveAsDeps): SaveAs {
         await deps.load(true)
         return
       }
-      // 其余（同根副本 / 自定义→系统）：源 root 读、目标 root 写，逐文件拷贝
+      // 其余（同根副本 / 自定义→系统 / 全部 css 组合）：源 root 读、目标 root 写，逐文件拷贝
+      let skipped = 0
+      let total = 0
       if (node.kind === 'brand') {
         const newCode = (code.trim() || cleanName).trim()
         if (await deps.existsIn(`${newCode}/meta.yaml`, origin)) {
@@ -164,16 +182,32 @@ export function useSaveAs(deps: SaveAsDeps): SaveAs {
           if (content === null) continue
           await deps.write(`${dst}/${rel}`, content, origin)
         }
-      } else if (node.kind === 'cssDir') {
-        // css 目录另存为 = 目录下文件整体复制到目标 css 目录（目录名恒为 css，不建子目录）
-        for (const f of node.data.cssFiles ?? []) await deps.pasteFileInto(target, f, `${node.data.path}/${f}`, origin, fromSource)
       } else {
-        // css 文件另存为 = 目标 css 目录 + 新文件名
-        const fileName = cleanName.endsWith('.css') ? cleanName : `${cleanName}.css`
-        await deps.pasteFileInto(target, fileName, node.data.path, origin, fromSource)
+        // css：目标下拉覆盖目标根全部层级（根/品牌/类目/族/版本），跨品牌跨类目均可
+        const cssTarget = pickValidTarget(
+          saveAsState.value.target,
+          deps.allCssDirs.value.filter((d) => d.source === origin).map((d) => d.path),
+        )
+        if (!cssTarget) {
+          ElMessage.warning('目标根暂无 css 目录，请先在该位置新建样式')
+          return
+        }
+        if (node.kind === 'cssDir') {
+          // css 目录另存为 = 目录下文件整体复制到目标 css 目录（目录名恒为 css，不建子目录）
+          for (const f of node.data.cssFiles ?? []) {
+            total++
+            if (!(await deps.pasteFileInto(cssTarget, f, `${node.data.path}/${f}`, origin, fromSource))) skipped++
+          }
+        } else {
+          // css 文件另存为 = 目标 css 目录 + 新文件名
+          const fileName = cleanName.endsWith('.css') ? cleanName : `${cleanName}.css`
+          total++
+          if (!(await deps.pasteFileInto(cssTarget, fileName, node.data.path, origin, fromSource))) skipped++
+        }
       }
       saveAsState.value.visible = false
-      ElMessage.success('另存为完成')
+      if (skipped > 0) ElMessage.warning(skipped === total ? '已取消另存（同名冲突）' : `已另存 ${total - skipped} 个文件，${skipped} 个因同名冲突取消`)
+      else ElMessage.success('另存为完成')
       await deps.load(true)
     } catch (err) {
       ElMessage.error(`另存为失败：${(err as Error).message}`)

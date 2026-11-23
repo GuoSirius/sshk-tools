@@ -104,7 +104,7 @@ const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
 async function onNode(node: TreeNode): Promise<void> {
   selected.value = node
   if (node.kind === 'cssFile') {
-    await openCssTab(node.data.path)
+    await openCssTab(node.data.path, node.data.source)
     return
   }
   await detail.loadNode(node)
@@ -189,7 +189,10 @@ onUnmounted(() => {
             </div>
             <el-form v-if="metaMode === 'form' && (showForm.catBase || showForm.brandBase || showForm.version)" label-width="auto" class="meta-form">
               <el-form-item label="名称" required><el-input clearable v-model="form.name" :disabled="!canEdit" /></el-form-item>
-              <el-form-item v-if="showForm.brandBase" label="code"><el-input clearable v-model="form.code" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.brandBase" label="code">
+                <el-input clearable v-model="form.code" :disabled="!canEdit" />
+                <FormHint inline>展示别名；目录名以左树为准，改目录名请右键重命名</FormHint>
+              </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
               <el-form-item v-if="selected?.kind === 'brand'" label="logo"><el-input clearable v-model="form.logo" :disabled="!canEdit" placeholder="图片地址" /></el-form-item>
               <template v-if="showForm.policy">

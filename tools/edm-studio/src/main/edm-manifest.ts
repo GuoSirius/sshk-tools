@@ -170,7 +170,9 @@ async function loadBrand(brandDir: string, dirName: string): Promise<BrandNode> 
 
   const brandCss = (await collectCss(path.join(brandDir, 'css'))).map((p) => path.relative(brandDir, path.join(brandDir, p)))
   return {
-    code: meta.code,
+    // 身份恒取实际目录名（与族/版本一致）：meta.code 只是可编辑的展示别名，
+    // 改它不应让树路径/播种 ID/渲染 selector 指向不存在的目录。
+    code: dirName,
     path: brandDir,
     meta,
     css: brandCss,

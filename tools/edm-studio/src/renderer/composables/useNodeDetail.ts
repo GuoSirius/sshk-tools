@@ -234,7 +234,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
         parseYamlObject(metaText.value) // 语法校验，非法即抛；空内容视为 {}
         out = metaText.value
       }
-      await deps.write(node.data.metaPath, out)
+      await deps.write(node.data.metaPath, out, node.data.source)
       if (node.kind !== 'root') await deps.load(true) // 元数据名称/code 变更实时反馈到左树（#4）
       ElMessage.success('元数据已保存')
       if (node.kind === 'version') await renderPreview(node)
@@ -247,7 +247,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     const node = deps.selected.value
     if (!node?.data.sourcePath) return
     try {
-      await deps.write(node.data.sourcePath, sourceText.value)
+      await deps.write(node.data.sourcePath, sourceText.value, node.data.source)
       ElMessage.success('源码已保存')
       await renderPreview(node)
     } catch (err) {
@@ -260,7 +260,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     const node = deps.selected.value
     if (!node || node.kind !== 'version') return
     try {
-      await deps.write(`${node.data.path}/style.css`, styleText.value)
+      await deps.write(`${node.data.path}/style.css`, styleText.value, node.data.source)
       ElMessage.success('样式已保存')
       await renderPreview(node)
     } catch (err) {
@@ -297,7 +297,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
           sampleObj.value = parseYamlObject(uploaded)
         }
       }
-      await deps.write(node.data.samplePath, sampleText.value)
+      await deps.write(node.data.samplePath, sampleText.value, node.data.source)
       ElMessage.success('示例数据已保存')
       await renderPreview(node)
     } catch (err) {
@@ -315,9 +315,9 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       sampleSchema.value = fields
     }
     try {
-      const raw = metaText.value || (await deps.read(node.data.metaPath))
+      const raw = metaText.value || (await deps.read(node.data.metaPath, node.data.source))
       const updated = replaceFieldsInMeta(raw, fields)
-      await deps.write(node.data.metaPath, updated)
+      await deps.write(node.data.metaPath, updated, node.data.source)
       metaText.value = updated
       metaRaw.value = (yaml.load(updated) as Record<string, unknown>) ?? {}
       ElMessage.success('字段定义已保存（meta.yaml fields:）')

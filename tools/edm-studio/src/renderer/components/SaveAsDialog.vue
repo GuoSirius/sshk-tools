@@ -5,6 +5,7 @@
  */
 import { computed } from 'vue'
 import { FormHint } from '@sshk/ui-kit'
+import { isEntityKind } from '../composables/save-as-routing'
 import type { SaveAsState } from '../composables/useSaveAs'
 
 const props = defineProps<{
@@ -20,7 +21,7 @@ const emit = defineEmits<{
   (e: 'confirm'): void
 }>()
 
-const isEntity = computed(() => ['brand', 'family', 'version'].includes(props.state.node?.kind ?? ''))
+const isEntity = computed(() => isEntityKind(props.state.node?.kind ?? ''))
 const isCssFile = computed(() => props.state.node?.kind === 'cssFile')
 </script>
 
@@ -51,7 +52,7 @@ const isCssFile = computed(() => props.state.node?.kind === 'cssFile')
         </el-form-item>
       </template>
       <template v-else>
-        <el-form-item label="来源">
+        <el-form-item label="保存目标">
           <el-radio-group v-model="state.origin">
             <el-radio value="system">系统自带</el-radio>
             <el-radio value="custom">自定义</el-radio>

@@ -2,7 +2,10 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as yaml from 'js-yaml'
 import { api } from '../tool-api'
+import { contextMenuItems, type MenuItem } from './context-menu-items'
 import type { Cat, Source, TreeNode } from './useContentTree'
+
+export type { MenuItem }
 
 /**
  * 右键菜单域（P6-4 自 ContentManagePage 拆出，搬代码不改行为）：
@@ -20,8 +23,6 @@ export type Clipboard = {
   source: Source
 } | null
 
-export type MenuItem = { key: string; label: string; danger?: boolean }
-
 export interface ContextMenuDeps {
   selected: Ref<TreeNode | null>
   canEditSystem: Ref<boolean>
@@ -35,7 +36,7 @@ export interface ContextMenuDeps {
   nextVersionOf(famPath: string, source: Source): number
   parseVersion(dir: string): number
   resolveConflict(dir: string, name: string): Promise<string | null>
-  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<void>
+  pasteFileInto(dir: string, name: string, src: string, dest: Source, srcSource: Source): Promise<boolean>
   /** 删除节点后清理其子路径下的已开 css tab */
   dropTabsUnder(pathPrefix: string): void
   /** 另存为（useSaveAs 提供） */
@@ -65,40 +66,11 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
 
   /**
    * R24 右键菜单——统一顺序：复制 → 粘贴 → 删除 → 重命名 → 另存为 → 新建。
-   * 复制/粘贴仅 css 支持；新建按节点类型挂对应项；编辑项仅在节点可编辑时出现（onContextMenu 已门控）。
+   * 规则抽到 context-menu-items.ts（纯函数）：只读系统节点保留复制/另存为，可把只读源另存到可写目标。
    */
-  const menuItems = computed<MenuItem[]>(() => {
-    if (!menu.value) return []
-    const node = menu.value.node
-    const k = node.kind
-    const items: MenuItem[] = []
-    // 复制 / 粘贴（仅 css 目录、css 文件）
-    if (k === 'cssDir' || k === 'cssFile') items.push({ key: 'copy', label: '复制' })
-    if (k === 'cssDir') items.push({ key: 'paste', label: '粘贴' })
-    // 删除 / 重命名（除根外均可）
-    if (k !== 'root') items.push({ key: 'remove', label: '删除', danger: true })
-    if (k !== 'root') items.push({ key: 'rename', label: '重命名' })
-    // 另存为（实体 / css）
-    if (k === 'brand' || k === 'family' || k === 'version' || k === 'cssDir' || k === 'cssFile')
-      items.push({ key: 'saveAs', label: '另存为' })
-    // 新建（逐个对应：品牌→新建品牌、片段→新建片段族、模板→新建模板族；族额外加新建版本）
-    if (k === 'root') items.push({ key: 'newBrand', label: '新建品牌' })
-    if (k === 'brand') {
-      items.push({ key: 'newBrand', label: '新建品牌' })
-      items.push({ key: 'newFragmentFamily', label: '新建片段族' })
-      items.push({ key: 'newTemplateFamily', label: '新建模板族' })
-    }
-    if (k === 'category') {
-      items.push(node.data.cat === 'fragment' ? { key: 'newFragmentFamily', label: '新建片段族' } : { key: 'newTemplateFamily', label: '新建模板族' })
-    }
-    if (k === 'family') {
-      items.push({ key: 'newVersion', label: '新建版本' })
-      items.push(node.data.cat === 'fragment' ? { key: 'newFragmentFamily', label: '新建片段族（同级）' } : { key: 'newTemplateFamily', label: '新建模板族（同级）' })
-    }
-    if (k === 'version') items.push({ key: 'newVersion', label: '新建版本（同级）' })
-    if (k === 'cssDir') items.push({ key: 'newFile', label: '新建样式' })
-    return items
-  })
+  const menuItems = computed<MenuItem[]>(() =>
+    menu.value ? contextMenuItems(menu.value.node, nodeCanEdit(menu.value.node)) : [],
+  )
 
   /** R24：节点可编辑 ⟺ source==='custom'（恒可写）或系统门控通过 */
   function nodeCanEdit(node: TreeNode): boolean {
@@ -106,8 +78,9 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
   }
   function onContextMenu(event: MouseEvent, node: TreeNode): void {
     event.preventDefault()
-    if (!nodeCanEdit(node)) return
     menu.value = { x: event.clientX, y: event.clientY, node }
+    // 只读节点只留复制/另存为；连这些都没有（如只读类目/根）就不弹空菜单
+    if (menuItems.value.length === 0) menu.value = null
   }
   function closeMenu(): void {
     menu.value = null
@@ -122,6 +95,10 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
     const node = menu.value?.node
     closeMenu()
     if (!node) return
+    if (!nodeCanEdit(node) && key !== 'copy' && key !== 'saveAs') {
+      ElMessage.error('系统内容只读：请开启开发者模式，或另存为到可写目标')
+      return
+    }
     try {
       if (key === 'copy') {
         clipboard.value =

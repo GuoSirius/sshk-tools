@@ -24,7 +24,7 @@ const emit = defineEmits<{
 }>()
 
 /** 当前激活 tab 对象（tab 条只做切换，编辑器单实例常驻） */
-const activeTab = computed(() => props.tabs.find((t) => t.file === props.active) ?? null)
+const activeTab = computed(() => props.tabs.find((t) => t.id === props.active) ?? null)
 
 /** 路径末段（与 useContentTree.basename 同实现） */
 function basename(p: string): string {
@@ -35,7 +35,7 @@ function basename(p: string): string {
 <template>
   <div class="css-editor">
     <el-tabs :model-value="active" type="card" closable @update:model-value="(v: string | number) => emit('update:active', String(v))" @tab-remove="emit('close', String($event))">
-      <el-tab-pane v-for="t in tabs" :key="t.file" :name="t.file" :label="`${basename(t.file)}${t.dirty ? ' ●' : ''}`" />
+      <el-tab-pane v-for="t in tabs" :key="t.id" :name="t.id" :label="`${t.source === 'custom' ? '自定义·' : '系统·'}${basename(t.file)}${t.dirty ? ' ●' : ''}`" />
     </el-tabs>
     <template v-if="activeTab">
       <div class="editor-toolbar">
@@ -49,7 +49,7 @@ function basename(p: string): string {
         language="css"
         :readonly="!canEdit"
         height="calc(100% - 80px)"
-        @update:model-value="(v: string) => emit('edit', activeTab!.file, v)"
+        @update:model-value="(v: string) => emit('edit', activeTab!.id, v)"
       />
     </template>
   </div>
