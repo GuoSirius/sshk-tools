@@ -1,6 +1,10 @@
 /**
  * EDM 系统内容解析层（R3）：扫描 assets/edm 树 → 构造 Brand→Family→Version 内存模型。
  * 文件为源真相，NeDB 仅作查询索引（Q3）。主进程专用（fs），渲染层通过 system:load 取结果。
+ *
+ * 缺失字段策略（2026-11-23）：品牌/族/版本的 meta.yaml 缺必填字段、版本缺 .njk 时，
+ * 一律在内存里补出可编辑默认值（目录名 / 版本号 / 约定源文件名），让节点出现在树上、
+ * 用户可在应用中直接修改；保存时才由 content:writeFile 真正落盘。解析期不告警、不跳过。
  */
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -46,6 +50,35 @@ async function findSource(p: string): Promise<{ name: string; path: string } | n
   }
 }
 
+/** 缺失源文件时的约定名（与现有资产命名一致）；只作内存路径，用户保存源码时才创建 */
+const DEFAULT_SOURCE_NAME = { fragment: 'fragment.njk', template: 'template.njk' } as const
+
+/** 目录名 → 版本号（v1/v2 → 1/2；default 或空 → 1），与 edm-seed.versionNumberOf 同口径 */
+function versionOfDir(dir: string): number {
+  const m = /v(\d+)/i.exec(dir)
+  return m ? Number(m[1]) : 1
+}
+
+/** 品牌 meta：整份缺失或 code/name 缺失时用目录名补齐 */
+async function readBrandMeta(brandDir: string, dirName: string): Promise<BrandMeta> {
+  const raw = await readYaml<Partial<BrandMeta>>(path.join(brandDir, 'meta.yaml'))
+  return { ...(raw ?? {}), code: raw?.code || dirName, name: raw?.name || dirName }
+}
+
+/** 族 meta：整份缺失或 code/name 缺失时用族目录名补齐（泛型：片段族 / 模板族同构） */
+async function readFamilyMeta<TFamily extends object>(familyDir: string): Promise<TFamily> {
+  const dirName = path.basename(familyDir)
+  const raw = await readYaml<Partial<TFamily> & { code?: string; name?: string }>(path.join(familyDir, 'meta.yaml'))
+  return { ...(raw ?? {}), code: raw?.code || dirName, name: raw?.name || dirName } as TFamily
+}
+
+/** 版本 meta：整份缺失或 version 非法时用目录名补齐 */
+async function readVersionMeta<TMeta extends object>(vdir: string, dir: string): Promise<TMeta> {
+  const raw = await readYaml<Partial<TMeta> & { version?: number }>(path.join(vdir, 'meta.yaml'))
+  const n = raw?.version
+  return { ...(raw ?? {}), version: typeof n === 'number' && n > 0 ? n : versionOfDir(dir) } as TMeta
+}
+
 /** 某层级 css/ 目录下的文件名列表（不递归；目录不存在返回空，v5 各级 css 目录） */
 async function cssFilesIn(dir: string): Promise<string[]> {
   try {
@@ -82,63 +115,57 @@ async function collectCss(dir: string): Promise<string[]> {
   return out
 }
 
-async function loadVersions<TMeta>(familyDir: string): Promise<VersionNode<TMeta>[]> {
-  const subs = await listDirs(familyDir)
+/**
+ * 版本目录扫描：缺 meta.yaml / .njk 均补默认值，不再静默跳过。
+ * css/ 是样式目录而非版本目录，必须显式排除（否则补默认后会多出一个假版本节点）。
+ */
+async function loadVersions<TMeta extends object>(
+  familyDir: string,
+  sourceName: string,
+): Promise<VersionNode<TMeta>[]> {
+  const subs = (await listDirs(familyDir)).filter((d) => d !== 'css')
   const out: VersionNode<TMeta>[] = []
-  for (const sub of subs) {
-    const vdir = path.join(familyDir, sub)
-    const meta = await readYaml<TMeta>(path.join(vdir, 'meta.yaml'))
-    if (meta == null) continue
+  const add = async (dir: string, vdir: string): Promise<void> => {
+    const meta = await readVersionMeta<TMeta>(vdir, dir)
     const src = await findSource(vdir)
-    if (!src) continue
     const sample = await readYaml<Record<string, unknown>>(path.join(vdir, 'sample.yaml'))
     out.push({
-      dir: sub,
+      dir,
       path: vdir,
       meta,
-      source: src.name,
-      sourcePath: src.path,
+      source: src?.name ?? sourceName,
+      sourcePath: src?.path ?? path.join(vdir, sourceName),
       sample: sample ?? null,
       css: await collectCss(vdir),
     })
   }
-  // 单版本折叠（第九节）：族目录自身即默认版本（含 meta + 源，无版本子目录）
-  if (out.length === 0) {
-    const famMeta = await readYaml<TMeta>(path.join(familyDir, 'meta.yaml'))
-    const src = await findSource(familyDir)
-    if (famMeta && src) {
-      const sample = await readYaml<Record<string, unknown>>(path.join(familyDir, 'sample.yaml'))
-      out.push({ dir: '', path: familyDir, meta: famMeta, source: src.name, sourcePath: src.path, sample: sample ?? null, css: await collectCss(familyDir) })
-    }
-  }
+  for (const sub of subs) await add(sub, path.join(familyDir, sub))
+  // 单版本折叠（第九节）：无版本子目录时族目录自身即默认版本
+  if (out.length === 0) await add('', familyDir)
   return out
 }
 
-async function loadFamily<TFamily, TVersion>(
+async function loadFamily<TFamily extends object, TVersion extends object>(
   familyDir: string,
-): Promise<{ meta: TFamily; css: string[]; versions: VersionNode<TVersion>[] } | null> {
-  const meta = await readYaml<TFamily>(path.join(familyDir, 'meta.yaml'))
-  if (meta == null) return null
-  const versions = await loadVersions<TVersion>(familyDir)
+  sourceName: string,
+): Promise<{ meta: TFamily; css: string[]; versions: VersionNode<TVersion>[] }> {
+  const meta = await readFamilyMeta<TFamily>(familyDir)
+  const versions = await loadVersions<TVersion>(familyDir, sourceName)
   return { meta, css: await cssFilesIn(path.join(familyDir, 'css')), versions }
 }
 
-async function loadBrand(brandDir: string): Promise<BrandNode | null> {
-  const meta = await readYaml<BrandMeta>(path.join(brandDir, 'meta.yaml'))
-  if (!meta || !meta.code || !meta.name) {
-    console.warn(`[edm] 跳过无效品牌目录 ${brandDir}（缺少 code/name）`)
-    return null
-  }
+async function loadBrand(brandDir: string, dirName: string): Promise<BrandNode> {
+  const meta = await readBrandMeta(brandDir, dirName)
   const fragmentFamilies: FragmentFamilyNode[] = []
   const templateFamilies: TemplateFamilyNode[] = []
 
-  for (const f of await listDirs(path.join(brandDir, 'fragment'))) {
-    const fam = await loadFamily<FragmentFamilyMeta, FragmentVersionMeta>(path.join(brandDir, 'fragment', f))
-    if (fam) fragmentFamilies.push({ code: f, path: path.join(brandDir, 'fragment', f), ...fam })
+  for (const f of (await listDirs(path.join(brandDir, 'fragment'))).filter((d) => d !== 'css')) {
+    const fam = await loadFamily<FragmentFamilyMeta, FragmentVersionMeta>(path.join(brandDir, 'fragment', f), DEFAULT_SOURCE_NAME.fragment)
+    fragmentFamilies.push({ code: f, path: path.join(brandDir, 'fragment', f), ...fam })
   }
-  for (const t of await listDirs(path.join(brandDir, 'template'))) {
-    const fam = await loadFamily<TemplateFamilyMeta, TemplateVersionMeta>(path.join(brandDir, 'template', t))
-    if (fam) templateFamilies.push({ code: t, path: path.join(brandDir, 'template', t), ...fam })
+  for (const t of (await listDirs(path.join(brandDir, 'template'))).filter((d) => d !== 'css')) {
+    const fam = await loadFamily<TemplateFamilyMeta, TemplateVersionMeta>(path.join(brandDir, 'template', t), DEFAULT_SOURCE_NAME.template)
+    templateFamilies.push({ code: t, path: path.join(brandDir, 'template', t), ...fam })
   }
 
   const brandCss = (await collectCss(path.join(brandDir, 'css'))).map((p) => path.relative(brandDir, path.join(brandDir, p)))
@@ -161,10 +188,8 @@ export async function loadEdmModel(root: string): Promise<EdmModel> {
   const topCss = (await collectCss(path.join(root, 'css'))).map((p) => p)
   const brands: BrandNode[] = []
   for (const b of await listDirs(root)) {
-    if (b === 'css') continue // 顶层公共样式目录，非品牌（避免每次播种打无效品牌警告）
-    const brandDir = path.join(root, b)
-    const brand = await loadBrand(brandDir)
-    if (brand) brands.push(brand)
+    if (b === 'css') continue // 顶层公共样式目录，非品牌
+    brands.push(await loadBrand(path.join(root, b), b))
   }
   return { root, topCss, brands }
 }
