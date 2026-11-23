@@ -10,6 +10,8 @@ const alias: { find: RegExp; replacement: string }[] = [
   { find: /^@sshk\/upload-core\/types$/, replacement: join(ROOT, 'packages/upload-core/src/upload-types.ts') },
   // 包内聚子入口（B10 · P5-3/C-4）：ShareDialog/share-ticket 渲染子入口（与 electron.vite.config 同口径）
   { find: /^@sshk\/share-core\/ui$/, replacement: join(ROOT, 'packages/share-core/src/ui/index.ts') },
+  // 包内聚子入口（plans/13 · B0）：表单设计器/递归渲染器组件子入口（与 electron.vite.config 同口径）
+  { find: /^@sshk\/form-schema\/ui$/, replacement: join(ROOT, 'packages/form-schema/src/ui/index.ts') },
   // 包内聚子入口（D49/D56）：骨架生成单一事实源（与 electron.vite.config 同口径）
   { find: /^@sshk\/shared\/tool-skeleton$/, replacement: join(ROOT, 'packages/shared/src/tool-skeleton/index.ts') },
   // D56（2026-11-23）：app 内部跨目录别名（与 electron.vite.config 同口径）

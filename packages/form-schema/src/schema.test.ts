@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyDefaults, normalizeFields, parseYamlObject, retypeField, validateModel, validateSchema } from './sample-schema'
+import { applyDefaults, normalizeFields, parseYamlObject, retypeField, validateModel, validateSchema } from './index'
 
 describe('normalizeFields', () => {
   it('丢弃缺 key / 未知 type 的项，归一化 options', () => {

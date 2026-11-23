@@ -1,0 +1,30 @@
+{
+  "name": "@sshk/form-schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "sshk-tools 表单 schema 唯一真相源：字段类型/控件目录/校验/归一化/YAML 解析/复合控件展开纯函数 + 设计器与递归渲染器组件（plans/13）",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "@sshk/rich-text": "workspace:*",
+    "@sshk/ui-kit": "workspace:*",
+    "element-plus": "latest",
+    "js-yaml": "latest",
+    "vue": "latest",
+    "vue-draggable-plus": "latest"
+  },
+  "devDependencies": {
+    "typescript": "6",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
