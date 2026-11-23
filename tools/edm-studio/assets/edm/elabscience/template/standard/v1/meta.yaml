@@ -1,29 +1,31 @@
 version: 1
 changelog: 改为响应式内联结构
 fields:
-  - key: title
+  - type: input
+    key: title
     label: 主标题
-    type: input
     required: true
     placeholder: 请输入邮件主标题
     maxLength: 30
-  - key: subtitle
+  - type: input
+    key: subtitle
     label: 副标题
-    type: input
-    maxLength: 40
+    required: false
     placeholder: 选填
-  - key: intro
+    maxLength: 40
+  - type: textarea
+    key: intro
     label: 引导文案
-    type: textarea
+    required: false
     placeholder: 一段简短的引导文字
     maxLength: 120
-  - key: body
+  - type: richtext
+    key: body
     label: 正文
-    type: richtext
-    placeholder: 可加粗 / 列表 / 链接
-  - key: theme
+    required: false
+  - type: radio
+    key: theme
     label: 主题色
-    type: radio
     required: true
     options:
       - label: 科技蓝
@@ -32,9 +34,10 @@ fields:
         value: green
       - label: 暖橙
         value: orange
-  - key: channels
+  - type: checkbox
+    key: channels
     label: 投放渠道
-    type: checkbox
+    required: false
     options:
       - label: 微信公众号
         value: wechat
@@ -43,9 +46,10 @@ fields:
       - label: 官网
         value: web
     maxChecked: 2
-  - key: category
+  - type: select
+    key: category
     label: 内容分类
-    type: select
+    required: false
     options:
       - label: 新品发布
         value: new
@@ -53,9 +57,10 @@ fields:
         value: promo
       - label: 品牌活动
         value: event
-  - key: tags
+  - type: select-multi
+    key: tags
     label: 标签
-    type: select-multi
+    required: false
     options:
       - label: 科研
         value: research
@@ -64,30 +69,40 @@ fields:
       - label: 蛋白
         value: protein
     maxSelected: 3
-  - key: hero
+  - type: image
+    key: hero
     label: 头图
-    type: image
     required: true
-  - key: gallery
+  - type: image-list
+    key: gallery
     label: 图片墙
-    type: image-list
+    required: false
     max: 3
-  - key: products
+  - type: list
+    key: products
     label: 推荐产品
-    type: list
+    required: false
     minRows: 1
     maxRows: 5
     itemFields:
-      - key: name
+      - type: input
+        key: name
         label: 产品名
-        type: input
         required: true
-      - key: url
+      - type: input
+        key: url
         label: 链接
-        type: input
+        required: false
         pattern: ^https?://
-      - key: cover
+      - type: image
+        key: cover
         label: 产品图
-        type: image
+        required: false
+  - type: input
+    key: field_1
+    label: 新字段 12
+    required: false
 name: 新版v1
 code: v1
+
+

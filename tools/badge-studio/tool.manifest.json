@@ -54,6 +54,24 @@
   ],
   "configGroups": [
     {
+      "id": "config-poster",
+      "label": "海报",
+      "fields": [
+        {
+          "key": "commonHtmlDir",
+          "label": "常用 HTML 目录",
+          "type": "dir",
+          "hint": "留空则不启用"
+        },
+        {
+          "key": "posterDir",
+          "label": "海报产物目录",
+          "type": "dir",
+          "hint": "导出默认落盘目录；留空则每次手动选择"
+        }
+      ]
+    },
+    {
       "id": "config-badge",
       "label": "角标",
       "fields": [
@@ -270,24 +288,6 @@
           "label": "右下",
           "type": "textarea",
           "codeEditor": true
-        }
-      ]
-    },
-    {
-      "id": "config-poster",
-      "label": "海报",
-      "fields": [
-        {
-          "key": "commonHtmlDir",
-          "label": "常用 HTML 目录",
-          "type": "dir",
-          "hint": "留空则不启用"
-        },
-        {
-          "key": "posterDir",
-          "label": "海报产物目录",
-          "type": "dir",
-          "hint": "导出默认落盘目录；留空则每次手动选择"
         }
       ]
     }
