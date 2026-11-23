@@ -9,8 +9,8 @@
  *   未指定或指定无效时按「第一个有效菜单页」落点并 router.replace 规整 URL；
  * - 右内容区：应用设置 4 页真页面（P4-3 页化，pages/app-admin/settings/ 原位重写，自管页头与加载）；
  *   文件管理三页（P4-4）/模型管理三页（P4-5）/分享管理五页（P4-6）直引页面组件
- *   （useToolId 注入职责上收本壳：AppAdminPage 显式 provideToolId，文件管理子树内页面经
- *   useToolId() inject）；fileconfig / modelconfig 两个「工具设置」页走宿主 ToolSettingsPage
+ *   （useToolId 注入职责上收本壳：按激活页动态 provideToolId，子树内页面经 useToolId() inject）；
+ *   fileconfig / modelconfig / formconfig 三个「工具设置」页走宿主 ToolSettingsPage
  *   （P4-8c 起页内声明分组，键 app.modules.*，不再依赖工具 manifest——P4-8b 后清单已退役）；
  * - P4-8a 三基础模块渲染层已物理搬迁至本目录 files/models/share/ 子目录（原 tools 各包 renderer 目录）：
  *   壳组件 FileManagerPage/ModelConsolePage/ShareManagerPage 随 P4-8b 工具包退役删除，
@@ -21,6 +21,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import { provideToolId } from '@sshk/ui-kit'
 import type { ToolMenu } from '@sshk/shared'
+import { MODULE_IDS } from '@app/shared/module-ids'
 import { useSidebarNav } from '@renderer/composables/useSidebarNav'
 import SidebarMenu from '@renderer/components/SidebarMenu.vue'
 import ToolSettingsPage from '@renderer/SettingsPage.vue'
@@ -47,12 +48,10 @@ import { FILE_CONFIG_GROUPS, FORM_CONFIG_GROUPS, MODEL_CONFIG_GROUPS } from './m
 
 defineOptions({ name: 'AppAdminPage' })
 
+// 工具 id 注入（#129 铁律）：本壳承载四个模块共树，provide 不写死某个模块默认值（曾兜底
+// 'file-manager'，深层组件忘覆盖会静默挂错命名空间），而是按激活页动态映射（PAGE_MODULE page→组
+// + MODULE_BY_GROUP 组→模块 id，见下方 activePage 定义之后）；模块 id 单一来源 @app/shared module-ids。
 const emit = defineEmits<{ 'create-tool': [] }>()
-
-// 工具 id 注入上收本壳（P4-4，#129 铁律）：文件管理三页（FileExplorer/Contents/Profiles）经
-// useToolId() inject 读取（模块 id = file-manager，P4-8c 后仍为本模块命名空间）；壳内直引的
-// 其余模块页不用 useToolId（模型配置键固定前缀 app.modules.modelManager、分享页无注入需求）。
-provideToolId('file-manager')
 
 // ── 菜单树（总计划 §五.5 v1.3 定稿：下移基线 + 二/三轮规整；页面 id 即路由 page 段） ──
 // 需求（2026-11-22）：一级顺序 = 文件管理 → 模型管理 → 分享管理 → 应用设置（应用设置沉底）；
@@ -227,6 +226,17 @@ const activePage = computed<string>(() => {
   return MODULE_DEFAULT_PAGE[activeModule.value] ?? 'general'
 })
 
+// ── 工具 id 动态注入（#129 铁律，需在 activePage 之后）：整壳一个 provide 点，子树 useToolId()
+//    随激活页拿到所属模块 id；settings 组无注入需求返回 ''（与未注入语义一致）。
+//    模块页内不再需要各自的 provideToolId 覆盖（此前 FormsManagePage 的覆盖已随本口径删除）──
+const MODULE_BY_GROUP: Record<string, string> = {
+  files: MODULE_IDS.fileManager,
+  models: MODULE_IDS.modelManager,
+  share: MODULE_IDS.shareManager,
+  forms: MODULE_IDS.formManager,
+}
+provideToolId(() => MODULE_BY_GROUP[PAGE_MODULE[activePage.value] ?? ''] ?? '')
+
 // 落点规整（2026-11-22 需求）：/app 裸路径或指定无效（模块/页面段非法）时，按「第一个有效菜单页」
 // 解析并把 URL 规整为 /app/<module>/<page>（replace 不留历史）；指定有效时 URL 原样保留。
 // KeepAlive 缓存期守卫（2026-11-23 · 用户实测「返回没修好」根因）：本页失活不卸载（KeepAlive
@@ -340,7 +350,7 @@ function selectItem(pageId: string): void {
             <ToolSettingsPage
               v-if="activePage === 'fileconfig'"
               :key="'fileconfig'"
-              tool-id="file-manager"
+              :tool-id="MODULE_IDS.fileManager"
               :groups="FILE_CONFIG_GROUPS"
               key-base="app.modules.fileManager"
             />
@@ -355,7 +365,7 @@ function selectItem(pageId: string): void {
             <ToolSettingsPage
               v-else-if="activePage === 'modelconfig'"
               :key="'modelconfig'"
-              tool-id="model-manager"
+              :tool-id="MODULE_IDS.modelManager"
               :groups="MODEL_CONFIG_GROUPS"
               key-base="app.modules.modelManager"
             />
@@ -369,7 +379,7 @@ function selectItem(pageId: string): void {
             <ToolSettingsPage
               v-else-if="activePage === 'formconfig'"
               :key="'formconfig'"
-              tool-id="form-manager"
+              :tool-id="MODULE_IDS.formManager"
               :groups="FORM_CONFIG_GROUPS"
               key-base="app.modules.formManager"
             />

@@ -3,19 +3,11 @@
  * 页内引导（桌面壳「验证引导」）与本目录验证清单文档共用此数据，文档只留历史表格不再双维护。
  * 编号对齐：A/B/C/D/E 组 = EDM待收尾与验证清单 §五；F 组 = 遗留事项与收尾总账 ⏳ 项。
  * entry.target 口径（P8-4 · A7/CR-08 · CR-25④ 单一定义点）：纯工具引 `@sshk/shared` TOOL_IDS /
- * TEMPLATE_TOOL_ID；应用模块 id（P4-8 三基础模块并入应用本体）引本文件顶部 MODULE_IDS；
+ * TEMPLATE_TOOL_ID；应用模块 id（P4-8 三基础模块并入应用本体）引 ./module-ids 的 MODULE_IDS；
  * 'share' = 分享预览路由（非工具 id）与 settings 分组名保留字面量。禁再散写工具/模块 id 字面量。
  */
 import { TEMPLATE_TOOL_ID, TOOL_IDS } from '@sshk/shared'
-
-/** 应用内置模块 id（P4-8 · D53）：三基础模块并入应用本体后 verify-steps 的直达目标命名空间，
- *  VerifyGuidePage 映射到 /app/<module>/<page>；值须与 verify-structure §3a-2 KNOWN 白名单一致 */
-const MODULE_IDS = {
-  fileManager: 'file-manager',
-  modelManager: 'model-manager',
-  shareManager: 'share-manager',
-  formManager: 'form-manager',
-} as const
+import { MODULE_IDS } from './module-ids'
 
 export type VerifyGroup = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'S' | 'M' | 'T' | 'FM'
 

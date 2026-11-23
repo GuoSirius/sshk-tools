@@ -12,7 +12,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage, provideToolId, useToolId } from '@sshk/ui-kit'
+import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage, useToolId } from '@sshk/ui-kit'
 import { FieldSchemaDesigner, FormFieldRenderer } from '@sshk/form-schema/ui'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import { CodeEditor } from '@sshk/code-editor'
@@ -26,9 +26,8 @@ const controls = ref<ControlRecord[]>([])
 const loading = ref(false)
 const selected = ref<FormRecord[]>([])
 
-// 工具 id 注入（#129 铁律）：壳 AppAdminPage 统一 provide 'file-manager'（文件管理子树用），
-// 本页（表单设计模块 id = form-manager）就近覆盖 provide，子树 ImageField/useToolId 读到正确命名空间
-provideToolId('form-manager')
+// 工具 id（#129 铁律）：壳 AppAdminPage 按激活页动态 provideToolId（forms 组 → form-manager），
+// 本页 useToolId() 直接读取；模块 id 单一来源 @app/shared module-ids，页面不再各自 provide 覆盖
 const toolId = useToolId()
 /** 图片库桥接：表单 tab 富文本上传/图片库 + 图片字段 FilePicker 全走共享 FilePicker（与 EDM 同源） */
 const library = computed(() => createHostImageLibrary(toolId.value, host.upload, { includeLocalProfiles: true }))

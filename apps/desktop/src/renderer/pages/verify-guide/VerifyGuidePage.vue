@@ -18,6 +18,7 @@ import {
   type VerifyStep,
   type VerifyStepResult,
 } from '@app/shared/verify-steps'
+import { MODULE_IDS } from '@app/shared/module-ids'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
@@ -153,10 +154,10 @@ function settingsPageId(target: string): string {
  * 目标（目录无此工具），verify-steps 的 route 直达改推应用管理对应默认页；纯工具照旧走 /tool/<id>。
  */
 const APP_ADMIN_MODULE_ROUTES: Record<string, string> = {
-  'file-manager': '/app/files/files',
-  'model-manager': '/app/models/providers',
-  'share-manager': '/app/share/routes',
-  'form-manager': '/app/forms/forms',
+  [MODULE_IDS.fileManager]: '/app/files/files',
+  [MODULE_IDS.modelManager]: '/app/models/providers',
+  [MODULE_IDS.shareManager]: '/app/share/routes',
+  [MODULE_IDS.formManager]: '/app/forms/forms',
 }
 function goEntry(step: VerifyStep): void {
   if (!step.entry) return
