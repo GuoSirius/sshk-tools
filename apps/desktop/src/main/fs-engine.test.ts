@@ -45,12 +45,12 @@ const resolved = {
   channel: { id: 'p1', name: '测试通道', type: 'cloud', detail: '测试', root: '', hasSecret: true, writable: true } as FsChannelInfo & Record<string, unknown> as never,
 }
 
-function makeEngine(storeDir: string): FsTransferEngine {
+function makeEngine(storeDir: string, multipart?: Record<string, unknown>): FsTransferEngine {
   // getDriver 动态读 resolved.driver：单测在 beforeEach 建引擎、测试内再设驱动
   return new FsTransferEngine({
     getDriver: () => ({ driver: resolved.driver, channel: resolved.channel }),
     concurrencyOf: () => 3,
-    multipartSettings: () => ({ enabled: false, thresholdMb: 50, partSizeMb: 8, partsConcurrency: 3, requestTimeoutSec: 60 } as never),
+    multipartSettings: () => ({ enabled: false, thresholdMb: 50, partSizeMb: 8, partsConcurrency: 3, requestTimeoutSec: 60, ...multipart } as never),
     onEvent: () => { /* 单测不消费推送 */ },
     storeDir,
   })
@@ -169,6 +169,64 @@ describe('FsTransferEngine 状态机（P1-1 · conflict/pause/cancel 矩阵）',
     expect(st(id)).toBe('success')
     expect(existsSync(dest)).toBe(true)
     expect(readFileSync(dest, 'utf8')).toBe('abc')
+  })
+
+  /**
+   * 分片下载回归（Windows EPERM 根因）：临时文件必须以 r+/w+ 打开（可 truncate 且 write position 生效）。
+   * 旧实现用 'a+'：① Windows append 句柄 truncate 抛 EPERM → 大下载 0/19 片即失败；
+   * ② append 忽略 write position → 分片追加到末尾、内容错乱。此测试两者同时覆盖。
+   */
+  it('分片下载：临时文件可 truncate + 分片按偏移写入，内容完整（EPERM 回归）', async () => {
+    const size = 2 * 1024 * 1024 // 2MB，partSize=1MB → 2 片
+    const data = Buffer.alloc(size)
+    data.fill('A', 0, 1024 * 1024)
+    data.fill('B', 1024 * 1024, size)
+    const driver = makeFakeDriver({ remoteExists: true })
+    driver.stat = () => Promise.resolve({ exists: true, isDir: false, size })
+    driver.range = {
+      capabilities: () => Promise.resolve({ unit: 'bytes' as const, supportsRange: true }),
+      statForResume: () => Promise.resolve({ size, fingerprint: 'fp-test-1' }),
+      readRange: (_p, start, end) => Promise.resolve(data.subarray(start, end + 1)),
+    }
+    resolved.driver = driver
+    engine = makeEngine(dir, { enabled: true, thresholdMb: 0, partSizeMb: 1 })
+    const dest = join(dir, 'big.bin')
+    const id = engine.add([{ kind: 'download', profileId: 'p1', name: 'big.bin', remotePath: '/big.bin', destPath: dest }], () => resolved)[0]!
+    await vi_wait(() => ['success', 'failed'].includes(st(id)), 6000)
+    expect(st(id)).toBe('success')
+    expect(readFileSync(dest).equals(data)).toBe(true)
+    expect(existsSync(`${dest}.sshkpart`)).toBe(false)
+    expect(existsSync(`${dest}.sshkpart.json`)).toBe(false)
+  })
+
+  it('分片续传：预置部分区间元数据，仅补写缺失片且保留已有数据', async () => {
+    const size = 2 * 1024 * 1024
+    const data = Buffer.alloc(size)
+    data.fill('A', 0, 1024 * 1024)
+    data.fill('B', 1024 * 1024, size)
+    const driver = makeFakeDriver({ remoteExists: true })
+    driver.stat = () => Promise.resolve({ exists: true, isDir: false, size })
+    let readCalls = 0
+    driver.range = {
+      capabilities: () => Promise.resolve({ unit: 'bytes' as const, supportsRange: true }),
+      statForResume: () => Promise.resolve({ size, fingerprint: 'fp-test-2' }),
+      readRange: (_p, start, end) => {
+        readCalls += 1
+        return Promise.resolve(data.subarray(start, end + 1))
+      },
+    }
+    resolved.driver = driver
+    engine = makeEngine(dir, { enabled: true, thresholdMb: 0, partSizeMb: 1 })
+    const dest = join(dir, 'resume.bin')
+    const tmp = `${dest}.sshkpart`
+    // 预置第一片数据 + 元数据（模拟上次下载中断后续传）
+    writeFileSync(tmp, data.subarray(0, 1024 * 1024))
+    writeFileSync(`${tmp}.json`, JSON.stringify({ size, fingerprint: 'fp-test-2', partSize: 1024 * 1024, ranges: [{ start: 0, end: 1024 * 1024 - 1 }] }))
+    const id = engine.add([{ kind: 'download', profileId: 'p1', name: 'resume.bin', remotePath: '/resume.bin', destPath: dest }], () => resolved)[0]!
+    await vi_wait(() => ['success', 'failed'].includes(st(id)), 6000)
+    expect(st(id)).toBe('success')
+    expect(readCalls).toBe(1) // 只补写第二片
+    expect(readFileSync(dest).equals(data)).toBe(true)
   })
 })
 

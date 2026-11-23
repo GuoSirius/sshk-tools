@@ -802,9 +802,17 @@ export class FsTransferEngine {
     if (!meta) meta = { size: fp.size, fingerprint: fp.fingerprint, partSize: plan.partSize, ranges: [] }
     t.resumable = true
     t.partsTotal = plan.partsTotal
-    // 打开临时文件：不存在则建；长度钳到目标大小（完成前绝不碰正式目标）
+    // 打开临时文件：不存在则建(w+)、存在则读写续传(r+)，长度钳到目标大小（完成前绝不碰正式目标）。
+    // ⚠️ 禁用 'a+'（append）：① Windows 上 append 句柄 truncate 报 EPERM（实测复现，大下载必失败）；
+    // ② append 模式忽略 write 的 position 参数，分片会追加到末尾而非写入 chunk.start，断点续传整体失效。
     mkdirSync(dirname(destPath), { recursive: true })
-    const fh = await fsPromises.open(tmp, 'a+')
+    let fh: fsPromises.FileHandle
+    try {
+      fh = await fsPromises.open(tmp, 'r+')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      fh = await fsPromises.open(tmp, 'w+')
+    }
     try {
       const st0 = await fh.stat()
       if (st0.size !== fp.size) await fh.truncate(fp.size)
