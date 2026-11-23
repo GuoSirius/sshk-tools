@@ -276,8 +276,8 @@ function onPolish(f: FieldDef): void {
               添加图片{{ f.max ? `（${arrVal(f.key).length}/${f.max}）` : '' }}
             </el-button>
           </template>
-          <!-- 重复条目(list) / 重复块(repeater)：递归渲染行内字段，渲染行为一致、仅语义不同 -->
-          <template v-else-if="f.type === 'list' || f.type === 'repeater'">
+          <!-- 重复块(repeater)：递归渲染行内字段；历史 list 已统一为 repeater -->
+          <template v-else-if="f.type === 'repeater'">
             <FormHint v-if="!canNest(f) && (f.itemFields?.length ?? 0) > 0">嵌套层级已达上限（3 层）</FormHint>
             <div v-for="(row, i) in arrVal(f.key)" :key="i" class="list-row" :class="{ 'row-error': Object.keys(errors).some((k) => k.startsWith(`${f.key}.${i}.`)) }">
               <div class="list-row-head">

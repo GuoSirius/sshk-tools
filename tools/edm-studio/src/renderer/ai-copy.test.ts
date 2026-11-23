@@ -18,7 +18,7 @@ describe('buildSamplePrompt（D-Q2 schema → prompt）', () => {
       { key: 'title', label: '标题', type: 'input', required: true, placeholder: '30 字内' },
       { key: 'level', label: '等级', type: 'select', options: [{ label: '高', value: 'high' }, { label: '低', value: 'low' }] },
       {
-        key: 'items', label: '商品', type: 'list', maxRows: 3,
+        key: 'items', label: '商品', type: 'repeater', maxRows: 3,
         itemFields: [{ key: 'name', label: '名称', type: 'input' }],
       },
     ]
@@ -50,7 +50,7 @@ describe('coerceSample（按 schema 转型收紧）', () => {
     { key: 'tags', label: '标签', type: 'checkbox', options: [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }] },
     { key: 'imgs', label: '图', type: 'image-list', max: 2 },
     {
-      key: 'rows', label: '行', type: 'list', maxRows: 2,
+      key: 'rows', label: '行', type: 'repeater', maxRows: 2,
       itemFields: [{ key: 'name', label: '名称', type: 'input' }],
     },
   ]

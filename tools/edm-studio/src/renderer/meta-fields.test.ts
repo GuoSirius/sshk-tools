@@ -13,7 +13,7 @@ const sample: FieldDef[] = [
       { label: '活力绿', value: 'green' },
     ],
   },
-  { key: 'products', label: '产品', type: 'list', minRows: 1, itemFields: [{ key: 'name', label: '名', type: 'input', required: true }] },
+  { key: 'products', label: '产品', type: 'repeater', minRows: 1, itemFields: [{ key: 'name', label: '名', type: 'input', required: true }] },
 ]
 
 describe('fieldsBlock', () => {

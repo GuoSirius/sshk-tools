@@ -16,8 +16,9 @@ describe('normalizeFields', () => {
     expect(fields[0]!.maxLength).toBe(10)
   })
 
-  it('list 归一化 itemFields 并保留行数约束', () => {
+  it('list 归一化 itemFields 并保留行数约束；旧 list 类型统一为 repeater（2026-11-24 合并）', () => {
     const fields = normalizeFields([{ key: 'items', type: 'list', minRows: 1, maxRows: 3, itemFields: [{ key: 'name', type: 'input' }] }])
+    expect(fields[0]!.type).toBe('repeater')
     expect(fields[0]!.itemFields?.[0]!.key).toBe('name')
     expect(fields[0]!.maxRows).toBe(3)
   })
@@ -125,10 +126,10 @@ describe('validateModel', () => {
     expect(validateModel(fields, { rows: [{ name: 'A', url: 'https://x.com' }] })).toEqual({})
   })
 
-  it('list：行数约束 + 递归校验行内字段（错误键 <key>.<行>.<子键>）', () => {
+  it('repeater：行数约束 + 递归校验行内字段（错误键 <key>.<行>.<子键>）', () => {
     const fields = normalizeFields([
       {
-        key: 'items', label: '卡片', type: 'list', minRows: 2, maxRows: 3,
+        key: 'items', label: '卡片', type: 'repeater', minRows: 2, maxRows: 3,
         itemFields: [{ key: 'name', label: '名称', type: 'input', required: true }],
       },
     ])
@@ -150,8 +151,8 @@ describe('retypeField（切换类型清旧属性，体检 #3）', () => {
   })
 
   it('容器→原子丢弃 itemFields/columns，原子→table 保留 columns', () => {
-    const list = { key: 'k', label: '列表', type: 'list' as const, itemFields: [{ key: 'x', label: 'X', type: 'input' as const }], minRows: 1 }
-    expect(retypeField(list, 'input')).toEqual({ key: 'k', label: '列表', type: 'input' })
+    const legacyList = { key: 'k', label: '列表', type: 'repeater' as const, itemFields: [{ key: 'x', label: 'X', type: 'input' as const }], minRows: 1 }
+    expect(retypeField(legacyList, 'input')).toEqual({ key: 'k', label: '列表', type: 'input' })
     const table = { key: 't', label: '表', type: 'table' as const, columns: [{ key: 'c', label: '列', cellType: 'input' as const }] }
     expect(retypeField(table, 'repeater').columns).toBeUndefined()
     expect(retypeField(table, 'table').columns).toEqual(table.columns)
@@ -178,7 +179,7 @@ describe('validateSchema（设计器红字与保存层共用，体检 #5）', ()
     const fields: Parameters<typeof validateSchema>[0] = [
       { key: 'sel', label: '选择', type: 'select', options: [{ label: 'A', value: 'a' }, { label: 'B', value: 'a' }] },
       { key: 'box', label: '复选', type: 'checkbox', options: [] },
-      { key: 'list', label: '列表', type: 'list', minRows: 3, maxRows: 2, itemFields: [{ key: '', label: '空', type: 'input' }] },
+      { key: 'list', label: '列表', type: 'repeater', minRows: 3, maxRows: 2, itemFields: [{ key: '', label: '空', type: 'input' }] },
     ]
     const errors = validateSchema(fields)
     expect(errors['0.options']).toBe('选项值不能重复')

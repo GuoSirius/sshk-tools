@@ -9,17 +9,17 @@ export type FieldType =
   | 'input' | 'textarea' | 'richtext' | 'url' | 'number' | 'date' | 'color' | 'switch'
   | 'radio' | 'checkbox' | 'select' | 'select-multi'
   | 'image' | 'image-list'
-  | 'list' | 'repeater' | 'table'
+  | 'repeater' | 'table'
 
 export const FIELD_TYPES: ReadonlySet<string> = new Set<FieldType>([
   'input', 'textarea', 'richtext', 'url', 'number', 'date', 'color', 'switch',
   'radio', 'checkbox', 'select', 'select-multi', 'image', 'image-list',
-  'list', 'repeater', 'table',
+  'repeater', 'table',
 ])
 
 /** 容器控件：内部含子字段 itemFields，可递归组合原子控件（产品卡/图文卡/表格行）；
- *  历史别名 NESTED_TYPES 已并入本常量（knip duplicate-exports 消除，2026-11-23） */
-export const CONTAINER_TYPES: readonly FieldType[] = ['list', 'repeater', 'table']
+ *  历史 list 与 repeater 行为/数据/校验完全一致，2026-11-24 统一为 repeater（normalizeFields 兼容转换旧数据） */
+export const CONTAINER_TYPES: readonly FieldType[] = ['repeater', 'table']
 
 export interface FieldOption {
   label: string

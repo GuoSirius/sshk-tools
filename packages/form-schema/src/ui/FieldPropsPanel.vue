@@ -191,7 +191,7 @@ const type = (): FieldType => cf.value.type
       </template>
 
       <!-- list / repeater：嵌套子字段（由设计器递归渲染，经 slot 交回画布） -->
-      <el-form-item v-if="['list', 'repeater'].includes(type())" label="子字段">
+      <el-form-item v-if="type() === 'repeater'" label="子字段">
         <div class="nested">
           <slot name="nested" />
         </div>

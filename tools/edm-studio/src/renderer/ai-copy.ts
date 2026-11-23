@@ -110,7 +110,6 @@ export function coerceSample(fields: FieldDef[], data: Record<string, unknown>):
         out[f.key] = f.max ? list.slice(0, f.max) : list
         break
       }
-      case 'list':
       case 'repeater': {
         const rows = Array.isArray(raw) ? (raw as unknown[]) : []
         const coerced = rows

@@ -46,7 +46,9 @@ export function normalizeFields(raw: unknown): FieldDef[] {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const f = item as Record<string, unknown>
     const key = String(f.key ?? '').trim()
-    const type = String(f.type ?? '').trim()
+    const rawType = String(f.type ?? '').trim()
+    // 历史 list 与 repeater 行为/数据完全一致（2026-11-24 统一）：旧数据在此兼容转换为 repeater
+    const type = rawType === 'list' ? 'repeater' : rawType
     if (!key || !FIELD_TYPES.has(type)) continue
     const typed = type as FieldType
     // 按类型白名单收口：存量 yaml 里切类型残留的脏属性在此丢弃，不再随保存回写（体检 #3）
@@ -79,7 +81,7 @@ export function normalizeFields(raw: unknown): FieldDef[] {
   return out
 }
 
-const ARRAY_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['list', 'repeater', 'table', 'image-list', 'select-multi', 'checkbox'])
+const ARRAY_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['repeater', 'table', 'image-list', 'select-multi', 'checkbox'])
 
 /** 未声明值的字段补默认值：显式 default 优先；数组类控件兜底空数组 */
 export function applyDefaults(fields: FieldDef[], model: Record<string, unknown>): Record<string, unknown> {

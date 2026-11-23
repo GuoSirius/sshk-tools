@@ -75,7 +75,7 @@ const itemFields = ref<FieldDef[]>([])
 const tips = ref<{ label: string; key: string }>({ label: '', key: '' })
 const editing = computed(() => Boolean(editId.value))
 const viewing = ref(false)
-const ROOT_TYPE_OPTIONS: FieldType[] = ['list', 'repeater', 'table']
+const ROOT_TYPE_OPTIONS: FieldType[] = ['repeater', 'table']
 
 function openCreate(): void {
   editId.value = null

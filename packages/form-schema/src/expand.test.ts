@@ -27,7 +27,7 @@ describe('expandFields（复合控件引用展开）', () => {
 
   it('嵌套 itemFields 内的引用同样展开', () => {
     const fields = normalizeFields([{
-      key: 'page', label: '页面', type: 'list',
+      key: 'page', label: '页面', type: 'repeater',
       itemFields: [{ key: 'c', label: '联系人', type: 'repeater', controlKey: 'contact-group' }],
     }])
     const out = expandFields(fields, resolve)
@@ -86,7 +86,7 @@ describe('normalizeCompositeDepth（表单设计工具配置归一化）', () =>
 describe('collectControlKeys / compositeDepth', () => {
   it('收集存储树全部引用键（含嵌套，去重）', () => {
     const fields = [{
-      key: 'page', type: 'list', label: '页面',
+      key: 'page', type: 'repeater', label: '页面',
       itemFields: [
         { key: 'c1', type: 'repeater', label: 'A', controlKey: 'contact-group' },
         { key: 'c2', type: 'repeater', label: 'B', controlKey: 'contact-group' },

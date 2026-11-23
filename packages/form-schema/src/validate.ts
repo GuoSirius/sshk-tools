@@ -116,8 +116,7 @@ export function validateModel(fields: FieldDef[], model: Record<string, unknown>
         if (f.max && n > f.max) errors[f.key] = `${f.label}最多上传 ${f.max} 张`
         break
       }
-      // 容器通用校验：list / repeater / table 都是「对象数组」，行内错误键 <key>.<行>.<子键>
-      case 'list':
+      // 容器通用校验：repeater / table 都是「对象数组」，行内错误键 <key>.<行>.<子键>
       case 'repeater':
       case 'table': {
         const rows = asArray(v) as Record<string, unknown>[]
