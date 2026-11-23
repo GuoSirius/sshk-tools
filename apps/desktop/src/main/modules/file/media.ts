@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AppError, fsFormatSize, type FsReadMediaResult } from '@sshk/shared'
 import { fsBasename } from '@sshk/upload-core'
-import { beginMediaDownload, finishMediaDownload, updateMediaDownload } from '../../media-stream'
+import { beginMediaDownload, finishMediaDownload, updateMediaDownload } from './media-stream'
 import { logger } from '../../logger'
 import type { FsCore } from './runtime'
 

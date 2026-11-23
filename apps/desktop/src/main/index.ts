@@ -19,12 +19,12 @@ import {
   setPluginStatus,
   setupCatalog,
 } from './catalog'
-import { makeContentListResolver, makeContentResolver, startContentScheduler, stopContentScheduler } from './content'
+import { makeContentListResolver, makeContentResolver, startContentScheduler, stopContentScheduler } from './modules/file/content'
 import { compactDatabase } from './compact'
 import { registerDevTools } from './dev-tools'
 import { reloadManifestFile } from './discovery'
 import { migrateLegacyUserData, migrateLegacyVisionConfig, seedDefaultProviders } from './migrations'
-import { installLocalResHandler } from './local-res'
+import { installLocalResHandler } from './modules/file/local-res'
 import { killUtilityTools } from './plugins'
 import { logger } from './logger'
 import { purgeExpiredUsageOnStart } from './usage'
