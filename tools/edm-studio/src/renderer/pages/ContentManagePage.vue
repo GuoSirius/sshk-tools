@@ -130,16 +130,18 @@ const typeOptions = computed<string[]>(() => {
 const templatePolicyOptions = computed<{ value: string; label: string }[]>(() => {
   const out: { value: string; label: string }[] = []
   for (const [source, model] of [['system', treeDomain.sysModel.value], ['custom', treeDomain.cusModel.value]] as const) {
-    const prefix = source === 'system' ? 'sys' : 'cus'
     for (const brand of (model?.brands ?? []) as any[]) {
       const bCode = String(brand.code ?? '')
       for (const fam of (brand.templates ?? []) as any[]) {
         const fCode = String(fam.code ?? '')
         const fName = String(fam.meta?.name ?? fCode)
-        out.push({ value: `tpl_${prefix}_${bCode}_${fCode}`, label: `族 · ${bCode} / ${fName}` })
+        // ID 规则与播种一致：系统 tpl_sys_/tplv_sys_，自定义 cus_tpl_/cus_tplv_
+        const famId = source === 'system' ? `tpl_sys_${bCode}_${fCode}` : `cus_tpl_${bCode}_${fCode}`
+        out.push({ value: famId, label: `族 · ${bCode} / ${fName}` })
         for (const ver of (fam.versions ?? []) as any[]) {
           const dir = String(ver.dir ?? 'default')
-          out.push({ value: `tplv_${prefix}_${bCode}_${fCode}_${dir}`, label: `版本 · ${bCode} / ${fName} / ${ver.meta?.name || dir}` })
+          const verId = source === 'system' ? `tplv_sys_${bCode}_${fCode}_${dir}` : `cus_tplv_${bCode}_${fCode}_${dir}`
+          out.push({ value: verId, label: `版本 · ${bCode} / ${fName} / ${ver.meta?.name || dir}` })
         }
       }
     }

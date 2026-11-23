@@ -49,6 +49,15 @@ export interface ComposePreview {
   prefetchFamilyMetas(): Promise<void>
 }
 
+/** 模板族/版本播种 ID：统一品牌身份后双根同 code 属同品牌，policy 可配任一根 ID */
+function templateIds(brand: string, fam: string, dir: string): string[] {
+  const d = dir || 'default'
+  return [
+    `tpl_sys_${brand}_${fam}`, `tplv_sys_${brand}_${fam}_${d}`,
+    `cus_tpl_${brand}_${fam}`, `cus_tplv_${brand}_${fam}_${d}`,
+  ]
+}
+
 export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   const composeTemplate = ref('') // 片段预览：宿主模板（id = JSON selector）
   const composeSlots = ref<SlotDef[]>([])
@@ -125,8 +134,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
       const slots = (familyMetaCache.value[fam.data.path]?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key }))
       for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
         const dir = ver.data.versionDir ?? ''
-        const ids = [`tpl_sys_${brand}_${famCode}`, `tplv_sys_${brand}_${famCode}_${dir || 'default'}`]
-        if (!policyAllows(policy, ids)) continue
+        if (!policyAllows(policy, templateIds(brand, famCode, dir))) continue
         out.push({
           id: JSON.stringify({ brandCode: brand, kind: 'template', familyCode: famCode, versionDir: dir }),
           label: `${fam.label} / ${ver.label}`,
@@ -145,7 +153,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     const brand = node.data.brandCode ?? ''
     const famCode = node.data.familyCode ?? ''
     const dir = node.data.versionDir ?? ''
-    const tplIds = [`tpl_sys_${brand}_${famCode}`, `tplv_sys_${brand}_${famCode}_${dir || 'default'}`]
+    const tplIds = templateIds(brand, famCode, dir)
     const out: { id: string; label: string }[] = []
     const bNode = brandNodeOf(brand, node.data.source)
     const fragCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'fragment')

@@ -18,8 +18,9 @@ import type {
 import { loadEdmModel } from './edm-manifest.js'
 import { collectSystemCssContent } from '../core/system-css.js'
 import { mergeFragmentPolicy } from '../core/fragment-policy.js'
+import { unifiedBrandId } from './edm-brand-identity.js'
 
-const sysBrandId = (code: string): string => `brd_sys_${code}`
+const sysBrandId = unifiedBrandId
 const sysFragmentId = (brand: string, fam: string): string => `frg_sys_${brand}_${fam}`
 const sysFragmentVersionId = (brand: string, fam: string, dir: string): string =>
   `frgv_sys_${brand}_${fam}_${dir || 'default'}`
@@ -169,7 +170,6 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
  * - 行为与系统播种一致（css 就近链内联进 source.css）；
  * - 幂等 + 刷新：已存在实体按文件更新；文件已删的实体从 NeDB 清理；
  * - 邮件编辑器 / 生成逻辑零改动（沿用 origin 字段区分）。 */
-const cusBrandId = (code: string): string => `cus_brd_${code}`
 const cusFragmentId = (brand: string, fam: string): string => `cus_frg_${brand}_${fam}`
 const cusFragmentVersionId = (brand: string, fam: string, dir: string): string =>
   `cus_frgv_${brand}_${fam}_${dir || 'default'}`
@@ -191,14 +191,15 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
   }
 
   for (const b of model.brands) {
-    const brandId = cusBrandId(b.code)
+    const brandId = unifiedBrandId(b.code)
     want.brands.add(brandId)
     const existing = await repo.get<Brand>('brands', brandId)
     if (!existing) {
       await repo.insert<Brand>('brands', { _id: brandId, code: b.code, name: b.meta.name, origin: 'custom' })
       counts.brands++
     } else {
-      await repo.update<Brand>('brands', brandId, { code: b.code, name: b.meta.name, origin: 'custom' })
+      // 跨根同 code 品牌已由系统播种建立时只刷新名称，保留其 origin（否则清理逻辑会误删）
+      await repo.update<Brand>('brands', brandId, { code: b.code, name: b.meta.name })
     }
 
     for (const fam of b.fragments) {

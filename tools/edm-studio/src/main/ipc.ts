@@ -1,6 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { AppError } from '@sshk/shared'
 import { seedSystemContent, seedCustomContent } from './edm-seed.js'
+import { migrateBrandIdentity } from './edm-brand-identity.js'
 import { createEdmIpcContext, EDM_API_CHANNEL, type EdmIpcDeps, type Payload } from './ipc/context.js'
 import { registerBrandActions } from './ipc/brand.js'
 import { registerTemplateActions } from './ipc/template.js'
@@ -24,14 +25,23 @@ export type { EdmIpcDeps } from './ipc/context.js'
 export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
   const ctx = createEdmIpcContext(deps)
 
-  // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种；不阻塞注册）
-  seedSystemContent(ctx.repo, ctx.resolveEdmRoot()).catch((err: unknown) =>
-    console.warn('[edm] 系统内容播种失败：', err instanceof Error ? err.message : err),
-  )
-  // R24 自定义根薄索引：扫描 custom-edm 文件根 → 同步 NeDB origin=custom（文件为真相源，邮件编辑器零改动）
-  seedCustomContent(ctx.repo, ctx.resolveContentRoot('custom')).catch((err: unknown) =>
-    console.warn('[edm] 自定义内容索引失败：', err instanceof Error ? err.message : err),
-  )
+  // 启动顺序：旧品牌身份迁移 → 系统播种 → 自定义索引（串行避免双根同 code 品牌竞态）
+  void (async () => {
+    try {
+      const migrated = await migrateBrandIdentity(ctx.repo)
+      if (migrated.merged) console.info(`[edm] 品牌身份已统一：迁移 ${migrated.merged} 个旧品牌`)
+    } catch (err) {
+      console.warn('[edm] 品牌身份迁移失败：', err instanceof Error ? err.message : err)
+    }
+    try {
+      // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种）
+      await seedSystemContent(ctx.repo, ctx.resolveEdmRoot())
+      // R24 自定义根薄索引：扫描 custom-edm 文件根 → 同步 NeDB origin=custom（文件为真相源）
+      await seedCustomContent(ctx.repo, ctx.resolveContentRoot('custom'))
+    } catch (err) {
+      console.warn('[edm] 内容索引失败：', err instanceof Error ? err.message : err)
+    }
+  })()
 
   /** 各域 action 处理器集合（key 即白名单） */
   const handlers = new Map<string, (data: Payload) => Promise<unknown>>()

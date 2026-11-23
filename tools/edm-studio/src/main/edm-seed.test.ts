@@ -49,7 +49,7 @@ describe('R8 系统内容播种', () => {
     const srcBrand = model.brands.find((b) => b.code === 'elabscience')
     const srcFv = srcBrand?.fragments.find((f) => f.code === 'banner')?.versions.find((v) => v.dir === 'v1')
 
-    const brand = await repo.get<Brand>('brands', 'brd_sys_elabscience')
+    const brand = await repo.get<Brand>('brands', 'brd_elabscience')
     if (!brand) throw new Error('播种品牌缺失')
     expect(brand.origin).toBe('system')
     expect(brand.name).toBe(String(srcBrand?.meta.name ?? 'Elabscience'))
