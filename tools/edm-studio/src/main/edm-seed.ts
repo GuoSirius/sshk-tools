@@ -17,6 +17,7 @@ import type {
 } from '@sshk/repository'
 import { loadEdmModel } from './edm-manifest.js'
 import { collectSystemCssContent } from '../core/system-css.js'
+import { mergeFragmentPolicy } from '../core/fragment-policy.js'
 
 const sysBrandId = (code: string): string => `brd_sys_${code}`
 const sysFragmentId = (brand: string, fam: string): string => `frg_sys_${brand}_${fam}`
@@ -86,7 +87,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
       for (const v of fam.versions) {
         const fvId = sysFragmentVersionId(b.code, fam.code, v.dir)
         if (!(await repo.get<FragmentVersion>('fragmentVersions', fvId))) {
-          const policy = v.meta.policy ?? fam.meta.policy
+          const policy = mergeFragmentPolicy(fam.meta.policy, v.meta.policy)
           await repo.insert<FragmentVersion>('fragmentVersions', {
             _id: fvId,
             fragmentId: fragId,
@@ -217,7 +218,7 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
         const fvId = cusFragmentVersionId(b.code, fam.code, v.dir)
         want.fragmentVersions.add(fvId)
         const n = versionNumberOf(v.dir, v.meta.version)
-        const policy = v.meta.policy ?? fam.meta.policy
+        const policy = mergeFragmentPolicy(fam.meta.policy, v.meta.policy)
         const patch = {
           fragmentId: fragId, brandId, version: n, label: v.dir || 'default', type: fam.meta.type || 'product',
           source: {

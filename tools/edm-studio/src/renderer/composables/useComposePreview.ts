@@ -5,6 +5,7 @@ import type { PlacementItem, SlotDef } from '../compose-types'
 import { normalizeFields, type FieldDef } from '../sample-schema'
 import { parseYamlObject } from '../sample-schema'
 import { api } from '../tool-api'
+import { mergeFragmentPolicy, policyAllows, type FragmentPolicy } from '../../core/fragment-policy'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -13,8 +14,7 @@ import type { Source, TreeNode } from './useContentTree'
  * R22 布局配置收进弹框（预览页只留预览）；placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML）。
  */
 export interface SysSelector { brandCode: string; kind: string; familyCode: string; versionDir: string }
-export interface Policy { blacklist?: string[]; whitelist?: string[] }
-interface FamilyMetaLite { policy?: Policy; slots?: { key: string; type?: string }[]; fields?: unknown[] }
+interface FamilyMetaLite { policy?: FragmentPolicy; slots?: { key: string; type?: string }[]; fields?: unknown[] }
 
 export interface ComposePreviewDeps {
   selected: Ref<TreeNode | null>
@@ -49,20 +49,13 @@ export interface ComposePreview {
   prefetchFamilyMetas(): Promise<void>
 }
 
-/** D14 黑白名单（复刻 repository policyAllows）：匹配集合 = 模板族/版本播种 ID */
-function policyAllows(policy: Policy | undefined, ids: string[]): boolean {
-  if (!policy) return true
-  if ((policy.blacklist ?? []).some((x) => ids.includes(x))) return false
-  const wl = policy.whitelist ?? []
-  if (wl.length === 0) return true
-  return wl.some((x) => ids.includes(x))
-}
-
 export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   const composeTemplate = ref('') // 片段预览：宿主模板（id = JSON selector）
   const composeSlots = ref<SlotDef[]>([])
   const composePlacements = ref<PlacementItem[]>([])
   const familyMetaCache = ref<Record<string, FamilyMetaLite>>({})
+  /** 版本级 policy 缓存：key = <族路径>/<版本目录>，与族 policy 叠加后参与过滤 */
+  const versionPolicyCache = ref<Record<string, FragmentPolicy>>({})
   /* R22：布局配置收进弹框（预览页只留预览，避免 header 过多挤占 iframe） */
   const composeOpen = ref(false)
 
@@ -76,11 +69,22 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   /** 预读全部族 meta（policy / slots / fields），组合预览选项构造用（后台不阻塞 load） */
   async function prefetchFamilyMetas(): Promise<void> {
     const out: Record<string, FamilyMetaLite> = {}
+    const vpol: Record<string, FragmentPolicy> = {}
     const walk = async (nodes: TreeNode[]): Promise<void> => {
       for (const n of nodes) {
         if (n.kind === 'family' && n.data.metaPath) {
           try {
             out[n.data.path] = ((yaml.load(await deps.read(n.data.metaPath, n.data.source)) as Record<string, unknown>) ?? {}) as FamilyMetaLite
+            // 片段族下每个版本的 policy 也预读，供「族 + 版本」叠加过滤
+            if (n.data.cat === 'fragment') {
+              for (const ver of n.children ?? []) {
+                if (ver.kind !== 'version' || !ver.data.metaPath) continue
+                try {
+                  const vm = ((yaml.load(await deps.read(ver.data.metaPath, ver.data.source)) as Record<string, unknown>) ?? {}) as { policy?: FragmentPolicy }
+                  vpol[`${n.data.path}/${ver.data.versionDir || 'default'}`] = vm.policy ?? {}
+                } catch { /* 忽略单版本解析失败 */ }
+              }
+            }
           } catch { /* 忽略单族解析失败 */ }
         }
         if (n.children) await walk(n.children)
@@ -88,6 +92,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     }
     await walk(deps.tree.value)
     familyMetaCache.value = out
+    versionPolicyCache.value = vpol
   }
 
   /** R24：按 source 定位品牌节点（双顶层树，根不再恒为 tree.value[0]） */
@@ -111,7 +116,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     if (node?.kind !== 'version' || node.data.cat !== 'fragment') return []
     const brand = node.data.brandCode ?? ''
     const famPolicy = familyMetaCache.value[`${brand}/fragment/${node.data.familyCode}`]?.policy
-    const policy = (deps.metaRaw.value?.policy as Policy | undefined) ?? famPolicy
+    const policy = mergeFragmentPolicy(famPolicy, deps.metaRaw.value?.policy as FragmentPolicy | undefined)
     const out: { id: string; label: string; slots: SlotDef[] }[] = []
     const bNode = brandNodeOf(brand, node.data.source)
     const tplCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'template')
@@ -145,8 +150,11 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     const bNode = brandNodeOf(brand, node.data.source)
     const fragCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'fragment')
     for (const fam of fragCat?.children?.filter((n) => n.kind === 'family') ?? []) {
-      if (!policyAllows(familyMetaCache.value[fam.data.path]?.policy, tplIds)) continue
+      const famPolicy = familyMetaCache.value[fam.data.path]?.policy
       for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
+        const dir = ver.data.versionDir || 'default'
+        const policy = mergeFragmentPolicy(famPolicy, versionPolicyCache.value[`${fam.data.path}/${dir}`])
+        if (!policyAllows(policy, tplIds)) continue
         out.push({ id: JSON.stringify(versionSelector(ver)), label: `${fam.label} / ${ver.label}` })
       }
     }

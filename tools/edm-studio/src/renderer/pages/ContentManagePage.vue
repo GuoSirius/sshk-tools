@@ -126,6 +126,27 @@ const typeOptions = computed<string[]>(() => {
   return [...out].sort()
 })
 
+/** 黑白名单候选：双根全部模板族/版本 ID，下拉多选避免手输错误（#5/#6） */
+const templatePolicyOptions = computed<{ value: string; label: string }[]>(() => {
+  const out: { value: string; label: string }[] = []
+  for (const [source, model] of [['system', treeDomain.sysModel.value], ['custom', treeDomain.cusModel.value]] as const) {
+    const prefix = source === 'system' ? 'sys' : 'cus'
+    for (const brand of (model?.brands ?? []) as any[]) {
+      const bCode = String(brand.code ?? '')
+      for (const fam of (brand.templates ?? []) as any[]) {
+        const fCode = String(fam.code ?? '')
+        const fName = String(fam.meta?.name ?? fCode)
+        out.push({ value: `tpl_${prefix}_${bCode}_${fCode}`, label: `族 · ${bCode} / ${fName}` })
+        for (const ver of (fam.versions ?? []) as any[]) {
+          const dir = String(ver.dir ?? 'default')
+          out.push({ value: `tplv_${prefix}_${bCode}_${fCode}_${dir}`, label: `版本 · ${bCode} / ${fName} / ${ver.meta?.name || dir}` })
+        }
+      }
+    }
+  }
+  return out
+})
+
 /** 版本字段直接回显真实目录名：default / standard / v1 各自独立，避免都显示 v1 的歧义（#1） */
 const versionDirLabel = computed(() => {
   const n = selected.value
@@ -248,16 +269,26 @@ onUnmounted(() => {
                 <FaviconField v-model="form.favicon" :readonly="!canEdit" :inherit-hint="faviconHint" :inherited-value="faviconInherited" />
               </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
+              <el-form-item v-if="showForm.typeField" label="类型" required>
+                <el-select v-model="form.type" filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="选择或输入，如 header / product">
+                  <el-option v-for="t in typeOptions" :key="t" :value="t" :label="t" />
+                </el-select>
+                <div v-if="!form.type.trim()" class="meta-field-tip">类型必填（需与模板 slot 的 type 一致）</div>
+                <FormHint>片段按此类型匹配模板插槽；一个片段族单值，多选请建多个族</FormHint>
+              </el-form-item>
               <template v-if="showForm.policy">
-                <el-form-item label="类型" required>
-                  <el-select v-model="form.type" filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="选择或输入，如 header / product">
-                    <el-option v-for="t in typeOptions" :key="t" :value="t" :label="t" />
+                <el-form-item label="黑名单">
+                  <el-select v-model="form.policyB" multiple filterable clearable collapse-tags :disabled="!canEdit" placeholder="选择要排除的模板">
+                    <el-option v-for="o in templatePolicyOptions" :key="o.value" :value="o.value" :label="o.label" />
                   </el-select>
-                  <div v-if="!form.type.trim()" class="meta-field-tip">类型必填（需与模板 slot 的 type 一致）</div>
-                  <FormHint>片段按此类型匹配模板插槽；一个片段族单值，多选请建多个族</FormHint>
+                  <FormHint>命中的模板不可用；黑名单优先</FormHint>
                 </el-form-item>
-                <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
-                <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
+                <el-form-item label="白名单">
+                  <el-select v-model="form.policyW" multiple filterable clearable collapse-tags :disabled="!canEdit" placeholder="为空 = 全部模板可用">
+                    <el-option v-for="o in templatePolicyOptions" :key="o.value" :value="o.value" :label="o.label" />
+                  </el-select>
+                  <FormHint>非空只允许名单内；版本可追加允许族排除项</FormHint>
+                </el-form-item>
               </template>
               <el-form-item v-if="showForm.version" label="版本目录名">
                 <el-input :model-value="versionDirLabel" disabled />

@@ -5,6 +5,7 @@ import type { FieldDef } from '../sample-schema'
 import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from '../sample-schema'
 import { replaceFieldsInMeta, withMetaIdentity } from '../meta-fields'
 import { isCodeReadonly, META_CODE_MODE, resolveMetaCode, validateMetaIdentity } from '../../core/meta-contract'
+import { toStringList } from '../../core/fragment-policy'
 import { api } from '../tool-api'
 import { uploadInlineImages } from '../upload.js'
 import type { Source, TreeNode } from './useContentTree'
@@ -38,8 +39,8 @@ export interface NodeDetail {
   sampleMode: Ref<'form' | 'data' | 'design'>
   sampleSchema: Ref<FieldDef[]>
   sampleObj: Ref<Record<string, unknown>>
-  form: Ref<{ name: string; code: string; description: string; favicon: string; type: string; version: number; changelog: string; policyB: string; policyW: string }>
-  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; policy: boolean; version: boolean }>
+  form: Ref<{ name: string; code: string; description: string; favicon: string; type: string; version: number; changelog: string; policyB: string[]; policyW: string[] }>
+  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; typeField: boolean; policy: boolean; version: boolean }>
   /** favicon 继承提示（版本→族→类型→品牌） */
   faviconHint: ComputedRef<string>
   /** 当前节点真实目录名（code 镜像源） */
@@ -83,11 +84,6 @@ function safeParseYaml(text: string): unknown {
   }
 }
 
-/** 名单文本（顿号/逗号分隔）→ 数组（原文 syncFormToRaw 用） */
-function splitList(s: string | undefined): string[] {
-  return (s ?? '').split(/[,，、]+/).map((x) => x.trim()).filter(Boolean)
-}
-
 export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   const metaRaw = ref<Record<string, unknown> | null>(null)
   const metaMode = ref<'form' | 'data'>('form')
@@ -103,7 +99,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   const sampleObj = ref<Record<string, unknown>>({})
   const form = ref({
     name: '', code: '', description: '', favicon: '', type: '',
-    version: 1, changelog: '', policyB: '', policyW: '',
+    version: 1, changelog: '', policyB: [] as string[], policyW: [] as string[],
   })
 
   const showForm = computed(() => {
@@ -115,7 +111,9 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       codeReadonly: isCodeReadonly(META_CODE_MODE),
       // 片段侧（族/版本）不维护图标；仅品牌、类型与模板族/版本显示
       favicon: k === 'brand' || k === 'category' || ((k === 'family' || k === 'version') && deps.selected.value?.data.cat === 'template'),
-      policy: k === 'family' && deps.selected.value?.data.cat === 'fragment',
+      // 类型仅族可配；黑白名单族与版本都可配（版本在族结果上做增量修正）
+      typeField: k === 'family' && deps.selected.value?.data.cat === 'fragment',
+      policy: (k === 'family' || k === 'version') && deps.selected.value?.data.cat === 'fragment',
       version: k === 'version',
     }
   })
@@ -149,7 +147,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   }
 
   function fillForm(raw: Record<string, unknown>, node: TreeNode | null): void {
-    const policy = (raw.policy ?? {}) as { blacklist?: string[]; whitelist?: string[] }
+    const policy = (raw.policy ?? {}) as { blacklist?: unknown; whitelist?: unknown }
     form.value = {
       name: String(raw.name ?? ''),
       code: String(raw.code ?? ''),
@@ -159,8 +157,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       // 版本号只读派生：取目录名 vN，不读 meta.yaml 手填值（避免 v1 目录写 version:3 造成显示/最新判定混乱）
       version: node && node.kind === 'version' ? versionOfDirName(dirNameOf(node)) : Number(raw.version ?? 1),
       changelog: String(raw.changelog ?? ''),
-      policyB: (policy.blacklist ?? []).join('、'),
-      policyW: (policy.whitelist ?? []).join('、'),
+      policyB: toStringList(policy.blacklist),
+      policyW: toStringList(policy.whitelist),
     }
   }
 
@@ -251,10 +249,8 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       if (s.favicon) patch.favicon = form.value.favicon.trim() || undefined
       patch.description = form.value.description.trim() || undefined
     }
-    if (s.policy) {
-      patch.type = form.value.type.trim() || undefined
-      patch.policy = { blacklist: splitList(form.value.policyB), whitelist: splitList(form.value.policyW) }
-    }
+    if (s.typeField) patch.type = form.value.type.trim() || undefined
+    if (s.policy) patch.policy = { blacklist: [...form.value.policyB], whitelist: [...form.value.policyW] }
     if (s.version) {
       // 版本号恒取目录名派生值：meta.yaml 里手填的 version 不会写回，避免与 vN 目录漂移
       patch.version = node ? versionOfDirName(dirNameOf(node)) : form.value.version
