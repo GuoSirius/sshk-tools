@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
 import type { FieldDef } from '../sample-schema'
-import { applyDefaults, normalizeFields, parseYamlObject, validateModel } from '../sample-schema'
+import { applyDefaults, normalizeFields, parseYamlObject, validateModel, validateSchema } from '../sample-schema'
 import { replaceFieldsInMeta, withMetaIdentity } from '../meta-fields'
 import { isCodeReadonly, META_CODE_MODE, resolveMetaCode, validateMetaIdentity } from '../../core/meta-contract'
 import { foreignPolicyIds, toStringList } from '../../core/fragment-policy'
@@ -407,6 +407,15 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     if (fields.length !== sampleSchema.value.length) {
       ElMessage.warning(`已忽略 ${sampleSchema.value.length - fields.length} 个非法字段（缺 key 或未知类型）`)
       sampleSchema.value = fields
+    }
+    // 保存层第二层校验（体检 #5）：与设计器红字同源，schema 非法直接拦下、不发写盘 IPC。
+    // 用 fields 下标定位错误（设计器选中项按 uid 映射，这里仅给序号提示）。
+    const errors = validateSchema(fields)
+    const first = Object.entries(errors)[0]
+    if (first) {
+      const idx = Number(first[0].split('.')[0])
+      ElMessage.error(`第 ${idx + 1} 个字段定义有误：${first[1]}，请修正后再保存`)
+      return
     }
     try {
       const raw = metaText.value || (await deps.read(node.data.metaPath, node.data.source))

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { validateModel, type FieldDef } from '../sample-schema'
+import { CONTAINER_TYPES, validateModel, type FieldDef } from '../sample-schema'
 import { RichTextEditor, type RichTextUploadHook } from '@sshk/rich-text'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, useToolId } from '@sshk/ui-kit'
@@ -54,6 +54,24 @@ function set(key: string, val: unknown): void {
 function strVal(key: string): string {
   const v = props.modelValue[key]
   return v == null || Array.isArray(v) || typeof v === 'object' ? '' : String(v)
+}
+function boolVal(key: string): boolean {
+  return props.modelValue[key] === true
+}
+function numVal(key: string): number | undefined {
+  const v = props.modelValue[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+/** table 单元格：行对象某列的值 → 字符串 */
+function cellVal(row: Record<string, unknown>, colKey: string): string {
+  const v = row?.[colKey]
+  return v == null || typeof v === 'object' ? '' : String(v)
+}
+function cellErr(f: FieldDef, i: number, colKey: string): string | undefined {
+  return errors.value[`${f.key}.${i}.${colKey}`]
+}
+function isContainer(f: FieldDef): boolean {
+  return CONTAINER_TYPES.includes(f.type)
 }
 function arrVal(key: string): unknown[] {
   const v = props.modelValue[key]
@@ -201,6 +219,50 @@ function acceptPolish(): void {
             :disabled="readonly"
             @update:model-value="(v: string) => set(f.key, v)"
           />
+          <!-- 链接 URL -->
+          <el-input clearable
+            v-else-if="f.type === 'url'"
+            :model-value="strVal(f.key)"
+            :placeholder="f.placeholder"
+            :disabled="readonly"
+            @update:model-value="(v: string) => set(f.key, v)"
+          />
+          <!-- 数字 -->
+          <el-input-number
+            v-else-if="f.type === 'number'"
+            :model-value="numVal(f.key)"
+            :min="f.min"
+            :max="f.max"
+            :disabled="readonly"
+            controls-position="right"
+            style="width: 100%"
+            @update:model-value="(v: number | undefined) => set(f.key, v)"
+          />
+          <!-- 日期 -->
+          <el-date-picker
+            v-else-if="f.type === 'date'"
+            :model-value="strVal(f.key) || undefined"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :placeholder="f.placeholder ?? '选择日期'"
+            :disabled="readonly"
+            style="width: 100%"
+            @update:model-value="(v: unknown) => set(f.key, v)"
+          />
+          <!-- 颜色 -->
+          <el-color-picker
+            v-else-if="f.type === 'color'"
+            :model-value="strVal(f.key) || undefined"
+            :disabled="readonly"
+            @update:model-value="(v: string | null) => set(f.key, v ?? '')"
+          />
+          <!-- 开关 -->
+          <el-switch
+            v-else-if="f.type === 'switch'"
+            :model-value="boolVal(f.key)"
+            :disabled="readonly"
+            @update:model-value="(v: boolean) => set(f.key, v)"
+          />
           <el-input
             v-else-if="f.type === 'textarea'"
             :model-value="strVal(f.key)"
@@ -210,20 +272,21 @@ function acceptPolish(): void {
             :disabled="readonly"
             @update:model-value="(v: string) => set(f.key, v)"
           />
-          <RichTextEditor
-            v-else-if="f.type === 'richtext'"
-            :model-value="strVal(f.key)"
-            :readonly="readonly"
-            :on-upload-image="uploader"
-            :image-library="library"
-            :state-key="`edm:${f.key}`"
-            @update:model-value="(v: string) => set(f.key, v)"
-          />
-          <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
-          <div v-if="f.type === 'richtext' && !readonly" class="ai-polish-row">
-            <el-button size="small" text type="primary" :loading="aiLoading" @click="aiPolish(f)">AI 润色</el-button>
-            <FormHint inline>保持标签结构与链接不变，仅改写文字；预览确认后才写回</FormHint>
-          </div>
+          <template v-else-if="f.type === 'richtext'">
+            <RichTextEditor
+              :model-value="strVal(f.key)"
+              :readonly="readonly"
+              :on-upload-image="uploader"
+              :image-library="library"
+              :state-key="`edm:${f.key}`"
+              @update:model-value="(v: string) => set(f.key, v)"
+            />
+            <!-- D-Q2 富文本润色：字段下方轻量入口（只改文字，diff 预览后写回） -->
+            <div v-if="!readonly" class="ai-polish-row">
+              <el-button size="small" text type="primary" :loading="aiLoading" @click="aiPolish(f)">AI 润色</el-button>
+              <FormHint inline>保持标签结构与链接不变，仅改写文字；预览确认后才写回</FormHint>
+            </div>
+          </template>
           <!-- 单选 -->
           <el-radio-group
             v-else-if="f.type === 'radio'"
@@ -283,8 +346,8 @@ function acceptPolish(): void {
               添加图片{{ f.max ? `（${arrVal(f.key).length}/${f.max}）` : '' }}
             </el-button>
           </template>
-          <!-- 动态列表（递归渲染行内字段） -->
-          <template v-else-if="f.type === 'list'">
+          <!-- 动态列表 / 重复项（递归渲染行内字段，用简单控件组合出产品卡/图文卡） -->
+          <template v-else-if="f.type === 'list' || f.type === 'repeater'">
             <FormHint v-if="!canNest(f) && (f.itemFields?.length ?? 0) > 0">嵌套层级已达上限（3 层）</FormHint>
             <div v-for="(row, i) in arrVal(f.key)" :key="i" class="list-row" :class="{ 'row-error': Object.keys(errors).some((k) => k.startsWith(`${f.key}.${i}.`)) }">
               <div class="list-row-head">
@@ -310,8 +373,45 @@ function acceptPolish(): void {
               添加行{{ f.maxRows ? `（${arrVal(f.key).length}/${f.maxRows}）` : '' }}
             </el-button>
           </template>
-          <div v-if="strErr(f.key) && f.type !== 'list'" class="error-text">{{ strErr(f.key) }}</div>
-          <div v-if="rowErr(f) && f.type === 'list'" class="error-text">{{ rowErr(f) }}</div>
+          <!-- 数据表格（列定义 columns，第一版平铺，单元格类型 input/url/richtext） -->
+          <template v-else-if="f.type === 'table'">
+            <div v-for="(row, i) in arrVal(f.key)" :key="i" class="list-row table-row" :class="{ 'row-error': Object.keys(errors).some((k) => k.startsWith(`${f.key}.${i}.`)) }">
+              <div class="list-row-head">
+                <span>第 {{ i + 1 }} 行</span>
+                <el-button size="small" type="danger" text :disabled="readonly" @click="removeRow(f.key, i)">删除行</el-button>
+              </div>
+              <div v-for="c in f.columns ?? []" :key="c.key" class="table-cell">
+                <div class="table-cell-label">{{ c.label }}<code>{{ c.key }}</code></div>
+                <RichTextEditor
+                  v-if="c.cellType === 'richtext'"
+                  :model-value="cellVal((row as Record<string, unknown>) ?? {}, c.key)"
+                  :readonly="readonly"
+                  :on-upload-image="uploader"
+                  :image-library="library"
+                  :state-key="`edm:${f.key}:${i}:${c.key}`"
+                  @update:model-value="(v: string) => updateRow(f.key, i, { ...((row as Record<string, unknown>) ?? {}), [c.key]: v })"
+                />
+                <el-input v-else clearable
+                  :model-value="cellVal((row as Record<string, unknown>) ?? {}, c.key)"
+                  :placeholder="c.cellType === 'url' ? '链接地址' : ''"
+                  :disabled="readonly"
+                  @update:model-value="(v: string) => updateRow(f.key, i, { ...((row as Record<string, unknown>) ?? {}), [c.key]: v })"
+                />
+                <div v-if="cellErr(f, i, c.key)" class="error-text">{{ cellErr(f, i, c.key) }}</div>
+              </div>
+            </div>
+            <el-button
+              size="small"
+              type="primary"
+              plain
+              :disabled="readonly || (!!f.maxRows && arrVal(f.key).length >= f.maxRows)"
+              @click="addRow(f)"
+            >
+              添加行{{ f.maxRows ? `（${arrVal(f.key).length}/${f.maxRows}）` : '' }}
+            </el-button>
+          </template>
+          <div v-if="strErr(f.key) && !isContainer(f)" class="error-text">{{ strErr(f.key) }}</div>
+          <div v-if="rowErr(f) && isContainer(f)" class="error-text">{{ rowErr(f) }}</div>
         </div>
       </div>
     </template>
@@ -380,6 +480,10 @@ function acceptPolish(): void {
 .list-row { border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 6px; padding: 8px 10px; }
 .list-row.row-error { border-color: var(--el-color-danger); }
 .list-row-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: .7; padding-bottom: 6px; }
+.table-row { display: flex; flex-direction: column; gap: 8px; }
+.table-cell { display: flex; flex-direction: column; gap: 4px; }
+.table-cell-label { font-size: 12px; opacity: .7; display: flex; gap: 6px; align-items: center; }
+.table-cell-label code { font-size: 11px; opacity: .6; }
 .error-text { font-size: 12px; color: var(--el-color-danger); }
 
 /* D-Q2 AI 文案助手 */

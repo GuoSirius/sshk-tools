@@ -71,6 +71,49 @@ describe('coerceSample（按 schema 转型收紧）', () => {
       rows: [{ name: 'n1' }, { name: 'n2' }],
     })
   })
+
+  it('新原子类型：url/number/date/color/switch 按类型收紧', () => {
+    const f: FieldDef[] = [
+      { key: 'link', label: '链接', type: 'url' },
+      { key: 'qty', label: '数量', type: 'number' },
+      { key: 'date', label: '日期', type: 'date' },
+      { key: 'color', label: '颜色', type: 'color' },
+      { key: 'on', label: '开关', type: 'switch' },
+    ]
+    const out = coerceSample(f, {
+      link: 'https://x.com', qty: '12', date: '2026-01-02', color: '#ff0000', on: 'true',
+    })
+    expect(out).toEqual({
+      link: 'https://x.com', qty: 12, date: '2026-01-02', color: '#ff0000', on: true,
+    })
+    // 非法值回落：日期/颜色不合规回退、数字非数回退 0、开关非 true 回退 false
+    const bad = coerceSample(f, { date: '01/02/2026', color: 'red', qty: 'abc', on: 'yes' })
+    expect(bad).toEqual({ link: '', qty: 0, date: '', color: '#409EFF', on: false })
+  })
+
+  it('新容器类型：repeater 按 itemFields 递归、table 按 columns 平铺', () => {
+    const f: FieldDef[] = [
+      {
+        key: 'products', label: '产品', type: 'repeater', maxRows: 2,
+        itemFields: [{ key: 'name', label: '名称', type: 'input' }, { key: 'link', label: '链接', type: 'url' }],
+      },
+      {
+        key: 'matrix', label: '对比表', type: 'table', maxRows: 1,
+        columns: [{ key: 'name', label: '名称', cellType: 'input' }, { key: 'url', label: '链接', cellType: 'url' }],
+      },
+    ]
+    const out = coerceSample(f, {
+      products: [{ name: '抗体', link: 'https://x.com', junk: 1 }, { name: '蛋白' }, { name: '第三行' }],
+      matrix: [{ name: 'A', url: 'https://y.com', junk: 2 }],
+    })
+    expect(out).toEqual({
+      products: [
+        { name: '抗体', link: 'https://x.com' },
+        { name: '蛋白', link: '' },
+      ],
+      matrix: [{ name: 'A', url: 'https://y.com' }],
+    })
+  })
 })
 
 describe('generateSample（端到端注入 chat）', () => {

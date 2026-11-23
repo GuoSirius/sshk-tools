@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Plus, Rank } from '@element-plus/icons-vue'
-import { type FieldDef, type FieldType } from '../sample-schema'
+import {
+  CONTAINER_TYPES, FIELD_TYPE_LABEL,
+  retypeField, validateSchema,
+  type FieldDef, type FieldType, type TableColumn,
+} from '../sample-schema'
 
 /**
  * 字段设计器（R15 增强）：可视化逐项新增 / 编辑 meta.yaml 的 fields schema，
@@ -15,16 +20,12 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: FieldDef[]): void }>()
 
-const TYPES: FieldType[] = [
-  'input', 'textarea', 'richtext', 'radio', 'checkbox',
-  'select', 'select-multi', 'image', 'image-list', 'list',
-]
-const LABEL: Record<FieldType, string> = {
-  input: '单行文本', textarea: '多行文本', richtext: '富文本',
-  radio: '单选', checkbox: '多选', select: '下拉单选', 'select-multi': '下拉多选',
-  image: '单图', 'image-list': '多图', list: '动态列表',
-}
+/** 类型清单/标签统一取 sample-schema 唯一真相源，新增类型只改一处（体检 #21） */
+const TYPES = Object.keys(FIELD_TYPE_LABEL) as FieldType[]
+const LABEL = FIELD_TYPE_LABEL
 const CHOICE: FieldType[] = ['radio', 'checkbox', 'select', 'select-multi']
+/** 需要「占位提示」的类型白名单（其余类型显示该属性无意义） */
+const PLACEHOLDER_TYPES: FieldType[] = ['input', 'textarea', 'url', 'number', 'date', 'select', 'select-multi']
 
 function typeLabel(f: FieldDef | undefined): string {
   return f ? LABEL[f.type] : ''
@@ -36,25 +37,63 @@ function deepClone<T>(v: T): T {
 }
 
 const fields = ref<FieldDef[]>(deepClone(props.modelValue ?? []))
-const selected = ref<number>(-1)
+/** 稳定 uid（与业务 key 解耦）：key 可改、可拖拽，选中态不串行错位（体检 #6） */
+const uid = ((): (() => number) => {
+  let n = 0
+  return () => ++n
+})()
+const rowUid = ref<number[]>(fields.value.map(() => uid()))
+/** 单调递增计数器：删中间字段后新增不再生成重复 key（体检 #1） */
+let keySeq = ((): number => {
+  let max = 0
+  for (const f of fields.value) {
+    const m = /^field_(\d+)$/.exec(f.key)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return max
+})()
+const selectedUid = ref<number | null>(rowUid.value[0] ?? null)
+
+// 父级外部重置（如 saveFields 丢弃非法字段后回写）时同步内部副本，避免脏字段"复活"（体检 #4）
+watch(() => props.modelValue, (v) => {
+  fields.value = deepClone(v ?? [])
+  rowUid.value = fields.value.map(() => uid())
+  selectedUid.value = rowUid.value[0] ?? null
+})
 
 function emitChange(): void {
+  refreshErrors()
   emit('update:modelValue', deepClone(fields.value))
 }
 
 function addField(): void {
   if (props.readonly) return
-  const n = fields.value.length + 1
+  const n = ++keySeq
   fields.value.push({ key: `field_${n}`, label: `新字段 ${n}`, type: 'input' })
-  selected.value = fields.value.length - 1
+  rowUid.value.push(uid())
+  selectedUid.value = rowUid.value[rowUid.value.length - 1]!
   emitChange()
 }
-function removeField(i: number): void {
+
+/** 删除字段：危险操作二次确认（禁遮罩/禁 ESC，用户铁律） */
+async function removeField(i: number): Promise<void> {
   if (props.readonly) return
+  const f = fields.value[i]
+  if (!f) return
+  try {
+    await ElMessageBox.confirm(`确认删除字段「${f.label || f.key}」？此操作不可撤销。`, '删除字段', {
+      type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消',
+      closeOnClickModal: false, closeOnPressEscape: false,
+    })
+  } catch {
+    return
+  }
   fields.value.splice(i, 1)
-  if (selected.value >= fields.value.length) selected.value = fields.value.length - 1
+  const [gone] = rowUid.value.splice(i, 1)
+  if (selectedUid.value === gone) selectedUid.value = rowUid.value[Math.min(i, rowUid.value.length - 1)] ?? null
   emitChange()
 }
+
 function patchField(i: number, patch: Partial<FieldDef>): void {
   if (props.readonly) return
   const cur = fields.value[i]
@@ -63,11 +102,22 @@ function patchField(i: number, patch: Partial<FieldDef>): void {
   emitChange()
 }
 function onTypeChange(i: number, t: FieldType): void {
-  const patch: Partial<FieldDef> = { type: t }
-  if (!CHOICE.includes(t)) patch.options = undefined
-  if (t !== 'list') patch.itemFields = undefined
-  patchField(i, patch)
+  if (props.readonly) return
+  const cur = fields.value[i]
+  if (!cur) return
+  fields.value[i] = retypeField(cur, t) // 按类型白名单重建，旧属性不残留（体检 #3）
+  emitChange()
 }
+/** 拖拽结束：SortableJS 已重排 fields，uid 数组按相同 oldIndex→newIndex 移动，选中态不错位（体检 #6） */
+function onDragEnd(evt: { oldIndex?: number | null; newIndex?: number | null }): void {
+  const { oldIndex, newIndex } = evt
+  if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
+    const [moved] = rowUid.value.splice(oldIndex, 1)
+    if (moved != null) rowUid.value.splice(newIndex, 0, moved)
+  }
+  emitChange()
+}
+
 function setItemFields(i: number, arr: FieldDef[]): void {
   if (props.readonly) return
   const cur = fields.value[i]
@@ -76,35 +126,70 @@ function setItemFields(i: number, arr: FieldDef[]): void {
   emitChange()
 }
 
+function nextOptionValue(i: number): string {
+  const used = new Set((fields.value[i]?.options ?? []).map((o) => o.value))
+  let n = (fields.value[i]?.options ?? []).length + 1
+  while (used.has(`opt${n}`)) n++
+  return `opt${n}`
+}
 function addOption(i: number): void {
-  const f = fields.value[i]
-  if (!f) return
-  const opts = [...(f.options ?? [])]
-  opts.push({ label: `选项${opts.length + 1}`, value: `opt${opts.length + 1}` })
-  patchField(i, { options: opts })
+  if (props.readonly) return
+  const v = nextOptionValue(i)
+  patchField(i, { options: [...(fields.value[i]?.options ?? []), { label: `选项${v}`, value: v }] })
 }
 function updateOption(i: number, oi: number, patch: { label?: string; value?: string }): void {
-  const f = fields.value[i]
-  if (!f) return
-  const opts = (f.options ?? []).map((o, k) => (k === oi ? { ...o, ...patch } : o))
+  if (props.readonly) return
+  const opts = (fields.value[i]?.options ?? []).map((o, k) => (k === oi ? { ...o, ...patch } : o))
   patchField(i, { options: opts })
 }
 function removeOption(i: number, oi: number): void {
-  const f = fields.value[i]
-  if (!f) return
-  patchField(i, { options: (f.options ?? []).filter((_, k) => k !== oi) })
+  if (props.readonly) return
+  patchField(i, { options: (fields.value[i]?.options ?? []).filter((_, k) => k !== oi) })
 }
 
-function keyError(i: number): string | undefined {
-  const f = fields.value[i]
-  if (!f) return undefined
-  if (!f.key.trim()) return 'key 不能为空'
-  if (fields.value.some((x, k) => k !== i && x.key === f.key)) return 'key 重复'
-  return undefined
+// ── table 列定义编辑 ──
+function nextColumnKey(i: number): string {
+  const used = new Set((fields.value[i]?.columns ?? []).map((c) => c.key))
+  let n = (fields.value[i]?.columns ?? []).length + 1
+  while (used.has(`col${n}`)) n++
+  return `col${n}`
+}
+function addColumn(i: number): void {
+  if (props.readonly) return
+  const key = nextColumnKey(i)
+  patchField(i, { columns: [...(fields.value[i]?.columns ?? []), { key, label: key, cellType: 'input' }] })
+}
+function updateColumn(i: number, ci: number, patch: Partial<TableColumn>): void {
+  if (props.readonly) return
+  const cols = (fields.value[i]?.columns ?? []).map((c, k) => (k === ci ? { ...c, ...patch } : c))
+  patchField(i, { columns: cols })
+}
+function removeColumn(i: number, ci: number): void {
+  if (props.readonly) return
+  patchField(i, { columns: (fields.value[i]?.columns ?? []).filter((_, k) => k !== ci) })
+}
+
+/** 与设计器左侧红字同源：用共享 validateSchema 的当前字段错误项（按 uid 索引映射） */
+const schemaErrors = ref<Record<string, string>>({})
+function refreshErrors(): void {
+  schemaErrors.value = validateSchema(fields.value)
+}
+function errAt(i: number, prop: string): string | undefined {
+  return schemaErrors.value[`${i}.${prop}`]
+}
+/** 统计子字段错误项数量（validateSchema 递归写入 `i.itemFields.<sub>.<prop>`） */
+function hasNestedError(i: number): number {
+  const prefix = `${i}.itemFields.`
+  return Object.keys(schemaErrors.value).filter((k) => k.startsWith(prefix)).length
+}
+function selIndex(): number {
+  return selectedUid.value == null ? -1 : rowUid.value.indexOf(selectedUid.value)
 }
 function selField(): FieldDef | undefined {
-  return selected.value >= 0 ? fields.value[selected.value] : undefined
+  const i = selIndex()
+  return i >= 0 ? fields.value[i] : undefined
 }
+refreshErrors()
 </script>
 
 <template>
@@ -123,14 +208,14 @@ function selField(): FieldDef | undefined {
         :disabled="readonly"
         ghost-class="drag-ghost"
         class="list-body"
-        @end="emitChange"
+        @end="onDragEnd"
       >
         <div
           v-for="(f, index) in fields"
-          :key="f.key"
+          :key="rowUid[index]"
           class="field-item"
-          :class="{ active: selected === index, danger: keyError(index) }"
-          @click="selected = index"
+          :class="{ active: selectedUid === rowUid[index], danger: errAt(index, 'key') }"
+          @click="selectedUid = rowUid[index] ?? null"
         >
           <span class="handle" title="拖拽排序"><el-icon><Rank /></el-icon></span>
           <div class="meta">
@@ -139,7 +224,7 @@ function selField(): FieldDef | undefined {
               <span class="lbl">{{ f.label || '(未命名)' }}</span>
               <span v-if="f.required" class="req">必填</span>
             </div>
-            <div class="row2"><code>{{ f.key }}</code><span v-if="keyError(index)" class="err">{{ keyError(index) }}</span></div>
+            <div class="row2"><code>{{ f.key }}</code><span v-if="errAt(index, 'key')" class="err">{{ errAt(index, 'key') }}</span></div>
           </div>
           <el-button
             v-if="!readonly"
@@ -160,75 +245,113 @@ function selField(): FieldDef | undefined {
         <div class="prop-title">字段属性</div>
         <el-form label-width="auto" size="small" class="prop-form">
           <el-form-item label="key">
-            <el-input clearable :model-value="selField()!.key" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { key: v })" />
+            <el-input clearable :model-value="selField()!.key" :disabled="readonly" @update:model-value="(v: string) => patchField(selIndex(), { key: v })" />
+            <div v-if="errAt(selIndex(), 'key')" class="field-err">{{ errAt(selIndex(), 'key') }}</div>
           </el-form-item>
           <el-form-item label="标签">
-            <el-input clearable :model-value="selField()!.label" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { label: v })" />
+            <el-input clearable :model-value="selField()!.label" :disabled="readonly" @update:model-value="(v: string) => patchField(selIndex(), { label: v })" />
+            <div v-if="errAt(selIndex(), 'label')" class="field-err">{{ errAt(selIndex(), 'label') }}</div>
           </el-form-item>
           <el-form-item label="类型">
-            <el-select :model-value="selField()!.type" :disabled="readonly" style="width: 100%" @update:model-value="(v: unknown) => onTypeChange(selected, v as FieldType)">
+            <el-select :model-value="selField()!.type" :disabled="readonly" style="width: 100%" @update:model-value="(v: unknown) => onTypeChange(selIndex(), v as FieldType)">
               <el-option v-for="t in TYPES" :key="t" :value="t" :label="LABEL[t]" />
             </el-select>
           </el-form-item>
-          <el-form-item label="必填">
-            <el-switch :model-value="!!selField()!.required" :disabled="readonly" @update:model-value="(v: boolean) => patchField(selected, { required: v })" />
+          <el-form-item label="分组名">
+            <el-input clearable :model-value="selField()!.group ?? ''" :disabled="readonly" placeholder="相邻同名分组折叠为分隔" @update:model-value="(v: string) => patchField(selIndex(), { group: v || undefined })" />
           </el-form-item>
-          <el-form-item label="占位提示">
-            <el-input clearable :model-value="selField()!.placeholder ?? ''" :disabled="readonly" @update:model-value="(v: string) => patchField(selected, { placeholder: v || undefined })" />
+          <el-form-item label="必填">
+            <el-switch :model-value="!!selField()!.required" :disabled="readonly" @update:model-value="(v: boolean) => patchField(selIndex(), { required: v })" />
+          </el-form-item>
+          <el-form-item v-if="PLACEHOLDER_TYPES.includes(selField()!.type)" label="占位提示">
+            <el-input clearable :model-value="selField()!.placeholder ?? ''" :disabled="readonly" @update:model-value="(v: string) => patchField(selIndex(), { placeholder: v || undefined })" />
           </el-form-item>
 
           <template v-if="['input', 'textarea', 'richtext'].includes(selField()!.type)">
             <el-form-item label="最小长度">
-              <el-input-number :model-value="selField()!.minLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minLength: v || undefined })" />
+              <el-input-number :model-value="selField()!.minLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { minLength: v || undefined })" />
             </el-form-item>
             <el-form-item label="最大长度">
-              <el-input-number :model-value="selField()!.maxLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxLength: v || undefined })" />
+              <el-input-number :model-value="selField()!.maxLength ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { maxLength: v || undefined })" />
+              <div v-if="errAt(selIndex(), 'maxLength')" class="field-err">{{ errAt(selIndex(), 'maxLength') }}</div>
             </el-form-item>
           </template>
           <el-form-item v-if="selField()!.type === 'input'" label="正则校验">
-            <el-input clearable :model-value="selField()!.pattern ?? ''" :disabled="readonly" placeholder="如 ^https?://" @update:model-value="(v: string) => patchField(selected, { pattern: v || undefined })" />
+            <el-input clearable :model-value="selField()!.pattern ?? ''" :disabled="readonly" placeholder="如 ^https?://" @update:model-value="(v: string) => patchField(selIndex(), { pattern: v || undefined })" />
           </el-form-item>
+
+          <template v-if="selField()!.type === 'number'">
+            <el-form-item label="最小值">
+              <el-input-number :model-value="selField()!.min ?? undefined" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { min: v ?? undefined })" />
+            </el-form-item>
+            <el-form-item label="最大值">
+              <el-input-number :model-value="selField()!.max ?? undefined" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { max: v ?? undefined })" />
+            </el-form-item>
+          </template>
 
           <template v-if="CHOICE.includes(selField()!.type)">
             <el-form-item label="选项">
               <div class="opts">
                 <div v-for="(o, oi) in selField()!.options ?? []" :key="oi" class="opt-row">
-                  <el-input clearable :model-value="o.label" size="small" placeholder="显示" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { label: v })" />
-                  <el-input clearable :model-value="o.value" size="small" placeholder="值" :disabled="readonly" @update:model-value="(v: string) => updateOption(selected, oi, { value: v })" />
-                  <el-button v-if="!readonly" size="small" type="danger" text :icon="Delete" @click="removeOption(selected, oi)" />
+                  <el-input clearable :model-value="o.label" size="small" placeholder="显示" :disabled="readonly" @update:model-value="(v: string) => updateOption(selIndex(), oi, { label: v })" />
+                  <el-input clearable :model-value="o.value" size="small" placeholder="值" :disabled="readonly" @update:model-value="(v: string) => updateOption(selIndex(), oi, { value: v })" />
+                  <el-button v-if="!readonly" size="small" type="danger" text :icon="Delete" @click="removeOption(selIndex(), oi)" />
                 </div>
-                <el-button v-if="!readonly" size="small" plain :icon="Plus" @click="addOption(selected)">添加选项</el-button>
+                <el-button v-if="!readonly" size="small" plain :icon="Plus" @click="addOption(selIndex())">添加选项</el-button>
               </div>
+              <div v-if="errAt(selIndex(), 'options')" class="field-err">{{ errAt(selIndex(), 'options') }}</div>
             </el-form-item>
           </template>
           <el-form-item v-if="selField()!.type === 'checkbox'" label="最多选">
-            <el-input-number :model-value="selField()!.maxChecked ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxChecked: v || undefined })" />
+            <el-input-number :model-value="selField()!.maxChecked ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { maxChecked: v || undefined })" />
           </el-form-item>
           <el-form-item v-if="selField()!.type === 'select-multi'" label="最多选">
-            <el-input-number :model-value="selField()!.maxSelected ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxSelected: v || undefined })" />
+            <el-input-number :model-value="selField()!.maxSelected ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { maxSelected: v || undefined })" />
           </el-form-item>
           <el-form-item v-if="selField()!.type === 'image-list'" label="最多张">
-            <el-input-number :model-value="selField()!.max ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { max: v || undefined })" />
+            <el-input-number :model-value="selField()!.max ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { max: v || undefined })" />
           </el-form-item>
 
-          <template v-if="selField()!.type === 'list'">
+          <!-- 容器通用：list / repeater / table 的行数上下限 -->
+          <template v-if="CONTAINER_TYPES.includes(selField()!.type)">
             <el-form-item label="最少行">
-              <el-input-number :model-value="selField()!.minRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { minRows: v || undefined })" />
+              <el-input-number :model-value="selField()!.minRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { minRows: v || undefined })" />
             </el-form-item>
             <el-form-item label="最多行">
-              <el-input-number :model-value="selField()!.maxRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selected, { maxRows: v || undefined })" />
-            </el-form-item>
-            <el-form-item label="子字段">
-              <div class="nested">
-                <FieldSchemaDesigner
-                  :model-value="selField()!.itemFields ?? []"
-                  :readonly="readonly"
-                  nested
-                  @update:model-value="(v: FieldDef[]) => setItemFields(selected, v)"
-                />
-              </div>
+              <el-input-number :model-value="selField()!.maxRows ?? undefined" :min="1" :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchField(selIndex(), { maxRows: v || undefined })" />
+              <div v-if="errAt(selIndex(), 'maxRows')" class="field-err">{{ errAt(selIndex(), 'maxRows') }}</div>
             </el-form-item>
           </template>
+
+          <!-- list / repeater：嵌套子字段（用简单控件组合出产品卡/图文卡等复杂结构） -->
+          <el-form-item v-if="['list', 'repeater'].includes(selField()!.type)" label="子字段">
+            <div class="nested">
+              <FieldSchemaDesigner
+                :model-value="selField()!.itemFields ?? []"
+                :readonly="readonly"
+                nested
+                @update:model-value="(v: FieldDef[]) => setItemFields(selIndex(), v)"
+              />
+            </div>
+            <div v-if="hasNestedError(selIndex())" class="field-err">子字段有 {{ hasNestedError(selIndex()) }} 项待修正</div>
+          </el-form-item>
+
+          <!-- table：列定义（第一版平铺，不做合并单元格） -->
+          <el-form-item v-if="selField()!.type === 'table'" label="表格列">
+            <div class="opts">
+              <div v-for="(c, ci) in selField()!.columns ?? []" :key="ci" class="col-row">
+                <el-input clearable :model-value="c.key" size="small" placeholder="列 key" :disabled="readonly" @update:model-value="(v: string) => updateColumn(selIndex(), ci, { key: v })" />
+                <el-input clearable :model-value="c.label" size="small" placeholder="列名" :disabled="readonly" @update:model-value="(v: string) => updateColumn(selIndex(), ci, { label: v })" />
+                <el-select :model-value="c.cellType" size="small" style="width: 96px" :disabled="readonly" @update:model-value="(v: unknown) => updateColumn(selIndex(), ci, { cellType: v as TableColumn['cellType'] })">
+                  <el-option value="input" label="文本" />
+                  <el-option value="url" label="链接" />
+                  <el-option value="richtext" label="富文本" />
+                </el-select>
+                <el-button v-if="!readonly" size="small" type="danger" text :icon="Delete" @click="removeColumn(selIndex(), ci)" />
+              </div>
+              <el-button v-if="!readonly" size="small" plain :icon="Plus" @click="addColumn(selIndex())">添加列</el-button>
+            </div>
+          </el-form-item>
         </el-form>
       </template>
       <div v-else class="prop-empty">从左侧选择字段以编辑属性</div>
@@ -262,7 +385,10 @@ function selField(): FieldDef | undefined {
 .prop-form { max-width: 520px; }
 .opts { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .opt-row { display: flex; gap: 6px; align-items: center; }
-.nested { border: 1px dashed var(--sshk-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 6px; }
+.col-row { display: flex; gap: 6px; align-items: center; }
+.col-row .el-input { flex: 1; min-width: 0; }
+.field-err { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; margin-top: 2px; }
+.nested { border: 1px dashed var(--sshk-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 6px; width: 100%; }
 .prop-empty { opacity: .6; font-size: 13px; padding: 24px 0; text-align: center; }
 .readonly .field-item { cursor: default; }
 </style>

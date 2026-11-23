@@ -20,6 +20,8 @@ export function buildSamplePrompt(fields: FieldDef[], context?: string): string 
     if (f.options?.length) item.allowedValues = f.options.map((o) => o.value)
     if (f.max) item.maxCount = f.max
     if (f.maxRows) item.maxRows = f.maxRows
+    if (f.min != null) item.min = f.min
+    if (f.columns?.length) item.columns = f.columns.map((c) => ({ key: c.key, label: c.label, cellType: c.cellType }))
     if (f.itemFields?.length) {
       item.itemFields = f.itemFields.map((s) => ({
         key: s.key, label: s.label, type: s.type, required: Boolean(s.required),
@@ -31,7 +33,8 @@ export function buildSamplePrompt(fields: FieldDef[], context?: string): string 
   return [
     '你是 EDM 邮件示例数据生成器。根据字段 schema 生成一版真实可信的中文示例数据。',
     '只输出一个 JSON 对象，不要 markdown 围栏，不要任何解释文字。',
-    '要求：文案贴合 label 语义、专业克制；radio / select 只能取 allowedValues 中的值；checkbox / select-multi 输出字符串数组；list 输出 2-3 行对象数组（行结构遵循 itemFields）；image / image-list 输出 https:// 开头的占位图片 URL。',
+    '要求：文案贴合 label 语义、专业克制；radio / select 只能取 allowedValues 中的值；checkbox / select-multi 输出字符串数组；url 输出 http 或 https 开头的链接，number 输出数字，date 输出 YYYY-MM-DD，color 输出 #RRGGBB，switch 输出 true/false。',
+    'image / image-list 输出 http 开头的占位图片 URL；list / repeater 输出 2-3 行对象数组（行结构遵循 itemFields，repeater 每行是一个产品/图文组合卡）；table 输出 2-3 行对象数组，每行按 columns 的 key 平铺单元格值。',
     context ? `主题背景：${context}` : '',
     `字段 schema：${JSON.stringify(spec)}`,
   ].filter(Boolean).join('\n')
@@ -66,8 +69,27 @@ export function coerceSample(fields: FieldDef[], data: Record<string, unknown>):
       case 'input':
       case 'textarea':
       case 'richtext':
+      case 'url':
       case 'image':
         out[f.key] = raw == null ? '' : String(raw)
+        break
+      case 'number': {
+        const n = Number(raw)
+        out[f.key] = raw == null || !Number.isFinite(n) ? 0 : n
+        break
+      }
+      case 'date': {
+        const s = raw == null ? '' : String(raw)
+        out[f.key] = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ''
+        break
+      }
+      case 'color': {
+        const s = raw == null ? '' : String(raw)
+        out[f.key] = /^#[\da-fA-F]{6}$/.test(s) ? s : '#409EFF'
+        break
+      }
+      case 'switch':
+        out[f.key] = raw === true || raw === 'true'
         break
       case 'radio':
       case 'select': {
@@ -88,11 +110,28 @@ export function coerceSample(fields: FieldDef[], data: Record<string, unknown>):
         out[f.key] = f.max ? list.slice(0, f.max) : list
         break
       }
-      case 'list': {
+      case 'list':
+      case 'repeater': {
         const rows = Array.isArray(raw) ? (raw as unknown[]) : []
         const coerced = rows
           .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object' && !Array.isArray(r))
           .map((r) => coerceSample(f.itemFields ?? [], r))
+        out[f.key] = f.maxRows ? coerced.slice(0, f.maxRows) : coerced
+        break
+      }
+      case 'table': {
+        const rows = Array.isArray(raw) ? (raw as unknown[]) : []
+        const cols = f.columns ?? []
+        const coerced = rows
+          .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object' && !Array.isArray(r))
+          .map((r) => {
+            const row: Record<string, unknown> = {}
+            for (const c of cols) {
+              const v = r[c.key]
+              row[c.key] = v == null ? '' : String(v)
+            }
+            return row
+          })
         out[f.key] = f.maxRows ? coerced.slice(0, f.maxRows) : coerced
         break
       }
