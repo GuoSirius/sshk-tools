@@ -4,6 +4,7 @@
  * 桥接契约（FilePickerLibrary）由工具侧注入实现，本包不依赖 upload-core。
  */
 export { default as FilePickerDialog } from './components/FilePickerDialog.vue'
+export { default as UploadTargetDialog } from './components/UploadTargetDialog.vue'
 export type {
   FilePickerConflict,
   FilePickerConfirmPayload,

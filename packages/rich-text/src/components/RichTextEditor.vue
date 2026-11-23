@@ -35,8 +35,8 @@ import {
   unbindMarkdownView,
 } from '../markdown-view-menu'
 import { countText, type TextStats } from '../word-count'
-import { FilePickerDialog } from '@sshk/file-picker'
-import type { FilePickerItem } from '@sshk/file-picker'
+import { FilePickerDialog, UploadTargetDialog } from '@sshk/file-picker'
+import type { FilePickerItem, FilePickerSource, FilePickerTarget } from '@sshk/file-picker'
 import SourceViewDialog from './SourceViewDialog.vue'
 import MarkdownViewDialog from './MarkdownViewDialog.vue'
 
@@ -157,7 +157,74 @@ const editorConfig: Partial<IEditorConfig> = {
   },
 }
 const conf: Record<string, UploadImageConf | UploadVideoConf> = {}
-if (hook) {
+
+/** 粘贴/拖拽失败时的 dataURL 回退：保证离线编辑不中断（与工具侧 createImageUploader 回退口径一致） */
+function fallbackDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+// #43（2026-11-23）：有 imageLibrary 时，粘贴/拖拽上传也走 FilePicker 通道。
+// 体验口径（用户拍板）：**每次粘贴动作弹一次**目标选择框——同一次粘贴的 N 张图在弹框确认前
+// 一起入队（wangEditor 逐张调 customUpload），确认后按同一目标传完这 N 张，随即清空；
+// 下次粘贴重新弹。全程不依赖工具级上传配置。
+const targetDialogOpen = ref(false)
+/** 本批次待上传队列（含每项的插入回调） */
+const pasteQueue: { file: File; insertFn: (url: string) => void }[] = []
+/** 本批次已确认目标：非空表示当前批次正在上传，后续同批图片直接复用 */
+let batchTarget: { source: FilePickerSource; target: FilePickerTarget } | null = null
+type ImageInsertFn = (url: string) => void
+
+async function uploadPastedImage(file: File, insertFn: ImageInsertFn, picked: { source: FilePickerSource; target: FilePickerTarget }): Promise<void> {
+  let url: string
+  try {
+    url = await props.imageLibrary!.upload(file, picked.source, picked.target)
+  } catch {
+    url = await fallbackDataUrl(file)
+  }
+  // 本地 file:// 直显会被 Chromium 拦，转 localres://；回写由 toStoredHtml 对称还原
+  insertFn(toDisplaySrc(url))
+}
+
+/** 目标确认：本批次队列按同一目标传完，随后清空 → 下次粘贴重新弹框 */
+async function onUploadTargetConfirm(picked: { source: FilePickerSource; target: FilePickerTarget }): Promise<void> {
+  batchTarget = picked
+  const queued = pasteQueue.splice(0)
+  for (const q of queued) await uploadPastedImage(q.file, q.insertFn, picked)
+  batchTarget = null
+}
+
+// 用户取消目标框（未确认）：丢弃本批次排队图片，避免残留到下次粘贴误传
+watch(targetDialogOpen, (open) => {
+  if (!open && pasteQueue.length > 0) {
+    pasteQueue.splice(0)
+    void ElMessage.warning('已取消上传位置选择，本次粘贴的图片未插入')
+  }
+})
+
+if (props.imageLibrary) {
+  const maxSize = props.imageRule?.maxSize ?? 0
+  conf.uploadImage = {
+    customUpload: async (file, insertFn) => {
+      if (maxSize > 0 && file.size > maxSize) throw new Error(`图片超过大小上限 ${maxSize} 字节`)
+      if (batchTarget) {
+        // 本批次目标已确认、正在上传：同批后续图片复用，不再弹框
+        await uploadPastedImage(file, insertFn, batchTarget)
+        return
+      }
+      // 新批次：入队并弹轻量目标选择框（N 张连粘贴在用户确认前都会进本队列）
+      pasteQueue.push({ file, insertFn })
+      targetDialogOpen.value = true
+    },
+    // 工具栏「上传图片」仍弹 FilePickerDialog 让用户挑来源/文件或拖入上传
+    customBrowseAndUpload: () => { libraryOpen.value = true },
+  }
+} else if (hook) {
+  // 无图片库桥接：维持原 onUploadImage hook 路径
   const maxSize = props.imageRule?.maxSize ?? 0
   conf.uploadImage = {
     customUpload: async (file, insertFn) => {
@@ -166,14 +233,9 @@ if (hook) {
     },
   }
 }
-// #130 用户拍板（2026-11-20）：有图片库桥接时，工具栏自带「上传图片」不再弹原生文件输入，
-// 改唤起宿主图片选择框（FilePickerDialog）；插入走既有 onLibraryConfirm（dangerouslyInsertHtml）
+// #133 上传视频改唤起文件选择框：mode=video 决定标题「视频库」、accept=video/*、
+// 上传扩展名白名单 VIDEO_EXTS 与列取 kind=video；图片/视频两个弹框与状态完全隔离
 if (props.imageLibrary) {
-  ;(conf.uploadImage ??= { customUpload: async () => undefined }).customBrowseAndUpload = () => {
-    libraryOpen.value = true
-  }
-  // #133 上传视频同样改唤起文件选择框：mode=video 决定标题「视频库」、accept=video/*、
-  // 上传扩展名白名单 VIDEO_EXTS 与列取 kind=video；图片/视频两个弹框与状态完全隔离
   const videoConf: UploadVideoConf = {
     customBrowseAndUpload: (insertFn) => {
       videoInsertFn = insertFn
@@ -192,7 +254,8 @@ if (Object.keys(conf).length > 0) editorConfig.MENU_CONF = conf
  *   其余不动。（用户反馈 2026-11-17：新加的两个按钮单独放一个分组中）
  */
 const toolbarConfig: Partial<IToolbarConfig> = {}
-if (!hook) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
+// 无任何上传能力（既无 hook 也无图片库）才剔除上传菜单；有 imageLibrary 时粘贴/工具栏上传均由 FilePicker 通道提供
+if (!hook && !props.imageLibrary) toolbarConfig.excludeKeys = ['uploadImage', 'uploadVideo']
 registerSourceViewMenu()
 // #131 Markdown 预览与「查看源码」一样恒可用（纯本地转换，不依赖上传/图片库桥接）
 registerMarkdownViewMenu()
@@ -328,6 +391,8 @@ onBeforeUnmount(() => {
         <span>字符 {{ stats.chars }}（空格 {{ stats.chars - stats.charsNoSpace }}）</span>
         <span>段落 {{ stats.paragraphs }}</span>
         <span v-if="selectedLen > 0" class="rich-status-sel">已选 {{ selectedLen }} 字符</span>
+        <!-- #43 粘贴上传：每次粘贴弹一次目标选择框 -->
+        <span v-if="imageLibrary && !readonly" class="rich-status-target">粘贴图片时选择上传位置</span>
         <span v-if="readonly" class="rich-status-ro">只读</span>
       </div>
     </div>
@@ -354,6 +419,15 @@ onBeforeUnmount(() => {
     :state-key="stateKey + '::video'"
     :resolve-src="toDisplaySrc"
     @confirm="onVideoConfirm"
+  />
+  <!-- #43 粘贴上传目标选择框：每次粘贴弹一次，复用 FilePicker 来源/桶/目录头部 -->
+  <UploadTargetDialog
+    v-if="imageLibrary"
+    v-model:open="targetDialogOpen"
+    :library="imageLibrary"
+    :state-key="stateKey"
+    title="选择粘贴图片的上传位置"
+    @confirm="onUploadTargetConfirm"
   />
   <SourceViewDialog v-model:open="sourceOpen" :editor="editorRef ?? null" :readonly="readonly" />
   <MarkdownViewDialog v-model:open="markdownOpen" :editor="editorRef ?? null" />
@@ -394,6 +468,7 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 .rich-status-sel { color: var(--el-color-primary, #409eff); }
+.rich-status-target { margin-left: auto; opacity: .7; font-size: 11px; }
 .rich-status-ro {
   color: var(--el-color-warning, #e6a23c);
   border: 1px solid currentColor;
