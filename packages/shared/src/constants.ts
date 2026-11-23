@@ -8,14 +8,15 @@ export const DEFAULT_BADGE_ATTR = 'data-edm-badge'
 export const DEFAULT_CLICKS_FIELD = 'clicks'
 export const DEFAULT_POSTER_WIDTH = 680
 
+/**
+ * 纯工具 id 单一定义点（P8-4 · A7/CR-08）：verify-steps / edm-studio 主进程等跨文件静态引用统一走此常量，禁散写字面量。
+ * 仅收录仍以「工具」形态存在的 id；file-manager / model-manager / share-manager 已随 P4-8（D53）退役为
+ * 应用模块 id（应用管理 pages/app-admin/*），不再入此表——模块 id 引用统一走
+ * apps/desktop/src/shared/verify-steps.ts 的 MODULE_IDS 与各消费点字面量。
+ */
 export const TOOL_IDS = {
   edmStudio: 'edm-studio',
   badgeStudio: 'badge-studio',
-  /** P4-8c（C-11 敲板，台账#156）：原 model-console 工具随 P4-8b 退役并入应用本体（模型管理模块），
-   *  id 定稿 model-manager；键名保留 modelConsole 避免全量改引用。 */
-  modelConsole: 'model-manager',
-  /** 2026-11-17 由 upload-config 改名（上传配置→上传管理）；2026-11-19 再改名（上传管理→文件管理） */
-  fileManager: 'file-manager',
 } as const
 
 /**

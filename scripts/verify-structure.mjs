@@ -101,7 +101,7 @@ for (const file of all.filter((f) => /\.(ts|tsx|mjs|js|vue)$/.test(f))) {
   // 白名单「值」不变；常量引用按成员名校验拼写（值本身由 verify-steps.test.ts 字面量集合锚定），漏拼成员名同样红
   const KNOWN_REF_ROOTS = new Set(['TEMPLATE_TOOL_ID'])
   const KNOWN_REF_MEMBERS = {
-    TOOL_IDS: new Set(['edmStudio', 'badgeStudio', 'modelConsole', 'fileManager']),
+    TOOL_IDS: new Set(['edmStudio', 'badgeStudio']),
     MODULE_IDS: new Set(['fileManager', 'modelManager', 'shareManager']),
   }
   // P5-2（C-10）：verify-steps 外迁宿主 apps/desktop/src/shared/（shared 回归纯契约）
