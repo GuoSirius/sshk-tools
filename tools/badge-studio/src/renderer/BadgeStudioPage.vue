@@ -13,7 +13,7 @@ import {
   posterName, shareDialog, openShare,
   backToListConfirm,
   deleteOpen, deleteTarget, confirmDelete,
-} from './state'
+} from './store'
 
 /**
  * Badge Studio 渲染层——页面壳：

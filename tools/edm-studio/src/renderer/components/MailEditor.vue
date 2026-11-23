@@ -7,9 +7,9 @@ import { CodeEditor } from '@sshk/code-editor'
 import ComposeEditor from './ComposeEditor.vue'
 import type { FragmentOption, PlacementItem, SlotDef } from './ComposeEditor.vue'
 import { normalizeFields, type FieldDef } from '../sample-schema'
-import { api } from '../tool-store'
-import type { MailRow } from '../tool-store'
-import { brands, fragments, frgvVersions, templates, tplVersionsAll } from '../state'
+import { api } from '../tool-api'
+import type { MailRow } from '../tool-api'
+import { brands, fragments, frgvVersions, templates, tplVersionsAll } from '../store'
 
 /**
  * 邮件编辑器（R20 分步）：① 基本信息（名称/来源/品牌）→ ② 模板版本 → ③ 片段布局（拖拽）→ ④ 预览确认。

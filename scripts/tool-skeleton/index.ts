@@ -171,7 +171,7 @@ function firstPageTemplate(id: string, label: string): string {
   return `<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { call } from '../state'
+import { call } from '../store'
 
 /** 最小可跑示例：主进程 ping + 本工具配置读写。照此页面开始功能开发，替换成你的业务。 */
 const pong = ref('')
@@ -239,11 +239,11 @@ function shellTemplate(_id: string, name: string, menus: { id: string; label: st
 import { computed } from 'vue'
 import { ToolPageLayout } from '@sshk/ui-kit'
 ${imports}
-import { toolId } from './state'
+import { toolId } from './store'
 
 /**
  * 渲染层页面壳：只负责接收宿主 menu/toolId 并分发到 pages/ 下各页面，业务全部在子页面。
- * 目录约定：src/renderer/<Id>Page.vue 壳 + pages/ 每菜单一页 + state.ts 共享状态。
+ * 目录约定：src/renderer/<Id>Page.vue 壳 + pages/ 每菜单一页 + store.ts 共享状态。
  */
 const props = defineProps<{ menu?: string; toolId?: string }>()
 // toolId 单一来源 = manifest.id，经宿主目录裁决后以 prop 注入；源码不兜底硬编码
@@ -337,7 +337,7 @@ export function buildSkeletonFiles(req: CreateToolRequest): SkeletonFile[] {
     { path: `${dir}/tsconfig.json`, content: '{\n  "extends": "../../tsconfig.base.json",\n  "include": ["src/**/*.ts", "src/**/*.d.ts"]\n}\n' },
     { path: `${dir}/assets/icon.svg`, content: defaultIcon(req.name) },
     { path: `${dir}/src/main/index.ts`, content: MAIN_TEMPLATE },
-    { path: `${dir}/src/renderer/state.ts`, content: STATE_TEMPLATE },
+    { path: `${dir}/src/renderer/store.ts`, content: STATE_TEMPLATE },
     { path: `${dir}/src/renderer/${pascalCase(req.id)}Page.vue`, content: shellTemplate(req.id, req.name, req.menus) },
   ]
   req.menus.forEach((menu, index) => {

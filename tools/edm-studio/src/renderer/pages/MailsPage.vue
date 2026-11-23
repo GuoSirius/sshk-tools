@@ -4,8 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, useTablePage, useToolId } from '@sshk/ui-kit'
 import { ShareDialog } from '@sshk/share-core/ui'
 import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
-import { brands, mails, tplVersionsAll, loadMails } from '../state'
-import { api, confirmRemove, osApi, type MailRow } from '../tool-store'
+import { brands, mails, tplVersionsAll, loadMails } from '../store'
+import { api, confirmRemove, osApi, type MailRow } from '../tool-api'
 import MailEditor from '../components/MailEditor.vue'
 
 /**

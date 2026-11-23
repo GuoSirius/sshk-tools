@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { RichTextEditor } from '@sshk/rich-text'
 import { FormHint } from '@sshk/ui-kit'
-import { toolId } from '../state'
-import { createTemplateImageLibrary } from '../image-library'
+import { toolId } from '../store'
+import { createTemplateImageLibrary } from '../composables/image-library'
 
 /**
  * B7 双实例验证页 + 图片库/源码/状态栏验证（用户反馈 2026-11-16）：

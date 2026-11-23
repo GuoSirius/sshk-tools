@@ -1,7 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
-import { api } from '../tool-store'
+import { api } from '../tool-api'
 import type { Source, TreeNode } from './useContentTree'
 
 /**

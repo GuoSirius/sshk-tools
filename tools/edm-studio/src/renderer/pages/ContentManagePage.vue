@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { api } from '../tool-store'
+import { api } from '../tool-api'
 import { EmptyState, FormHint, useToolId } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../components/SampleForm.vue'

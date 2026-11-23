@@ -7,7 +7,7 @@ import { CodeEditor } from '@sshk/code-editor'
 import { FormHint, useToolId } from '@sshk/ui-kit'
 import ImageField from './ImageField.vue'
 import { createImageLibrary, createImageUploader } from '../upload.js'
-import { llmApi, type LlmProviderLite } from '../tool-store'
+import { llmApi, type LlmProviderLite } from '../tool-api'
 import { generateSample, polishRichText, type ChatMessage } from '../ai-copy'
 
 /**

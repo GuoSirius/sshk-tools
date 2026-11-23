@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { toolId } from '../state'
+import { toolId } from '../store'
 import { host } from '../host'
 
 /** 配置回显页：演示 configGroups 契约被宿主读取 */

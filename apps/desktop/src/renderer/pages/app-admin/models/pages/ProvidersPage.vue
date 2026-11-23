@@ -16,7 +16,7 @@ import {
   providers, presets, health,
   persist, newProviderId, ensureLoaded,
   type Provider, type ModelPreset,
-} from '../state'
+} from '../store'
 
 onMounted(() => { void ensureLoaded() })
 

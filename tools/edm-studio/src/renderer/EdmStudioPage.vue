@@ -4,7 +4,7 @@ import { ToolPageLayout, provideToolId } from '@sshk/ui-kit'
 import ContentManagePage from './pages/ContentManagePage.vue'
 import MailsPage from './pages/MailsPage.vue'
 import UploadProgressToast from './components/UploadProgressToast.vue'
-import { ensureLoaded } from './state'
+import { ensureLoaded } from './store'
 import { subscribeUploadProgress } from './upload-progress'
 
 /**

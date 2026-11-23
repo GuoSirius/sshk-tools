@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { call, logs } from '../state'
+import { call, logs } from '../store'
 
 /** 能力演示页（2026-11-16 用户反馈改版）：左侧能力导航 + 右侧详情面板 */
 const providers = ref<{ _id: string; name: string; kind: string; model: string; hasApiKey: boolean }[]>([])

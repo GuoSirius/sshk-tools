@@ -38,7 +38,7 @@ describe('dev-skeleton 创建工具骨架', () => {
     expect(paths).toContain('tools/demo-tool/tsconfig.json')
     expect(paths).toContain('tools/demo-tool/assets/icon.svg')
     expect(paths).toContain('tools/demo-tool/src/main/index.ts')
-    expect(paths).toContain('tools/demo-tool/src/renderer/state.ts')
+    expect(paths).toContain('tools/demo-tool/src/renderer/store.ts')
     expect(paths).toContain('tools/demo-tool/src/renderer/DemoToolPage.vue')
     expect(paths).toContain('tools/demo-tool/src/renderer/pages/HomePage.vue')
     expect(paths).toContain('tools/demo-tool/src/renderer/pages/SettingsViewPage.vue')

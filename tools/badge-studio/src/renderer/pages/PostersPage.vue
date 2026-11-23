@@ -11,7 +11,7 @@ import {
   shareDialog, refreshShareLinks, posterLinkState,
   batchExportHtml, batchDeletePosters, openListShare,
   startNewPosterConfirm,
-} from '../state'
+} from '../store'
 
 /**
  * Badge Studio——海报列表页：

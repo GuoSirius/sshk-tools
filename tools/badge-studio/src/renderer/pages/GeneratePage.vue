@@ -17,7 +17,7 @@ import {
   statsWarnings, customMetricKeys, removeMetric, metricOf, setMetric,
   removeRow, syncCsvFromRows, newMetricKey, addMetric,
   nameAttention,
-} from '../state'
+} from '../store'
 
 /** 海报名聚焦提示（用户 2026-11-18：保存时名字为空 → 自动展开配置并聚焦输入框） */
 const nameInputRef = ref<{ focus: () => void } | null>(null)

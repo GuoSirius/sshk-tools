@@ -1,5 +1,5 @@
 import { createHostImageLibrary, type FilePickerLibrary } from '@sshk/file-picker'
-import { host } from './host'
+import { host } from '../host'
 
 /**
  * 模板工具的图片库桥接：收敛到 @sshk/file-picker 单一实现（plans/11 §七 S2）。

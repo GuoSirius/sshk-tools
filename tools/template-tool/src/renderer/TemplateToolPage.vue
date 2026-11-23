@@ -4,7 +4,7 @@ import { ToolPageLayout } from '@sshk/ui-kit'
 import HomePage from './pages/HomePage.vue'
 import ConfigPage from './pages/ConfigPage.vue'
 import RichTextPage from './pages/RichTextPage.vue'
-import { toolId } from './state'
+import { toolId } from './store'
 
 /**
  * 模板工具渲染层（builtin 契约）——页面壳：

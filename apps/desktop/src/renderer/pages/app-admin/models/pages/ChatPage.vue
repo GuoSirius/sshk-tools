@@ -11,7 +11,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 // 图标约定（2026-11-17）：优先 @element-plus/icons-vue / FontAwesome，均无再用自定义 SVG
 import { Bottom, Cpu, Top, User } from '@element-plus/icons-vue'
-import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta, appendDelta, ensureLoaded } from '../state'
+import { chatInput, chatProviderId, chatting, messages, providers, activeProvider, typeSmooth, flushDelta, appendDelta, ensureLoaded } from '../store'
 import { host } from '../host'
 
 // LLM 输出为不可信内容：先 markdown 解析再 DOMPurify 净化，避免 v-html XSS

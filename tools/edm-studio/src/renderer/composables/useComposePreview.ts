@@ -4,7 +4,7 @@ import * as yaml from 'js-yaml'
 import type { PlacementItem, SlotDef } from '../compose-types'
 import { normalizeFields, type FieldDef } from '../sample-schema'
 import { parseYamlObject } from '../sample-schema'
-import { api } from '../tool-store'
+import { api } from '../tool-api'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
