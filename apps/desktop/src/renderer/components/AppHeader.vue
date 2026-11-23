@@ -8,7 +8,7 @@
  * 原「更多」下拉的 数据目录/工具与权限/系统与数据 已迁往应用管理对应页（P4-2）；「设置」按钮删除（被应用管理替代）。
  */
 import { computed } from 'vue'
-import { Brush, CircleCheck, MoreFilled, Refresh, Setting } from '@element-plus/icons-vue'
+import { Back, Brush, CircleCheck, MoreFilled, Refresh, Setting } from '@element-plus/icons-vue'
 import { DEFAULT_THEME_MODE, SSHK_DEV } from '@sshk/shared'
 import type { ThemeMode } from '@sshk/shared'
 import { useTheme } from '../composables/useTheme'
@@ -17,7 +17,7 @@ import logoUrl from '@build/icon.svg'
 
 defineOptions({ name: 'AppHeader' })
 
-const props = defineProps<{ verifyGuideVisible?: boolean }>()
+const props = defineProps<{ verifyGuideVisible?: boolean; adminMode?: boolean }>()
 const emit = defineEmits<{
   'go-home': []
   'open-app-admin': []
@@ -131,10 +131,11 @@ function onUpdateClick(): void {
       </template>
     </el-dropdown>
 
-    <!-- 应用管理：primary 实底胶囊，全组视觉锚点（替代原「设置」按钮） -->
-    <div class="cap cap-primary" role="button" tabindex="0" title="应用管理" @click="emit('open-app-admin')">
-      <el-icon :size="14"><Setting /></el-icon>
-      <span class="cap-text">应用管理</span>
+    <!-- 应用管理 / 返回（台账 #181）：primary 实底胶囊，全组视觉锚点（替代原「设置」按钮）；
+         应用管理内变「返回」态（Back 图标），点击由宿主回进入前的页面 -->
+    <div class="cap cap-primary" role="button" tabindex="0" :title="adminMode ? '返回' : '应用管理'" @click="emit('open-app-admin')">
+      <el-icon :size="14"><component :is="adminMode ? Back : Setting" /></el-icon>
+      <span class="cap-text">{{ adminMode ? '返回' : '应用管理' }}</span>
     </div>
   </header>
 </template>

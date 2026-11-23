@@ -34,6 +34,13 @@ const router = useRouter()
 const activeToolId = computed(() => (route.params.toolId as string | undefined) ?? null)
 // 应用管理路由（P4-2）：/app/:module/:page? 独立于桌面与工具宿主的第三容器
 const isAdminRoute = computed(() => route.path === '/app' || route.path.startsWith('/app/'))
+// 台账 #181：应用管理入口二态——进入 /app 前记录最后一个非应用管理路由；应用管理内切菜单不覆盖回退点，
+// 顶栏入口「返回」无论菜单切到哪都回到进入前的页面
+const adminReturnPath = ref(isAdminRoute.value ? '/' : route.fullPath)
+watch(() => route.fullPath, (path) => {
+  if (isAdminRoute.value) return
+  adminReturnPath.value = path
+})
 const activeMenu = computed(() => {
   const menu = route.params.menu as string | undefined
   if (menu) return menu
@@ -92,8 +99,13 @@ function goHome(): void {
 }
 function openDataDir(): void { void window.api.app.openDataDir() }
 /** P4-2：顶栏「应用管理」入口——跳应用管理页（hash 路由 /app/...）；
- *  2026-11-22 起不指定落点，由 AppAdminPage 按「第一个有效菜单页」规整（菜单序首组=文件管理） */
+ *  2026-11-22 起不指定落点，由 AppAdminPage 按「第一个有效菜单页」规整（菜单序首组=文件管理）；
+ *  台账 #181：已在应用管理内时入口变「返回」，点击回到进入前的页面（菜单切换不影响回退点） */
 function openAppAdmin(): void {
+  if (isAdminRoute.value) {
+    void router.push(adminReturnPath.value || '/')
+    return
+  }
   void router.push('/app')
 }
 /** dev 随意开关；打包版先试无密钥（会抛错），再弹密钥输入（默认 sshk-tools@888） */
@@ -172,6 +184,7 @@ watch([isFilesPage, transferPanel.runningCount], ([on, count], [prevOn, prevCoun
     <!-- 应用级顶栏：语义色胶囊组 + 更多下拉（三段）+ 应用管理入口（P4-1 抽 AppHeader） -->
     <AppHeader
       :verify-guide-visible="canShowVerifyGuide"
+      :admin-mode="isAdminRoute"
       @go-home="goHome"
       @open-app-admin="openAppAdmin"
       @open-verify-guide="verifyGuideOpen = true"
