@@ -214,24 +214,31 @@ watch([isFilesPage, transferPanel.runningCount], ([on, count], [prevOn, prevCoun
       />
 
       <main class="tool-content">
-        <!-- 应用管理（P4-2）：左菜单 + 右内容区，create-tool 事件回抛壳层向导 -->
-        <template v-if="isAdminRoute">
-          <AppAdminPage @create-tool="createToolOpen = true" />
-        </template>
-        <!-- 桌面工具卡片网格（P6-8 抽 DesktopGrid）：搜索 + 卡片 + 空态 -->
-        <DesktopGrid v-else-if="!currentTool" :tools="catalogTools" @open="openTool" />
-
-        <!-- 工具内页：工具配置 / 插件页面（menu 驱动视图） -->
-        <template v-else-if="isConfigMenu">
+        <!-- KeepAlive（台账 #182）：应用管理/桌面/工具页实例缓存——进入应用管理再「返回」，
+             原页面状态保持（表格筛选/草稿、编辑中表单、弹框开合态）；key=组件+业务键保证跨工具/跨设置节各存各的；
+             轮询页由 useTablePage onDeactivated 停、onActivated 恢复，缓存期不空转 -->
+        <KeepAlive>
+          <!-- 应用管理（P4-2）：左菜单 + 右内容区，create-tool 事件回抛壳层向导 -->
+          <AppAdminPage v-if="isAdminRoute" key="app-admin" @create-tool="createToolOpen = true" />
+          <!-- 桌面工具卡片网格（P6-8 抽 DesktopGrid）：搜索 + 卡片 + 空态 -->
+          <DesktopGrid v-else-if="!currentTool" key="desktop" :tools="catalogTools" @open="openTool" />
+          <!-- 工具内页：工具配置 / 插件页面（menu 驱动视图） -->
           <ToolSettingsPage
+            v-else-if="isConfigMenu"
+            :key="`config:${currentTool.id}:${activeMenu}`"
             :tool-id="currentTool.id"
             :section="activeMenu"
             :layout="currentTool.configLayout"
           />
-        </template>
-        <template v-else>
-          <component :is="toolView" v-if="toolView" :menu="activeMenu" :tool-id="currentTool.id" />
-          <template v-else>
+          <component
+            :is="toolView"
+            v-else-if="toolView"
+            :key="`tool:${currentTool.id}`"
+            :menu="activeMenu"
+            :tool-id="currentTool.id"
+          />
+          <!-- 兜底（无渲染插件/运行时加载态）：纯静态非缓存分支，display:contents 保持原布局 -->
+          <div v-else style="display: contents">
             <div class="tool-page-head">
               <strong>{{ currentTool.name }}</strong>
               <span class="muted" style="margin-left: 12px">{{ currentTool.description }}</span>
@@ -242,8 +249,8 @@ watch([isFilesPage, transferPanel.runningCount], ([on, count], [prevOn, prevCoun
               <div v-else class="empty-state">该工具没有可用的渲染插件</div>
             </div>
             <div class="tool-page-foot muted">共 0 项 · 已选 0 项</div>
-          </template>
-        </template>
+          </div>
+        </KeepAlive>
       </main>
     </div>
 

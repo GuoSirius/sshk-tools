@@ -1,4 +1,4 @@
-import { computed, onUnmounted, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useSelection, type Selection } from './useSelection'
 
@@ -122,6 +122,9 @@ export function useTablePage<T extends object, F extends Record<string, unknown>
   function stopPoll(): void {
     if (timer) { clearInterval(timer); timer = null }
   }
+  // KeepAlive 缓存（台账 #182）配套：页面被缓存（deactivated）时停轮询防后台空转，回归（activated）恢复
+  onActivated(() => { if (options.pollMs) startPoll() })
+  onDeactivated(stopPoll)
   onUnmounted(stopPoll)
 
   return {
