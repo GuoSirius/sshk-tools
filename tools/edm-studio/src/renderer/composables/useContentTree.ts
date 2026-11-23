@@ -44,6 +44,17 @@ export interface ContentTreeDeps {
   onLoaded?(): void
 }
 
+/** 一步式新建弹框（code + name 同屏）；错误文案由前端填入，校验不过不发 IPC */
+export interface CodeNameState {
+  visible: boolean
+  title: string
+  codeHint: string
+  code: string
+  name: string
+  codeError: string
+  nameError: string
+}
+
 export interface ContentTree {
   sysModel: Ref<{ topCss: string[]; brands: any[] }>
   cusModel: Ref<{ topCss: string[]; brands: any[] }>
@@ -74,6 +85,11 @@ export interface ContentTree {
   nextVersionOf(famPath: string, source: Source): number
   /** 代码合法性（目录名）：字母数字下划线连字符 */
   validCode(code: string): boolean
+  /** 一步式「代码 + 名称」弹框状态（新建品牌 / 族共用；state.visible 控制显隐） */
+  codeNameState: Ref<CodeNameState>
+  /** 一步式弹框：确认（前端校验不过只填错误提示、不 resolve）与取消 */
+  confirmCodeName(): void
+  cancelCodeName(): void
   promptCodeAndName(title: string, codeHint: string, nameDefault: string): Promise<{ code: string; name: string } | null>
   /** 唯一名：重名追加 -N 序号 */
   uniqueName(dir: string, name: string): Promise<string>
@@ -306,12 +322,34 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
   function validCode(code: string): boolean {
     return /^[\w-]+$/.test(code)
   }
-  async function promptCodeAndName(title: string, codeHint: string, nameDefault: string): Promise<{ code: string; name: string } | null> {
-    const code = String((await ElMessageBox.prompt(codeHint, title, { inputValue: '' })).value ?? '').trim()
-    if (!code) return null
-    if (!validCode(code)) { ElMessage.error('代码仅限字母 / 数字 / 下划线 / 连字符'); return null }
-    const name = String((await ElMessageBox.prompt('名称', title, { inputValue: nameDefault || code })).value ?? '').trim() || code
-    return { code, name }
+  /**
+   * 一步式「代码 + 名称」弹框：原先两次 ElMessageBox.prompt 串起来，用户点完第一次确认又弹第二次，
+   * 误以为要点两次才算创建成功。现在同屏两个输入，一次确认即返回。
+   */
+  const codeNameState = ref<CodeNameState>({ visible: false, title: '', codeHint: '', code: '', name: '', codeError: '', nameError: '' })
+  let codeNameResolve: ((v: { code: string; name: string } | null) => void) | null = null
+  function promptCodeAndName(title: string, codeHint: string, nameDefault: string): Promise<{ code: string; name: string } | null> {
+    return new Promise((resolve) => {
+      codeNameResolve = resolve
+      codeNameState.value = { visible: true, title, codeHint, code: '', name: nameDefault ?? '', codeError: '', nameError: '' }
+    })
+  }
+  function confirmCodeName(): void {
+    const s = codeNameState.value
+    const code = s.code.trim()
+    const name = s.name.trim()
+    // 双层校验第一层：前端拦住不发 IPC，红色 tip 落在对应控件下方
+    s.codeError = !code ? '代码必填' : !validCode(code) ? '代码仅限字母 / 数字 / 下划线 / 连字符' : ''
+    s.nameError = !name ? '名称必填' : ''
+    if (s.codeError || s.nameError) return
+    s.visible = false
+    codeNameResolve?.({ code, name })
+    codeNameResolve = null
+  }
+  function cancelCodeName(): void {
+    codeNameState.value.visible = false
+    codeNameResolve?.(null)
+    codeNameResolve = null
   }
 
   let treeRef: { setCurrentKey: (key: string) => void } | null = null
@@ -406,7 +444,8 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
     sysModel, cusModel, canEditSystem, canEdit, loading, selected,
     tree, defaultExpandedKeys, treeReady, stats, allCssDirs,
     setTreeRef, load,
-    read, existsIn, write, splitPath, basename, splitList, parseVersion, nextVersionOf, validCode, promptCodeAndName,
+    read, existsIn, write, splitPath, basename, splitList, parseVersion, nextVersionOf, validCode,
+    codeNameState, confirmCodeName, cancelCodeName, promptCodeAndName,
     uniqueName, resolveConflict, pasteFileInto,
   }
 }

@@ -9,6 +9,7 @@ import ComposeEditor from '../components/ComposeEditor.vue'
 import CssTabsEditor from '../components/CssTabsEditor.vue'
 import SaveAsDialog from '../components/SaveAsDialog.vue'
 import FaviconField from '../components/FaviconField.vue'
+import CodeNameDialog from '../components/CodeNameDialog.vue'
 import { NODE_ICON, nodeIcon, useContentTree, type TreeNode } from '../composables/useContentTree'
 import { useNodeDetail } from '../composables/useNodeDetail'
 import { useComposePreview, type ComposePreview } from '../composables/useComposePreview'
@@ -96,13 +97,29 @@ const ctxDomain = useContextMenu({
 })
 
 /* ── 模板绑定解构 ── */
-const { canEditSystem, canEdit, loading, selected, defaultExpandedKeys, treeReady, stats, allCssDirs, setTreeRef, load } = treeDomain
+const { canEditSystem, canEdit, loading, selected, defaultExpandedKeys, treeReady, stats, allCssDirs, setTreeRef, load, codeNameState, confirmCodeName, cancelCodeName } = treeDomain
 const treeData = treeDomain.tree
 const { metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing, sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, switchSampleMode, switchMetaMode, saveMeta, saveSource, saveStyle, saveSample, saveFields } = detail
 const { composeTemplate, composePlacements, composeOpen, composeHostLabel, hostTemplateOptions, composeFragmentOptions, composeSlotDefs, onHostTemplateChange, renderComposePreview, closeComposeDialog, placementData, openPlacementData, savePlacementData } = compose
 const { cssTabs, activeCss, openCssTab, onCssEdit, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
 const { menu, menuItems, onContextMenu, onDocMouseDown, onMenu } = ctxDomain
 const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
+
+/** 片段类型候选：双根模板族 meta.slots 的 type 聚合，供片段族 type 下拉；仍允许自定义输入 */
+const typeOptions = computed<string[]>(() => {
+  const out = new Set<string>()
+  for (const model of [treeDomain.sysModel.value, treeDomain.cusModel.value]) {
+    for (const brand of (model?.brands ?? []) as any[]) {
+      for (const fam of (brand.templates ?? []) as any[]) {
+        for (const slot of (fam.meta?.slots ?? []) as any[]) {
+          const t = String(slot?.type ?? '').trim()
+          if (t) out.add(t)
+        }
+      }
+    }
+  }
+  return [...out].sort()
+})
 
 /** favicon 继承预览：版本 → 族 → 类型 → 品牌；自身空时显示上级实际图标 */
 const faviconInherited = computed(() => {
@@ -221,7 +238,13 @@ onUnmounted(() => {
               </el-form-item>
               <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" :disabled="!canEdit" /></el-form-item>
               <template v-if="showForm.policy">
-                <el-form-item label="类型" required><el-input clearable v-model="form.type" :disabled="!canEdit" placeholder="如 product / banner" /></el-form-item>
+                <el-form-item label="类型" required>
+                  <el-select v-model="form.type" filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="选择或输入，如 header / product">
+                    <el-option v-for="t in typeOptions" :key="t" :value="t" :label="t" />
+                  </el-select>
+                  <div v-if="!form.type.trim()" class="meta-field-tip">类型必填（需与模板 slot 的 type 一致）</div>
+                  <FormHint>片段按此类型匹配模板插槽；一个片段族单值，多选请建多个族</FormHint>
+                </el-form-item>
                 <el-form-item label="黑名单"><el-input clearable v-model="form.policyB" :disabled="!canEdit" placeholder="逗号分隔，标签内可含空格" /></el-form-item>
                 <el-form-item label="白名单"><el-input clearable v-model="form.policyW" :disabled="!canEdit" placeholder="为空 = 本品牌内全部模板可用" /></el-form-item>
               </template>
@@ -289,6 +312,7 @@ onUnmounted(() => {
 
     <!-- 另存为弹框（R24；状态与确认逻辑在 useSaveAs 域） -->
     <SaveAsDialog :state="saveAsState" :target-options="saveAsTargetOptions" :css-dirs="allCssDirs" @confirm="confirmSaveAs" />
+    <CodeNameDialog :state="codeNameState" @confirm="confirmCodeName" @cancel="cancelCodeName" />
 
     <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
     <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
