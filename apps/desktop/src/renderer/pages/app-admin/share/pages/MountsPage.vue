@@ -218,7 +218,7 @@ onUnmounted(() => {
     <EmptyState v-else description="还没有挂载目录；新增一个目录即可生成固定分享链接" action-text="新增挂载" @action="openCreate" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
 
     <MountEditDialog v-model="dialogOpen" :record="editing" :taken-aliases="takenAliases" @save="onSave" />

@@ -192,7 +192,7 @@ async function clearAll(): Promise<void> {
     </div>
 
     <template #footer>
-      <ListPagination v-model:page="page" v-model:pageSize="pageSize" :total="records.length" :page-sizes="[20, 50, 100]" />
+      <ListPagination v-model:page="page" v-model:pageSize="pageSize" :total="records.length" />
     </template>
   </ListPageShell>
 </template>

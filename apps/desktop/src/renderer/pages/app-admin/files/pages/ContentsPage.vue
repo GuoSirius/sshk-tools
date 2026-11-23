@@ -445,7 +445,7 @@ function onSelectionChange(rows: ContentRecord[]): void { selected.value = rows 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" :confirm-text="confirmText" @confirm="onConfirmed" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
   </ListPageShell>
 </template>

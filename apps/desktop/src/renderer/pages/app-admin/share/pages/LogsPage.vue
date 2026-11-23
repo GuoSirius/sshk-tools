@@ -254,7 +254,7 @@ onMounted(() => { void table.refresh() })
     <EmptyState v-else description="暂无访问记录；调整筛选条件或稍后再试" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[20, 50, 100, 200]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
   </ListPageShell>
 </template>

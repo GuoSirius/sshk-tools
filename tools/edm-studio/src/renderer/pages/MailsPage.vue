@@ -296,8 +296,8 @@ function onAction(key: string, row: MailRow): void {
     />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
       <span class="muted foot-hint">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
 
     <!-- 编辑器与分享弹框（el-dialog teleport 到 body，锚点留在表格区无视觉影响） -->
@@ -326,5 +326,5 @@ function onAction(key: string, row: MailRow): void {
 <style scoped>
 .muted { opacity: 0.6; font-size: 12px; }
 /* footer 提示语推到最左（.lp-foot 默认居右）：等价旧 space-between 布局 */
-.foot-hint { margin-right: auto; }
+.foot-hint { margin-right: auto; margin-top: 6px; }
 </style>

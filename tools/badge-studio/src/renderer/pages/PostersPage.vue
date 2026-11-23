@@ -238,7 +238,7 @@ watch(() => shareDialog.open, (open) => { if (!open) void refreshShareLinks() })
       />
 
       <template #footer>
-        <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+        <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
       </template>
     </ListPageShell>
   </div>

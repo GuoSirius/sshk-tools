@@ -302,7 +302,7 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" confirm-text="删除" @confirm="onConfirmed" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
   </ListPageShell>
 </template>

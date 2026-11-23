@@ -212,7 +212,7 @@ onUnmounted(() => {
     <EmptyState v-else description="还没有代理规则；新增一条即可把 /前缀/ 转发到目标地址" action-text="新增代理" @action="openCreate" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
 
     <ProxyEditDialog v-model="dialogOpen" :record="editing" :taken-prefixes="takenPrefixes" @save="onSave" />

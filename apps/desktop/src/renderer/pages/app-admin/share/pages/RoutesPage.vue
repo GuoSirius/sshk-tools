@@ -174,7 +174,7 @@ onUnmounted(() => { table.stopPoll() })
     <EmptyState v-else description="暂无分享路由；在内容管理或文件管理中生成分享链接后，路由会显示在这里" />
 
     <template #footer>
-      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" :page-sizes="[10, 20, 50]" />
+      <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
   </ListPageShell>
 </template>
