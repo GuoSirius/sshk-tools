@@ -35,6 +35,8 @@ export interface ComposeInput {
   unoEnabled?: boolean
   /** 产物根（base-reset + uno 原子类汇集）；缺省纯拼接 css 不扫原子类 */
   outputRoot?: string
+  /** 已由 resolveCssBundle 解析好的完整 css（含 base-reset + uno）；传入时跳过本层汇集，避免重复 */
+  resolvedCss?: string
 }
 
 export interface ComposeResult extends RenderStages {
@@ -80,8 +82,8 @@ export async function compose(input: ComposeInput): Promise<ComposeResult> {
     if (p.css?.trim()) cssSources.push({ mode: 'inline', content: p.css })
   }
 
-  let cssBundle = cssSources.map((s) => s.content ?? '').join('\n\n')
-  if (input.outputRoot) {
+  let cssBundle = input.resolvedCss ?? cssSources.map((s) => s.content ?? '').join('\n\n')
+  if (input.resolvedCss === undefined && input.outputRoot) {
     const bundle = await collectCss({
       outputRoot: input.outputRoot,
       sources: cssSources,

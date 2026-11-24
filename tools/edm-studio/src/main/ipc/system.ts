@@ -19,7 +19,8 @@ export function registerSystemActions(ctx: EdmIpcContext, handlers: Map<string, 
     const sel = obj(data, 'selector') as unknown as SystemSelector
     if (!sel?.brandCode || !sel?.kind || !sel?.familyCode) throw new AppError('selector 需含 brandCode/kind/familyCode')
     const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
-    if (raw.length === 0) return await renderSystemPreview(ctx.resolveEdmRoot(), sel)
+    const opts = { outputRoot: ctx.outputRoot }
+    if (raw.length === 0) return await renderSystemPreview(ctx.resolveEdmRoot(), sel, opts)
     return await renderSystemCompose(
       ctx.resolveEdmRoot(),
       sel,
@@ -30,6 +31,7 @@ export function registerSystemActions(ctx: EdmIpcContext, handlers: Map<string, 
         repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
         data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
       })),
+      opts,
     )
   })
 

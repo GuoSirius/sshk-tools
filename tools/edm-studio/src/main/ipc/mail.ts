@@ -12,12 +12,50 @@ import {
   type TemplateVersion,
   type FragmentVersion,
 } from '@sshk/repository'
+
 import { compose, type ComposePlacement } from '../../core/compose.js'
+import { resolveCssBundle } from '../../core/css-resolve.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
 
 /** 邮件域 action（R19 统一组合引擎；产物覆盖式 D19）+ 产物根分享解析（plans/09 ShareHub） */
 export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, ActionHandler>): void {
   const { repo, str, obj } = ctx
+
+  /**
+   * 生成/预览共用的 css 解析（plans/14 批次 0）：
+   * 按实体 origin 推导解析根（system → 系统根 / custom → 自定义根），
+   * 版本目录由确定性 ID + label 推导，支撑 njk 中 `./css/…` 与 `@root/…` 引用；
+   * 无 link 时回退播种快照 source.css，与内容页预览同源同序。
+   */
+  async function resolveEntitiesCss(
+    entries: Array<{ entity: FragmentVersion | TemplateVersion; kind: 'fragment' | 'template' }>,
+  ): Promise<{ css: string; htmls: string[] }> {
+    const sources = entries.map(({ entity, kind }) => {
+      const isCustom = entity.origin === 'custom'
+      const sourceRoot = ctx.resolveContentRoot(isCustom ? 'custom' : 'system')
+      const parts = entity._id.split('_')
+      const prefix = kind === 'fragment' ? (isCustom ? 'frgv' : 'frg') : (isCustom ? 'tplv' : 'tpl')
+      const pos = parts.indexOf(prefix)
+      const start = pos >= 0 ? pos + (isCustom ? 1 : 2) : -1
+      const brandCode = start >= 0 ? (parts[start] ?? '') : ''
+      const familyCode = start >= 0 ? parts.slice(start + 1).join('_') : ''
+      const versionDir = path.join(sourceRoot, brandCode, kind, familyCode, entity.label || 'default')
+      if (!brandCode || !familyCode) console.warn(`[edm] 版本 ${entity._id} 无法推导 css 解析目录，回退播种快照`)
+      return {
+        html: entity.source.html,
+        ctx: {
+          sourceRoot,
+          systemRoot: ctx.resolveContentRoot('system'),
+          customRoot: ctx.resolveContentRoot('custom'),
+          versionDir,
+        },
+        fallbackCss: entity.source.cssMode === 'inline' ? entity.source.css : undefined,
+      }
+    })
+    const bundle = await resolveCssBundle({ sources, outputRoot: ctx.outputRoot, unoEnabled: true })
+    for (const w of bundle.warnings) console.warn(`[edm] css 引用警告：${w}`)
+    return { css: bundle.css, htmls: bundle.htmls }
+  }
 
   /**
    * 跨品牌硬规定（2026-11-23）：片段不得跨品牌搭配模板。
@@ -68,27 +106,25 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     // 跨品牌硬规定（第三层 · 生成前）：以模板版本品牌为基准校验所有片段
     await assertBindingsSameBrand(tv.brandId, mail.bindings)
     // R19 统一组合引擎：placements（per-placement data/order/repeat，Q12）→ slot_* → 三阶段
-    const placements: ComposePlacement[] = []
+    const fragments: Array<{ fv: FragmentVersion; binding: Mail['bindings'][number] }> = []
     for (const b of mail.bindings) {
       const fv = await repo.get<FragmentVersion>('fragmentVersions', b.fragmentVersionId)
-      if (!fv) continue
-      placements.push({
-        html: fv.source.html,
-        css: fv.source.cssMode === 'inline' ? fv.source.css : undefined,
-        data: (b.data ?? mail.data ?? {}) as Record<string, unknown>,
-        slot: b.slot,
-        order: b.order,
-        repeat: b.repeat,
-      })
+      if (fv) fragments.push({ fv, binding: b })
     }
+    const cssResult = await resolveEntitiesCss([{ entity: tv, kind: 'template' }, ...fragments.map((x) => ({ entity: x.fv, kind: 'fragment' as const }))])
+    const placements: ComposePlacement[] = fragments.map(({ fv, binding: b }, i) => ({
+      html: cssResult.htmls[i + 1] ?? fv.source.html,
+      data: (b.data ?? mail.data ?? {}) as Record<string, unknown>,
+      slot: b.slot,
+      order: b.order,
+      repeat: b.repeat,
+    }))
     const stages = await compose({
-      templateHtml: tv.source.html,
-      templateCss: tv.source.cssMode === 'inline' ? tv.source.css : undefined,
+      templateHtml: cssResult.htmls[0] ?? tv.source.html,
       placements,
       data: (mail.data ?? {}) as Record<string, unknown>,
       strict: true,
-      outputRoot: ctx.outputRoot,
-      unoEnabled: true,
+      resolvedCss: cssResult.css,
     })
     const snap = outputSnapshotOptions(ctx.config, TOOL_IDS.edmStudio, app.getPath('userData'))
     const outputs = {
@@ -111,27 +147,25 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const raw = Array.isArray(data['placements']) ? (data['placements'] as Payload[]) : []
     // 跨品牌硬规定（第三层 · 预览前）：草稿 placements 的片段须与模板同品牌
     await assertBindingsSameBrand(tv.brandId, raw.map((p) => ({ fragmentVersionId: String(p['fragmentVersionId'] ?? '') })))
-    const placements: ComposePlacement[] = []
+    const fragments: Array<{ fv: FragmentVersion; p: Payload }> = []
     for (const p of raw) {
       const fv = await repo.get<FragmentVersion>('fragmentVersions', String(p['fragmentVersionId'] ?? ''))
-      if (!fv) continue
-      placements.push({
-        html: fv.source.html,
-        css: fv.source.cssMode === 'inline' ? fv.source.css : undefined,
-        data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
-        slot: String(p['slot'] ?? ''),
-        order: typeof p['order'] === 'number' ? p['order'] : undefined,
-        repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
-      })
+      if (fv) fragments.push({ fv, p })
     }
+    const cssResult = await resolveEntitiesCss([{ entity: tv, kind: 'template' }, ...fragments.map((x) => ({ entity: x.fv, kind: 'fragment' as const }))])
+    const placements: ComposePlacement[] = fragments.map(({ fv, p }, i) => ({
+      html: cssResult.htmls[i + 1] ?? fv.source.html,
+      data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
+      slot: String(p['slot'] ?? ''),
+      order: typeof p['order'] === 'number' ? (p['order'] as number) : undefined,
+      repeat: typeof p['repeat'] === 'number' ? (p['repeat'] as number) : undefined,
+    }))
     const stages = await compose({
-      templateHtml: tv.source.html,
-      templateCss: tv.source.cssMode === 'inline' ? tv.source.css : undefined,
+      templateHtml: cssResult.htmls[0] ?? tv.source.html,
       placements,
       data: (data['mailData'] as Record<string, unknown>) ?? {},
       strict: false,
-      outputRoot: ctx.outputRoot,
-      unoEnabled: true,
+      resolvedCss: cssResult.css,
     })
     return { html: stages.assembled }
   })

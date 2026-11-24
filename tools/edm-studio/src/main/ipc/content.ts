@@ -130,7 +130,11 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
       }
     }
     // R28：显式 link 的 @shared / @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
-    const cssRoots = { systemRoot: ctx.resolveContentRoot('system'), customRoot: ctx.resolveContentRoot('custom') }
+    const cssRoots = {
+      systemRoot: ctx.resolveContentRoot('system'),
+      customRoot: ctx.resolveContentRoot('custom'),
+      outputRoot: ctx.outputRoot,
+    }
     if (raw.length === 0) return await renderSystemPreview(root, sel, cssRoots)
     return await renderSystemCompose(
       root,

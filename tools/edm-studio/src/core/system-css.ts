@@ -13,18 +13,20 @@ import * as yaml from 'js-yaml'
 import { renderFragment, renderMail } from './render.js'
 import { compose, type ComposePlacement } from './compose.js'
 import {
-  collectLinkedCss,
   hasExplicitCssRefs,
   injectCssIntoHead,
   type CssRefContext,
-  type CssRefSource,
 } from './css-refs.js'
+import { resolveCssBundle, type CssResolveSource } from './css-resolve.js'
 
 export interface CssRootOptions {
   /** 系统根（@shared / @system 基准）；缺省取当前 root */
   systemRoot?: string
   /** 自定义根（@custom 基准）；缺省取当前 root */
   customRoot?: string
+  /** 产物根：传入时前置 base-reset + uno（四入口一致；预览/生成必须都传） */
+  outputRoot?: string
+  unoEnabled?: boolean
 }
 
 function cssCtx(root: string, versionDir: string, opts: CssRootOptions): CssRefContext {
@@ -96,21 +98,22 @@ export async function collectSystemCss(root: string, sel: SystemSelector): Promi
   return out
 }
 
-/** 兼容层：就近链 css 内容拼接 + 版本级 style.css 最后注入 */
+/** 兼容层：就近链 css 内容拼接 + 版本级 style.css 最后注入（内容级去重，避免 N+1 体积膨胀） */
 export async function collectSystemCssContent(root: string, sel: SystemSelector): Promise<string> {
   const files = await collectSystemCss(root, sel)
+  files.push(path.join(versionDirOf(root, sel), 'style.css'))
   const parts: string[] = []
+  const seen = new Set<string>()
   for (const f of files) {
     try {
-      parts.push(await fs.readFile(f, 'utf8'))
+      const content = await fs.readFile(f, 'utf8')
+      const key = content.trim()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      parts.push(content)
     } catch {
-      /* 单文件读取失败不阻塞 */
+      /* 单文件不存在/读取失败不阻塞 */
     }
-  }
-  try {
-    parts.push(await fs.readFile(path.join(versionDirOf(root, sel), 'style.css'), 'utf8'))
-  } catch {
-    /* 无内联样式不阻塞 */
   }
   return parts.join('\n\n')
 }
@@ -131,21 +134,14 @@ export async function renderSystemPreview(
   if (!source) throw new Error(`找不到源文件：${dir}`)
   const sample = (await readYaml<Record<string, unknown>>(path.join(dir, 'sample.yaml'))) ?? {}
 
-  const sources: CssRefSource[] = [{ html: source, ctx: cssCtx(root, dir, opts) }]
-  let html = source
-  let cssBundle: string
-  let cssFiles: string[]
-
-  if (hasExplicitCssRefs(sources)) {
-    const linked = collectLinkedCss(sources)
-    warnLinked(linked.warnings)
-    html = linked.htmls[0] ?? source
-    cssBundle = linked.css
-    cssFiles = linked.refs
-  } else {
-    cssFiles = await collectSystemCss(root, sel)
-    cssBundle = await collectSystemCssContent(root, sel)
-  }
+  const sources: CssResolveSource[] = [{ html: source, ctx: cssCtx(root, dir, opts) }]
+  const explicit = hasExplicitCssRefs(sources)
+  if (!explicit) sources[0]!.fallbackCss = await collectSystemCssContent(root, sel)
+  const bundle = await resolveCssBundle({ sources, outputRoot: opts.outputRoot, unoEnabled: opts.unoEnabled })
+  warnLinked(bundle.warnings)
+  const html = bundle.htmls[0] ?? source
+  const cssBundle = bundle.css
+  const cssFiles = explicit ? bundle.refs : await collectSystemCss(root, sel)
 
   if (sel.kind === 'fragment') {
     const body = renderFragment(html, sample)
@@ -213,25 +209,18 @@ export async function renderSystemCompose(
     })
   }
 
-  const sources: CssRefSource[] = [
+  const sources: CssResolveSource[] = [
     { html: templateHtml, ctx: cssCtx(root, templateDir, opts) },
     ...raw.map((r) => ({ html: r.html, ctx: r.ctx })),
   ]
   const explicit = hasExplicitCssRefs(sources)
-  let htmls = sources.map((s) => s.html)
-  let templateCss: string
-  let cssFiles: string[]
-
-  if (explicit) {
-    const linked = collectLinkedCss(sources)
-    warnLinked(linked.warnings)
-    htmls = linked.htmls
-    templateCss = linked.css
-    cssFiles = linked.refs
-  } else {
-    templateCss = await collectSystemCssContent(root, templateSel)
-    cssFiles = await collectSystemCss(root, templateSel)
+  if (!explicit) {
+    sources[0]!.fallbackCss = await collectSystemCssContent(root, templateSel)
+    for (let i = 0; i < raw.length; i++) sources[i + 1]!.fallbackCss = await collectSystemCssContent(root, raw[i]!.selector)
   }
+  const bundle = await resolveCssBundle({ sources, outputRoot: opts.outputRoot, unoEnabled: opts.unoEnabled })
+  warnLinked(bundle.warnings)
+  const htmls = bundle.htmls
 
   const items: ComposePlacement[] = []
   for (let i = 0; i < raw.length; i++) {
@@ -239,7 +228,6 @@ export async function renderSystemCompose(
     if (!r) continue
     items.push({
       html: htmls[i + 1] ?? r.html,
-      css: explicit ? undefined : await collectSystemCssContent(root, r.selector),
       data: r.data,
       slot: r.slot,
       order: r.order,
@@ -249,10 +237,13 @@ export async function renderSystemCompose(
 
   const stages = await compose({
     templateHtml: htmls[0] ?? templateHtml,
-    templateCss,
     placements: items,
     data: {},
     strict: false,
+    resolvedCss: bundle.css,
   })
-  return { html: stages.assembled, cssFiles }
+  return {
+    html: stages.assembled,
+    cssFiles: explicit ? bundle.refs : await collectSystemCss(root, templateSel),
+  }
 }

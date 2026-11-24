@@ -7,7 +7,9 @@
  *   邮件生成（collectCss inline 模式）无需感知 edm 根路径即可复用三阶段管线。
  */
 import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import type {
+  BaseEntity,
   Brand,
   Fragment,
   FragmentVersion,
@@ -17,6 +19,7 @@ import type {
 } from '@sshk/repository'
 import { loadEdmModel } from './edm-manifest.js'
 import { collectSystemCssContent } from '../core/system-css.js'
+import { resolveCssBundle } from '../core/css-resolve.js'
 import { mergeFragmentPolicy } from '../core/fragment-policy.js'
 import { unifiedBrandId } from './edm-brand-identity.js'
 
@@ -54,64 +57,101 @@ export function versionNumberOf(dir: string, _metaVersion?: unknown): number {
   return m ? Number(m[1]) : 1
 }
 
-/** 播种系统内容进 NeDB（幂等；返回本次实际新增条数） */
-export async function seedSystemContent(repo: Repository, root: string): Promise<SeedCounts> {
-  const counts: SeedCounts = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0 }
+/** 版本 css 快照：显式 link 解析优先、无 link 回退就近链；内容级去重；不前置 base-reset/uno（渲染时候补） */
+async function versionCss(
+  root: string,
+  systemRoot: string,
+  customRoot: string,
+  brandCode: string,
+  kind: 'fragment' | 'template',
+  familyCode: string,
+  dir: string,
+  html: string,
+): Promise<string> {
+  const selector = { brandCode, kind, familyCode, versionDir: dir }
+  const bundle = await resolveCssBundle({
+    sources: [{
+      html,
+      ctx: { sourceRoot: root, systemRoot, customRoot, versionDir: path.join(root, brandCode, kind, familyCode, dir || 'default') },
+      fallbackCss: await collectSystemCssContent(root, selector),
+    }],
+  })
+  for (const w of bundle.warnings) console.warn(`[edm] 播种 css 引用警告：${w}`)
+  return bundle.css
+}
+
+const systemVersionCss = (root: string, brandCode: string, kind: 'fragment' | 'template', familyCode: string, dir: string, html: string): Promise<string> =>
+  versionCss(root, root, root, brandCode, kind, familyCode, dir, html)
+
+/**
+ * 播种系统内容进 NeDB（幂等；返回本次实际新增条数）。
+ * 批次 0 刷新语义（plans/14）：文件为真相——已存在未归档系统实体按文件刷新 source / fields /
+ * sample / 元数据；文件已删的未归档实体清理；archived 实体跳过不复活。
+ */
+export async function seedSystemContent(repo: Repository, root: string): Promise<SeedCounts & { removed: number }> {
+  const counts: SeedCounts & { removed: number } = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0, removed: 0 }
   const model = await loadEdmModel(root)
+  const want = {
+    brands: new Set<string>(),
+    fragments: new Set<string>(),
+    fragmentVersions: new Set<string>(),
+    templates: new Set<string>(),
+    templateVersions: new Set<string>(),
+  }
+  const upsert = async <T extends BaseEntity>(coll: Parameters<Repository['get']>[0], id: string, doc: T): Promise<boolean> => {
+    const existing = await repo.get<T>(coll, id)
+    if (existing?.archived) return false // 归档实体跳过，不复活
+    if (existing) await repo.update<T>(coll, id, doc as Partial<T>)
+    else await repo.insert<T>(coll, doc)
+    return !existing
+  }
 
   for (const b of model.brands) {
     const brandId = sysBrandId(b.code)
-    if (!(await repo.get<Brand>('brands', brandId))) {
-      await repo.insert<Brand>('brands', {
-        _id: brandId,
-        code: b.code,
-        name: b.meta.name,
-        origin: 'system',
-      })
+    if (await upsert<Brand>('brands', brandId, { _id: brandId, code: b.code, name: b.meta.name, origin: 'system' } as Brand)) {
       counts.brands++
+    } else {
+      const existing = await repo.get<Brand>('brands', brandId)
+      if (existing?.archived) continue
     }
+    want.brands.add(brandId)
 
     for (const fam of b.fragments) {
       const fragId = sysFragmentId(b.code, fam.code)
-      if (!(await repo.get<Fragment>('fragments', fragId))) {
-        await repo.insert<Fragment>('fragments', {
-          _id: fragId,
-          brandId,
-          name: fam.meta.name,
-          description: fam.meta.description,
-          type: fam.meta.type || 'product',
-          origin: 'system',
-        })
-        counts.fragments++
+      const fragPatch = {
+        _id: fragId, brandId, name: fam.meta.name, description: fam.meta.description,
+        type: fam.meta.type || 'product', origin: 'system' as const,
       }
+      if (await upsert<Fragment>('fragments', fragId, fragPatch as Fragment)) counts.fragments++
+      const fragExisting = await repo.get<Fragment>('fragments', fragId)
+      if (fragExisting?.archived) continue
+      want.fragments.add(fragId)
+
       let latestFv: { id: string; version: number } | null = null
       for (const v of fam.versions) {
         const fvId = sysFragmentVersionId(b.code, fam.code, v.dir)
-        if (!(await repo.get<FragmentVersion>('fragmentVersions', fvId))) {
-          const policy = mergeFragmentPolicy(fam.meta.policy, v.meta.policy)
-          await repo.insert<FragmentVersion>('fragmentVersions', {
-            _id: fvId,
-            fragmentId: fragId,
-            brandId,
-            version: versionNumberOf(v.dir, v.meta.version),
-            label: v.dir || 'default',
-            type: fam.meta.type || 'product',
-            source: {
-              html: (await readText(v.sourcePath)) ?? '',
-              css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
-              cssMode: 'inline',
-            },
-            policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
-            dataSchema: fam.meta.dataSchema,
-            fields: v.meta.fields ?? fam.meta.fields ?? undefined,
-            sampleData: v.sample ?? undefined,
-            origin: 'system',
-          })
-          counts.fragmentVersions++
-        } else {
-          // label 是目录名派生值：刷新旧索引，避免 default/standard 与真实 v1 都显示 v1
-          await repo.update<FragmentVersion>('fragmentVersions', fvId, { label: v.dir || 'default' })
+        const html = (await readText(v.sourcePath)) ?? ''
+        const policy = mergeFragmentPolicy(fam.meta.policy, v.meta.policy)
+        const patch = {
+          _id: fvId, fragmentId: fragId, brandId,
+          version: versionNumberOf(v.dir, v.meta.version),
+          label: v.dir || 'default',
+          type: fam.meta.type || 'product',
+          source: {
+            html,
+            css: await systemVersionCss(root, b.code, 'fragment', fam.code, v.dir, html),
+            cssMode: 'inline' as const,
+          },
+          policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
+          dataSchema: fam.meta.dataSchema,
+          fields: v.meta.fields ?? fam.meta.fields ?? undefined,
+          sampleData: v.sample ?? undefined,
+          origin: 'system' as const,
         }
+        if (await upsert<FragmentVersion>('fragmentVersions', fvId, patch as FragmentVersion)) counts.fragmentVersions++
+        const existing = await repo.get<FragmentVersion>('fragmentVersions', fvId)
+        if (existing?.archived) continue
+        want.fragmentVersions.add(fvId)
         const n = versionNumberOf(v.dir, v.meta.version)
         if (!latestFv || n > latestFv.version) latestFv = { id: fvId, version: n }
       }
@@ -120,42 +160,36 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
 
     for (const fam of b.templates) {
       const tplId = sysTemplateId(b.code, fam.code)
-      if (!(await repo.get<Template>('templates', tplId))) {
-        await repo.insert<Template>('templates', {
-          _id: tplId,
-          brandId,
-          name: fam.meta.name,
-          description: fam.meta.description,
-          origin: 'system',
-        })
-        counts.templates++
-      }
+      if (await upsert<Template>('templates', tplId, {
+        _id: tplId, brandId, name: fam.meta.name, description: fam.meta.description, origin: 'system',
+      } as Template)) counts.templates++
+      const tplExisting = await repo.get<Template>('templates', tplId)
+      if (tplExisting?.archived) continue
+      want.templates.add(tplId)
+
       let latestTv: { id: string; version: number } | null = null
       for (const v of fam.versions) {
         const tvId = sysTemplateVersionId(b.code, fam.code, v.dir)
-        if (!(await repo.get<TemplateVersion>('templateVersions', tvId))) {
-          const n = versionNumberOf(v.dir, v.meta.version)
-          await repo.insert<TemplateVersion>('templateVersions', {
-            _id: tvId,
-            templateId: tplId,
-            brandId,
-            version: n,
-            label: v.dir || 'default',
-            source: {
-              html: (await readText(v.sourcePath)) ?? '',
-              css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
-              cssMode: 'inline',
-            },
-            slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
-            dataSchema: fam.meta.dataSchema,
-            fields: v.meta.fields ?? undefined,
-            sampleData: v.sample ?? undefined,
-            origin: 'system',
-          })
-          counts.templateVersions++
-        } else {
-          await repo.update<TemplateVersion>('templateVersions', tvId, { label: v.dir || 'default' })
+        const html = (await readText(v.sourcePath)) ?? ''
+        const patch = {
+          _id: tvId, templateId: tplId, brandId,
+          version: versionNumberOf(v.dir, v.meta.version),
+          label: v.dir || 'default',
+          source: {
+            html,
+            css: await systemVersionCss(root, b.code, 'template', fam.code, v.dir, html),
+            cssMode: 'inline' as const,
+          },
+          slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
+          dataSchema: fam.meta.dataSchema,
+          fields: v.meta.fields ?? undefined,
+          sampleData: v.sample ?? undefined,
+          origin: 'system' as const,
         }
+        if (await upsert<TemplateVersion>('templateVersions', tvId, patch as TemplateVersion)) counts.templateVersions++
+        const existing = await repo.get<TemplateVersion>('templateVersions', tvId)
+        if (existing?.archived) continue
+        want.templateVersions.add(tvId)
         const n = versionNumberOf(v.dir, v.meta.version)
         if (!latestTv || n > latestTv.version) latestTv = { id: tvId, version: n }
       }
@@ -163,6 +197,17 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
     }
   }
 
+  // 文件已删的未归档系统实体同步清理（archived 跳过）
+  type SeedEntity = Brand | Fragment | Template | FragmentVersion | TemplateVersion
+  for (const coll of ['brands', 'fragments', 'fragmentVersions', 'templates', 'templateVersions'] as const) {
+    const existing = await repo.list<SeedEntity>(coll, { origin: 'system', archived: false })
+    for (const doc of existing) {
+      if (!want[coll].has(doc._id)) {
+        await repo.remove(coll, doc._id)
+        counts.removed++
+      }
+    }
+  }
   return counts
 }
 
@@ -178,7 +223,7 @@ const cusTemplateVersionId = (brand: string, fam: string, dir: string): string =
   `cus_tplv_${brand}_${fam}_${dir || 'default'}`
 
 /** 播种 / 同步自定义内容进 NeDB（返回本次新增 / 更新 / 清理条数） */
-export async function seedCustomContent(repo: Repository, root: string): Promise<SeedCounts & { removed: number }> {
+export async function seedCustomContent(repo: Repository, root: string, systemRoot = root): Promise<SeedCounts & { removed: number }> {
   const counts: SeedCounts & { removed: number } = { brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0, removed: 0 }
   const model = await loadEdmModel(root)
   // 期望实体 ID 集合（用于清理已删文件对应的 NeDB 实体）
@@ -224,7 +269,7 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
           fragmentId: fragId, brandId, version: n, label: v.dir || 'default', type: fam.meta.type || 'product',
           source: {
             html: (await readText(v.sourcePath)) ?? '',
-            css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'fragment', familyCode: fam.code, versionDir: v.dir }),
+            css: await versionCss(root, systemRoot, root, b.code, 'fragment', fam.code, v.dir, (await readText(v.sourcePath)) ?? ''),
             cssMode: 'inline' as const,
           },
           policy: { blacklist: policy?.blacklist ?? [], whitelist: policy?.whitelist ?? [] },
@@ -265,7 +310,7 @@ export async function seedCustomContent(repo: Repository, root: string): Promise
           templateId: tplId, brandId, version: n, label: v.dir || 'default',
           source: {
             html: (await readText(v.sourcePath)) ?? '',
-            css: await collectSystemCssContent(root, { brandCode: b.code, kind: 'template', familyCode: fam.code, versionDir: v.dir }),
+            css: await versionCss(root, systemRoot, root, b.code, 'template', fam.code, v.dir, (await readText(v.sourcePath)) ?? ''),
             cssMode: 'inline' as const,
           },
           slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),

@@ -31,7 +31,7 @@ export function registerEdmIpc(ipc: IpcMain, deps: EdmIpcDeps): void {
       // R8 首次运行播种：系统内容注册进 NeDB 查询索引（逐实体幂等，激活即补种）
       await seedSystemContent(ctx.repo, ctx.resolveEdmRoot())
       // R24 自定义根薄索引：扫描 custom-edm 文件根 → 同步 NeDB origin=custom（文件为真相源）
-      await seedCustomContent(ctx.repo, ctx.resolveContentRoot('custom'))
+      await seedCustomContent(ctx.repo, ctx.resolveContentRoot('custom'), ctx.resolveEdmRoot())
     } catch (err) {
       console.warn('[edm] 内容索引失败：', err instanceof Error ? err.message : err)
     }

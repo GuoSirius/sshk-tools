@@ -3,7 +3,7 @@
  * 覆盖：幂等（二次播种零新增）、origin='system' 实体注册、确定性 ID、
  * css 就近链内联、候选片段两道过滤查询可用。
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -37,7 +37,38 @@ describe('R8 系统内容播种', () => {
     expect(first.templateVersions).toBeGreaterThan(0)
 
     const second = await seedSystemContent(repo, EDM_ROOT)
-    expect(second).toEqual({ brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0 })
+    expect(second).toEqual({ brands: 0, fragments: 0, fragmentVersions: 0, templates: 0, templateVersions: 0, removed: 0 })
+  })
+
+  it('文件为真相：刷新已归档跳过的系统版本 / 文件删除清理未归档索引', async () => {
+    const repo = makeRepo()
+    const root = join(dirs[dirs.length - 1]!, 'edm-copy')
+    mkdirSync(root, { recursive: true })
+    cpSync(EDM_ROOT, root, { recursive: true })
+    await seedSystemContent(repo, root)
+
+    const fvId = 'frgv_sys_elabscience_banner_default'
+    const file = join(root, 'elabscience/fragment/banner/default/fragment.njk')
+    writeFileSync(file, '<div>{{ title }} refreshed</div>')
+    const refreshed = await seedSystemContent(repo, root)
+    expect(refreshed.fragmentVersions).toBe(0)
+    const fv = await repo.get<FragmentVersion>('fragmentVersions', fvId)
+    expect(fv?.source.html).toContain('refreshed')
+
+    // 归档实体不复活：改文件后再次播种，归档标记与旧内容保持不变
+    await repo.update<FragmentVersion>('fragmentVersions', fvId, { archived: true })
+    writeFileSync(file, '<div>should not revive</div>')
+    await seedSystemContent(repo, root)
+    expect((await repo.get<FragmentVersion>('fragmentVersions', fvId))?.archived).toBe(true)
+    expect((await repo.get<FragmentVersion>('fragmentVersions', fvId))?.source.html).toContain('refreshed')
+
+    // 未归档实体文件被删 → 索引清理
+    const otherId = 'frgv_sys_elabscience_banner_v1'
+    await repo.update<FragmentVersion>('fragmentVersions', otherId, { archived: false })
+    rmSync(join(root, 'elabscience/fragment/banner/v1'), { recursive: true, force: true })
+    const cleaned = await seedSystemContent(repo, root)
+    expect(cleaned.removed).toBeGreaterThan(0)
+    expect(await repo.get<FragmentVersion>('fragmentVersions', otherId)).toBeNull()
   })
 
   it('播种实体 origin=system 且确定性 ID 稳定；css 就近链已内联', async () => {
