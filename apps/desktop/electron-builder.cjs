@@ -29,6 +29,7 @@ const TOOL_ASSETS = [
   // edm-studio 的 builtin 资源位于 monorepo 的 <repo>/tools/edm-studio/assets/edm，
   // 需拷贝到安装包的 resources/edm-studio/assets/edm，与 tools/edm-studio ipc.resolveEdmRoot
   // 的 process.resourcesPath/edm-studio/assets/edm 严格对应（from 相对 apps/desktop 上溯两级）。
+  // base-reset.css 已收进 edm/css（与 @shared/base-reset.css 解析位置一致），随本树一并发布。
   { id: 'edm-studio', from: '../../tools/edm-studio/assets/edm', to: 'edm-studio/assets/edm' },
 ]
 

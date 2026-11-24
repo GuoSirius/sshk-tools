@@ -170,7 +170,14 @@ const preloadAlias: Alias[] = [
 // 构建期原生二进制（@oxc-parser 等）因此永远进不了包（mac universal 曾因此失败）。
 // marked/turndown：@sshk/rich-text/pure 的 Markdown 互转依赖。主进程经 pure 入口引入，
 // 若被 externalize 会残留裸 import，在零 node_modules 的安装包里触发 ERR_MODULE_NOT_FOUND。
-const BUNDLED_RUNTIME_DEPS = ['dayjs', 'fflate', 'iconv-lite', 'electron-updater', 'marked', 'turndown']
+// @unocss/core + @unocss/preset-wind3：EDM 原子类在 main 进程运行时 createGenerator 生成
+// （tools/edm-studio/src/core/css-bundle.ts）。这三者是动态 import，若被 externalize 会在
+// 打包版（files 全量排除 node_modules）静默降级为空 css，dev 有原子类、install 版全丢——
+// 必须内联打进 out/main，否则 juice 无样式可内联（plans/14 迁移后 dev/build 一致性硬要求）。
+const BUNDLED_RUNTIME_DEPS = [
+  'dayjs', 'fflate', 'iconv-lite', 'electron-updater', 'marked', 'turndown',
+  '@unocss/core', '@unocss/preset-wind3',
+]
 
 /**
  * ssh2 的 optional 原生加速模块 cpu-features 在打包环境没有编译产物（allowBuilds:false），

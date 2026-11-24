@@ -14,13 +14,24 @@ import { injectCssIntoHead } from './css-refs.js'
 /** 工具包根：src/core/ → tools/edm-studio/ */
 const TOOL_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
-/** 把工具自带 base-reset.css 幂等落盘到产物系统，返回其绝对路径 */
+/**
+ * 把工具自带 base-reset.css 幂等落盘到产物系统，返回其绝对路径。
+ * 真相源位于 edm/css/base-reset.css（与 @shared/base-reset.css 解析位置一致，随 edm 树发布）：
+ *   dev    = <repo>/tools/edm-studio/assets/edm/css/base-reset.css
+ *   打包态 = <resources>/edm-studio/assets/edm/css/base-reset.css
+ *             （extraResources 发布 edm 树；TOOL_ROOT 打包后指向 app.asar，其上一级即 resources）
+ * 缺一即导致 dev/build reset 不一致。
+ */
 export function ensureBaseReset(outputRoot: string): string {
   const target = join(outputRoot, 'assets', 'edm', 'css', 'base-reset.css')
   if (!existsSync(target)) {
-    const source = join(TOOL_ROOT, 'assets', 'base-reset.css')
+    const candidates = [
+      join(TOOL_ROOT, 'assets', 'edm', 'css', 'base-reset.css'),
+      join(TOOL_ROOT, '..', 'edm-studio', 'assets', 'edm', 'css', 'base-reset.css'),
+    ]
+    const source = candidates.find((p) => existsSync(p))
     mkdirSync(dirname(target), { recursive: true })
-    if (existsSync(source)) copyFileSync(source, target)
+    if (source) copyFileSync(source, target)
   }
   return target
 }
