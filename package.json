@@ -22,7 +22,7 @@
     "check:latest": "node scripts/check-latest.mjs",
     "check:signature": "node scripts/check-signature.mjs",
     "check:env": "node scripts/check-env.mjs",
-    "check:knip": "knip",
+    "check:knip": "node scripts/run-knip.mjs",
     "check:external": "node scripts/build-external.mjs --check",
     "build:external": "node scripts/build-external.mjs",
     "keys:init": "node scripts/init-signing-key.mjs",
