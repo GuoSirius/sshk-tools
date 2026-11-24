@@ -1,40 +1,15 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { resolveSafe } from '@sshk/repository'
 import { injectCssIntoHead } from './css-refs.js'
 
 /**
- * EDM css 汇集（数据契约补记 A/B/C）：
- * base-reset → uno 原子类 → 品牌/模板 local css → 模板/片段 inline style。
+ * EDM css 汇集（数据契约补记 A/B/C，2026-11-24 用户口径）：
+ * 唯一自动注入项是 uno 原子类（扫描参与渲染的 njk 源码动态生成）；
+ * 其余一切 css（含 base-reset）必须由 njk 显式 <link> 引入并经 resolveCssBundle 解析后才生效，
+ * 不再由本层自动前置/落盘——避免「自动链 + 显式链」两套来源导致的顺序与覆盖不确定。
  * 汇集结果在 assembled 阶段以 <style> 注入 head，再由 juice 统一内联。
  * unocss 依赖未安装时优雅降级为警告，不阻断渲染。
  */
-
-/** 工具包根：src/core/ → tools/edm-studio/ */
-const TOOL_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
-
-/**
- * 把工具自带 base-reset.css 幂等落盘到产物系统，返回其绝对路径。
- * 真相源位于 edm/css/base-reset.css（与 @shared/base-reset.css 解析位置一致，随 edm 树发布）：
- *   dev    = <repo>/tools/edm-studio/assets/edm/css/base-reset.css
- *   打包态 = <resources>/edm-studio/assets/edm/css/base-reset.css
- *             （extraResources 发布 edm 树；TOOL_ROOT 打包后指向 app.asar，其上一级即 resources）
- * 缺一即导致 dev/build reset 不一致。
- */
-export function ensureBaseReset(outputRoot: string): string {
-  const target = join(outputRoot, 'assets', 'edm', 'css', 'base-reset.css')
-  if (!existsSync(target)) {
-    const candidates = [
-      join(TOOL_ROOT, 'assets', 'edm', 'css', 'base-reset.css'),
-      join(TOOL_ROOT, '..', 'edm-studio', 'assets', 'edm', 'css', 'base-reset.css'),
-    ]
-    const source = candidates.find((p) => existsSync(p))
-    mkdirSync(dirname(target), { recursive: true })
-    if (source) copyFileSync(source, target)
-  }
-  return target
-}
 
 export interface CssSource {
   mode: 'inline' | 'local' | 'external'
@@ -78,15 +53,13 @@ export async function collectCss(input: CollectCssInput): Promise<CssBundle> {
   const warnings: string[] = []
   const parts: string[] = []
 
-  const baseReset = ensureBaseReset(input.outputRoot)
-  if (existsSync(baseReset)) parts.push(readFileSync(baseReset, 'utf8'))
-
+  // 唯一自动注入：uno 原子类。base-reset 等其他 css 一律由 njk 显式 link 解析后进入 sources
   if (input.unoEnabled) {
     const uno = await unoCss(input.scanCodes ?? [], warnings)
     if (uno.trim()) parts.push(uno)
   }
 
-  // 契约 B 汇集顺序：base-reset → uno → local（品牌/模板文件）→ inline（DB 内容）
+  // 汇集顺序：uno → local（品牌/模板文件）→ inline（DB / 显式 link 解析内容）
   for (const source of input.sources.filter((s) => s.mode === 'local')) {
     if (!source.file) { warnings.push('local css 缺少文件路径，已跳过'); continue }
     try {

@@ -24,7 +24,7 @@ export interface CssRootOptions {
   systemRoot?: string
   /** 自定义根（@custom 基准）；缺省取当前 root */
   customRoot?: string
-  /** 产物根：传入时前置 base-reset + uno（四入口一致；预览/生成必须都传） */
+  /** 产物根：传入时注入 uno（唯一自动注入；四入口一致，预览/生成必须都传） */
   outputRoot?: string
   unoEnabled?: boolean
 }

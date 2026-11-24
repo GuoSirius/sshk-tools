@@ -57,7 +57,7 @@ export function versionNumberOf(dir: string, _metaVersion?: unknown): number {
   return m ? Number(m[1]) : 1
 }
 
-/** 版本 css 快照：显式 link 解析优先、无 link 回退就近链；内容级去重；不前置 base-reset/uno（渲染时候补） */
+/** 版本 css 快照：显式 link 解析优先、无 link 回退就近链；内容级去重；不注入 uno（渲染时补） */
 async function versionCss(
   root: string,
   systemRoot: string,

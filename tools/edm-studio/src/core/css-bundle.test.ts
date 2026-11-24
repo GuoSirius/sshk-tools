@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { collectCss, ensureBaseReset, injectCss } from './css-bundle.js'
+import { collectCss, injectCss } from './css-bundle.js'
 
 const tmpDirs: string[] = []
 function makeRoot(): string {
@@ -15,17 +15,14 @@ afterEach(() => {
 })
 
 describe('EDM css 汇集（数据契约补记 A/B）', () => {
-  it('base-reset 幂等落盘到 assets/edm/css', () => {
+  it('不自动注入 base-reset：未显式 link 时 css 不含 reset 内容', async () => {
     const root = makeRoot()
-    const first = ensureBaseReset(root)
-    expect(existsSync(first)).toBe(true)
-    const content = readFileSync(first, 'utf8')
-    ensureBaseReset(root)
-    expect(readFileSync(first, 'utf8')).toBe(content)
-    expect(content).toContain('mso-table-lspace')
+    const { css } = await collectCss({ outputRoot: root, sources: [], unoEnabled: false })
+    expect(css).not.toContain('mso-table-lspace')
+    expect(css).not.toContain('ExternalClass')
   })
 
-  it('汇集顺序：base-reset → local 文件 → inline 内容', async () => {
+  it('汇集顺序：local 文件 → inline 内容（base-reset 已交由 njk 显式 link）', async () => {
     const root = makeRoot()
     writeFileSync(join(root, 'brand.css'), '.brand{color:red}')
     const { css, warnings } = await collectCss({
@@ -34,9 +31,10 @@ describe('EDM css 汇集（数据契约补记 A/B）', () => {
         { mode: 'inline', content: '.inline{color:blue}' },
         { mode: 'local', file: 'brand.css' },
       ],
+      unoEnabled: false,
     })
     expect(warnings).toHaveLength(0)
-    expect(css.indexOf('mso-table-lspace')).toBeLessThan(css.indexOf('.brand'))
+    expect(css).not.toContain('mso-table-lspace')
     expect(css.indexOf('.brand')).toBeLessThan(css.indexOf('.inline'))
   })
 

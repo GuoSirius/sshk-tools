@@ -14,7 +14,7 @@ export interface RenderInput {
   bindings: Record<string, string>
   data: Record<string, unknown>
   render: { strict: boolean; autoEscape: boolean }
-  /** 已汇集的 css（base-reset → uno → 品牌/模板，css-bundle.collectCss）；空则跳过注入 */
+  /** 已汇集的 css（uno → 显式 link 解析内容，css-bundle.collectCss）；空则跳过注入 */
   cssBundle?: string
 }
 

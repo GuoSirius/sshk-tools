@@ -8,6 +8,7 @@
  * ⑥ 关键 arbitrary class 能被 unocss 生成且 juice 内联为真实像素/纯色（不靠 CSS 变量 alpha）；
  * ⑦ unocss 生成带 CSS 变量的同名 class（color-blue / bg-white 等）必须有品牌 css 兜底定义，
  *    且 default njk 必须 link palette.css —— 否则 Tailwind 默认色 + var() 会泄漏到内联结果。
+ * ⑧ base-reset 不再自动注入（2026-11-24 口径），须由 default njk 显式 link；见 edm-assets.test.ts。
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

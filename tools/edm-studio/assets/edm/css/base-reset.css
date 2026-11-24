@@ -1,5 +1,6 @@
 /* EDM 邮件基础重置：normalize.css 底稿 + 邮件客户端适配。
- * 由宿主首次使用时复制到 <outputRoot>/assets/edm/css/base-reset.css，幂等。
+ * 真相源位于 edm/css/，由 njk 显式引用 @shared/base-reset.css 才生效
+ * （2026-11-24 起不再自动注入；unocss 是唯一自动注入项）。
  * unocss 的 preflight 关闭，重置统一走本文件，避免双 reset 叠加（数据契约补记 C）。 */
 
 /* normalize.css 底稿（v8 精简，仅保留邮件可用的属性） */

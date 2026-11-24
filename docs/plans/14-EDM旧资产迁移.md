@@ -73,6 +73,8 @@ resolveCssBundle({ sources })            # sources = 参与渲染的全部 njk �
 
 改造点：① 预览侧补 base-reset + uno 扫描；② 生成侧补 link 解析（按实体 origin 推导解析根：system → 系统根，custom → 自定义根；版本目录由实体 ID/label 推导，支撑 `./css/…` 引用）；③ css 源**内容级去重**（模板链与片段链都引品牌 css 时只收一份，消除体积膨胀 N+1）；④ 播种刷新对齐 custom 语义（见 §六批次 0）。
 
+> **2026-11-24 后续口径（实施后调整，历史结论不回改）**：上表/流程图中「自动前置 base-reset」已废弃。`ensureBaseReset` 删除，渲染层**唯一自动注入项是 uno 原子类**；base-reset 等一切 css 改由 njk 显式引用 `@shared/base-reset.css` 才生效（56 个 default njk 已全部补齐，v1 不迁移）。真相源 `assets/edm/css/base-reset.css` 随 edm 树发布，dev/build 同解析。守护断言见 `edm-assets.test.ts`（default 必带 base-reset link + reset 已内联）与 `css-bundle.test.ts`（无 link 时 css 不含 reset）。
+
 ### 1.4 uno 直用结论（回应用户 #1）
 
 **njk 源码可直接写 UnoCSS 原子类**，链路已内建且依赖已安装（`@unocss/core` + `@unocss/preset-wind3` 在 edm-studio dependencies）：
