@@ -1,4 +1,17 @@
 version: 1
-changelog: 初始默认版本
-name: 默认模板
 code: default
+name: 标准骨架·迁移版
+changelog: 旧母版骨架重建（plans/14 批次 4）
+fields:
+  - type: input
+    key: subject
+    label: 邮件主题
+    required: true
+    maxLength: 80
+    placeholder: 邮件标题
+  - type: input
+    key: preheader
+    label: 预览摘要
+    required: false
+    maxLength: 120
+    placeholder: 收件箱预览文字

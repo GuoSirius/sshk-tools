@@ -1,6 +1,6 @@
 code: standard
 name: 标准邮件模板
-description: Procell 通用骨架
+description: 普诺赛标准邮件骨架：页头 / 正文 / 页尾三槽
 slots:
   - key: header
     type: header
@@ -9,4 +9,5 @@ slots:
   - key: footer
     type: footer
 dataSchema: {}
-tags: [通用]
+tags:
+  - 通用

@@ -1,6 +1,6 @@
 code: standard
 name: 标准邮件模板
-description: 通用三栏邮件骨架（头部品牌 / 主体产品 / 底部信息）
+description: 伊莱瑞特标准邮件骨架：页头 / 正文 / 页尾三槽
 slots:
   - key: header
     type: header

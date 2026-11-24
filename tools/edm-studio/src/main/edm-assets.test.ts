@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import nunjucks from 'nunjucks'
 import { loadEdmModel } from './edm-manifest'
-import { renderSystemPreview, type SystemSelector } from '../core/system-css'
+import { renderSystemCompose, renderSystemPreview, type SystemSelector } from '../core/system-css'
 
 const EDM_ROOT = fileURLToPath(new URL('../../assets/edm', import.meta.url))
 const OUTPUT = mkdtempSync(path.join(tmpdir(), 'sshk-edm-assets-'))
@@ -49,8 +49,7 @@ describe('系统 EDM 资产迁移不变量', () => {
       expect(preview.html).not.toContain('{{')
       expect(preview.html).toContain('<style>')
 
-      // v1 为旧演示资产；template/default 将于批次 4 重建，暂不纳入迁移纪律校验
-      if (v.dir !== 'default' || v.sel.kind === 'template') continue
+      if (v.dir !== 'default') continue // v1 为旧演示资产，不纳入迁移纪律校验
       expect(v.html).toContain('<link rel="stylesheet" href="@shared/email-utils.css">')
       type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
       const fields = v.fields as FieldLike[]
@@ -70,6 +69,25 @@ describe('系统 EDM 资产迁移不变量', () => {
         }
         expect(declared.has(key), `${v.sel.brandCode}/${v.sel.familyCode}: ${key} 未声明为 richtext`).toBe(true)
       }
+    }
+  })
+
+  it('双品牌组合预览：header + banner + literature + footer 可拼成完整邮件', async () => {
+    const model = await loadEdmModel(EDM_ROOT)
+    for (const brand of model.brands) {
+      const sel = (kind: string, familyCode: string): SystemSelector => ({ brandCode: brand.code, kind, familyCode, versionDir: 'default' })
+      const composed = await renderSystemCompose(EDM_ROOT, sel('template', 'standard'), [
+        { selector: sel('fragment', 'header'), slot: 'header' },
+        { selector: sel('fragment', 'banner'), slot: 'body', order: 1 },
+        { selector: sel('fragment', 'literature'), slot: 'body', order: 2 },
+        { selector: sel('fragment', 'footer'), slot: 'footer' },
+      ], { outputRoot: OUTPUT })
+      expect(composed.html).not.toContain('<link')
+      expect(composed.html).not.toContain('{{')
+      expect(composed.html).toContain(brand.code === 'elabscience' ? 'Elabscience' : 'Procell')
+      expect(composed.html).toContain('Connect with us')
+      expect(composed.html).toContain('<style>')
+      expect(composed.html.match(/@shared\/email-utils/g)).toBeNull()
     }
   })
 })

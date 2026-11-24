@@ -1,8 +1,24 @@
 <!DOCTYPE html>
-<html><body>
-<table class="edm-standard edm-reset" role="presentation">
-  <tr><td class="slot">{{ slot_header | safe }}</td></tr>
-  <tr><td class="slot">{{ slot_body | safe }}</td></tr>
-  <tr><td class="slot">{{ slot_footer | safe }}</td></tr>
-</table>
-</body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>{{ subject }}</title>
+  <link rel="stylesheet" href="@shared/email-utils.css">
+  <link rel="stylesheet" href="@root/elabscience/template/standard/css/template.css">
+  <link rel="stylesheet" href="@root/elabscience/css/palette.css">
+  <link rel="stylesheet" href="@root/elabscience/css/components.css">
+  <link rel="stylesheet" href="./css/standard.css">
+</head>
+<body>
+  <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ preheader }}</div>
+  <table cellspacing="0" cellpadding="0" border="0" id="app" class="app" role="presentation">
+    <colgroup><col width="10px" /><col /><col /><col width="10px" /></colgroup>
+    <tbody>
+      <tr><td colspan="4">{{ slot_header | safe }}</td></tr>
+      <tr><td colspan="4">{{ slot_body | safe }}</td></tr>
+      <tr><td colspan="4">{{ slot_footer | safe }}</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>
