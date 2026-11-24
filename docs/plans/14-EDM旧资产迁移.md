@@ -148,7 +148,8 @@ assets/edm/
 │   │   ├── palette.css                   ← 品牌色板（bg-*：#006db8/#3a82db/#f7750b 系）
 │   │   ├── components.css                ← 品牌组件类（title 系/wifi-/gold-/circle-/square-icon-title、
 │   │   │                                    button 系、table-bordered/stripe/dashed 系、装饰图标列表类）
-│   │   └── brand-utils.css               ← 品牌特有原子类/修饰类
+│   │   └── brand-utils.css               ← 品牌特有原子类/修饰类（**实施批注**：该文件从未被任何 njk link，
+│   │                                        品牌色被 unocss 同名 Tailwind 默认值 + CSS 变量覆盖；已并入 palette.css，文件删除）
 │   ├── fragment/
 │   │   ├── header/default/{meta.yaml, fragment.njk, sample.yaml, css/}
 │   │   ├── footer/default/{…}
@@ -185,7 +186,7 @@ assets/edm/
 | 骨架类 .app/.header/.main/.footer L75-131 | `template/standard/css/template.css` | 模板 njk `./css/`? 否——骨架 css 在族级 css/，**用 `@root/<brand>/template/standard/css/template.css` 显式引入**（族级 css/ 目录只此一处特例，其余场景不用族级） |
 | 表格组件 / 标题类 / 装饰图标 / 按钮 | 品牌 `components.css` | @root |
 | bg-* 色板 | 品牌 `palette.css` | @root |
-| 品牌特有原子类差集 | 品牌 `brand-utils.css` | @root |
+| 品牌特有原子类差集 | 品牌 `brand-utils.css`（**实施批注**：已并入本品牌 `palette.css`，随所有 default njk 的 palette link 生效） | @root |
 | 页面特定类（.card/.word-cloud-item；procell .poster） | 随对应片段版本 `default/css/`；无主的丢弃 | `./css/` |
 
 ### 3.3 片段族清单（#11 扩充口径：可复用尽量提取，批次 5 按此细化命名）

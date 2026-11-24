@@ -5,7 +5,9 @@
  * ③ 关键视觉（标题装饰、斑马纹）必须落到真实元素，而非伪元素/结构选择器；
  * ④ email-utils 只保留 reset 与真实装饰基类，原子类不重复定义（统一由 unocss 运行时生成）；
  * ⑤ njk 不再用「伪 unocss」数字/颜色类（h-24/color-333/border-rd-10），改 arbitrary value/property；
- * ⑥ 关键 arbitrary class 能被 unocss 生成且 juice 内联为真实像素/纯色（不靠 CSS 变量 alpha）。
+ * ⑥ 关键 arbitrary class 能被 unocss 生成且 juice 内联为真实像素/纯色（不靠 CSS 变量 alpha）；
+ * ⑦ unocss 生成带 CSS 变量的同名 class（color-blue / bg-white 等）必须有品牌 css 兜底定义，
+ *    且 default njk 必须 link palette.css —— 否则 Tailwind 默认色 + var() 会泄漏到内联结果。
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -131,5 +133,45 @@ describe('EDM 迁移资产邮件兼容性', () => {
     // 白色单独验（同元素多个 color 类后者会覆盖前者）
     const whiteCss = (await uno.generate('[color:#fff]', { preflights: false })).css
     expect(juice.inlineContent('<div class="[color:#fff]">x</div>', whiteCss).replace(/\s*:\s*/g, ':')).toContain('color:#fff')
+  })
+
+  it('unocss 带 CSS 变量的同名 class 必须有品牌 css 兜底，且 njk 都 link 了 palette', async () => {
+    const uno = await createGenerator({ presets: [presetWind3({ preflight: false })] })
+    for (const brand of ['elabscience', 'procell']) {
+      const brandDir = path.join(EDM_ROOT, brand)
+      const njkFiles = walk(brandDir).filter((f) => f.endsWith('.njk'))
+      expect(njkFiles.length, `${brand} 未找到 default njk`).toBeGreaterThan(0)
+
+      // ① 所有 default njk 必须 link palette.css，否则品牌兜底定义进不了 bundle
+      for (const file of njkFiles) {
+        expect(readFileSync(file, 'utf8'), `${path.relative(EDM_ROOT, file)} 未 link palette.css，品牌色将被 unocss 默认值覆盖`)
+          .toMatch(/href="@root\/[^"]+\/css\/palette\.css"/)
+      }
+
+      // ② 收集该品牌 njk 实际用到的 class，找出 unocss 会生成 CSS 变量的那些
+      const used = new Set<string>()
+      for (const file of njkFiles) {
+        for (const m of readFileSync(file, 'utf8').matchAll(/class="([^"]*)"/g)) {
+          for (const c of (m[1] ?? '').split(/\s+/)) if (c) used.add(c)
+        }
+      }
+      const { css: unoCss } = await uno.generate([...used].join(' '), { preflights: false })
+      const risky = unoCss
+        .split('\n')
+        .filter((line) => line.includes('--un-'))
+        .map((line) => line.match(/^\.([^{]+)\{/)?.[1]?.replace(/\\/g, ''))
+        .filter((name): name is string => Boolean(name))
+      expect(risky.length, `${brand} 未检出需兜底的 class，测试可能已失效`).toBeGreaterThan(0)
+
+      // ③ 每个 risky class 必须在品牌 css（palette 已收编 brand-utils）中有定义
+      const linkedCss = [path.join(EDM_ROOT, 'css', 'email-utils.css'), ...walk(brandDir).filter((f) => f.endsWith('.css'))]
+        .map((f) => readFileSync(f, 'utf8'))
+        .join('\n')
+      for (const name of risky) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        expect(new RegExp(`\\.${escaped}\\s*[,{:]`, 'm').test(linkedCss),
+          `${brand} 的 .${name} 由 unocss 生成但无品牌 css 兜底，将泄漏 Tailwind 默认色与 var()`).toBe(true)
+      }
+    }
   })
 })
