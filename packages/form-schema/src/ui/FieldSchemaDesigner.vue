@@ -97,14 +97,18 @@ function insertControl(c: CompositeControlOption): void {
   scrollToSelected()
 }
 
-/** 新增/插入后自动滚动到新行（用户 2026-11-24）：selectedUid 已指向新行，nextTick 等 DOM
- *  渲染后在本设计器作用域内按 uid 定位（data-fuid；嵌套设计器 uid 各自计数可能撞号，
- *  必须限根元素内查询），block:'nearest' 只滚必要的最小距离 */
+/** 新增/插入后自动滚动到新行（用户 2026-11-24）。uid 必须在 nextTick 内再读：emitChange
+ *  触发父组件 v-model 回写 → watch(props.modelValue) 重建全部 rowUid（旧 uid 全部作废），
+ *  提前捕获的 uid 到 nextTick 时已查不到 DOM 行（首版失效根因）。nextTick 时 selectedUid
+ *  已被 watch 按 key 重新定位到新行的新 uid。作用域限根元素内（嵌套设计器 uid 可能撞号），
+ *  查不到时兜底取最后一行（新增恒追加到末尾）。 */
 function scrollToSelected(): void {
-  const u = selectedUid.value
-  if (u == null) return
   void nextTick(() => {
-    rootEl.value?.querySelector(`[data-fuid="${u}"]`)?.scrollIntoView({ block: 'nearest' })
+    const u = selectedUid.value
+    const root = rootEl.value
+    if (u == null || !root) return
+    const row = root.querySelector(`[data-fuid="${u}"]`) ?? root.querySelector<HTMLElement>('.field-item:last-child')
+    row?.scrollIntoView({ block: 'nearest' })
   })
 }
 
