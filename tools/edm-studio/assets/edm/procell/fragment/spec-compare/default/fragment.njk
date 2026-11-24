@@ -1,0 +1,70 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/procell/css/palette.css">
+<link rel="stylesheet" href="@root/procell/css/components.css">
+<link rel="stylesheet" href="./css/spec-compare.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0" class="table-bordered condensed text-center text-size-[14px]">
+                    <colgroup>
+                      <col width="35%" />
+                      <col width="15%" />
+                      <col width="35%" />
+                      <col width="15%" />
+                    </colgroup>
+
+                    <tbody>
+                      <tr>
+                        <td colspan="2" class="image-box">
+                          <img src="{{ image1 }}" />
+                        </td>
+                        <td colspan="2" class="image-box">
+                          <img src="{{ image2 }}" />
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td colspan="2" class="bg-light-primary color-white font-bold text-size-[18px]">{{ text5 }}</td>
+                        <td colspan="2" class="bg-light-primary color-white font-bold text-size-[18px]">{{ text6 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td colspan="2" class="text-left">{{ text7 }}</td>
+                        <td colspan="2" class="text-left">{{ text8 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text9 }}</td>
+                        <td>{{ text10 }}</td>
+                        <td>{{ text11 }}</td>
+                        <td>{{ text12 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text13 }}</td>
+                        <td>{{ text14 }}</td>
+                        <td>{{ text15 }}</td>
+                        <td>{{ text16 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text17 }}</td>
+                        <td>{{ text18 }}</td>
+                        <td>{{ text19 }}</td>
+                        <td>{{ text20 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td colspan="2" class="pt-12 pb-12">
+                          <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button-orange decoration-none text-size-[14px]">{{ text21 }}</a>
+                        </td>
+                        <td colspan="2" class="pt-12 pb-12">
+                          <a {% if link4 %}href="{{ link4 }}"{% endif %} class="button-orange decoration-none text-size-[14px]">{{ text22 }}</a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

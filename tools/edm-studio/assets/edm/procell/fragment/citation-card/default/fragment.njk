@@ -1,0 +1,39 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/procell/css/palette.css">
+<link rel="stylesheet" href="@root/procell/css/components.css">
+<link rel="stylesheet" href="./css/citation-card.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0">
+                    <colgroup>
+                      <col width="25%" />
+                      <col />
+                    </colgroup>
+
+                    <tbody class="align-top">
+                      <tr>
+                        <td rowspan="2" style="padding-right: 12px;" class="image-box">
+                          <img src="{{ image1 }}" />
+                        </td>
+                        <td class="h-0 pb-24">
+                          <a {% if link2 %}href="{{ link2 }}"{% endif %} class="decoration-none">
+                            <strong>{{ text3 }}</strong>
+                          </a>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td>
+                          <p style="margin-bottom: 12px;"><strong>{{ text4 }}</strong>{{ text5 }}</p>
+                          <p style="margin-bottom: 12px;"><strong>{{ text6 }}</strong> <i>{{ text7 }}</i></p>
+                          <p style="margin-bottom: 12px;"><strong>{{ text8 }}</strong>{{ text9 }}</p>
+                          <p><strong>{{ text10 }}</strong>{{ text11 }}</p>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

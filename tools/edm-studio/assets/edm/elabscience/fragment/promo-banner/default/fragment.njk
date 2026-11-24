@@ -1,0 +1,41 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/promo-banner.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0">
+                    <colgroup>
+                      <col width="35%" />
+                      <col />
+                    </colgroup>
+
+                    <tbody class="align-top">
+                      <tr>
+                        <td rowspan="3" style="padding-right: 12px;" class="image-box">
+                          <img src="{{ image1 }}" />
+                        </td>
+                        <td class="h-0 pb-24"><strong>{{ text3 }}<sup>&trade;</sup>{{ text4 }}</strong></td>
+                      </tr>
+
+                      <tr>
+                        <td>
+                          <p>{{ text5 }}</p>
+                          <p><strong>{{ text6 }}</strong>{{ text7 }}<sup>&trade;</sup>{{ text8 }}<span class="color-orange">{{ text9 }}</span>.</p>
+                          <p><strong>{{ text10 }}</strong>{{ text11 }}<span class="color-orange">{{ text12 }}</span>{{ text13 }}</p>
+                          <p><strong>{{ text14 }}</strong>{{ text15 }}<span class="color-orange">{{ text16 }}<sup>&trade;</sup>{{ text17 }}</span>.</p>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td class="text-right pt-24">
+                          <a {% if link2 %}href="{{ link2 }}"{% endif %} class="button font-bold decoration-none">{{ text18 }}</a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

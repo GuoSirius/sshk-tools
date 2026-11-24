@@ -1,0 +1,21 @@
+version: 1
+code: default
+name: 数据展示·迁移版
+changelog: juice-cli/edm 母版 L2658-L2689 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: input
+    key: text3
+    label: 文案 3
+    required: false
+  - type: input
+    key: text4
+    label: 文案 4
+    required: false

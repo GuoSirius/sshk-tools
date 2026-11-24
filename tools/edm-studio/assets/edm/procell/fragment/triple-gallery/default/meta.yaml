@@ -1,0 +1,97 @@
+version: 1
+code: default
+name: 三列图卡·迁移版
+changelog: juice-cli/edm 母版 L1481-L1595 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: image
+    key: image3
+    label: 图片 3
+    required: false
+  - type: url
+    key: link4
+    label: 链接 4
+    required: false
+  - type: url
+    key: link5
+    label: 链接 5
+    required: false
+  - type: url
+    key: link6
+    label: 链接 6
+    required: false
+  - type: url
+    key: link7
+    label: 链接 7
+    required: false
+  - type: url
+    key: link8
+    label: 链接 8
+    required: false
+  - type: url
+    key: link9
+    label: 链接 9
+    required: false
+  - type: input
+    key: text10
+    label: 文案 10
+    required: false
+  - type: input
+    key: text11
+    label: 文案 11
+    required: false
+  - type: input
+    key: text12
+    label: 文案 12
+    required: false
+  - type: input
+    key: text13
+    label: 文案 13
+    required: false
+  - type: input
+    key: text14
+    label: 文案 14
+    required: false
+  - type: input
+    key: text15
+    label: 文案 15
+    required: false
+  - type: input
+    key: text16
+    label: 文案 16
+    required: false
+  - type: input
+    key: text17
+    label: 文案 17
+    required: false
+  - type: input
+    key: text18
+    label: 文案 18
+    required: false
+  - type: input
+    key: text19
+    label: 文案 19
+    required: false
+  - type: input
+    key: text20
+    label: 文案 20
+    required: false
+  - type: input
+    key: text21
+    label: 文案 21
+    required: false
+  - type: input
+    key: text22
+    label: 文案 22
+    required: false
+  - type: input
+    key: text23
+    label: 文案 23
+    required: false

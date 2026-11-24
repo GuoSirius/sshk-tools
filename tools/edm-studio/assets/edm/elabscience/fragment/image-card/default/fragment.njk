@@ -1,0 +1,54 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/image-card.css">
+
+<tr>
+                <td colspan="4">
+                  <table cellspacing="0" cellpadding="0" border="0" class="bg-gray">
+                    <colgroup>
+                      <col width="10px" />
+                      <col width="36%" />
+                      <col />
+                      <col width="10px" />
+                    </colgroup>
+
+                    <tbody>
+                      <tr>
+                        <td colspan="4" class="h-16"></td>
+                      </tr>
+
+                      <tr>
+                        <td></td>
+                        <td class="image-box">
+                          <a {% if link2 %}href="{{ link2 }}"{% endif %}>
+                            <img src="{{ image1 }}" />
+                          </a>
+                        </td>
+                        <td style="padding-left: 16px;">
+                          <p class="pb-12">{{ text4 }}</p>
+
+                          <p>{{ text5 }}</p>
+                        </td>
+                        <td></td>
+                      </tr>
+
+                      <tr>
+                        <td colspan="4" class="h-18"></td>
+                      </tr>
+
+                      <tr>
+                        <td></td>
+                        <td colspan="2" class="text-center">
+                          <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button-orange bg-light-orange decoration-none text-center font-bold border-rd-16" style="min-width: 240px;">{{ text6 }}</a>
+                        </td>
+                        <td></td>
+                      </tr>
+
+                      <tr>
+                        <td colspan="4" class="h-16"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>

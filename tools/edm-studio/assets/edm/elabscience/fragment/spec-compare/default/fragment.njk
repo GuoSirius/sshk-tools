@@ -1,0 +1,49 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/spec-compare.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0" class="table-bordered">
+                    <colgroup>
+                      <col />
+                      <col />
+                      <col />
+                    </colgroup>
+
+                    <thead>
+                      <tr>
+                        <th>{{ text4 }}</th>
+                        <th>
+                          <a {% if link1 %}href="{{ link1 }}"{% endif %} class="decoration-none text-link-hover color-white">{{ text5 }}</a>
+                        </th>
+                        <th>
+                          <a {% if link2 %}href="{{ link2 }}"{% endif %} class="decoration-none color-white">{{ text6 }}</a>
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      <tr>
+                        <td>{{ text7 }}</td>
+                        <td>{{ text8 }}<strong>{{ text9 }}</strong></td>
+                        <td>{{ text10 }}<strong>{{ text11 }}</strong></td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text12 }}</td>
+                        <td colspan="2">{{ text13 }}<a {% if link3 %}href="{{ link3 }}"{% endif %} class="decoration-none font-bold text-link">{{ text14 }}</a>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text15 }}</td>
+                        <td colspan="2">{{ text16 }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

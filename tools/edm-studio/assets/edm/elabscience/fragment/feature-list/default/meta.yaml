@@ -1,0 +1,37 @@
+version: 1
+code: default
+name: 产品特性列表·迁移版
+changelog: juice-cli/edm 母版 L1820-L1855 提取
+fields:
+  - type: url
+    key: link1
+    label: 链接 1
+    required: false
+  - type: input
+    key: text2
+    label: 文案 2
+    required: false
+  - type: input
+    key: text3
+    label: 文案 3
+    required: false
+  - type: input
+    key: text4
+    label: 文案 4
+    required: false
+  - type: input
+    key: text5
+    label: 文案 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false
+  - type: input
+    key: text7
+    label: 文案 7
+    required: false
+  - type: input
+    key: text8
+    label: 文案 8
+    required: false

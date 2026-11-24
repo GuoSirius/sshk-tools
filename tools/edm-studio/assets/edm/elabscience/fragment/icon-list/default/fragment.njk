@@ -1,0 +1,45 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/icon-list.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0">
+                    <colgroup>
+                      <col />
+                    </colgroup>
+
+                    <tbody>
+                      <tr>
+                        <td><span class="title">{{ text2 }}</span></td>
+                      </tr>
+
+                      <tr>
+                        <td class="h-12"></td>
+                      </tr>
+
+                      <tr>
+                        <td>
+                          <p class="circle pb-6"><strong>{{ text3 }}</strong>{{ text4 }}</p>
+                          <p class="circle pb-6"><strong>{{ text5 }}</strong>{{ text6 }}</p>
+                          <p class="circle pb-6"><strong>{{ text7 }}</strong>{{ text8 }}</p>
+                          <p class="circle"><strong>{{ text9 }}</strong>{{ text10 }}</p>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td class="h-18"></td>
+                      </tr>
+
+                      <tr>
+                        <td class="text-center">
+                          <a {% if link1 %}href="{{ link1 }}"{% endif %} class="button-orange decoration-none text-center text-size-[14px] font-bold border-rd-16" style="min-width: 240px;">{{ text11 }}</a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

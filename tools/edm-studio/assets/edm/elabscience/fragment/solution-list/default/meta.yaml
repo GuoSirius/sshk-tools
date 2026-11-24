@@ -1,0 +1,65 @@
+version: 1
+code: default
+name: 解决方案清单·迁移版
+changelog: juice-cli/edm 母版 L2422-L2513 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: url
+    key: link2
+    label: 链接 2
+    required: false
+  - type: url
+    key: link3
+    label: 链接 3
+    required: false
+  - type: url
+    key: link4
+    label: 链接 4
+    required: false
+  - type: url
+    key: link5
+    label: 链接 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false
+  - type: input
+    key: text7
+    label: 文案 7
+    required: false
+  - type: input
+    key: text8
+    label: 文案 8
+    required: false
+  - type: input
+    key: text9
+    label: 文案 9
+    required: false
+  - type: input
+    key: text10
+    label: 文案 10
+    required: false
+  - type: input
+    key: text11
+    label: 文案 11
+    required: false
+  - type: input
+    key: text12
+    label: 文案 12
+    required: false
+  - type: input
+    key: text13
+    label: 文案 13
+    required: false
+  - type: input
+    key: text14
+    label: 文案 14
+    required: false
+  - type: input
+    key: text15
+    label: 文案 15
+    required: false

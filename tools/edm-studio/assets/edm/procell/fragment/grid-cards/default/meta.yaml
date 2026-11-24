@@ -1,0 +1,145 @@
+version: 1
+code: default
+name: 宫格卡·迁移版
+changelog: juice-cli/edm 母版 L1116-L1310 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: image
+    key: image3
+    label: 图片 3
+    required: false
+  - type: image
+    key: image4
+    label: 图片 4
+    required: false
+  - type: url
+    key: link5
+    label: 链接 5
+    required: false
+  - type: url
+    key: link6
+    label: 链接 6
+    required: false
+  - type: url
+    key: link7
+    label: 链接 7
+    required: false
+  - type: url
+    key: link8
+    label: 链接 8
+    required: false
+  - type: url
+    key: link9
+    label: 链接 9
+    required: false
+  - type: url
+    key: link10
+    label: 链接 10
+    required: false
+  - type: url
+    key: link11
+    label: 链接 11
+    required: false
+  - type: url
+    key: link12
+    label: 链接 12
+    required: false
+  - type: input
+    key: text13
+    label: 文案 13
+    required: false
+  - type: input
+    key: text14
+    label: 文案 14
+    required: false
+  - type: input
+    key: text15
+    label: 文案 15
+    required: false
+  - type: input
+    key: text16
+    label: 文案 16
+    required: false
+  - type: input
+    key: text17
+    label: 文案 17
+    required: false
+  - type: input
+    key: text18
+    label: 文案 18
+    required: false
+  - type: input
+    key: text19
+    label: 文案 19
+    required: false
+  - type: input
+    key: text20
+    label: 文案 20
+    required: false
+  - type: input
+    key: text21
+    label: 文案 21
+    required: false
+  - type: input
+    key: text22
+    label: 文案 22
+    required: false
+  - type: input
+    key: text23
+    label: 文案 23
+    required: false
+  - type: input
+    key: text24
+    label: 文案 24
+    required: false
+  - type: input
+    key: text25
+    label: 文案 25
+    required: false
+  - type: input
+    key: text26
+    label: 文案 26
+    required: false
+  - type: input
+    key: text27
+    label: 文案 27
+    required: false
+  - type: input
+    key: text28
+    label: 文案 28
+    required: false
+  - type: input
+    key: text29
+    label: 文案 29
+    required: false
+  - type: input
+    key: text30
+    label: 文案 30
+    required: false
+  - type: input
+    key: text31
+    label: 文案 31
+    required: false
+  - type: input
+    key: text32
+    label: 文案 32
+    required: false
+  - type: input
+    key: text33
+    label: 文案 33
+    required: false
+  - type: input
+    key: text34
+    label: 文案 34
+    required: false
+  - type: input
+    key: text35
+    label: 文案 35
+    required: false

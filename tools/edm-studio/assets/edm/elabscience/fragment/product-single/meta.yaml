@@ -1,0 +1,8 @@
+code: product-single
+name: 单品卡
+description: 母版模式族：单品卡（plans/14 批次 5 保真迁移）
+type: product
+policy:
+  blacklist: []
+  whitelist: []
+tags: []

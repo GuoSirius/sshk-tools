@@ -1,0 +1,57 @@
+version: 1
+code: default
+name: 订购流程卡·迁移版
+changelog: juice-cli/edm 母版 L2364-L2427 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: image
+    key: image3
+    label: 图片 3
+    required: false
+  - type: image
+    key: image4
+    label: 图片 4
+    required: false
+  - type: input
+    key: text5
+    label: 文案 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false
+  - type: input
+    key: text7
+    label: 文案 7
+    required: false
+  - type: input
+    key: text8
+    label: 文案 8
+    required: false
+  - type: input
+    key: text9
+    label: 文案 9
+    required: false
+  - type: input
+    key: text10
+    label: 文案 10
+    required: false
+  - type: input
+    key: text11
+    label: 文案 11
+    required: false
+  - type: input
+    key: text12
+    label: 文案 12
+    required: false
+  - type: input
+    key: text13
+    label: 文案 13
+    required: false

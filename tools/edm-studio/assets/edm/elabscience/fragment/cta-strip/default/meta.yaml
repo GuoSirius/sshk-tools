@@ -1,0 +1,17 @@
+version: 1
+code: default
+name: 行动引导卡·迁移版
+changelog: juice-cli/edm 母版 L1079-L1123 提取
+fields:
+  - type: url
+    key: link1
+    label: 链接 1
+    required: false
+  - type: input
+    key: text2
+    label: 文案 2
+    required: false
+  - type: input
+    key: text3
+    label: 文案 3
+    required: false

@@ -1,0 +1,29 @@
+version: 1
+code: default
+name: 箭头列表条·迁移版
+changelog: juice-cli/edm 母版 L1263-L1308 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: url
+    key: link2
+    label: 链接 2
+    required: false
+  - type: url
+    key: link3
+    label: 链接 3
+    required: false
+  - type: input
+    key: text4
+    label: 文案 4
+    required: false
+  - type: input
+    key: text5
+    label: 文案 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false

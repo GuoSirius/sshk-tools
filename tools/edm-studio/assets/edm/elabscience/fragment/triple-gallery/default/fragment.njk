@@ -1,0 +1,50 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/triple-gallery.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0" class="text-center">
+                    <colgroup>
+                      <col width="40%" />
+                      <col width="40%" />
+                      <col width="20%" />
+                    </colgroup>
+
+                    <tbody>
+                      <tr>
+                        <td class="image-box">
+                          <img src="{{ image1 }}" alt="Human TCR Vβ7.1" />
+                        </td>
+                        <td class="image-box">
+                          <img src="{{ image2 }}" alt="Human TCR Vβ1" />
+                        </td>
+                        <td class="image-box">
+                          <img src="{{ image3 }}" alt="Human CD151" />
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td>{{ text7 }}</td>
+                        <td>{{ text8 }}</td>
+                        <td>{{ text9 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td class="pt-8">
+                          <a {% if link4 %}href="{{ link4 }}"{% endif %} class="button font-bold decoration-none" style="border-radius: 16px;">{{ text10 }}</a>
+                        </td>
+                        <td class="pt-8">
+                          <a {% if link5 %}href="{{ link5 }}"{% endif %} class="button font-bold decoration-none" style="border-radius: 16px;">{{ text11 }}</a>
+                        </td>
+                        <td class="pt-8">
+                          <a {% if link6 %}href="{{ link6 }}"{% endif %} class="button font-bold decoration-none" style="border-radius: 16px;">{{ text12 }}</a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

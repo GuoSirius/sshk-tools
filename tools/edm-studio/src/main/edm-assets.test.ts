@@ -75,6 +75,7 @@ describe('系统 EDM 资产迁移不变量', () => {
   it('双品牌组合预览：header + banner + literature + footer 可拼成完整邮件', async () => {
     const model = await loadEdmModel(EDM_ROOT)
     for (const brand of model.brands) {
+      expect(brand.fragments.length).toBeGreaterThanOrEqual(26) // 4~7 基础/series + 22 母版模式族
       const sel = (kind: string, familyCode: string): SystemSelector => ({ brandCode: brand.code, kind, familyCode, versionDir: 'default' })
       const composed = await renderSystemCompose(EDM_ROOT, sel('template', 'standard'), [
         { selector: sel('fragment', 'header'), slot: 'header' },

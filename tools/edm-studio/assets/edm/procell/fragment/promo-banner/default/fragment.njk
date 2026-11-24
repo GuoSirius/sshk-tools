@@ -1,0 +1,36 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/procell/css/palette.css">
+<link rel="stylesheet" href="@root/procell/css/components.css">
+<link rel="stylesheet" href="./css/promo-banner.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <table cellspacing="0" cellpadding="0" border="0">
+                    <colgroup>
+                      <col />
+                      <col />
+                    </colgroup>
+
+                    <tbody>
+                      <tr>
+                        <td rowspan="3" class="image-box">
+                          <img src="{{ image1 }}" />
+                        </td>
+                        <td class="h-0 pb-16"><strong>{{ text3 }}</strong></td>
+                      </tr>
+
+                      <tr>
+                        <td class="h-0 text-size-[14px]">{{ text4 }}</td>
+                      </tr>
+
+                      <tr>
+                        <td class="text-right">
+                          <a {% if link2 %}href="{{ link2 }}"{% endif %} class="button bg-light-primary decoration-none text-center">{{ text5 }}</a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+                <td></td>
+              </tr>

@@ -1,0 +1,49 @@
+version: 1
+code: default
+name: 文献背书卡·迁移版
+changelog: juice-cli/edm 母版 L2476-L2509 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: url
+    key: link2
+    label: 链接 2
+    required: false
+  - type: input
+    key: text3
+    label: 文案 3
+    required: false
+  - type: input
+    key: text4
+    label: 文案 4
+    required: false
+  - type: input
+    key: text5
+    label: 文案 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false
+  - type: input
+    key: text7
+    label: 文案 7
+    required: false
+  - type: input
+    key: text8
+    label: 文案 8
+    required: false
+  - type: input
+    key: text9
+    label: 文案 9
+    required: false
+  - type: input
+    key: text10
+    label: 文案 10
+    required: false
+  - type: input
+    key: text11
+    label: 文案 11
+    required: false

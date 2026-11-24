@@ -1,0 +1,29 @@
+version: 1
+code: default
+name: 促销卡·迁移版
+changelog: juice-cli/edm 母版 L1759-L1799 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: url
+    key: link3
+    label: 链接 3
+    required: false
+  - type: input
+    key: text4
+    label: 文案 4
+    required: false
+  - type: input
+    key: text5
+    label: 文案 5
+    required: false
+  - type: input
+    key: text6
+    label: 文案 6
+    required: false

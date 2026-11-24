@@ -1,0 +1,57 @@
+version: 1
+code: default
+name: 信任背书条·迁移版
+changelog: juice-cli/edm 母版 L1970-L2042 提取
+fields:
+  - type: image
+    key: image1
+    label: 图片 1
+    required: false
+  - type: image
+    key: image2
+    label: 图片 2
+    required: false
+  - type: image
+    key: image3
+    label: 图片 3
+    required: false
+  - type: image
+    key: image4
+    label: 图片 4
+    required: false
+  - type: image
+    key: image5
+    label: 图片 5
+    required: false
+  - type: image
+    key: image6
+    label: 图片 6
+    required: false
+  - type: image
+    key: image7
+    label: 图片 7
+    required: false
+  - type: input
+    key: text8
+    label: 文案 8
+    required: false
+  - type: input
+    key: text9
+    label: 文案 9
+    required: false
+  - type: input
+    key: text10
+    label: 文案 10
+    required: false
+  - type: input
+    key: text11
+    label: 文案 11
+    required: false
+  - type: input
+    key: text12
+    label: 文案 12
+    required: false
+  - type: input
+    key: text13
+    label: 文案 13
+    required: false

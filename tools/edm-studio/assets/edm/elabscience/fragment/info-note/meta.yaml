@@ -1,0 +1,8 @@
+code: info-note
+name: 提示说明
+description: 母版模式族：提示说明（plans/14 批次 5 保真迁移）
+type: product
+policy:
+  blacklist: []
+  whitelist: []
+tags: []

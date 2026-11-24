@@ -1,0 +1,8 @@
+code: arrow-strip
+name: 箭头列表条
+description: 母版模式族：箭头列表条（plans/14 批次 5 保真迁移）
+type: product
+policy:
+  blacklist: []
+  whitelist: []
+tags: []

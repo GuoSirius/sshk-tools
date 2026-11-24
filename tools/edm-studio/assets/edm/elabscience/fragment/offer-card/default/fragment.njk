@@ -1,0 +1,44 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/offer-card.css">
+
+<tr>
+                <td></td>
+                <td colspan="2">
+                  <a {% if link3 %}href="{{ link3 }}"{% endif %} class="decoration-none text-link-hover">
+                    <table cellspacing="0" cellpadding="0" border="0" class="bg-gray border-rd-5">
+                      <colgroup>
+                        <col width="5px" />
+                        <col width="238px" />
+                        <col />
+                        <col width="16px" />
+                        <col width="10px" />
+                      </colgroup>
+
+                      <tbody>
+                        <tr>
+                          <td colspan="5" class="h-10"></td>
+                        </tr>
+
+                        <tr>
+                          <td></td>
+                          <td class="image-box">
+                            <img src="{{ image1 }}" />
+                          </td>
+                          <td style="padding: 0 12px 0;">{{ text4 }}<strong>{{ text5 }}</strong>{{ text6 }}</td>
+                          <td class="image-box">
+                            <img src="{{ image2 }}" />
+                          </td>
+                          <td></td>
+                        </tr>
+
+                        <tr>
+                          <td colspan="5" class="h-10"></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </a>
+                </td>
+                <td></td>
+              </tr>

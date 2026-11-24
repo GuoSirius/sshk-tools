@@ -1,0 +1,8 @@
+code: grid-cards
+name: 宫格卡
+description: 母版模式族：宫格卡（plans/14 批次 5 保真迁移）
+type: product
+policy:
+  blacklist: []
+  whitelist: []
+tags: []
