@@ -1,8 +1,8 @@
 # EDM 旧资产迁移计划（juice-cli/edm → 系统自带内容库）
 
-- 状态：**草稿 v0.2（已按用户 17 条反馈修订，待终审敲板后执行）**
+- 状态：**已定稿并落地（2026-11-24 全批次 0~7 执行完毕，verify 全绿并已推送 main）**
 - 版本：v0.2（v0.1 → v0.2：敲板裁决落档；activity/video 不迁移；母版残留块与占位表改判迁移；版本目录统一 default；css 链路统一为「显式 link 优先 + 就近回退」单路径；uno 直用结论；richtext 插值链路确认）
-- 最后更新：2026-11-24（北京时间）
+- 最后更新：2026-11-24（北京时间；全批次落地，实施记录见 §九）
 - 关联需求：台账登记于执行批次 0；关联文档 `02-architecture/EDM系统内容页改造与内容管理统一规划_v6.md`（EDM 唯一权威）、`00-CONVENTIONS.md` §5.8 迁移兼容克制原则
 - 旧资产源：`D:\workspace\code\juice-cli\edm\`（外部目录，不进本仓库；只读参照）
 
@@ -312,3 +312,20 @@ slots:
 
 - 终审通知后按 §六批次顺序执行；每批完成即 verify + 路径限定 commit + push + 核验 message，并在批次表标注 commit。
 - 执行中发现与盘点不符的细节（行号漂移/结构差异）以实际源文件为准，台账补记；本计划盘点章节不回改（历史结论加批注）。
+
+---
+
+## 九、实施记录（2026-11-24 全批次落地）
+
+| 批次 | 内容 | 提交 | 验证 |
+|---|---|---|---|
+| 0 | CSS 单链路统一（四入口共用 resolveCssBundle、内容级去重、播种刷新） | `4e63cfd` | 四入口单测 + `pnpm verify` |
+| 1 | 公共样式层（email-utils / palette / components / brand-utils，演示 css 清场） | `e238a1a` | 单版本 link 生效 + `pnpm verify` |
+| 2 | 基础三族（双品牌 header / footer / banner default） | `097ac1a` | 单版本 + 组合预览 + `pnpm verify` |
+| 3 | series 迁移（literature 双品牌、new-arrivals、webinar 的 Nunjucks 化） | `47fdbf3` | 严格渲染 + safe 纪律 + `pnpm verify` |
+| 4 | 标准模板重建（双品牌三槽骨架，v1 保留） | `7410d47` | 邮件全流程组合预览 + `pnpm verify` |
+| 5 | 母版穷举提取（双品牌 22 个模式族 default） | `4a464c7` | 资产守护测试 + `pnpm verify` |
+| 6 | 邮件兼容整改（真实装饰元素、显式斑马纹、渐变纯色回落、去阴影/绝对定位） | `86732b0` | 新增 `edm-mail-compat.test.ts`；90 文件 / 554 tests |
+| 7 | 收口（计划状态、台账 #187、索引变更记录） | 本提交（收口文档） | 最终 `pnpm verify` 全绿并推送 main |
+
+> 落地口径补丁：批次 5 族数最终为 26/品牌（基础 4 + series + 22 模式族），守护测试断言据此下调为 `>=26`；批次 6 渐变保留 `background-image` 视觉增强，但同规则必须声明 `background-color` 纯色回落供 Outlook 降级。
