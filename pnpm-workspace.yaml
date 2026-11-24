@@ -34,6 +34,10 @@ overrides:
   # 把 fast-xml-parser 精确 pin 在 5.3.7（漏洞需 >=5.12.0），间接依赖无法单独升级。
   # 统一 override 到无漏洞版本；5.x 内 XMLParser API 向后兼容，已实测 OBS SDK 可加载。
   fast-xml-parser: ">=5.12.0"
+  # Dependabot security_update_not_possible（2026-11-24）：@wangeditor/core@1.1.19
+  # 把 i18next 约束写死为 ^20.4.0（lock 解析 20.6.1），漏洞需 >=26.3.4，上游 latest 未修，间接依赖无法单独升级。
+  # 统一 override 到 26.x 最低安全版；锁 ^26 避免跳到 27.x（node>=22），待 pnpm verify 实测 wangeditor 兼容性。
+  i18next: "^26.3.4"
 
 # 依赖版本策略：所有外部 npm 包在各自 package.json 中一律写 "latest"，
 # 由 pnpm-lock.yaml 固定实际版本，CI 使用 --frozen-lockfile 保证可复现。
