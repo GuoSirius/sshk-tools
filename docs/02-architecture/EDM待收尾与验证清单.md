@@ -22,7 +22,7 @@
 | V3 | **右键新建全链路** | 新建品牌 / 片段族 / 模板族 / 版本 / 样式实际创建文件并刷新树——未运行验证。 |
 | V4 | **另存为跨根 / 类型隔离 / 版本全量复制** | 逻辑就绪未运行验证。 |
 | V5 | **EDM 与邮件编辑器 / 生成串联** | 薄索引后 `origin=custom` 的模板 / 片段能否被邮件生成正确取用——未验证。 |
-| V6 | **R28 CSS 显式引用** | `<link>` + `@shared/@root/@system/@custom` 逻辑 URI、禁 `..`、head 提前去重、片段 repeat 不重复注入、无 link 存量资产回退就近链——7 项单测通过，未 dev 实跑。 |
+| V6 | **R28 CSS 显式引用** | `<link>` + `@root/@system/@custom` 逻辑 URI、禁 `..`、head 提前去重、片段 repeat 不重复注入、无 link 存量资产回退就近链——7 项单测通过，未 dev 实跑。 |
 | V7 | **上传通道真实链路** | 本地目录自检（`tools/upload-config` 的自检按钮）、真实 FTP/SFTP 连接、阿里云 OSS、进度事件 UI、工具级 overrides 覆盖全局 profile、校验收紧（工具不能放宽）——均未连真实服务验证。 |
 | V8 | **共享编辑器运行期** | Monaco 多 tab 唯一 model URI / 深色主题 / md↔html 单向互转；badge-studio 的 CodeEditor JSON 视图——构建通过，未 dev 实跑。**全屏层级经 N12 二次根治**（加 `.rich-inner` 作 selector 使 `$box.parent()` 恒为 `.rich` + 事件驱动 Teleport + 顶格 z-index，见富文本规划 §七），仍需实跑确认进出全屏、容器归位、无残留遮罩。 |
 | V10 | **本轮复核改动实跑** | 开发者模式口令弹框（打包版）、自动安装开关、上传配置能力自检横幅与一键重载、地域中文下拉、访问密钥说明对照表——静态门禁与构建通过，未 dev 实跑。 |
@@ -108,9 +108,9 @@
 | D1 | 打开内容管理左侧树 | 默认展开到「模板 / 片段」类目层；品牌下类目顺序为 css → 模板 → 片段 | U1 |
 | D2 | 空示例数据切到「表单」 | **不报 YAML 错**，正常出空表单 | 8 / V1 |
 | D3 | 纯注释 / `null` / `~` 的 YAML 切换 | 同样不报错；真语法错仍明确报错 | 8 |
-| D4 | 模板源码写 `<link rel="stylesheet" href="@shared/a.css">` 后预览 | CSS 被提取进 `<head>`，样式生效 | V6 / R28 |
+| D4 | 模板源码写 `<link rel="stylesheet" href="@root/a.css">` 后预览 | CSS 被提取进 `<head>`，样式生效 | V6 / R28 |
 | D5 | 同一 CSS 被重复引用 + 片段 repeat | `<head>` 内去重，不重复注入 | V6 |
-| D6 | 引用写 `../../a.css` | 明确报错并提示改用 `@root / @shared / @system / @custom` | R28 |
+| D6 | 引用写 `../../a.css` | 明确报错并提示改用 `@root / @system / @custom` | R28 |
 | D7 | 无 link 的存量资产预览 | 回退就近链，仍能出样式 | R28 |
 | D8 | 富文本插图后保存示例数据 | `data:` 图片批量上传并回写 URL | V9 |
 | D9 | 版本节点右键「新建版本（同级）」 | 新版本复制全量内容，层级正确 | V1 / V3 |

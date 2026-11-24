@@ -13,7 +13,7 @@
 | # | 反馈 | 结论（落档） |
 |---|---|---|
 | 1 | njk 能否直接用 unocss + juice 正确内联 | **可以**（依赖已装、链路已内建，见 §1.4）；批次 0 统一链路后预览/生成一致 |
-| 2 | 两模板公用 css 提取放系统根 css/，link 引入 | 采纳：交集部分上提 `assets/edm/css/`（= @shared），njk 显式 `<link href="@shared/…">` 引入 |
+| 2 | 两模板公用 css 提取放系统根 css/，link 引入 | 采纳：交集部分上提 `assets/edm/css/`（系统根公共层），njk 显式 `<link href="@system/css/…">` 引入 |
 | 3 | activity、video 片段不迁移 | 采纳：两族弃用；连带 needSearch 搜索框、四平台 iframe 问题一并消失 |
 | 4 | css 双链路理解不对，应只走「显式 link + 无 link 回退就近链」一条路径，预览与生成不区分 | **核实属实需改造**：现状预览与生成确实是两条分叉链路（见 §1.3），批次 0 统一为用户口径单路径 |
 | 5 / 9 | 迁移版本统一放 `default/`，v1 预留下一版 | 采纳：全部迁移内容落 default/；现有 v1 目录原样保留不动 |
@@ -57,14 +57,14 @@
 
 | | 内容页预览（`system:render` / `content:render`） | 邮件预览/生成（`mail:preview` / `mail:generate`） |
 |---|---|---|
-| css 来源 | **显式 `<link>` 优先**（`collectLinkedCss` 解析 `@shared/@root/@system/@custom`/`./`，剥离 link，`<style>` 注入 head）；**无 link 回退就近链**（各级 `css/` + 版本 style.css） | **播种快照内联**（seed 时就近链快照进 `source.css`）直接拼接，**不解析 link**（njk 里的 link 标签会原样漏进邮件成品） |
+| css 来源 | **显式 `<link>` 优先**（`collectLinkedCss` 解析 `@root/@system/@custom`/`./`，剥离 link，`<style>` 注入 head）；**无 link 回退就近链**（各级 `css/` + 版本 style.css） | **播种快照内联**（seed 时就近链快照进 `source.css`）直接拼接，**不解析 link**（njk 里的 link 标签会原样漏进邮件成品） |
 | base-reset / uno 原子类 | **无**（不扫 njk、不生成 uno） | **有**（`compose(outputRoot)` 扫描 njk → uno 生成 + base-reset 前置） |
 
 **批次 0 统一为单路径（用户口径）**，四条入口（system:render / content:render / mail:preview / mail:generate）共用同一个 css 解析函数：
 
 ```
 resolveCssBundle({ sources })            # sources = 参与渲染的全部 njk 源 + 各自 fallback css + 各自解析根
-  ① 任一源含显式 <link rel="stylesheet"> → 按书写顺序解析（@shared/@root/@system/@custom/./）→ 去重 → 读内容
+  ① 任一源含显式 <link rel="stylesheet"> → 按书写顺序解析（@root/@system/@custom/./）→ 去重 → 读内容
      → 从各 html 剥离 link（两条链路都剥，杜绝 link 漏进邮件成品）
   ② 全部源均无 link → 回退就近链（预览=读文件就近链；生成=播种快照 source.css，二者本就同源同序）
   ③ 前置 base-reset + uno 原子类扫描（两条链路一致，见 §1.4）
@@ -73,9 +73,9 @@ resolveCssBundle({ sources })            # sources = 参与渲染的全部 njk �
 
 改造点：① 预览侧补 base-reset + uno 扫描；② 生成侧补 link 解析（按实体 origin 推导解析根：system → 系统根，custom → 自定义根；版本目录由实体 ID/label 推导，支撑 `./css/…` 引用）；③ css 源**内容级去重**（模板链与片段链都引品牌 css 时只收一份，消除体积膨胀 N+1）；④ 播种刷新对齐 custom 语义（见 §六批次 0）。
 
-> **2026-11-24 后续口径（实施后调整，历史结论不回改）**：上表/流程图中「自动前置 base-reset」已废弃。`ensureBaseReset` 删除，渲染层**唯一自动注入项是 uno 原子类**；base-reset 等一切 css 改由 njk 显式引用 `@shared/base-reset.css` 才生效（56 个 default njk 已全部补齐，v1 不迁移）。真相源 `assets/edm/css/base-reset.css` 随 edm 树发布，dev/build 同解析。守护断言见 `edm-assets.test.ts`（default 必带 base-reset link + reset 已内联）与 `css-bundle.test.ts`（无 link 时 css 不含 reset）。
+> **2026-11-24 后续口径（实施后调整，历史结论不回改）**：上表/流程图中「自动前置 base-reset」已废弃。`ensureBaseReset` 删除，渲染层**唯一自动注入项是 uno 原子类**；base-reset 等一切 css 改由 njk 显式 link 才生效（56 个 default njk 已全部补齐，v1 不迁移）。真相源 `assets/edm/css/base-reset.css` 随 edm 树发布，dev/build 同解析。守护断言见 `edm-assets.test.ts`（default 必带 base-reset link + reset 已内联）与 `css-bundle.test.ts`（无 link 时 css 不含 reset）。
 
-> **2026-11-24 终版口径（第三版，同日二次调整，历史批注不回改）**：①自动注入收敛为两项——normalize.css（npm 依赖，`vite ?raw` 构建期内联）+ uno 原子类；②一切 css（系统/自定义根、所有品牌，含基础样式层）一律 njk 显式 `<link>` 才生效；③`base-reset.css` 与 `email-utils.css` 合并重命名为 `assets/edm/css/reset.css`（Meyer 清零 + 元素基线 + 邮件适配 + title-mark），56 个 default njk 统一引用 `@system/css/reset.css`；④逻辑 URI 前缀收敛为 `@root`（来源根自动判断）/@system/@custom 三个，`@shared` 废弃（引用即报错）。守护断言见 `edm-assets.test.ts`（default 必带 @system/css/reset.css link、禁 @shared 残留、reset 已内联）与 `css-bundle.test.ts`（自动注入含 normalize 特征、不含 mso 增量）。
+> **2026-11-24 终版口径（第三版，同日二次调整，历史批注不回改）**：①自动注入收敛为两项——normalize.css（npm 依赖，`vite ?raw` 构建期内联）+ uno 原子类；②一切 css（系统/自定义根、所有品牌，含基础样式层）一律 njk 显式 `<link>` 才生效；③`base-reset.css` 与 `email-utils.css` 合并重命名为 `assets/edm/css/reset.css`（Meyer 清零 + 元素基线 + 邮件适配 + title-mark），56 个 default njk 统一引用 `@system/css/reset.css`；④逻辑 URI 前缀收敛为 `@root`（来源根自动判断）/@system/@custom 三个。守护断言见 `edm-assets.test.ts`（default 必带 @system/css/reset.css link、reset 已内联）与 `css-bundle.test.ts`（自动注入含 normalize 特征、不含 mso 增量）。
 
 ### 1.4 uno 直用结论（回应用户 #1）
 
@@ -143,7 +143,7 @@ njk 源码（如 <td class="pb-8 text-center text-[14px]">）
 
 ```
 assets/edm/
-├── css/                                  ← 顶层公共层（@shared；#2：两模板公用 css 提取至此）
+├── css/                                  ← 顶层公共层（#2：两模板公用 css 提取至此）
 │   └── email-utils.css                   ← 两品牌逐字相同的重置区 + 通用原子类交集
 │                                            （现演示文件 normalize.css / uno.css 属早期 demo，一并清场删除）
 ├── elabscience/
@@ -175,7 +175,7 @@ assets/edm/
 - **迁移版本一律 `default/`**（版本号=目录派生 1）；**现有 v1 目录一律不动**（#5/#9/#16）。default（迁移真相）与 v1（旧演示）并存期，树中 latest 取 default（readdir 字母序 default 在前，同版本号 1 先者胜）。
 - 片段族 code = 目录名（kebab-case）；meta `name` 中文显示名；品牌间同构族同 code。
 - css 引用**优先显式 `<link>`**（#10），约定四条路径形态：
-  - 顶层公共：`<link rel="stylesheet" href="@shared/email-utils.css">`
+  - 顶层公共：`<link rel="stylesheet" href="@system/css/email-utils.css">`
   - 品牌层：`<link rel="stylesheet" href="@root/elabscience/css/palette.css">`（custom 派生副本 @root 自动指向自定义根，派生时品牌 css 整树拷贝，路径不失效）
   - 版本内：`<link rel="stylesheet" href="./css/xxx.css">`（相对版本目录，禁止 `..`）
   - **不用族级 `css/`**（避免 `@root/<brand>/<kind>/<family>/css/…` 长路径）：片段/模板私有 css 一律放版本 `default/css/`；跨片段共用即上提品牌层
@@ -185,8 +185,8 @@ assets/edm/
 
 | 旧 `<style>` 分区（elab 行号） | 新落位 | 引入方式 |
 |---|---|---|
-| 重置区 L25-72（两品牌逐字相同） | 顶层 `email-utils.css` | @shared |
-| 通用原子类两品牌交集（间隔/排版/颜色/定位等） | 顶层 `email-utils.css` | @shared |
+| 重置区 L25-72（两品牌逐字相同） | 顶层 `email-utils.css` | 系统根 |
+| 通用原子类两品牌交集（间隔/排版/颜色/定位等） | 顶层 `email-utils.css` | 系统根 |
 | 骨架类 .app/.header/.main/.footer L75-131 | `template/standard/css/template.css` | 模板 njk `./css/`? 否——骨架 css 在族级 css/，**用 `@root/<brand>/template/standard/css/template.css` 显式引入**（族级 css/ 目录只此一处特例，其余场景不用族级） |
 | 表格组件 / 标题类 / 装饰图标 / 按钮 | 品牌 `components.css` | @root |
 | bg-* 色板 | 品牌 `palette.css` | @root |
@@ -286,7 +286,7 @@ slots:
 | 批次 | 内容 | 交付物 | 验证口径 |
 |---|---|---|---|
 | **0 前置代码**（#4/#17） | ① css 链路统一：新 core 纯函数 `resolveCssBundle`（显式 link 优先 → 就近回退 → base-reset+uno 前置 → 剥离 link），四入口 system:render / content:render / mail:preview / mail:generate 共用；生成侧按实体 origin 推导解析根与版本目录；② css 源内容级去重；③ `seedSystemContent` 对齐 custom 语义（已存在未归档系统实体按文件刷新 source/fields/sample，文件已删未归档清理，archived 跳过不复活）；④ 单测覆盖四入口一致性 | core 改造 + 单测 | vitest 全绿；dev 实测同一资产「内容页预览 = 邮件预览 = 生成三阶段」样式一致 |
-| **1 公共样式层 + 清场**（#2/#10） | 顶层 `css/email-utils.css`（两母版交集提取）；双品牌 `css/{palette,components,brand-utils}.css`；品牌 meta 补全；清场：删顶层 demo `normalize.css`/`uno.css` | 4 个 css + meta | 预览单版本：品牌类/公用类经 @shared/@root link 生效；custom 派生副本引用不失效 |
+| **1 公共样式层 + 清场**（#2/#10） | 顶层 `css/email-utils.css`（两母版交集提取）；双品牌 `css/{palette,components,brand-utils}.css`；品牌 meta 补全；清场：删顶层 demo `normalize.css`/`uno.css` | 4 个 css + meta | 预览单版本：品牌类/公用类经 @root/@system link 生效；custom 派生副本引用不失效 |
 | **2 基础三族**（双品牌） | header / footer / banner：Nunjucks 重写 + 显式 link + sample + fields + `default/css/`；banner 覆盖演示 default（v1 不动） | 6 个版本 default | 单版本预览 + 挂 standard 组合预览，对照旧母版页头/页尾视觉 |
 | **3 series 迁移**（elab 3 + procell 1） | literature（双品牌）/ new-arrivals / webinar：Mustache→Nunjucks、juice.yaml→sample.yaml、fields 全声明、richtext 字段按 §4.1 链路 | 4 个版本 default | 各族单渲 + 组合预览；sample 走 mail:generate strict=true 冒烟；富文本字段句中加粗/标红/上下标渲染比对 |
 | **4 模板重建**（双品牌） | standard：族 meta（slots 三槽）+ `css/template.css`（.app 骨架）+ `default/` 骨架 njk + sample；v1 原样保留 | 2 个模板 default | 邮件管理走通全流程：选模板 → 摆片段（header/banner/literature/footer）→ 示例预览 → 生成三阶段 |

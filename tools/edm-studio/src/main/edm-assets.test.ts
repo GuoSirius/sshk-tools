@@ -52,7 +52,6 @@ describe('系统 EDM 资产迁移不变量', () => {
       if (v.dir !== 'default') continue // v1 为旧演示资产，不纳入迁移纪律校验
       // 框架自动注入仅 normalize.css + uno；reset.css（基础样式层）等一切 css 必须显式 link
       expect(v.html).toContain('<link rel="stylesheet" href="@system/css/reset.css">')
-      expect(v.html).not.toContain('@shared/') // @shared 前缀已废弃，统一 @root/@system/@custom 三前缀
       expect(preview.html).toContain('mso-table-lspace') // reset.css 经显式 link 解析后确实内联
       type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
       const fields = v.fields as FieldLike[]
@@ -91,7 +90,6 @@ describe('系统 EDM 资产迁移不变量', () => {
       expect(composed.html).toContain(brand.code === 'elabscience' ? 'Elabscience' : 'Procell')
       expect(composed.html).toContain('Connect with us')
       expect(composed.html).toContain('<style>')
-      expect(composed.html.match(/@shared\//g)).toBeNull()
     }
   })
 })

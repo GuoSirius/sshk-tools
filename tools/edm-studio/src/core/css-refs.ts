@@ -2,7 +2,7 @@
  * R28：显式 CSS 引用引擎（取代「就近自动全收」）。
  *
  * 用户在模板 / 片段 njk 源码中自己写 <link rel="stylesheet" href="..."> 精确控制引入哪些 css，
- * 路径用逻辑 URI，不再需要 ../../ 逐层推算（2026-11-24 用户口径：三个前缀，@shared 已废弃）：
+ * 路径用逻辑 URI，不再需要 ../../ 逐层推算（2026-11-24 用户口径：只保留三个前缀）：
  *   ./css/a.css          当前文件所在版本目录（禁止 ..，层级由引擎解析）
  *   @root/css/a.css      当前来源根（自动判断：系统实体=系统根 / 自定义实体=自定义根，一般用这个）
  *   @system/css/a.css    显式系统根（自定义要使用系统资源时用，如 reset.css）
@@ -68,10 +68,6 @@ export function resolveCssRef(href: string, ctx: CssRefContext): string | null {
   if (h.includes('..')) {
     throw new Error(`CSS 引用不允许 ".."：${href}，请改用 @root / @system / @custom 逻辑路径`)
   }
-  if (h.startsWith('@shared/')) {
-    throw new Error(`@shared 前缀已废弃（2026-11-24），请改用 @system/css/：${href}`)
-  }
-
   const pick = (base: string, rest: string): string => path.resolve(base, rest.replace(/^\/+/, ''))
   if (h.startsWith('@system/')) return pick(ctx.systemRoot, h.slice('@system/'.length))
   if (h.startsWith('@custom/')) return pick(ctx.customRoot, h.slice('@custom/'.length))

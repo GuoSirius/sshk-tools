@@ -42,10 +42,9 @@ describe('R28 逻辑 URI 解析', () => {
     expect(resolveCssRef('./css/a.css', c)).toBe(path.join(c.versionDir, 'css/a.css'))
   })
 
-  it('含 .. 直接报错（消除层级推算错误），@shared 已废弃报错，外链返回 null', () => {
+  it('含 .. 直接报错（消除层级推算错误），外链返回 null', () => {
     const c = ctx(tempRoot(), tempRoot())
     expect(() => resolveCssRef('../../css/a.css', c)).toThrow('不允许')
-    expect(() => resolveCssRef('@shared/reset.css', c)).toThrow('已废弃')
     expect(resolveCssRef('https://cdn.example.com/a.css', c)).toBeNull()
   })
 
