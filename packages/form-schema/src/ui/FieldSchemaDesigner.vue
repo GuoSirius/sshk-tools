@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { VueDraggable } from 'vue-draggable-plus'
 import { Delete, Plus, Rank } from '@element-plus/icons-vue'
@@ -52,6 +52,8 @@ let keySeq = ((): number => {
   return max
 })()
 const selectedUid = ref<number | null>(rowUid.value[0] ?? null)
+/** 画布根元素：新增行滚动定位的查询作用域（嵌套设计器 uid 各自计数，禁全局 querySelector） */
+const rootEl = ref<HTMLElement | null>(null)
 
 // 父级外部重置（如 saveFields 丢弃非法字段后回写）时同步内部副本，避免脏字段"复活"（体检 #4）。
 // 选中态保持（用户 2026-11-24）：v-model 回显 echo 不再把选中重置到第一个——
@@ -81,6 +83,7 @@ function addField(): void {
   rowUid.value.push(uid())
   selectedUid.value = rowUid.value[rowUid.value.length - 1]!
   emitChange()
+  scrollToSelected()
 }
 
 /** 插入复合控件引用占位节点：type 固定 repeater，渲染/校验前经 expandFields 展开 */
@@ -91,6 +94,18 @@ function insertControl(c: CompositeControlOption): void {
   rowUid.value.push(uid())
   selectedUid.value = rowUid.value[rowUid.value.length - 1]!
   emitChange()
+  scrollToSelected()
+}
+
+/** 新增/插入后自动滚动到新行（用户 2026-11-24）：selectedUid 已指向新行，nextTick 等 DOM
+ *  渲染后在本设计器作用域内按 uid 定位（data-fuid；嵌套设计器 uid 各自计数可能撞号，
+ *  必须限根元素内查询），block:'nearest' 只滚必要的最小距离 */
+function scrollToSelected(): void {
+  const u = selectedUid.value
+  if (u == null) return
+  void nextTick(() => {
+    rootEl.value?.querySelector(`[data-fuid="${u}"]`)?.scrollIntoView({ block: 'nearest' })
+  })
 }
 
 /** 删除字段：危险操作二次确认（禁遮罩/禁 ESC，用户铁律） */
@@ -163,7 +178,7 @@ refreshErrors()
 </script>
 
 <template>
-  <div class="designer" :class="{ readonly: readonly }">
+  <div ref="rootEl" class="designer" :class="{ readonly: readonly }">
     <!-- 左：字段列表（画布） -->
     <div class="list-pane">
       <div class="list-head">
@@ -194,6 +209,7 @@ refreshErrors()
           v-for="(f, index) in fields"
           :key="rowUid[index]"
           class="field-item"
+          :data-fuid="rowUid[index]"
           :class="{ active: selectedUid === rowUid[index], danger: errAt(index, 'key') }"
           @click="selectedUid = rowUid[index] ?? null"
         >
