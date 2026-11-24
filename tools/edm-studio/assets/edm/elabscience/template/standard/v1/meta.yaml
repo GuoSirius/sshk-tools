@@ -78,31 +78,12 @@ fields:
     label: 图片墙
     required: false
     max: 3
-  - type: list
-    key: products
-    label: 推荐产品
-    required: false
-    minRows: 1
-    maxRows: 5
-    itemFields:
-      - type: input
-        key: name
-        label: 产品名
-        required: true
-      - type: input
-        key: url
-        label: 链接
-        required: false
-        pattern: ^https?://
-      - type: image
-        key: cover
-        label: 产品图
-        required: false
   - type: input
     key: field_1
     label: 新字段 12
     required: false
 name: 新版v1
 code: v1
+
 
 

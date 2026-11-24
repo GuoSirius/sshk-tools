@@ -7,9 +7,9 @@
  * 纯函数、可在单测里用假编辑器验证，不依赖 monaco 的 worker 环境。
  */
 export interface SaveCommandEditor {
+  /** monaco IStandaloneCodeEditor：创建按编辑器 DOM 子树隔离作用域的上下文键 */
+  createContextKey(key: string, defaultValue: unknown): unknown
   addCommand(keybinding: number, handler: () => void, when?: string): void
-  /** 仅 monaco IStandaloneCodeEditor 提供：创建按编辑器 DOM 子树隔离作用域的上下文键 */
-  createContextKey?(key: string, defaultValue: unknown): unknown
 }
 
 /** 实例序号：同页多编辑器实例各自需要唯一 when 键 */
@@ -21,9 +21,8 @@ let seq = 0
  * 多实例防串（2026-11-24）：Monaco 全部 standalone 编辑器共享同一 keybinding resolver，
  * addCommand 无 when 时 _findCommand 自后向前取第一个匹配 —— 最后注册者恒赢，同页其余
  * 实例的 Ctrl+S 全部落空（内容页 4 个 tab 编辑器即表现为「源码 tab 按 Ctrl+S 保存了样式」）。
- * 故为每个实例造唯一 when 上下文键（editor.createContextKey 的键按编辑器 DOM 子树隔离，
- * keydown 只命中宿主编辑器自己的绑定，与 monaco addAction 用 editorId 作用域同机制）；
- * 无 createContextKey 的假编辑器/旧实现回退裸绑（保持旧行为）。
+ * 故为每个实例造唯一 when 上下文键（createContextKey 的键按编辑器 DOM 子树隔离，
+ * keydown 只命中宿主编辑器自己的绑定，与 monaco addAction 用 editorId 作用域同机制）。
  */
 export function bindSaveShortcut(
   editor: SaveCommandEditor | null | undefined,
@@ -32,10 +31,6 @@ export function bindSaveShortcut(
 ): void {
   if (!editor) return
   const when = `saveShortcutOwned_${++seq}`
-  if (typeof editor.createContextKey === 'function') {
-    editor.createContextKey(when, true)
-    editor.addCommand(keybinding, onSave, when)
-  } else {
-    editor.addCommand(keybinding, onSave)
-  }
+  editor.createContextKey(when, true)
+  editor.addCommand(keybinding, onSave, when)
 }

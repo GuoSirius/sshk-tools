@@ -17,6 +17,7 @@ import { NODE_ICON, nodeIcon, useContentTree, type TreeNode } from '../composabl
 import { useNodeDetail } from '../composables/useNodeDetail'
 import { useComposePreview, type ComposePreview } from '../composables/useComposePreview'
 import { useCssTabs } from '../composables/useCssTabs'
+import { useDetailTab } from '../composables/useDetailTab'
 import { useContextMenu } from '../composables/useContextMenu'
 import { useSaveAs } from '../composables/useSaveAs'
 import { inheritedFavicon } from '../composables/node-favicon'
@@ -109,6 +110,9 @@ const { composeTemplate, composePlacements, composeOpen, composeHostLabel, hostT
 const { cssTabs, activeCss, openCssTab, onCssEdit, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
 const { menu, menuItems, onContextMenu, onDocMouseDown, onMenu } = ctxDomain
 const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
+
+/* ── 详情 tab 选中态：版本专属 pane 被移除后回落元数据（规则与根因见 useDetailTab） ── */
+const detailTab = useDetailTab(selected)
 
 /* ── 从表单库导入（plans/13 阶段 D）：选库表单 → expandFields 物化为普通 FieldDef → 写入本地设计器 ──
  * 不保留 controlKey 引用：meta.yaml 是对外持久契约，EDM 须独立演进；覆盖已有字段先 confirm。
@@ -334,8 +338,8 @@ onUnmounted(() => {
         <!-- css 目录：仅展开折叠入口 -->
         <el-empty v-else-if="selected.kind === 'cssDir'" description="点具体 css 文件进行编辑（多 tab 互相参照）；右键可复制 / 粘贴 / 新建文件 / 另存为" :image-size="80" />
         <!-- 品牌 / 类目 / 族 / 版本 -->
-        <el-tabs v-else class="detail-tabs">
-          <el-tab-pane label="元数据">
+        <el-tabs v-else v-model="detailTab" class="detail-tabs">
+          <el-tab-pane label="元数据" name="meta">
             <div class="editor-toolbar">
               <el-radio-group :model-value="metaMode" size="small" @change="(m: unknown) => switchMetaMode(m as 'form' | 'data')">
                 <el-radio-button value="form">表单</el-radio-button>
@@ -392,18 +396,20 @@ onUnmounted(() => {
             </el-form>
             <CodeEditor v-else :model-value="metaText" :path="`meta:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (metaText = v)" @save="saveMeta" />
           </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="示例数据">
+          <el-tab-pane v-if="selected.kind === 'version'" label="示例数据" name="sample">
             <div class="editor-toolbar">
-              <el-radio-group :model-value="sampleMode" size="small" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data' | 'design')">
+              <el-radio-group :model-value="sampleMode" size="small" class="flex-nowrap" @change="(m: unknown) => switchSampleMode(m as 'form' | 'data' | 'design')">
                 <el-radio-button value="design">设计</el-radio-button>
                 <el-radio-button value="form" :disabled="!sampleSchema.length">表单</el-radio-button>
                 <el-radio-button value="data">数据</el-radio-button>
               </el-radio-group>
               <el-tag v-if="sampleMode !== 'design' && !sampleSchema.length" size="small" type="info">未声明 fields schema（meta.yaml fields:），仅数据模式</el-tag>
               <el-tag v-else-if="sampleMode === 'design' && !sampleSchema.length" size="small" type="warning">尚无字段，点「新增字段」开始设计</el-tag>
-              <FormHint v-if="sampleMode === 'design'" inline>拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:</FormHint>
-              <el-button v-if="sampleMode === 'design'" size="small" type="warning" plain :disabled="!canEdit" @click="openImportFromLibrary">从表单库导入</el-button>
-              <el-button v-if="sampleMode === 'design'" size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
+              <template v-if="sampleMode === 'design'">
+                <el-button size="small" type="warning" plain :disabled="!canEdit" @click="openImportFromLibrary">从表单库导入</el-button>
+                <FormHint detail="拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:" />
+                <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
+              </template>
               <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
             </div>
             <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="designFields" :readonly="!canEdit" :controls="controlOptions" />
@@ -412,7 +418,7 @@ onUnmounted(() => {
             </div>
             <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" @save="saveSample" />
           </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="预览">
+          <el-tab-pane v-if="selected.kind === 'version'" label="预览" name="preview">
             <div class="editor-toolbar">
               <el-button size="small" type="primary" plain :disabled="!canEdit" @click="composeOpen = true">片段布局配置</el-button>
               <FormHint inline>布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</FormHint>
@@ -425,14 +431,14 @@ onUnmounted(() => {
               :image-size="60"
             />
           </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="源码">
+          <el-tab-pane v-if="selected.kind === 'version'" label="源码" name="source">
             <div class="editor-toolbar">
               <FormHint inline detail="在 njk 源码写 &lt;link rel=&quot;stylesheet&quot; href=&quot;@shared/xxx.css&quot;&gt; 引入 css：@shared/=系统根 css/（公共层，跨品牌共用）；@root/=当前来源根（系统自带或自定义）；@system/=系统根；@custom/=自定义根；./=当前版本目录。禁止 ..，外链会被跳过。内联 css 也可直接写在 &lt;style&gt; 内。">内联 css 也可写在 njk 的 &lt;style&gt; 内</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
             </div>
             <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" @save="saveSource" />
           </el-tab-pane>
-          <el-tab-pane v-if="selected.kind === 'version'" label="样式">
+          <el-tab-pane v-if="selected.kind === 'version'" label="样式" name="style">
             <div class="editor-toolbar">
               <FormHint inline>内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</FormHint>
               <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>

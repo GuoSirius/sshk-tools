@@ -3,6 +3,7 @@ import '@wangeditor/editor/dist/css/style.css'
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
+  DomEditor,
   createEditor,
   createToolbar,
   type IDomEditor,
@@ -416,6 +417,13 @@ onBeforeUnmount(() => {
     unbindSourceView(editorRef.value)
     unbindMarkdownView(editorRef.value)
   }
+  // wangEditor 的文档级 selectionchange 监听是 100ms 防抖（尾沿触发），尾沿回调首行读
+  // editorInstance（view→editor WeakMap）；destroy 会清除该 WeakMap，若销毁前 100ms 内
+  // 发生过任何选区变化（如同页 el-input 写值移光标），尾沿在销毁后触发即抛
+  // "Can not get editor instance"（2026-11-24 用户 EDM 切节点报错）。先用公开 API
+  // DomEditor.getTextarea 拿到 textarea view，取消挂起的尾沿定时器再 destroy。
+  const view = editorRef.value ? (DomEditor.getTextarea(editorRef.value) as unknown as { onDOMSelectionChange?: { cancel?: () => void } } | null) : null
+  view?.onDOMSelectionChange?.cancel?.()
   editorRef.value?.destroy()
   editorRef.value = undefined
 })
@@ -427,12 +435,12 @@ onBeforeUnmount(() => {
       <div ref="editorBoxEl" class="rich-inner" />
       <!-- 底部状态栏（Word 式）：全屏时一并带起，随 .rich flex 布局沉底 -->
       <div class="rich-status">
+        <!-- #43 粘贴上传：每次粘贴弹一次目标选择框 -->
+        <span v-if="imageLibrary && !readonly" class="rich-status-target">粘贴图片时选择上传位置</span>
         <span>字数 {{ stats.words }}</span>
         <span>字符 {{ stats.chars }}（空格 {{ stats.chars - stats.charsNoSpace }}）</span>
         <span>段落 {{ stats.paragraphs }}</span>
         <span v-if="selectedLen > 0" class="rich-status-sel">已选 {{ selectedLen }} 字符</span>
-        <!-- #43 粘贴上传：每次粘贴弹一次目标选择框 -->
-        <span v-if="imageLibrary && !readonly" class="rich-status-target">粘贴图片时选择上传位置</span>
         <span v-if="readonly" class="rich-status-ro">只读</span>
       </div>
     </div>
@@ -508,7 +516,7 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 .rich-status-sel { color: var(--el-color-primary, #409eff); }
-.rich-status-target { margin-left: auto; opacity: .7; font-size: 11px; }
+.rich-status-target { margin-right: auto; opacity: .7; font-size: 11px; }
 .rich-status-ro {
   color: var(--el-color-warning, #e6a23c);
   border: 1px solid currentColor;

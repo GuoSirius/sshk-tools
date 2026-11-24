@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bindSaveShortcut, type SaveCommandEditor } from './save-shortcut'
 
-function fakeEditor(): { editor: SaveCommandEditor; addCommand: ReturnType<typeof vi.fn> } {
+function fakeEditor(): { editor: SaveCommandEditor; addCommand: ReturnType<typeof vi.fn>; createContextKey: ReturnType<typeof vi.fn> } {
   const addCommand = vi.fn()
-  return { editor: { addCommand, createContextKey: vi.fn() } as unknown as SaveCommandEditor, addCommand }
+  const createContextKey = vi.fn()
+  return { editor: { addCommand, createContextKey }, addCommand, createContextKey }
 }
 
 describe('bindSaveShortcut', () => {
   it('把传入的 keybinding 与保存回调注册到编辑器，并带实例唯一 when 键（多实例防串）', () => {
-    const { editor, addCommand } = fakeEditor()
+    const { editor, addCommand, createContextKey } = fakeEditor()
     const onSave = vi.fn()
     bindSaveShortcut(editor, 1234, onSave)
-    expect(editor.createContextKey).toHaveBeenCalledWith('saveShortcutOwned_1', true)
+    expect(createContextKey).toHaveBeenCalledWith('saveShortcutOwned_1', true)
     expect(addCommand).toHaveBeenCalledTimes(1)
     expect(addCommand).toHaveBeenCalledWith(1234, onSave, 'saveShortcutOwned_1')
     addCommand.mock.calls[0]?.[1]()
@@ -25,16 +26,6 @@ describe('bindSaveShortcut', () => {
     bindSaveShortcut(a.editor, 1234, onSave)
     bindSaveShortcut(b.editor, 1234, onSave)
     expect(a.addCommand.mock.calls[0]?.[2]).not.toBe(b.addCommand.mock.calls[0]?.[2])
-  })
-
-  it('无 createContextKey 的假编辑器回退裸绑（保持旧行为）', () => {
-    const addCommand = vi.fn()
-    const onSave = vi.fn()
-    bindSaveShortcut({ addCommand } as SaveCommandEditor, 1234, onSave)
-    expect(addCommand).toHaveBeenCalledTimes(1)
-    expect(addCommand.mock.calls[0]?.length).toBe(2)
-    addCommand.mock.calls[0]?.[1]()
-    expect(onSave).toHaveBeenCalledTimes(1)
   })
 
   it('编辑器未挂载时不抛错', () => {
