@@ -1,0 +1,263 @@
+/* procell 品牌组件类（标题 / 表格 / 按钮 / 装饰图标）（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
+
+.table-bordered {
+  color: #2c2c2c;
+  border: 1px solid #dedede;
+  border-radius: 3px;
+}
+
+.table-bordered.no-border {
+  border-color: transparent;
+}
+
+.table-bordered thead {
+  border-radius: 3px 3px 0 0;
+  background-color: #eaeaea;
+}
+
+.table-bordered th, .table-bordered td {
+  padding: 16px;
+  border: 1px solid #dedede;
+}
+
+.table-bordered.no-border th, .table-bordered.no-border td {
+  border-color: transparent;
+}
+
+.table-bordered.condensed th, .table-bordered.condensed td {
+  padding: 5px 8px;
+}
+
+.table-stripe {
+  border: 1px solid #7dc0bb;
+}
+
+.table-stripe tbody tr:nth-child(2n) {
+  background-color: #e6f3f2;
+}
+
+.table-stripe th, .table-stripe td {
+  padding: 5px 8px;
+  border: 1px solid #7dc0bb;
+}
+
+.table-dashed {
+  border: 1px dashed #5AAFA9;
+  border-radius: 20px;
+}
+
+.title {
+  color: #005f66;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.square-title {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.square-title::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  margin-bottom: -1px;
+  background-color: #5AAFA9;
+}
+
+.rectangle-title {
+  color: #16585d;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.rectangle-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 22px;
+  margin-right: 8px;
+  margin-bottom: -2px;
+  background-color: #fd8b37;
+}
+
+.title-slash {
+  line-height: 1.3;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-right: 81px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  background: #32afb4 url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202603301420/slash-bg.jpg') no-repeat scroll right center / 49px 100%;
+}
+
+.red-bg-title {
+  min-height: 64px;
+  line-height: 1.3;
+  padding: 10px 45px 32px 24px;
+  position: relative;
+  color: #fff;
+  font-size: 24px;
+  font-weight: bold;
+  background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/title-bg.webp') no-repeat scroll left top / 100% 100%;
+}
+
+.red-bg-title.fire::after {
+  content: '';
+  display: block;
+  min-width: 45px;
+  height: 100%;
+  margin-top: -10px;
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  transform: translate(0%, -50%);
+  background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/fire-icon.webp') no-repeat scroll left top / 100% 100%;
+}
+
+.dot {
+  margin-top: -2px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.image-box {
+  line-height: 0;
+  font-size: 0;
+  user-select: none;
+}
+
+.button {
+  padding: 6px 16px;
+  color: #fff;
+  font-size: 16px;
+  border-radius: 6px;
+  background-color: #32afb4;
+}
+
+.button-orange {
+  padding: 6px 16px;
+  color: #fff;
+  font-size: 16px;
+  border-radius: 6px;
+  background-color: #fd8b37;
+}
+
+.text-link {
+  color: #32afb4;
+}
+
+.text-link:hover, .text-link-hover:hover {
+  color: #1f7e82 !important;
+}
+
+.text-link-light {
+  color: #18c0b0;
+}
+
+.text-link-light:hover, .text-link-light-hover:hover {
+  color: #18c0b0 !important;
+}
+
+.w-full, .w-100 {
+  width: 100%;
+}
+
+.h-full, .h-100 {
+  height: 100%;
+}
+
+.align-top {
+  vertical-align: top;
+}
+
+.align-text-top {
+  vertical-align: text-top;
+}
+
+.align-mid, .align-middle {
+  vertical-align: middle;
+}
+
+.align-bottom {
+  vertical-align: bottom;
+}
+
+.align-text-bottom {
+  vertical-align: text-bottom;
+}
+
+.color-light-orange {
+  color: #fd8b37;
+}
+
+.color-dark-red {
+  color: #e92614;
+}
+
+.cursor-not-allowed {
+  cursor: not-allowed;
+}
+
+.text-size-\[10px\] {
+  font-size: 10px;
+}
+
+.text-size-\[12px\] {
+  font-size: 12px;
+}
+
+.text-size-\[14px\] {
+  font-size: 14px;
+}
+
+.text-size-\[16px\] {
+  font-size: 16px;
+}
+
+.text-size-\[18px\] {
+  font-size: 18px;
+}
+
+.text-size-\[20px\] {
+  font-size: 20px;
+}
+
+.text-size-\[22px\] {
+  font-size: 22px;
+}
+
+.text-size-\[24px\] {
+  font-size: 24px;
+}
+
+.text-size-\[25px\] {
+  font-size: 25px;
+}
+
+.text-size-\[26px\] {
+  font-size: 26px;
+}
+
+.text-size-\[27px\] {
+  font-size: 27px;
+}
+
+.text-size-\[28px\] {
+  font-size: 28px;
+}
+
+.text-size-\[30px\] {
+  font-size: 30px;
+}
+
+.text-size-\[32px\] {
+  font-size: 32px;
+}
+
+.text-size-\[36px\] {
+  font-size: 36px;
+}

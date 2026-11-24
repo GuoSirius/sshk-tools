@@ -1,0 +1,78 @@
+/* elabscience 品牌色板（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
+
+.bg-none {
+  background: none;
+}
+
+.bg-transparent {
+  background-color: transparent;
+}
+
+.bg-primary {
+  background-color: #3a82db;
+}
+
+.bg-light-primary {
+  background-color: #f0f6ff;
+}
+
+.bg-white {
+  background-color: #fff;
+}
+
+.bg-gray {
+  background-color: #f6f6f6;
+}
+
+.bg-dark-gray {
+  background-color: #f2f2f2;
+}
+
+.bg-blue {
+  background-color: #006db8;
+}
+
+.bg-blue-30 {
+  background-color: rgba(0, 109, 184, 0.30);
+}
+
+.bg-blue-60 {
+  background-color: rgba(245, 250, 255, 0.60);
+}
+
+.bg-sky-blue {
+  background-color: #1078e3;
+}
+
+.bg-pale-blue {
+  background-color: #e4f4ff;
+}
+
+.bg-light-blue {
+  background-color: #f9fbfe;
+}
+
+.bg-orange {
+  background-color: #f7750b;
+}
+
+.bg-light-orange {
+  background-color: #ff9630;
+}
+
+.bg-orange-30 {
+  background-color: rgb(247, 117, 11, 0.30);
+}
+
+.bg-linear-orange {
+  box-shadow: 1px 1px 3px 0 #eff7ff;
+  background: linear-gradient(0deg, #fb5302 0%, #fac228 100%),
+                  linear-gradient(0deg, #ed4b26 0%, #ffc02c 100%),
+                  linear-gradient(0deg, #ffb100 0%, #ffde43 100%),
+                  linear-gradient(#8ad2ff, #8ad2ff);
+  background-blend-mode: normal, normal, normal, normal;
+}
+
+.bg-linear-blue {
+  background-image: linear-gradient(-90deg, #6effec 0%, #117be4 100%);
+}

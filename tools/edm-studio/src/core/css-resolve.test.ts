@@ -2,6 +2,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolveCssBundle, type CssResolveSource } from './css-resolve'
 import { injectCssIntoHead } from './css-refs'
@@ -43,6 +44,16 @@ describe('resolveCssBundle 单链路', () => {
     const fallback = await resolveCssBundle({ sources: [{ html: '<div>x</div>', ctx: c, fallbackCss: '.fallback{}' }] })
     expect(fallback.css).toBe('.fallback{}')
     expect(fallback.refs).toEqual([])
+  })
+
+  it('公共样式层：@shared/email-utils.css 与 @root/<brand>/css/palette.css 显式 link 生效', async () => {
+    const edmRoot = fileURLToPath(new URL('../../assets/edm', import.meta.url))
+    const c = ctx(edmRoot)
+    const html = '<link rel="stylesheet" href="@shared/email-utils.css"><link rel="stylesheet" href="@root/elabscience/css/palette.css"><div>x</div>'
+    const bundle = await resolveCssBundle({ sources: [{ html, ctx: c }] })
+    expect(bundle.css).toContain('box-sizing: border-box')
+    expect(bundle.css).toContain('.bg-blue')
+    expect(bundle.htmls[0]).not.toContain('<link')
   })
 
   it('显式链与等价回退快照产出相同 css（预览 = 生成的共同基准）', async () => {

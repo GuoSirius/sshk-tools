@@ -1,2 +1,38 @@
-.edm-standard { width: 680px; margin: 0 auto; background: #fff; }
-.edm-standard .slot { padding: 12px 16px; }
+/* elabscience 邮件骨架（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
+
+.app {
+  max-width: 750px;
+  min-width: 320px;
+  margin: 0 auto;
+  box-shadow: 0.5px 0.666px 14.1px 0.9px rgba(13, 2, 3, 0.1);
+}
+
+.header .banner img {
+  width: 100%;
+}
+
+.header .navigation a {
+  color: #006DB8;
+}
+
+.footer .connect-us-title {
+  padding-bottom: 5px;
+}
+
+.footer .connect-us-separator {
+  padding-top: 8px;
+  border-bottom: 1px dashed #828282;
+}
+
+.footer .contact-us-qrcode img {
+  width: 60px;
+}
+
+.footer .contact-us-whatsApp {
+  padding: 5px 0;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 12px;
+  border-radius: 12px;
+  background-color: rgb(43, 176, 181);
+}
