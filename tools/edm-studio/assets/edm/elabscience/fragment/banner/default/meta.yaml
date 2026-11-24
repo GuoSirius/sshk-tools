@@ -1,2 +1,15 @@
 version: 1
-changelog: 初始默认版本
+code: default
+name: 顶部横幅·迁移版
+changelog: juice-cli/edm 旧资产迁移（plans/14）
+fields:
+  - type: image
+    key: image
+    label: 通栏图
+    required: true
+  - type: url
+    key: link
+    label: 点击链接（选填，填了才渲染）
+  - type: richtext
+    key: keywords
+    label: 关键词导语（支持局部加粗/标红）

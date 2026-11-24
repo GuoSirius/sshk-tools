@@ -1,0 +1,66 @@
+/**
+ * 迁移资产不变量测试（plans/14）：系统内容库所有版本
+ * ① 可渲染（sample 严格填充，无未定义字段 / 无 njk 残留）；
+ * ② 显式 link 在预览侧被剥离并注入 <style>；
+ * ③ 仅 richtext 字段允许 `| safe`（slot_* 例外）。
+ */
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterAll, describe, expect, it } from 'vitest'
+import nunjucks from 'nunjucks'
+import { loadEdmModel } from './edm-manifest'
+import { renderSystemPreview, type SystemSelector } from '../core/system-css'
+
+const EDM_ROOT = fileURLToPath(new URL('../../assets/edm', import.meta.url))
+const OUTPUT = mkdtempSync(path.join(tmpdir(), 'sshk-edm-assets-'))
+afterAll(() => rmSync(OUTPUT, { recursive: true, force: true }))
+
+describe('系统 EDM 资产迁移不变量', () => {
+  it('所有版本：显式 link 生效、njk 全字段可渲染、safe 仅用于 richtext', async () => {
+    const model = await loadEdmModel(EDM_ROOT)
+    const env = new nunjucks.Environment(null, { autoescape: true, throwOnUndefined: true })
+    const versions: Array<{ sel: SystemSelector; html: string; sample: Record<string, unknown>; fields: unknown[]; dir: string }> = []
+    for (const brand of model.brands) {
+      for (const [kind, families] of [['fragment', brand.fragments], ['template', brand.templates]] as const) {
+        for (const fam of families) {
+          for (const v of fam.versions) {
+            versions.push({
+              sel: { brandCode: brand.code, kind, familyCode: fam.code, versionDir: v.dir },
+              html: readFileSync(v.sourcePath, 'utf8'),
+              sample: (v.sample ?? {}) as Record<string, unknown>,
+              fields: (v.meta as unknown as { fields?: unknown[] }).fields ?? [],
+              dir: v.dir,
+            })
+          }
+        }
+      }
+    }
+    expect(versions.length).toBeGreaterThanOrEqual(10)
+
+    for (const v of versions) {
+      // njk 严格渲染：sample 必须覆盖模板用到的全部字段（slot_* 由组合引擎注入，单版本预览 tolerated）
+      if (v.sel.kind === 'fragment') {
+        expect(() => env.renderString(v.html, v.sample)).not.toThrow()
+      }
+      const preview = await renderSystemPreview(EDM_ROOT, v.sel, { outputRoot: OUTPUT })
+      expect(preview.html).not.toContain('<link')
+      expect(preview.html).not.toContain('{{')
+      expect(preview.html).toContain('<style>')
+
+      // v1 为旧演示资产；template/default 将于批次 4 重建，暂不纳入迁移纪律校验
+      if (v.dir !== 'default' || v.sel.kind === 'template') continue
+      expect(v.html).toContain('<link rel="stylesheet" href="@shared/email-utils.css">')
+      const declared = new Set(v.fields.map((f) => {
+        const o = f as { key?: string; type?: string }
+        return o.type === 'richtext' ? o.key : undefined
+      }))
+      for (const m of v.html.matchAll(/\{\{\s*([a-zA-Z_][\w]*)\s*\|\s*safe\s*\}\}/g)) {
+        const key = m[1]
+        if (key?.startsWith('slot_')) continue
+        expect(declared.has(key), `${v.sel.brandCode}/${v.sel.familyCode}: ${key} 未声明为 richtext`).toBe(true)
+      }
+    }
+  })
+})

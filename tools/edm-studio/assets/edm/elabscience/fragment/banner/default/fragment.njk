@@ -1,4 +1,17 @@
-<div class="frag-banner edm-brand-elabscience">
-  <strong class="brand-accent">{{ title | safe }}</strong>
-  <span>{{ subtitle | safe }}</span>
-</div>
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/banner.css">
+
+<tr>
+  <td colspan="4" class="image-box edm-banner">
+    {% if link %}<a href="{{ link }}"><img src="{{ image }}" /></a>{% else %}<img src="{{ image }}" />{% endif %}
+  </td>
+</tr>
+<tr><td colspan="4" class="h-16"></td></tr>
+<tr>
+  <td></td>
+  <td colspan="2" class="edm-banner-keywords">{{ keywords | safe }}</td>
+  <td></td>
+</tr>
+<tr><td colspan="4" class="h-24"></td></tr>

@@ -1,0 +1,10 @@
+logoImage: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/header.webp
+logoLink: https://www.procellsystem.com/
+logoAlt: Procell
+navLinks:
+  - label: Cell Culture Media
+    href: https://www.procellsystem.com/search-category=cell-culture-media
+  - label: Auxiliary Reagents
+    href: https://www.procellsystem.com/search-category=auxiliary-reagents
+  - label: Cell Function Research Kits
+    href: https://www.procellsystem.com/search-category=cell-function-research-kits

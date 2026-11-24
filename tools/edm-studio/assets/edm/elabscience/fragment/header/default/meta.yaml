@@ -1,0 +1,26 @@
+version: 1
+code: default
+name: 页头·迁移版
+changelog: juice-cli/edm 旧资产迁移（plans/14）
+fields:
+  - type: image
+    key: logoImage
+    label: 品牌 Logo
+    required: true
+  - type: url
+    key: logoLink
+    label: Logo 链接
+  - type: input
+    key: logoAlt
+    label: Logo 替代文字
+  - type: repeater
+    key: navLinks
+    label: 导航链接
+    minRows: 1
+    itemFields:
+      - type: input
+        key: label
+        label: 文字
+      - type: url
+        key: href
+        label: 链接

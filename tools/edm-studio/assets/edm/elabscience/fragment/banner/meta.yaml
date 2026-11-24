@@ -1,7 +1,7 @@
 code: banner
 name: 顶部横幅
-description: 邮件顶部品牌横幅片段
-type: demo
+description: 通栏大图 + 关键词导语（母版 banner 与 series banner 统一形态）
+type: product
 policy:
   blacklist: []
   whitelist: []

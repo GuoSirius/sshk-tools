@@ -1,7 +1,7 @@
 code: banner
 name: 顶部横幅
-description: Procell 顶部横幅片段
-type: header
+description: 通栏大图 + 关键词导语（母版 banner 与 series banner 统一形态）
+type: product
 policy:
   blacklist: []
   whitelist: []

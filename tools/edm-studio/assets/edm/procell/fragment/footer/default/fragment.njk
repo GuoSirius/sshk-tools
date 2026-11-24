@@ -1,0 +1,74 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/procell/css/palette.css">
+<link rel="stylesheet" href="@root/procell/css/components.css">
+<link rel="stylesheet" href="@root/procell/template/standard/css/template.css">
+<link rel="stylesheet" href="./css/footer.css">
+
+<table cellspacing="0" cellpadding="0" border="0" class="footer edm-footer">
+  <colgroup><col width="10px" /><col /><col /><col width="10px" /></colgroup>
+  <tbody>
+    <tr><td colspan="4" class="h-24"></td></tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <table cellspacing="0" cellpadding="0" border="0" class="connect-us text-center">
+          <colgroup><col width="20%" /><col /><col /><col /><col /><col /><col /><col width="20%" /></colgroup>
+          <tbody>
+            <tr>
+              <td></td>
+              <td colspan="6" class="connect-us-title font-bold text-size-[14px]">Connect with us</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td></td>
+              {% for s in socials %}
+              <td class="line-height-0 font-size-0"><a href="{{ s.href }}" class="image-box"><img src="{{ s.icon }}" alt="{{ s.label }}" /></a></td>
+              {% endfor %}
+              <td></td>
+            </tr>
+            <tr><td></td><td colspan="6" class="connect-us-separator"></td><td></td></tr>
+          </tbody>
+        </table>
+      </td>
+      <td></td>
+    </tr>
+    <tr><td colspan="4" class="h-24"></td></tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <table cellspacing="0" cellpadding="0" border="0" class="contact-us text-center align-middle">
+          <tbody>
+            <tr><td><strong>{{ companyName }}</strong></td></tr>
+            <tr>
+              <td>
+                <img src="{{ phoneIcon }}" alt="" class="align-middle" />
+                <span class="align-middle">{{ phone }} <a href="{{ phoneHref }}" class="decoration-none">{{ phoneHref }}</a></span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <img src="{{ siteIcon }}" alt="" class="align-middle" />
+                <span class="align-middle">Web: <a href="{{ webHref }}" class="decoration-none">{{ web }}</a></span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <img src="{{ mailIcon }}" alt="" class="align-middle" />
+                <span class="align-middle">Email:
+                  {% for e in emails %}<a href="{{ e.href }}" class="decoration-none edm-mail-link"{% if not loop.last %} style="padding-left: 10px;"{% endif %}>{{ e.label }}</a>{% if not loop.last %};{% endif %}{% endfor %}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                {% if locationIcon %}<img src="{{ locationIcon }}" alt="" class="align-middle" /> {% endif %}{{ address }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+      <td></td>
+    </tr>
+    <tr><td colspan="4" class="h-32"></td></tr>
+  </tbody>
+</table>

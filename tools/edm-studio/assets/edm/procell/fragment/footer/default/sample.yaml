@@ -1,0 +1,34 @@
+socials:
+  - label: linkedin
+    href: https://www.linkedin.com/company/procellsystem
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/linkedin.webp
+  - label: youtube
+    href: https://www.youtube.com/channel/UCONFhi6cGpDFfZlKBG65J6g
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/youtube.webp
+  - label: facebook
+    href: https://www.facebook.com/procellsystem
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/facebook.webp
+  - label: instagram
+    href: https://www.instagram.com/procellsystem
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/instagram.webp
+  - label: tiktok
+    href: https://www.tiktok.com/@procellsystem
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/tiktok.webp
+  - label: whatsapp
+    href: https://wa.me/message/M5O3MHUB2KI3F1
+    icon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/edmfooter/whatsapp.webp
+companyName: Procell Biotechnology Singapore Pte. Ltd.
+phone: 'Tel: +65 31071793'
+phoneHref: tel:+6531071793
+phoneIcon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202606120904/phone.webp
+siteIcon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202606120904/site.webp
+mailIcon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202606120904/email.webp
+locationIcon: https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202606120904/location.webp
+web: www.procellsystem.com
+webHref: https://www.procellsystem.com/
+emails:
+  - label: orders@procellsystem.com
+    href: mailto:orders@procellsystem.com
+  - label: techsupport@procellsystem.com
+    href: mailto:techsupport@procellsystem.com
+address: 'Add: 1001 Jalan Bukit Merah #07-11, Singapore 159455'
