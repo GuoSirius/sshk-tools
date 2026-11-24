@@ -1,10 +1,10 @@
 /* procell 邮件骨架（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
 
+/* Outlook 不渲染阴影：靠 750px 居中与段落间距建立层级 */
 .app {
   max-width: 750px;
   min-width: 320px;
   margin: 0 auto;
-  box-shadow: 0.5px 0.666px 14.1px 0.9px rgba(13, 2, 3, 0.1);
 }
 
 .header .banner img {
@@ -13,10 +13,6 @@
 
 .header .navigation a {
   color: #2ebac0;
-}
-
-.header .navigation a:hover {
-  color: #1f7e82 !important;
 }
 
 .footer .connect-us-title {

@@ -8,7 +8,7 @@ html, body {
   font-size: 16px;
 }
 
-*, *::before, *::after {
+* {
   margin: 0;
   padding: 0;
   line-height: 1.5;
@@ -39,8 +39,10 @@ a {
   cursor: pointer;
 }
 
-a:hover {
-  text-decoration: underline !important;
+/* 标题装饰统一用真实 <span class="title-mark …"> 元素，邮件客户端不内联伪元素 */
+.title-mark {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .border-none {
@@ -105,10 +107,6 @@ a:hover {
 
 .relative {
   position: relative;
-}
-
-.absolute {
-  position: absolute;
 }
 
 .overflow-hidden {

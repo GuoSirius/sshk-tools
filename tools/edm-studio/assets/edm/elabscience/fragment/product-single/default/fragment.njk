@@ -44,9 +44,15 @@
 
                       <tr>
                         <td class="text-center overflow-hidden">
-                          <a {% if link4 %}href="{{ link4 }}"{% endif %} class="decoration-none image-box inline-block bg-blue-30 relative" style="padding: 5px 8px;">
-                            <img src="{{ image1 }}" />
-                            <img src="{{ image2 }}" class="absolute" style="right: 24px; bottom: 18px; transform: translateX(100%);" />
+                          <a {% if link4 %}href="{{ link4 }}"{% endif %} class="decoration-none image-box inline-block bg-blue-30" style="padding: 5px 8px;">
+                            <table cellspacing="0" cellpadding="0" border="0" class="w-100">
+                              <tbody>
+                                <tr>
+                                  <td class="image-box align-bottom" width="88%"><img src="{{ image1 }}" class="w-100" /></td>
+                                  <td class="image-box align-bottom" width="12%" style="padding-left: 2px;"><img src="{{ image2 }}" class="w-100" /></td>
+                                </tr>
+                              </tbody>
+                            </table>
                           </a>
                         </td>
                       </tr>

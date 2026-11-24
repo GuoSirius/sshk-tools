@@ -64,15 +64,13 @@
   background-color: rgb(247, 117, 11, 0.30);
 }
 
+/* Outlook 忽略 background-image 时回落到纯色 background-color */
 .bg-linear-orange {
-  box-shadow: 1px 1px 3px 0 #eff7ff;
-  background: linear-gradient(0deg, #fb5302 0%, #fac228 100%),
-                  linear-gradient(0deg, #ed4b26 0%, #ffc02c 100%),
-                  linear-gradient(0deg, #ffb100 0%, #ffde43 100%),
-                  linear-gradient(#8ad2ff, #8ad2ff);
-  background-blend-mode: normal, normal, normal, normal;
+  background-color: #f7750b;
+  background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
 }
 
 .bg-linear-blue {
+  background-color: #1078e3;
   background-image: linear-gradient(-90deg, #6effec 0%, #117be4 100%);
 }

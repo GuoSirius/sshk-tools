@@ -120,7 +120,7 @@
 <tr>
   <td></td>
   <td colspan="2">
-    <span class="square-title">Cited Product</span>
+    <span class="square-title"><span class="title-mark title-mark-square"></span>Cited Product</span>
   </td>
   <td></td>
 </tr>
@@ -145,7 +145,7 @@
         </tr>
 
         {% for it1 in productLists %}
-        <tr>
+        <tr{% if loop.index0 % 2 == 0 %} class="stripe-row"{% endif %}>
           <td>
             <a href="{{ it1.link }}" class="text-link">{{ it1.name }}</a>
           </td>
@@ -167,7 +167,7 @@
 <tr>
   <td></td>
   <td colspan="2">
-    <span class="square-title">Recommended for you</span>
+    <span class="square-title"><span class="title-mark title-mark-square"></span>Recommended for you</span>
   </td>
   <td></td>
 </tr>

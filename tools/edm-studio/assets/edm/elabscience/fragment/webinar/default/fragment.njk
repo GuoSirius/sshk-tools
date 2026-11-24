@@ -55,7 +55,7 @@
 
 <tr>
   <td></td>
-  <td colspan="2" class="bg-gray" style="padding: 0 16px 16px;">
+  <td colspan="2" class="bg-gray" style="padding: 0 0 16px;">
     <table cellspacing="0" cellpadding="0" border="0">
       <colgroup>
         <col />
@@ -63,9 +63,8 @@
 
       <tbody class="align-middle">
         <tr>
-          <td class="relative">
-            <div class="bg-white absolute" style="width: calc(100% + 32px); height: 20px; left: -16px;"></div>
-            <span class="title relative {{ introduction_className }}">{{ introduction_title }}</span>
+          <td class="bg-white" style="padding: 8px 16px 0;">
+            <span class="title {{ introduction_className }}">{{ introduction_title }}</span>
           </td>
         </tr>
 
@@ -74,7 +73,7 @@
         </tr>
 
         <tr>
-          <td>
+          <td style="padding: 0 16px;">
             {% for it1 in introduction_lists %}
             <p class="pb-5 {{ introduction_itemClassName }}">{{ it1 | safe }}</p>
             {% endfor %}
@@ -83,7 +82,7 @@
 
         {% if introduction_buttonText %}
         <tr>
-          <td class="text-right pt-18">
+          <td class="text-right pt-18" style="padding-right: 16px;">
             <a {% if introduction_buttonLink %}href="{{ introduction_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ introduction_buttonText }}</a>
           </td>
         </tr>
@@ -100,7 +99,7 @@
 
 <tr>
   <td></td>
-  <td colspan="2" class="bg-gray" style="padding: 0 16px 16px;">
+  <td colspan="2" class="bg-gray" style="padding: 0 0 16px;">
     <table cellspacing="0" cellpadding="0" border="0">
       <colgroup>
         <col />
@@ -108,9 +107,9 @@
 
       <tbody class="align-middle">
         <tr>
-          <td class="relative">
-            <div class="bg-white absolute" style="width: calc(100% + 32px); height: 20px; left: -16px;"></div>
-            <span class="title relative {{ reserve_className }}">{{ reserve_title }}</span></td>
+          <td class="bg-white" style="padding: 8px 16px 0;">
+            <span class="title {{ reserve_className }}">{{ reserve_title }}</span>
+          </td>
         </tr>
 
         <tr>
@@ -118,7 +117,7 @@
         </tr>
 
         <tr>
-          <td>
+          <td style="padding: 0 16px;">
             {% for it2 in reserve_lists %}
             <p class="pb-5 {{ reserve_itemClassName }}">{{ it2 }}</p>
             {% endfor %}
@@ -129,7 +128,7 @@
 
         {% if reserve_buttonText %}
         <tr>
-          <td class="text-right pt-18">
+          <td class="text-right pt-18" style="padding-right: 16px;">
             <a {% if reserve_buttonLink %}href="{{ reserve_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ reserve_buttonText }}</a>
           </td>
         </tr>

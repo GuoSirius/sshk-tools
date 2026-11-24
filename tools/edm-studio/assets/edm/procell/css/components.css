@@ -32,7 +32,8 @@
   border: 1px solid #7dc0bb;
 }
 
-.table-stripe tbody tr:nth-child(2n) {
+/* 斑马纹用显式 stripe-row 类，避免 juice 与 Outlook 均不支持的结构性伪类 */
+.table-stripe .stripe-row td {
   background-color: #e6f3f2;
 }
 
@@ -57,13 +58,11 @@
   font-weight: bold;
 }
 
-.square-title::before {
-  content: '';
-  display: inline-block;
+.title-mark-square {
   width: 16px;
   height: 16px;
   margin-right: 6px;
-  margin-bottom: -1px;
+  vertical-align: -1px;
   background-color: #5AAFA9;
 }
 
@@ -73,13 +72,11 @@
   font-weight: bold;
 }
 
-.rectangle-title::before {
-  content: '';
-  display: inline-block;
+.title-mark-rectangle {
   width: 8px;
   height: 22px;
   margin-right: 8px;
-  margin-bottom: -2px;
+  vertical-align: -2px;
   background-color: #fd8b37;
 }
 
@@ -98,24 +95,17 @@
   min-height: 64px;
   line-height: 1.3;
   padding: 10px 45px 32px 24px;
-  position: relative;
   color: #fff;
   font-size: 24px;
   font-weight: bold;
   background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/title-bg.webp') no-repeat scroll left top / 100% 100%;
 }
 
-.red-bg-title.fire::after {
-  content: '';
-  display: block;
-  min-width: 45px;
-  height: 100%;
-  margin-top: -10px;
-  position: absolute;
-  top: 50%;
-  right: -8px;
-  transform: translate(0%, -50%);
-  background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/fire-icon.webp') no-repeat scroll left top / 100% 100%;
+.title-mark-fire {
+  width: 45px;
+  height: 44px;
+  margin-left: 6px;
+  background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/fire-icon.webp') no-repeat scroll left center / 100% 100%;
 }
 
 .dot {
@@ -146,20 +136,12 @@
   background-color: #fd8b37;
 }
 
-.text-link {
+.text-link, .text-link-hover {
   color: #32afb4;
 }
 
-.text-link:hover, .text-link-hover:hover {
-  color: #1f7e82 !important;
-}
-
-.text-link-light {
+.text-link-light, .text-link-light-hover {
   color: #18c0b0;
-}
-
-.text-link-light:hover, .text-link-light-hover:hover {
-  color: #18c0b0 !important;
 }
 
 .w-full, .w-100 {

@@ -19,7 +19,8 @@
   border: 1px solid #6ca2e4;
 }
 
-.table-stripe tbody tr:nth-child(2n) {
+/* 斑马纹用显式 stripe-row 类，避免 juice 与 Outlook 均不支持的结构性伪类 */
+.table-stripe .stripe-row td {
   background-color: #ebf2fb;
 }
 
@@ -42,7 +43,7 @@
   background-color: #f6f6f6;
 }
 
-.table-gray-stripe tbody tr:nth-child(2n) {
+.table-gray-stripe .stripe-row td {
   background-color: #f6f6f6;
 }
 
@@ -62,13 +63,11 @@
   font-weight: bold;
 }
 
-.square-title::before {
-  content: '';
-  display: inline-block;
+.title-mark-square {
   width: 16px;
   height: 16px;
   margin-right: 6px;
-  margin-bottom: -1px;
+  vertical-align: -1px;
   background-color: #3a82db;
 }
 
@@ -105,24 +104,12 @@
   font-weight: bolder;
 }
 
-.circle-title::before, .circle-title::after {
-  content: '';
-  display: inline-block;
+.title-mark-circle {
   width: 16px;
   height: 16px;
-  margin-top: -2px;
-  vertical-align: middle;
-  border-radius: 50%;
+  margin: -2px 6px 0 0;
   border: 1px solid #1873C2;
-}
-
-.circle-title::before {
-  margin-top: -3px;
-  margin-right: 6px;
-}
-
-.circle-title::after {
-  margin-left: 6px;
+  border-radius: 50%;
 }
 
 .dot {
@@ -240,26 +227,18 @@
   background-color: #f7750b;
 }
 
+/* 渐变按钮：Outlook 忽略 background-image 时回落到纯色 background-color */
 .button-linear-orange {
   padding: 5px 12px;
   color: #fff;
   font-size: 16px;
   border-radius: 16px;
-  box-shadow: 1px 1px 3px 0 #eff7ff;
-  background: linear-gradient(0deg, #fb5302 0%, #fac228 100%),
-                  linear-gradient(0deg, #ed4b26 0%, #ffc02c 100%),
-                  linear-gradient(0deg, #ffb100 0%, #ffde43 100%),
-                  linear-gradient(#8ad2ff, #8ad2ff);
   background-color: #f7750b;
-  background-blend-mode: normal, normal, normal, normal;
+  background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
 }
 
-.text-link {
+.text-link, .text-link-hover {
   color: #0365B0;
-}
-
-.text-link:hover, .text-link-hover:hover {
-  color: #0365B0 !important;
 }
 
 .w-full, .w-100 {
