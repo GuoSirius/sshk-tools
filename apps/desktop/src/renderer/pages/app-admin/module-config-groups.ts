@@ -121,4 +121,27 @@ export const FORM_CONFIG_GROUPS: ToolConfigGroup[] = [
       },
     ],
   },
+  {
+    // AI 润色（2026-11-24 用户需求，与 EDM 工具设置「AI 助手」组同款；模块配置组用 app. 全键）
+    id: 'form-ai',
+    label: 'AI 助手',
+    fields: [
+      {
+        key: 'app.modules.formManager.ai.providerId',
+        label: 'Provider',
+        type: 'select',
+        optionsSource: 'llm:providers',
+        fallbackKey: 'app.llm.activeProviderId',
+        hint: 'AI 润色使用的模型 Provider；默认跟随应用激活的 Provider，也可为本模块单独指定',
+      },
+      {
+        key: 'app.modules.formManager.ai.model',
+        label: '模型覆盖',
+        type: 'select',
+        optionsSource: 'llm:providerModels',
+        optionsDep: 'app.modules.formManager.ai.providerId',
+        hint: '留空 = 使用 Provider 配置的模型；下拉选择（「刷新」拉取最新模型列表）或手动输入（如 deepseek-chat / gpt-4o-mini）',
+      },
+    ],
+  },
 ]

@@ -1,17 +1,16 @@
+import type { ChatMessage } from '@sshk/form-schema'
 import type { FieldDef } from './sample-schema'
 
 /**
  * D-Q2 AI 文案助手（plans/05 §七）：
  * - buildSamplePrompt：fields schema → 示例数据生成 Prompt（schema 序列化 + 输出契约）
  * - extractJson / coerceSample：模型返回 → 合法 sample 数据（按 schema 转型 + 选项收紧）
- * - polishRichText：富文本润色（只改文字，不碰标签结构与属性）
+ * - 富文本润色（extractHtml / polishRichText / ChatMessage）已下沉 @sshk/form-schema 共享
+ *   （2026-11-24 表单设计模块接线 AI 润色，≥2 消费方抽包），此处 re-export 保持旧导入路径。
  * 纯函数不触 window；chat 调用由 SampleForm 注入（便于单测与无 Provider 降级）。
  */
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export { extractHtml, polishRichText, type ChatMessage } from '@sshk/form-schema'
 
 /** 示例数据生成 Prompt：schema 序列化 + 明确输出契约（纯 JSON、选项白名单、数量约束） */
 export function buildSamplePrompt(fields: FieldDef[], context?: string): string {
@@ -46,16 +45,6 @@ export function extractJson(text: string): string | null {
   const body = (fenced?.[1] ?? text).trim()
   const start = body.indexOf('{')
   const end = body.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  return body.slice(start, end + 1)
-}
-
-/** 从模型返回剥出 HTML（容忍围栏；取首个 < 到末个 >）；无法定位返回 null */
-export function extractHtml(text: string): string | null {
-  const fenced = /```(?:html)?\s*([\s\S]*?)```/.exec(text)
-  const body = (fenced?.[1] ?? text).trim()
-  const start = body.indexOf('<')
-  const end = body.lastIndexOf('>')
   if (start < 0 || end <= start) return null
   return body.slice(start, end + 1)
 }
@@ -158,22 +147,4 @@ export async function generateSample(
     throw new Error('模型返回的不是 JSON 对象，请重试')
   }
   return coerceSample(fields, parsed as Record<string, unknown>)
-}
-
-/** 富文本润色：保持标签结构与属性完全不变，只改写可见文字 */
-export async function polishRichText(html: string, chat: (messages: ChatMessage[]) => Promise<string>): Promise<string> {
-  const text = await chat([
-    {
-      role: 'user',
-      content: [
-        '你是 EDM 邮件文案润色助手。对下面 HTML 中的可见文字做专业、克制的中文润色：',
-        '保持 HTML 标签、结构与属性（含链接 href、行内样式）完全不变，只改写标签之间的文字；',
-        '不要增删标签，不要输出任何解释，直接返回完整 HTML。',
-        `HTML：\n${html.slice(0, 8000)}`,
-      ].join('\n'),
-    },
-  ])
-  const result = extractHtml(text)
-  if (!result) throw new Error('模型没有返回可用的 HTML，请重试')
-  return result
 }

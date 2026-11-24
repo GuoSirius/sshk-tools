@@ -35,3 +35,5 @@ export {
 } from './expand'
 
 export { BUILTIN_CONTROLS, type BuiltinControlSpec } from './builtin-controls'
+
+export { extractHtml, polishRichText, type ChatMessage } from './ai'

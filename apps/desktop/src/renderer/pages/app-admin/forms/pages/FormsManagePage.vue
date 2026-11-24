@@ -9,6 +9,8 @@
  *   sampleModel 随保存落库（无独立预览入口）；弹框尺寸走非 scoped 全局块 + 内联兜底
  * - 表单 tab 注入 EDM 同源图片能力（2026-11-24）：ImageField（选择图片/URL 直填/复制）+
  *   富文本 imageLibrary 桥接，全部收敛共享 FilePicker
+ * - AI 润色接线（2026-11-24）：渲染器 polishable 内置开关打开，polishRichText 走
+ *   @sshk/form-schema 共享纯函数，Provider/模型取模块配置 app.modules.formManager.ai.*
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -16,7 +18,7 @@ import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, use
 import { FieldSchemaDesigner, FormFieldRenderer } from '@sshk/form-schema/ui'
 import { createHostImageLibrary } from '@sshk/file-picker'
 import { CodeEditor } from '@sshk/code-editor'
-import { applyDefaults, expandFields, normalizeFields, validateModel, validateSchema, type FieldDef } from '@sshk/form-schema'
+import { applyDefaults, expandFields, normalizeFields, polishRichText, validateModel, validateSchema, type ChatMessage, type FieldDef } from '@sshk/form-schema'
 import { inMsRange, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { host } from '../host'
 import ImageField from './ImageField.vue'
@@ -31,6 +33,68 @@ const selected = ref<FormRecord[]>([])
 const toolId = useToolId()
 /** 图片库桥接：表单 tab 富文本上传/图片库 + 图片字段 FilePicker 全走共享 FilePicker（与 EDM 同源） */
 const library = computed(() => createHostImageLibrary(toolId.value, host.upload, { includeLocalProfiles: true }))
+
+// ── AI 润色（2026-11-24 用户需求，与 EDM SampleForm 同款接线）：渲染器 polishable 开关内置，
+// Provider/模型取模块配置 app.modules.formManager.ai.*（工具设置「AI 助手」组），未指定回落应用激活 Provider
+const AI_PROVIDER_KEY = 'app.modules.formManager.ai.providerId'
+const AI_MODEL_KEY = 'app.modules.formManager.ai.model'
+const aiLoading = ref(false)
+let aiProvider: { _id: string } | null = null
+let aiModelOverride = ''
+async function ensureAiProvider(): Promise<boolean> {
+  try {
+    const wantId = String(await window.api.config.get(AI_PROVIDER_KEY) ?? '').trim()
+    const list = await window.api.llm.providers()
+    if (wantId) {
+      aiProvider = list.find((p) => p.enabled && p._id === wantId) ?? null
+    } else {
+      // 跟随应用激活：读 app.llm.activeProviderId；拿不到再回落清单首个启用项
+      let activeId = ''
+      try { activeId = String(await window.api.config.get('app.llm.activeProviderId') ?? '').trim() } catch { /* 忽略 */ }
+      aiProvider = list.find((p) => p.enabled && p._id === activeId) ?? list.find((p) => p.enabled) ?? null
+    }
+    aiModelOverride = String(await window.api.config.get(AI_MODEL_KEY) ?? '').trim()
+  } catch {
+    aiProvider = null
+    aiModelOverride = ''
+  }
+  return Boolean(aiProvider)
+}
+async function aiChat(messages: ChatMessage[]): Promise<string> {
+  if (!aiProvider) throw new Error('请先在「模型管理」配置并启用模型 Provider')
+  // 模型链：模块级 ai.model 覆盖 → Provider 默认模型 → Provider 回退模型（main 侧组装）
+  const res = await window.api.llm.chat(aiProvider, messages, aiModelOverride ? { model: aiModelOverride } : undefined)
+  return res.content
+}
+/** AI 润色：richtext 字段旧/新并排预览，接受才写回（零改动放弃） */
+const polishPreview = ref<{ open: boolean; key: string; label: string; before: string; after: string }>({
+  open: false, key: '', label: '', before: '', after: '',
+})
+async function onPolish(f: FieldDef): Promise<void> {
+  const before = String(editModel.value[f.key] ?? '')
+  if (!before.trim()) {
+    ElMessage.warning('该字段还没有内容，先填一些文字再润色')
+    return
+  }
+  if (!(await ensureAiProvider())) {
+    ElMessage.warning('未配置可用模型 Provider：请先在「模型管理」配置并启用')
+    return
+  }
+  aiLoading.value = true
+  try {
+    const after = await polishRichText(before, aiChat)
+    polishPreview.value = { open: true, key: f.key, label: f.label, before, after }
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    aiLoading.value = false
+  }
+}
+function acceptPolish(): void {
+  editModel.value = { ...editModel.value, [polishPreview.value.key]: polishPreview.value.after }
+  polishPreview.value.open = false
+  ElMessage.success('润色结果已写回')
+}
 
 // ── 列表状态（草稿/生效分离 + 分页，2026-11-20 定版口径）──
 const table = useTablePage<FormRecord, { kw: string; dateRange: [string, string] | null }>({
@@ -295,6 +359,9 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
           :image-library="library"
           rich-state-key-prefix="forms:"
           :image-field="ImageField"
+          polishable
+          :polish-loading="aiLoading"
+          @polish="onPolish"
           @update:model-value="onEditFormUpdate"
         />
       </div>
@@ -308,6 +375,30 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
     </el-dialog>
 
     <ConfirmDialog v-model:open="confirmOpen" :title="confirmTitle" :targets="confirmTargets" confirm-text="删除" @confirm="onConfirmed" />
+
+    <!-- AI 润色预览（与 EDM SampleForm 同款）：旧/新并排，接受才写回 -->
+    <el-dialog
+      v-model="polishPreview.open"
+      :title="`AI 润色预览 · ${polishPreview.label}（接受才写回）`"
+      width="720px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <div class="diff-grid">
+        <div>
+          <div class="diff-cap">润色前</div>
+          <CodeEditor :model-value="polishPreview.before" language="html" height="240px" readonly />
+        </div>
+        <div>
+          <div class="diff-cap">润色后</div>
+          <CodeEditor :model-value="polishPreview.after" language="html" height="240px" readonly />
+        </div>
+      </div>
+      <template #footer>
+        <el-button size="small" @click="polishPreview.open = false">放弃</el-button>
+        <el-button size="small" type="primary" @click="acceptPolish">接受并写回</el-button>
+      </template>
+    </el-dialog>
 
     <template #footer>
       <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
@@ -325,6 +416,8 @@ function onSelectionChange(list: FormRecord[]): void { selected.value = list }
 .preview-switch { display: flex; align-items: center; gap: 10px; margin-left: 1px; margin-bottom: 8px; }
 .preview-body { height: 60vh; overflow: auto; padding: 4px 2px; box-sizing: border-box; }
 .preview-data-wrap { height: 60vh; box-sizing: border-box; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.diff-cap { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
 </style>
 
 <!-- 弹框内容区尺寸走非 scoped 全局块（teleport 弹框节点样式 scoped 选择器不可靠，项目口径）；
