@@ -1,0 +1,113 @@
+version: 1
+code: default
+name: 上新推广·迁移版
+changelog: juice-cli/edm series 迁移（plans/14）
+fields:
+  - type: image
+    key: banner_image
+    label: banner image
+    required: false
+  - type: url
+    key: banner_link
+    label: banner link
+    required: false
+  - type: richtext
+    key: banner_keywords
+    label: banner keywords
+    required: false
+  - type: input
+    key: indicator_title
+    label: indicator title
+    required: false
+  - type: input
+    key: indicator_className
+    label: indicator className
+    required: false
+  - type: switch
+    key: indicator_needCondensed
+    label: indicator needCondensed
+    required: false
+  - type: repeater
+    key: indicator_lists
+    label: indicator lists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: text
+        label: 文字
+        required: false
+      - type: input
+        key: color
+        label: 颜色
+        required: false
+  - type: input
+    key: antibodyOffer_title
+    label: antibodyOffer title
+    required: false
+  - type: input
+    key: antibodyOffer_className
+    label: antibodyOffer className
+    required: false
+  - type: input
+    key: antibodyOffer_itemClassName
+    label: antibodyOffer itemClassName
+    required: false
+  - type: repeater
+    key: antibodyOffer_lists
+    label: antibodyOffer lists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: value
+        label: 值
+        required: false
+  - type: input
+    key: indicatorIntroduction_title
+    label: indicatorIntroduction title
+    required: false
+  - type: input
+    key: indicatorIntroduction_className
+    label: indicatorIntroduction className
+    required: false
+  - type: input
+    key: indicatorIntroduction_itemClassName
+    label: indicatorIntroduction itemClassName
+    required: false
+  - type: repeater
+    key: indicatorIntroduction_lists
+    label: indicatorIntroduction lists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: richtext
+        key: value
+        label: 富文本条目
+        required: false
+  - type: switch
+    key: isGridProduct
+    label: isGridProduct
+    required: false
+  - type: repeater
+    key: productLists
+    label: productLists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: name
+        label: 名称
+        required: false
+      - type: image
+        key: image
+        label: 图片
+        required: false
+      - type: url
+        key: link
+        label: 链接
+        required: false
+      - type: input
+        key: buttonText
+        label: 按钮文字
+        required: false

@@ -1,0 +1,8 @@
+code: webinar
+name: 网络研讨会
+description: Webinar
+type: product
+policy:
+  blacklist: []
+  whitelist: []
+tags: []

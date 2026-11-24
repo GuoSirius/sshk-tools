@@ -1,0 +1,191 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/webinar.css">
+
+<tr>
+  <td colspan="4" class="image-box">
+    {% if banner_link %}
+    <a href="{{ banner_link }}">
+      <img src="{{ banner_image }}" />
+    </a>
+    {% endif %}
+
+    {% if not banner_link %}
+    <img src="{{ banner_image }}" />
+    {% endif %}
+  </td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col />
+      </colgroup>
+
+      <tbody>
+        <tr>
+          <td>{{ banner_keywords }}</td>
+        </tr>
+
+        {% for it0 in banner_moreKeywords %}
+        <tr>
+          <td class="h-12"></td>
+        </tr>
+
+        <tr>
+          <td>{{ it0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2" class="bg-gray" style="padding: 0 16px 16px;">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col />
+      </colgroup>
+
+      <tbody class="align-middle">
+        <tr>
+          <td class="relative">
+            <div class="bg-white absolute" style="width: calc(100% + 32px); height: 20px; left: -16px;"></div>
+            <span class="title relative {{ introduction_className }}">{{ introduction_title }}</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="h-12"></td>
+        </tr>
+
+        <tr>
+          <td>
+            {% for it1 in introduction_lists %}
+            <p class="pb-5 {{ introduction_itemClassName }}">{{ it1 | safe }}</p>
+            {% endfor %}
+          </td>
+        </tr>
+
+        {% if introduction_buttonText %}
+        <tr>
+          <td class="text-right pt-18">
+            <a {% if introduction_buttonLink %}href="{{ introduction_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ introduction_buttonText }}</a>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2" class="bg-gray" style="padding: 0 16px 16px;">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col />
+      </colgroup>
+
+      <tbody class="align-middle">
+        <tr>
+          <td class="relative">
+            <div class="bg-white absolute" style="width: calc(100% + 32px); height: 20px; left: -16px;"></div>
+            <span class="title relative {{ reserve_className }}">{{ reserve_title }}</span></td>
+        </tr>
+
+        <tr>
+          <td class="h-12"></td>
+        </tr>
+
+        <tr>
+          <td>
+            {% for it2 in reserve_lists %}
+            <p class="pb-5 {{ reserve_itemClassName }}">{{ it2 }}</p>
+            {% endfor %}
+            <p class="pb-5 calendar {{ reserve_itemClassName }}"><strong>{{ reserve_weekDate }}</strong></p>
+            <p class="pb-5 {{ reserve_itemClassName }}"><span class="clock" style="display: inline-block; width: 18px; height: 24px; margin-bottom: -3px;"></span>{{ reserve_time }}</p>
+          </td>
+        </tr>
+
+        {% if reserve_buttonText %}
+        <tr>
+          <td class="text-right pt-18">
+            <a {% if reserve_buttonLink %}href="{{ reserve_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ reserve_buttonText }}</a>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
+
+{% if gift %}
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    <p class="color-blue gift">{{ gift }}</p>
+  </td>
+  <td></td>
+</tr>
+{% endif %}
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col width="25%" />
+        <col />
+      </colgroup>
+
+      <tbody class="align-top">
+        <tr>
+          <td rowspan="2" style="padding-right: 12px;" class="image-box">
+            <img src="{{ speaker_avatar }}" />
+          </td>
+          <td class="h-0 pb-24">
+            <p><strong class="text-size-[27px] font-bold" style="margin-right: 20px;">Speaker</strong> {{ speaker_username }}</p>
+            <p>{{ speaker_jobTitle }}</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td>
+            <p class="pb-3">Limited seats available. <a {% if speaker_registerLink %}href="{{ speaker_registerLink }}"{% endif %} class="finger color-blue">Register in 30 seconds</a></p>
+            <p>Questions? {% if speaker_email %}<a href="mailto:{{ speaker_email }}" class="color-blue">{{ speaker_email }}</a>{% endif %}</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>

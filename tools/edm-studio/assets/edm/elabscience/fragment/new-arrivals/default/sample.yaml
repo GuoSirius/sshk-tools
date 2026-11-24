@@ -1,0 +1,142 @@
+banner_image: https://file.elabscience.com/edm/202605201608/banner.webp
+banner_link: https://www.elabscience.com/products/flow-cytometry-antibodies
+banner_keywords: We're excited to announce the launch of <strong class="color-red text-size-[20px]">66</strong> new flow cytometry antibodies, now available with 34 indicators and 35 clone numbers.
+indicator_title: Indicators
+indicator_className: title
+indicator_needCondensed: true
+indicator_lists:
+  - text: CD14
+    color: '#D100DE'
+    link: null
+  - text: TNFα
+    color: '#FF0207'
+    link: https://www.elabscience.com/search?keywords=TNF-%CE%B1
+  - text: CD195
+    color: '#000000'
+    link: null
+  - text: CD25
+    color: '#00BF54'
+    link: null
+  - text: TCR Vβ7.1
+    color: '#FF0207'
+    link: null
+  - text: CD1d
+    color: '#000000'
+    link: null
+  - text: Integrin β7
+    color: '#2A77FE'
+    link: null
+  - text: CD2
+    color: '#FF0207'
+    link: null
+  - text: CD8
+    color: '#FF7800'
+    link: null
+  - text: HLA-A2,B7
+    color: '#B10202'
+    link: null
+  - text: CD8a
+    color: '#FF7800'
+    link: null
+  - text: CD123
+    color: '#2A77FE'
+    link: https://www.elabscience.com/search?keywords=CD123
+  - text: TCR Vβ1
+    color: '#B10202'
+    link: null
+  - text: CD1b
+    color: '#00BF54'
+    link: null
+  - text: CD272/BTLA
+    color: '#000000'
+    link: https://www.elabscience.com/search?keywords=CD272/BTLA
+  - text: CD151
+    color: '#BF37FA'
+    link: null
+  - text: CD180
+    color: '#000000'
+    link: null
+  - text: CD122
+    color: '#FF0000'
+    link: null
+  - text: IL-10
+    color: '#00BF54'
+    link: null
+  - text: ROR1
+    color: '#2A77FE'
+    link: null
+  - text: CD90.2
+    color: '#FF0207'
+    link: null
+  - text: FOXP3
+    color: '#FF7800'
+    link: null
+  - text: FMC63
+    color: '#D100DE'
+    link: null
+  - text: CD159a
+    color: '#B10202'
+    link: null
+  - text: TNF-alpha
+    color: '#D100DE'
+    link: null
+  - text: CD206
+    color: '#FF0207'
+    link: null
+  - text: FcεRIα
+    color: '#000000'
+    link: null
+  - text: IgD
+    color: '#00BF54'
+    link: null
+  - text: CD3
+    color: '#FF0207'
+    link: null
+  - text: CD200
+    color: '#000000'
+    link: null
+  - text: CD68
+    color: '#2A77FE'
+    link: null
+  - text: CD43
+    color: '#FF0207'
+    link: null
+  - text: CD335
+    color: '#FF7800'
+    link: null
+  - text: CD52
+    color: '#B10202'
+    link: null
+  - text: ......
+    color: '#FF7805'
+    link: null
+antibodyOffer_title: 'Designed for Multicolor Panel Flexibility, These Antibodies Offer:'
+antibodyOffer_className: title
+antibodyOffer_itemClassName: circle
+antibodyOffer_lists:
+  - More FCM experimental panel design options
+  - Lower background interference in FCM staining with optimized fluorescence coupling technique
+  - Good separation effect across multiple concentration gradientss
+indicatorIntroduction_title: New Indicators Introduction (Paticial)
+indicatorIntroduction_className: title
+indicatorIntroduction_itemClassName: gold-star
+indicatorIntroduction_lists:
+  - <strong>Immune Disorder-Related Diseases:</strong> Rat CD5
+  - <strong>Adaptive Immune Function:</strong> Human TRAV5
+  - <strong>Tumor Immunotherapy:</strong> Human T/B/NK Antibody Cocktail
+  - <strong>Non-Human Primate (NHP) Animal Models:</strong> Monkey CD45
+isGridProduct: false
+productLists:
+  - name: Human TCR Vβ7.1
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20TCR%20V%CE%B27.1.webp
+    link: https://www.elabscience.com/search?keywords=Human%20TCR%20V%25CE%25B27.1
+    buttonText: Learn More
+  - name: Human TCR Vβ1
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20TCR%20V%CE%B21.webp
+    link: https://www.elabscience.com/search?keywords=Human%20TCR%20V%25CE%25B21
+    buttonText: Learn More
+  - name: Human CD151
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20CD151.webp
+    link: https://www.elabscience.com/search?keywords=Human%20CD151
+    buttonText: Learn More
+    width: 20%

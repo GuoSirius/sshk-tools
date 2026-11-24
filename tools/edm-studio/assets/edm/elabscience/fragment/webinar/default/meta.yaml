@@ -1,0 +1,119 @@
+version: 1
+code: default
+name: 网络研讨会·迁移版
+changelog: juice-cli/edm series 迁移（plans/14）
+fields:
+  - type: image
+    key: banner_image
+    label: banner image
+    required: false
+  - type: url
+    key: banner_link
+    label: banner link
+    required: false
+  - type: textarea
+    key: banner_keywords
+    label: banner keywords
+    required: false
+  - type: repeater
+    key: banner_moreKeywords
+    label: banner moreKeywords
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: value
+        label: 值
+        required: false
+  - type: input
+    key: introduction_title
+    label: introduction title
+    required: false
+  - type: input
+    key: introduction_className
+    label: introduction className
+    required: false
+  - type: input
+    key: introduction_itemClassName
+    label: introduction itemClassName
+    required: false
+  - type: repeater
+    key: introduction_lists
+    label: introduction lists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: richtext
+        key: value
+        label: 富文本条目
+        required: false
+  - type: url
+    key: introduction_buttonLink
+    label: introduction buttonLink
+    required: false
+  - type: input
+    key: introduction_buttonText
+    label: introduction buttonText
+    required: false
+  - type: input
+    key: reserve_title
+    label: reserve title
+    required: false
+  - type: input
+    key: reserve_className
+    label: reserve className
+    required: false
+  - type: input
+    key: reserve_itemClassName
+    label: reserve itemClassName
+    required: false
+  - type: repeater
+    key: reserve_lists
+    label: reserve lists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: value
+        label: 值
+        required: false
+  - type: input
+    key: reserve_weekDate
+    label: reserve weekDate
+    required: false
+  - type: textarea
+    key: reserve_time
+    label: reserve time
+    required: false
+  - type: url
+    key: reserve_buttonLink
+    label: reserve buttonLink
+    required: false
+  - type: input
+    key: reserve_buttonText
+    label: reserve buttonText
+    required: false
+  - type: textarea
+    key: gift
+    label: gift
+    required: false
+  - type: image
+    key: speaker_avatar
+    label: speaker avatar
+    required: false
+  - type: input
+    key: speaker_username
+    label: speaker username
+    required: false
+  - type: input
+    key: speaker_jobTitle
+    label: speaker jobTitle
+    required: false
+  - type: url
+    key: speaker_registerLink
+    label: speaker registerLink
+    required: false
+  - type: input
+    key: speaker_email
+    label: speaker email
+    required: false

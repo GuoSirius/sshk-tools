@@ -1,0 +1,89 @@
+version: 1
+code: default
+name: 文献推广·迁移版
+changelog: juice-cli/edm series 迁移（plans/14）
+fields:
+  - type: image
+    key: overview_image
+    label: overview image
+    required: false
+  - type: textarea
+    key: overview_title
+    label: overview title
+    required: false
+  - type: url
+    key: overview_link
+    label: overview link
+    required: false
+  - type: input
+    key: overview_publicationDate
+    label: overview publicationDate
+    required: false
+  - type: input
+    key: overview_journal
+    label: overview journal
+    required: false
+  - type: input
+    key: overview_impactFactor
+    label: overview impactFactor
+    required: false
+  - type: input
+    key: overview_doi
+    label: overview doi
+    required: false
+  - type: richtext
+    key: overview_keywords
+    label: overview keywords
+    required: false
+  - type: input
+    key: information_imageWidth
+    label: information imageWidth
+    required: false
+  - type: repeater
+    key: information_image
+    label: information image
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: value
+        label: 值
+        required: false
+  - type: richtext
+    key: information_content
+    label: information content
+    required: false
+  - type: url
+    key: information_link
+    label: information link
+    required: false
+  - type: input
+    key: information_buttonText
+    label: information buttonText
+    required: false
+  - type: richtext
+    key: information_summary
+    label: information summary
+    required: false
+  - type: richtext
+    key: productTitle
+    label: productTitle
+    required: false
+  - type: repeater
+    key: productLists
+    label: productLists
+    required: false
+    minRows: 0
+    itemFields:
+      - type: input
+        key: name
+        label: 名称
+        required: false
+      - type: input
+        key: catNo
+        label: catNo
+        required: false
+      - type: url
+        key: link
+        label: 链接
+        required: false

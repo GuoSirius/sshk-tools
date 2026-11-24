@@ -52,13 +52,22 @@ describe('系统 EDM 资产迁移不变量', () => {
       // v1 为旧演示资产；template/default 将于批次 4 重建，暂不纳入迁移纪律校验
       if (v.dir !== 'default' || v.sel.kind === 'template') continue
       expect(v.html).toContain('<link rel="stylesheet" href="@shared/email-utils.css">')
-      const declared = new Set(v.fields.map((f) => {
-        const o = f as { key?: string; type?: string }
-        return o.type === 'richtext' ? o.key : undefined
-      }))
+      type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
+      const fields = v.fields as FieldLike[]
+      const declared = new Set(fields.filter((f) => f.type === 'richtext').map((f) => f.key))
+      const loopFields = new Map<string, string>()
+      for (const m of v.html.matchAll(/\{%\s*for\s+(it\d+)\s+in\s+(\w+)\s*%\}/g)) {
+        if (m[1] && m[2]) loopFields.set(m[1], m[2])
+      }
       for (const m of v.html.matchAll(/\{\{\s*([a-zA-Z_][\w]*)\s*\|\s*safe\s*\}\}/g)) {
-        const key = m[1]
-        if (key?.startsWith('slot_')) continue
+        const key = m[1] ?? ''
+        if (key.startsWith('slot_')) continue
+        if (/^it\d+$/.test(key)) {
+          const fk = loopFields.get(key)
+          const item = fields.find((f) => f.key === fk)?.itemFields?.some((i) => i.type === 'richtext')
+          expect(item, `${v.sel.brandCode}/${v.sel.familyCode}: ${fk} 的列表项未声明为 richtext`).toBe(true)
+          continue
+        }
         expect(declared.has(key), `${v.sel.brandCode}/${v.sel.familyCode}: ${key} 未声明为 richtext`).toBe(true)
       }
     }

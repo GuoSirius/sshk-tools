@@ -1,0 +1,209 @@
+<link rel="stylesheet" href="@shared/email-utils.css">
+<link rel="stylesheet" href="@root/elabscience/css/palette.css">
+<link rel="stylesheet" href="@root/elabscience/css/components.css">
+<link rel="stylesheet" href="./css/new-arrivals.css">
+
+<tr>
+  <td colspan="4" class="image-box">
+    {% if banner_link %}
+    <a href="{{ banner_link }}">
+      <img src="{{ banner_image }}" />
+    </a>
+    {% endif %}
+
+    {% if not banner_link %}
+    <img src="{{ banner_image }}" />
+    {% endif %}
+  </td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-16"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">{{ banner_keywords | safe }}</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td colspan="4">
+    <table cellspacing="0" cellpadding="0" border="0" class="bg-light-primary">
+      <colgroup>
+        <col width="10px" />
+        <col />
+        <col width="10px" />
+      </colgroup>
+
+      <tbody>
+        <tr>
+          <td></td>
+          <td class="pt-3">
+            <span class="{{ indicator_className }}">{{ indicator_title }}</span>
+          </td>
+          <td></td>
+        </tr>
+
+        {% if not indicator_needCondensed %}
+        <tr>
+          <td colspan="3" class="h-12"></td>
+        </tr>
+        {% endif %}
+
+        <tr>
+          <td></td>
+          <td class="pb-5" {% if not indicator_needCondensed %}style="padding-left: 6px; padding-right: 6px;"{% endif %}>
+            {% for it0 in indicator_lists %}
+            <span class="word-cloud-item">
+              <a class="cursor-default" style="color: {{ it0.color }}" {% if it0.link %}href="{{ it0.link }}"{% endif %}>{{ it0.text }}</a>
+            </span>
+            {% endfor %}
+          </td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col />
+      </colgroup>
+
+      <tbody class="align-middle">
+        <tr>
+          <td><span class="{{ antibodyOffer_className }}">{{ antibodyOffer_title }}</span></td>
+        </tr>
+
+        <tr>
+          <td class="h-12"></td>
+        </tr>
+
+        <tr>
+          <td>
+            {% for it1 in antibodyOffer_lists %}
+            <p class="pb-5 {{ antibodyOffer_itemClassName }} color-primary">{{ it1 }}</p>
+            {% endfor %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
+
+<tr>
+  <td colspan="4" class="h-24"></td>
+</tr>
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col />
+      </colgroup>
+
+      <tbody class="align-middle">
+        <tr>
+          <td><span class="{{ indicatorIntroduction_className }}">{{ indicatorIntroduction_title }}</span></td>
+        </tr>
+
+        <tr>
+          <td class="h-12"></td>
+        </tr>
+
+        <tr>
+          <td>
+            {% for it2 in indicatorIntroduction_lists %}
+            <p class="pb-5 {{ indicatorIntroduction_itemClassName }} color-primary">{{ it2 | safe }}</p>
+            {% endfor %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
+
+{% if not isGridProduct %}
+<tr>
+  <td colspan="4" class="h-16"></td>
+</tr>
+{% endif %}
+
+<tr>
+  <td></td>
+  <td colspan="2">
+    {% if isGridProduct %}
+    <table cellspacing="0" cellpadding="0" border="0" class="text-center">
+      <colgroup>
+        <col />
+        <col />
+      </colgroup>
+
+      <tbody>
+        {% for it3 in productLists %}
+        <tr>
+          {% if it3 %}
+          <td class="pt-24">
+            <p class="image-box"><img src="{{ it3.image }}" alt="{{ it3.name }}" /></p>
+            <p class="pt-8">{{ it3.name }}</p>
+            <p class="pt-12"><a href="{{ it3.link }}" class="button font-bold decoration-none" style="border-radius: 16px;">{{ it3.buttonText }}</a></p>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if not isGridProduct %}
+    <table cellspacing="0" cellpadding="0" border="0" class="text-center">
+      <colgroup>
+        {% for it4 in productLists %}
+        <col {% if width %}width="{{ width }}"{% endif %} />
+        {% endfor %}
+      </colgroup>
+
+      <tbody>
+        <tr>
+          {% for it5 in productLists %}
+          <td class="image-box">
+            <img src="{{ it5.image }}" alt="{{ it5.name }}" />
+          </td>
+          {% endfor %}
+        </tr>
+
+        <tr>
+          {% for it6 in productLists %}
+          <td>{{ it6.name }}</td>
+          {% endfor %}
+        </tr>
+
+        <tr>
+          {% for it7 in productLists %}
+          <td class="pt-8">
+            <a href="{{ it7.link }}" class="button font-bold decoration-none" style="border-radius: 16px;">{{ it7.buttonText }}</a>
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
+  </td>
+  <td></td>
+</tr>
