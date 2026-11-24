@@ -22,7 +22,8 @@ const authCache = new Map<DevKeyOperation, number>()
 export function devtoolsKeyMatches(configuredHash: string, inputKey: string): boolean {
   const envKey = getEnvStr('SSHK_APP_DEVTOOLS_KEY', 'sshk-tools@888')
   const expectedHash = configuredHash || createHash('sha256').update(envKey, 'utf8').digest('hex')
-  const actualHash = createHash('sha256').update(String(inputKey ?? ''), 'utf8').digest('hex')
+  // trim（2026-11-24 #191）：复制粘贴携带首尾空格/换行是验证失败最高频原因；口令本体无空格场景
+  const actualHash = createHash('sha256').update(String(inputKey ?? '').trim(), 'utf8').digest('hex')
   return actualHash === expectedHash
 }
 

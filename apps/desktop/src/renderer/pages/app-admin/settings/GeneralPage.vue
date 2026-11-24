@@ -26,20 +26,28 @@ const DEV_KEY_SPEC: HostApiSpec = {
 }
 async function onDeveloperModeChange(next: unknown): Promise<void> {
   const wanted = Boolean(next)
-  if (!wanted || isDev) { appConfig.developerMode = wanted; return }
+  if (!wanted || isDev) {
+    appConfig.developerMode = wanted
+    // 关闭方向即时落盘（无口令门）；dev 下值恒同配置基线，直接写保持一致（#191：开关即生效，不等「保存」）
+    if (!wanted && !isDev) { try { await window.api.config.set('app.developerMode', false) } catch { /* 保存失败时保留本地值，保存按钮仍可重试 */ } }
+    return
+  }
   try {
     const alreadyAuthed = await window.api.app.verifyDevtoolsKey('', 'developerMode').catch(() => false)
     if (!alreadyAuthed) {
       const secret = await promptSecret(
         '开发者模式',
-        '开启开发者模式需要访问密钥（与打包版「打开开发者工具」同一口令）',
+        '输入开发者口令开启（默认 sshk-tools@888；若曾自定义或经备份导入过口令，则以自定义为准。注意大小写，@ 为半角）',
         '验证并开启',
+        '开发者口令',
       )
       if (secret === null) { appConfig.developerMode = false; return } // 用户取消：静默复位开关（2026-11-18）
       await callHostApi<boolean>(DEV_KEY_SPEC, secret, 'developerMode')
     }
+    // 验证已授权，即时落盘生效（#191：不再依赖「保存应用配置」——此前口令通过后忘记点保存会导致开关看似开了实际没写入）
+    await window.api.config.set('app.developerMode', true)
     appConfig.developerMode = true
-    ElMessage.success('验证通过，点「保存应用配置」后生效')
+    ElMessage.success('开发者模式已开启（即时生效）')
   } catch (err) {
     appConfig.developerMode = false
     if ((err as Error)?.message && !/cancel|close/i.test(String(err))) {
