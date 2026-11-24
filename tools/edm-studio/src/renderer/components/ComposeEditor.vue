@@ -165,8 +165,8 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
 .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; }
 .pick { width: 220px; }
 .pick-sm { width: 130px; }
-.blocks { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
-.block { border: 1px solid rgba(128,128,128,.2); border-radius: 6px; overflow: hidden; }
+.blocks { display: flex; flex-direction: column; gap: 8px; padding-right: 3px; overflow: auto; min-height: 0; }
+.block { flex: none; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; overflow: hidden; }
 .block-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(128,128,128,.08); font-size: 13px; }
 .block-name { font-weight: 600; }
 .block-key { font-size: 11px; opacity: .6; }

@@ -72,6 +72,16 @@ function apply(): void {
   ElMessage.success('已应用源码修改')
 }
 
+/** Ctrl/Cmd+S：等价「应用修改」按钮；只读不响应，无改动给提示（Monaco 已拦截按键，静默会像快捷键失灵） */
+function onSaveShortcut(): void {
+  if (props.readonly) return
+  if (!dirty.value) {
+    ElMessage.info('源码无改动')
+    return
+  }
+  apply()
+}
+
 </script>
 
 <template>
@@ -100,6 +110,7 @@ function apply(): void {
             height="100%"
             :readonly="readonly"
             @update:model-value="markDirty"
+            @save="onSaveShortcut"
           />
           <!-- 说明：编辑器高度由 .src-editor-wrap 绝对定位填满，见下方样式 -->
         </div>
