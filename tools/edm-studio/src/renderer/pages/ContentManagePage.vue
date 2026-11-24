@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api } from '../tool-api'
+import { api, configOnChanged } from '../tool-api'
 import { EmptyState, FormHint, TimeText, callHostApi, useToolId } from '@sshk/ui-kit'
 import { IPC_CHANNELS, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { expandFields, normalizeFields, type FieldDef } from '@sshk/form-schema'
@@ -324,18 +324,36 @@ async function onSaveSample(): Promise<void> {
   await refreshSampleOverride()
 }
 
-onMounted(async () => {
-  document.addEventListener('mousedown', onDocMouseDown)
-  void loadControls()
+/**
+ * 门控实时性（2026-11-24 #190）：canEditSystem 由 main 每次实时裁决（isDevFeaturesEnabled），
+ * 但工具页在 KeepAlive 缓存下 onMounted 只跑一次——打包版开关「开发者模式」后回到本页若不重查，
+ * 只读状态会一直滞留（用户实测：开启后全是禁用）。双保险：
+ * ① onActivated（KeepAlive 重激活即触发，首挂载也触发一次）；② 订阅 app.developerMode 变更事件。
+ */
+async function refreshEditGate(): Promise<void> {
   try {
     canEditSystem.value = ((await api('system:canEdit')) as { canEdit: boolean }).canEdit
   } catch {
     canEditSystem.value = false
   }
+}
+
+let unsubDeveloperMode: (() => void) | null = null
+
+onMounted(async () => {
+  document.addEventListener('mousedown', onDocMouseDown)
+  void loadControls()
+  unsubDeveloperMode = configOnChanged((payload) => {
+    if (payload.namespace === 'app' && payload.key === 'developerMode') void refreshEditGate()
+  })
+  await refreshEditGate()
   await load()
 })
+onActivated(() => { void refreshEditGate() })
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocMouseDown)
+  unsubDeveloperMode?.()
+  unsubDeveloperMode = null
 })
 </script>
 

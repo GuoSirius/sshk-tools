@@ -4,7 +4,6 @@ import { ElMessage } from 'element-plus'
 import { Check, InfoFilled, Refresh, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { ToolPageLayout, FormGrid, FormHint } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
-import { SSHK_DEV } from '@sshk/shared'
 import type { ToolConfigField, ToolConfigGroup } from '@sshk/shared'
 import { useToolCatalog } from './composables/useToolCatalog'
 import BadgeStylePreview from './components/BadgeStylePreview.vue'
@@ -38,7 +37,7 @@ const props = defineProps<{
   /** 页脚配置路径展示（groups 内联时用，如 app.modules.fileManager） */
   keyBase?: string
 }>()
-const { byId } = useToolCatalog()
+const { byId, payload } = useToolCatalog()
 const tool = computed(() => byId.value.get(props.toolId) ?? null)
 const values = reactive<Record<string, unknown>>({})
 const depValues = reactive<Record<string, unknown>>({})
@@ -55,7 +54,8 @@ const DEPS_ID = '__deps__'
 /** 点击导航后短暂锁定滚动高亮，避免 smooth scroll 经过中间组时高亮乱跳 */
 let scrollLockUntil = 0
 
-const isDev = SSHK_DEV
+/** devFeatures 唯一口径（D-2 · #190）：dev 恒全量展示；打包版 developerMode 开启后同样全量展示（devOnly 字段可见可编辑） */
+const devFeatures = computed(() => payload.value.devFeatures)
 
 /** 形态 2 判定：menu 布局且清单声明了配置页 */
 const isMultiPage = computed(() => tool.value?.configLayout === 'menu' && (tool.value?.configPages.length ?? 0) > 0)
@@ -67,11 +67,11 @@ const activePageLabel = computed(() => activePage.value?.label ?? '')
 /** 分组数据源：页内声明（P4-8c 模块页）优先，否则读目录 configGroups（纯工具清单驱动） */
 const declaredGroups = computed<ToolConfigGroup[]>(() => props.groups ?? tool.value?.configGroups ?? [])
 
-/** dev 下字段全量展示（AGENTS.md 铁律）；打包版隐藏 devOnly */
+/** devFeatures 下字段全量展示（AGENTS.md 铁律）；正式打包版隐藏 devOnly */
 const allGroups = computed(() => declaredGroups.value
   .map((group) => ({
     ...group,
-    fields: group.fields.filter((field) => !field.devOnly || isDev),
+    fields: group.fields.filter((field) => !field.devOnly || devFeatures.value),
   })))
 /** 当前页可见分组：形态 2 只取该页声明的组；形态 1 取全部 */
 const groups = computed(() => {

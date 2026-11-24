@@ -214,8 +214,9 @@ onMounted(() => {
         <div class="hint">密钥只写入系统凭据库（safeStorage），settings.json 仅保存 sha256 摘要，明文永不下发渲染层。工具设为「需访问密钥」后，未配置时不出现在桌面。完整体系见 docs/02-architecture/安全与密钥体系.md。</div>
       </section>
 
-      <section v-if="isDev" class="settings-card">
-        <div class="card-title">分发白名单（仅开发）</div>
+      <!-- 分发白名单是运行时配置（不影响安装包内容），devFeatures 下放开（#190：与 dev 同权操作） -->
+      <section v-if="devFeatures" class="settings-card">
+        <div class="card-title">分发白名单</div>
         <div class="hint" style="margin-bottom: 10px">留空 = 包含全部工具；选定后仅这些工具随当前分发可见（运行时可见性，不影响安装包内容）。要「构建时只打选中的工具」，打包前设环境变量 SSHK_BUILD_TOOLS=工具id1,工具id2。</div>
         <div class="inline-form">
           <el-select v-model="distribution" multiple collapse-tags clearable placeholder="全部工具" style="min-width: 340px">
@@ -276,7 +277,7 @@ onMounted(() => {
                   <FormHint>逗号 / 顿号分隔；标签内可含空格</FormHint>
                 </el-form-item>
                 <el-form-item class="full" label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-                <el-form-item v-if="isDev" class="full" label="图标">
+                <el-form-item v-if="devFeatures" class="full" label="图标">
                   <el-select v-model="form.icon" filterable allow-create default-first-option>
                     <el-option v-for="opt in iconOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>

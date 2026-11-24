@@ -21,10 +21,11 @@ interface SshkLlmApi {
   providers(): Promise<LlmProviderLite[]>
   chat(provider: unknown, messages: { role: 'system' | 'user' | 'assistant'; content: string }[], options?: { onDelta?: boolean; model?: string }): Promise<{ content: string; model: string }>
 }
-/** 应用级配置读写（工具级配置键 tools.<toolId>.* 与应用键 app.* 均经此通道） */
+/** 应用级配置读写（工具级配置键 tools.<toolId>.* 与应用键 app.* 均经此通道）；onChanged=主进程广播订阅 */
 interface SshkConfigApi {
   get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<boolean>
+  onChanged(callback: (payload: { namespace: string; key: string }) => void): () => void
 }
 /** D-Q2 AI 文案助手用的 Provider 只读视图（不含密钥） */
 export interface LlmProviderLite {
@@ -53,7 +54,9 @@ export const osApi = (): SshkOsApi => sshkApi().os
 export const llmApi = (): SshkLlmApi => sshkApi().llm
 /** config 通道（EDM 工具级 AI Provider/模型覆盖：tools.edm-studio.ai.*） */
 export const configApi = (): SshkConfigApi => sshkApi().config
-
+/** 配置变更订阅（开发者模式开关等应用键变更即时刷新本工具门控） */
+export const configOnChanged = (callback: (payload: { namespace: string; key: string }) => void): (() => void) =>
+  sshkApi().config.onChanged(callback)
 /** EDM 工具级 AI 配置键（manifest configGroups 声明，SettingsPage 渲染） */
 export const AI_PROVIDER_KEY = 'tools.edm-studio.ai.providerId'
 export const AI_MODEL_KEY = 'tools.edm-studio.ai.model'
