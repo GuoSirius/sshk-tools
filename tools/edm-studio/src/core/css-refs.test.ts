@@ -31,29 +31,30 @@ function ctx(systemRoot: string, customRoot: string, sourceRoot = systemRoot): C
 }
 
 describe('R28 逻辑 URI 解析', () => {
-  it('四种 scope 全部指向正确根，@shared 落在系统根 css/', () => {
+  it('三种 scope 全部指向正确根', () => {
     const sys = tempRoot()
     const cus = tempRoot()
     const c = ctx(sys, cus)
-    expect(resolveCssRef('@shared/base-reset.css', c)).toBe(path.join(sys, 'css/base-reset.css'))
+    expect(resolveCssRef('@system/css/reset.css', c)).toBe(path.join(sys, 'css/reset.css'))
     expect(resolveCssRef('@root/css/brand.css', c)).toBe(path.join(sys, 'css/brand.css'))
     expect(resolveCssRef('@system/css/uno.css', c)).toBe(path.join(sys, 'css/uno.css'))
     expect(resolveCssRef('@custom/css/x.css', c)).toBe(path.join(cus, 'css/x.css'))
     expect(resolveCssRef('./css/a.css', c)).toBe(path.join(c.versionDir, 'css/a.css'))
   })
 
-  it('含 .. 直接报错（消除层级推算错误），外链返回 null', () => {
+  it('含 .. 直接报错（消除层级推算错误），@shared 已废弃报错，外链返回 null', () => {
     const c = ctx(tempRoot(), tempRoot())
     expect(() => resolveCssRef('../../css/a.css', c)).toThrow('不允许')
+    expect(() => resolveCssRef('@shared/reset.css', c)).toThrow('已废弃')
     expect(resolveCssRef('https://cdn.example.com/a.css', c)).toBeNull()
   })
 
-  it('自定义来源下 @root 指向 custom 根，@shared 仍指系统根（跨区只维护一份）', () => {
+  it('自定义来源下 @root 指向 custom 根，@system 仍指系统根（跨源引用）', () => {
     const sys = tempRoot()
     const cus = tempRoot()
     const c = ctx(sys, cus, cus)
     expect(resolveCssRef('@root/css/a.css', c)).toBe(path.join(cus, 'css/a.css'))
-    expect(resolveCssRef('@shared/base-reset.css', c)).toBe(path.join(sys, 'css/base-reset.css'))
+    expect(resolveCssRef('@system/css/reset.css', c)).toBe(path.join(sys, 'css/reset.css'))
   })
 })
 
@@ -61,12 +62,12 @@ describe('R28 提取 / 去重 / head 提前', () => {
   it('按首次出现顺序去重：片段多份、模板与片段重复引用都只收一次', () => {
     const sys = tempRoot()
     const cus = sys
-    put(path.join(sys, 'css/base-reset.css'), '.reset{}')
+    put(path.join(sys, 'css/reset.css'), '.reset{}')
     put(path.join(sys, 'css/brand.css'), '.brand{}')
     put(path.join(cus, 'css/theme.css'), '.theme{}')
     const c = ctx(sys, cus)
-    const template = '<html><head><link rel="stylesheet" href="@shared/base-reset.css"></head><body>x</body></html>'
-    const frag = '<link rel="stylesheet" href="@root/css/brand.css"><link rel="stylesheet" href="@shared/base-reset.css"><div>f</div>'
+    const template = '<html><head><link rel="stylesheet" href="@system/css/reset.css"></head><body>x</body></html>'
+    const frag = '<link rel="stylesheet" href="@root/css/brand.css"><link rel="stylesheet" href="@system/css/reset.css"><div>f</div>'
     const frag2 = '<link rel="stylesheet" href="@root/css/brand.css"><div>f2</div>'
 
     const linked = collectLinkedCss([
@@ -83,7 +84,7 @@ describe('R28 提取 / 去重 / head 提前', () => {
 
   it('缺失文件与非法引用给出告警但不抛错', () => {
     const c = ctx(tempRoot(), tempRoot())
-    const linked = collectLinkedCss([{ html: '<link rel="stylesheet" href="@shared/nope.css"><link rel="stylesheet" href="../../a.css">', ctx: c }])
+    const linked = collectLinkedCss([{ html: '<link rel="stylesheet" href="@system/css/nope.css"><link rel="stylesheet" href="../../a.css">', ctx: c }])
     expect(linked.warnings.some((w) => w.includes('不存在'))).toBe(true)
     expect(linked.warnings.some((w) => w.includes('不允许'))).toBe(true)
   })

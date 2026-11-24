@@ -129,7 +129,7 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
         throw new AppError('片段与模板不属于同一品牌，禁止跨品牌混用', 'validation')
       }
     }
-    // R28：显式 link 的 @shared / @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
+    // R28：显式 link 的 @system / @custom 需要两个来源根（密钥/连接信息不涉及，纯路径）
     const cssRoots = {
       systemRoot: ctx.resolveContentRoot('system'),
       customRoot: ctx.resolveContentRoot('custom'),

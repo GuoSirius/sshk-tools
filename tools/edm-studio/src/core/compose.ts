@@ -33,9 +33,9 @@ export interface ComposeInput {
   /** 片段渲染 strict（缺字段抛错）；预览 false 容错、生成 true */
   strict?: boolean
   unoEnabled?: boolean
-  /** 产物根（uno 原子类汇集；唯一自动注入项）；缺省纯拼接 css 不扫原子类 */
+  /** 产物根（normalize + uno 框架自动注入汇集）；缺省纯拼接 css 不扫原子类 */
   outputRoot?: string
-  /** 已由 resolveCssBundle 解析好的完整 css（含显式 link css + uno）；传入时跳过本层汇集，避免重复 */
+  /** 已由 resolveCssBundle 解析好的完整 css（含框架自动注入 + 显式 link css）；传入时跳过本层汇集，避免重复 */
   resolvedCss?: string
 }
 

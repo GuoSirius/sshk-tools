@@ -5,7 +5,7 @@
  * 共用本函数，消除「预览解析 link / 生成读播种快照」两条分叉链路：
  *   ① 任一源含显式 <link rel="stylesheet"> → 按书写顺序解析、内容级去重、剥离 link；
  *   ② 全部源无 link → 回退调用方提供的就近链快照（预览读文件 / 生成读播种快照，同源同序）；
- *   ③ 传入 outputRoot 时自动注入 uno 原子类（唯一自动注入项；base-reset 等必须由 njk 显式 link）；
+ *   ③ 传入 outputRoot 时自动注入 normalize.css（构建期内联）+ uno 原子类；其余 css 一律显式 link；
  *   ④ 调用方把结果 css 以 <style> 注入 head，再由 juice 统一内联。
  */
 import { promises as fs } from 'node:fs'
@@ -25,13 +25,13 @@ export interface CssResolveSource extends CssRefSource {
 
 export interface ResolveCssInput {
   sources: CssResolveSource[]
-  /** 传入时注入 uno（唯一自动注入；播种期不传，只存去重后的页面 css） */
+  /** 传入时注入 normalize.css + uno（框架自动注入两项；播种期不传，只存去重后的页面 css） */
   outputRoot?: string
   unoEnabled?: boolean
 }
 
 export interface ResolveCssResult {
-  /** 最终 css（含可选的 uno 原子类） */
+  /** 最终 css（含框架自动注入的 normalize.css + uno 原子类） */
   css: string
   /** 与输入顺序一致、已剥离 stylesheet link 的 html */
   htmls: string[]
@@ -57,7 +57,7 @@ async function collectExplicit(sources: CssResolveSource[]): Promise<ResolveCssR
         continue
       }
       if (!resolved) {
-        warnings.push(`外链 CSS 已跳过（邮件客户端常被拦截，请改为 @shared / @root 本地引用）：${href}`)
+        warnings.push(`外链 CSS 已跳过（邮件客户端常被拦截，请改为 @system / @root 本地引用）：${href}`)
         continue
       }
       let content: string

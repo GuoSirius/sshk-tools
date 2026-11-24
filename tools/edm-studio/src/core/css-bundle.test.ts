@@ -15,14 +15,15 @@ afterEach(() => {
 })
 
 describe('EDM css 汇集（数据契约补记 A/B）', () => {
-  it('不自动注入 base-reset：未显式 link 时 css 不含 reset 内容', async () => {
+  it('自动注入 normalize.css（框架重置层），但 reset.css 不自动注入、必须显式 link', async () => {
     const root = makeRoot()
     const { css } = await collectCss({ outputRoot: root, sources: [], unoEnabled: false })
-    expect(css).not.toContain('mso-table-lspace')
+    expect(css).toContain('-webkit-text-size-adjust') // normalize.css 特征
+    expect(css).not.toContain('mso-table-lspace') // 邮件适配增量属 reset.css，显式 link 才有
     expect(css).not.toContain('ExternalClass')
   })
 
-  it('汇集顺序：local 文件 → inline 内容（base-reset 已交由 njk 显式 link）', async () => {
+  it('汇集顺序：normalize（自动）→ local 文件 → inline 内容', async () => {
     const root = makeRoot()
     writeFileSync(join(root, 'brand.css'), '.brand{color:red}')
     const { css, warnings } = await collectCss({
@@ -34,7 +35,7 @@ describe('EDM css 汇集（数据契约补记 A/B）', () => {
       unoEnabled: false,
     })
     expect(warnings).toHaveLength(0)
-    expect(css).not.toContain('mso-table-lspace')
+    expect(css.indexOf('-webkit-text-size-adjust')).toBeLessThan(css.indexOf('.brand'))
     expect(css.indexOf('.brand')).toBeLessThan(css.indexOf('.inline'))
   })
 

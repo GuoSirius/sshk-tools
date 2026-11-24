@@ -20,11 +20,11 @@ import {
 import { resolveCssBundle, type CssResolveSource } from './css-resolve.js'
 
 export interface CssRootOptions {
-  /** 系统根（@shared / @system 基准）；缺省取当前 root */
+  /** 系统根（@system 基准）；缺省取当前 root */
   systemRoot?: string
   /** 自定义根（@custom 基准）；缺省取当前 root */
   customRoot?: string
-  /** 产物根：传入时注入 uno（唯一自动注入；四入口一致，预览/生成必须都传） */
+  /** 产物根：传入时注入 normalize.css + uno（框架自动注入两项；四入口一致，预览/生成必须都传） */
   outputRoot?: string
   unoEnabled?: boolean
 }

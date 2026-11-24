@@ -177,6 +177,8 @@ const preloadAlias: Alias[] = [
 const BUNDLED_RUNTIME_DEPS = [
   'dayjs', 'fflate', 'iconv-lite', 'electron-updater', 'marked', 'turndown',
   '@unocss/core', '@unocss/preset-wind3',
+  // normalize.css：EDM css 汇集的框架重置自动注入（?raw 内联 + 运行时回退读包路径，css-bundle.normalizeResetCss）
+  'normalize.css',
 ]
 
 /**

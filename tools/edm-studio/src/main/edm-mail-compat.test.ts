@@ -3,12 +3,12 @@
  * ① 源码层禁止 ::before/::after、结构性伪类、hover、absolute/transform/calc、阴影等邮件不兼容写法；
  * ② 渐变只允许 background-image + 同规则 background-color 纯色回落；
  * ③ 关键视觉（标题装饰、斑马纹）必须落到真实元素，而非伪元素/结构选择器；
- * ④ email-utils 只保留 reset 与真实装饰基类，原子类不重复定义（统一由 unocss 运行时生成）；
+ * ④ reset.css 只保留基础层与真实装饰基类，原子类不重复定义（统一由 unocss 运行时生成）；
  * ⑤ njk 不再用「伪 unocss」数字/颜色类（h-24/color-333/border-rd-10），改 arbitrary value/property；
  * ⑥ 关键 arbitrary class 能被 unocss 生成且 juice 内联为真实像素/纯色（不靠 CSS 变量 alpha）；
  * ⑦ unocss 生成带 CSS 变量的同名 class（color-blue / bg-white 等）必须有品牌 css 兜底定义，
  *    且 default njk 必须 link palette.css —— 否则 Tailwind 默认色 + var() 会泄漏到内联结果。
- * ⑧ base-reset 不再自动注入（2026-11-24 口径），须由 default njk 显式 link；见 edm-assets.test.ts。
+ * ⑧ 框架自动注入仅 normalize.css（构建期内联）+ uno；reset.css（邮件适配）由 default njk 显式 link；见 edm-assets.test.ts。
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -97,11 +97,11 @@ describe('EDM 迁移资产邮件兼容性', () => {
     }
   })
 
-  it('email-utils 只保留 reset 与真实装饰基类，不重复定义原子类', () => {
-    const css = readFileSync(path.join(EDM_ROOT, 'css', 'email-utils.css'), 'utf8')
+  it('reset.css 只保留基础层与真实装饰基类，不重复定义原子类', () => {
+    const css = readFileSync(path.join(EDM_ROOT, 'css', 'reset.css'), 'utf8')
     const classDefs = [...css.matchAll(/^\.([\w-]+)\s*\{/gm)].map((m) => m[1])
-    // 仅允许 title-mark 一个装饰基类；间距/圆角/颜色/边框/对齐/字重等一律交 unocss
-    expect(classDefs).toEqual(['title-mark'])
+    // 仅允许 title-mark 与 ExternalClass（Outlook 适配）两个类；间距/圆角/颜色/边框/对齐/字重等一律交 unocss
+    expect(classDefs.sort()).toEqual(['ExternalClass', 'title-mark'])
   })
 
   it('njk 无伪 unocss 数字/颜色类，均改用 arbitrary 语法', () => {
@@ -165,7 +165,7 @@ describe('EDM 迁移资产邮件兼容性', () => {
       expect(risky.length, `${brand} 未检出需兜底的 class，测试可能已失效`).toBeGreaterThan(0)
 
       // ③ 每个 risky class 必须在品牌 css（palette 已收编 brand-utils）中有定义
-      const linkedCss = [path.join(EDM_ROOT, 'css', 'email-utils.css'), ...walk(brandDir).filter((f) => f.endsWith('.css'))]
+      const linkedCss = [path.join(EDM_ROOT, 'css', 'reset.css'), ...walk(brandDir).filter((f) => f.endsWith('.css'))]
         .map((f) => readFileSync(f, 'utf8'))
         .join('\n')
       for (const name of risky) {

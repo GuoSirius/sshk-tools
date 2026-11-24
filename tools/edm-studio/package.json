@@ -32,6 +32,7 @@
     "js-yaml": "latest",
     "juice": "latest",
     "nunjucks": "latest",
+    "normalize.css": "latest",
     "vue": "latest"
   },
   "devDependencies": {

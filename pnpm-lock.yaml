@@ -549,6 +549,9 @@ importers:
       juice:
         specifier: latest
         version: 12.2.6
+      normalize.css:
+        specifier: latest
+        version: 8.0.1
       nunjucks:
         specifier: latest
         version: 3.2.4
@@ -4210,6 +4213,9 @@ packages:
 
   normalize-wheel-es@1.2.0:
     resolution: {integrity: sha512-Wj7+EJQ8mSuXr2iWfnujrimU35R2W4FAErEyTmJoJ7ucwTn2hOUSsRehMb5RSYkxXGTM7Y9QpvPmp++w5ftoJw==}
+
+  normalize.css@8.0.1:
+    resolution: {integrity: sha512-qizSNPO93t1YUuUhP22btGOo3chcvDFqFaj2TRybP0DMxkHOCTYwp3n34fel4a31ORXy4m1Xq0Gyqpb5m33qIg==}
 
   nostics@1.3.0:
     resolution: {integrity: sha512-wzRsrJwNlFbqIRQt8aCeL2WE8USip/uuvGSOZV1D02CxX8ABTMbw8IywKjH7yWHETMXbWJI4OBpihg9rmz2Vyg==}
@@ -9466,6 +9472,8 @@ snapshots:
   normalize-url@6.1.0: {}
 
   normalize-wheel-es@1.2.0: {}
+
+  normalize.css@8.0.1: {}
 
   nostics@1.3.0: {}
 

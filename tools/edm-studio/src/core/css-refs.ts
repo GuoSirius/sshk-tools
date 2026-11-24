@@ -2,12 +2,11 @@
  * R28：显式 CSS 引用引擎（取代「就近自动全收」）。
  *
  * 用户在模板 / 片段 njk 源码中自己写 <link rel="stylesheet" href="..."> 精确控制引入哪些 css，
- * 路径用逻辑 URI，不再需要 ../../ 逐层推算：
+ * 路径用逻辑 URI，不再需要 ../../ 逐层推算（2026-11-24 用户口径：三个前缀，@shared 已废弃）：
  *   ./css/a.css          当前文件所在版本目录（禁止 ..，层级由引擎解析）
- *   @root/css/a.css      当前来源根（system=edmRoot / custom=custom-edm）
- *   @shared/a.css        公共层 = 系统根 css/ 目录（跨区唯一推荐通道，只维护一份）
- *   @system/css/a.css    显式系统根
- *   @custom/css/a.css    显式自定义根
+ *   @root/css/a.css      当前来源根（自动判断：系统实体=系统根 / 自定义实体=自定义根，一般用这个）
+ *   @system/css/a.css    显式系统根（自定义要使用系统资源时用，如 reset.css）
+ *   @custom/css/a.css    显式自定义根（系统使用自定义资源时用，几乎用不到但保留）
  *
  * 渲染时统一：按源码出现顺序提取 → 解析 → 去重（片段多份/多引用自动合并）→ 读内容
  * → 从各 html 剥离 link → 以 <style> 注入 <head>，再由 juice 内联。
@@ -22,7 +21,7 @@ const HREF_RE = /\bhref\s*=\s*["']([^"']+)["']/i
 export interface CssRefContext {
   /** 当前来源根：系统=edmRoot / 自定义=custom-edm */
   sourceRoot: string
-  /** 系统根（@shared / @system） */
+  /** 系统根（@system） */
   systemRoot: string
   /** 自定义根（@custom） */
   customRoot: string
@@ -67,11 +66,13 @@ export function resolveCssRef(href: string, ctx: CssRefContext): string | null {
   const h = href.trim()
   if (/^(https?:|data:|file:)/i.test(h)) return null
   if (h.includes('..')) {
-    throw new Error(`CSS 引用不允许 ".."：${href}，请改用 @root / @shared / @system / @custom 逻辑路径`)
+    throw new Error(`CSS 引用不允许 ".."：${href}，请改用 @root / @system / @custom 逻辑路径`)
+  }
+  if (h.startsWith('@shared/')) {
+    throw new Error(`@shared 前缀已废弃（2026-11-24），请改用 @system/css/：${href}`)
   }
 
   const pick = (base: string, rest: string): string => path.resolve(base, rest.replace(/^\/+/, ''))
-  if (h.startsWith('@shared/')) return pick(path.join(ctx.systemRoot, 'css'), h.slice('@shared/'.length))
   if (h.startsWith('@system/')) return pick(ctx.systemRoot, h.slice('@system/'.length))
   if (h.startsWith('@custom/')) return pick(ctx.customRoot, h.slice('@custom/'.length))
   if (h.startsWith('@root/')) return pick(ctx.sourceRoot, h.slice('@root/'.length))
@@ -91,7 +92,7 @@ export function collectLinkedCss(sources: CssRefSource[]): LinkedCss {
       try {
         const resolved = resolveCssRef(href, source.ctx)
         if (!resolved) {
-          warnings.push(`外链 CSS 已跳过（邮件客户端常被拦截，请改为 @shared / @root 本地引用）：${href}`)
+          warnings.push(`外链 CSS 已跳过（邮件客户端常被拦截，请改为 @system / @root 本地引用）：${href}`)
           continue
         }
         if (seen.has(resolved)) continue

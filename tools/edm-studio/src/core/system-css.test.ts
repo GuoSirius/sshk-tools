@@ -43,7 +43,7 @@ describe('R5 collectSystemCss 就近汇集', () => {
 describe('R5 renderSystemPreview', () => {
   it('片段预览：njk 按示例数据渲染，css 内联进 <style>', async () => {
     const root = tempEdm()
-    writeFile(join(root, 'css/base-reset.css'), '*{box-sizing:border-box}')
+    writeFile(join(root, 'css/reset.css'), '*{box-sizing:border-box}')
     writeFile(join(root, 'elab/fragment/banner/v1/banner.njk'), '<div>{{ title }}</div>')
     writeFile(join(root, 'elab/fragment/banner/v1/sample.yaml'), 'title: 你好横幅')
     writeFile(join(root, 'elab/fragment/banner/v1/css/ver.css'), '.frag-banner{color:red}')

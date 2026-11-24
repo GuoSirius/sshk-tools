@@ -44,5 +44,8 @@ export default defineConfig({
       'tools/*/src/**/*.test.ts',
       'apps/*/src/**/*.test.ts',
     ],
+    // 注：vitest 5 对 css 文件导入（含 ?raw）一律 stub 为空串，与 externalize/inline 无关（实测项目内与
+    // node_modules 均空）。normalize.css 的 ?raw 在 vitest 下由 core/css-bundle.ts 的
+    // createRequire 回退链兜底，构建期（electron-vite/rollup）?raw 内联不受影响。
   },
 })

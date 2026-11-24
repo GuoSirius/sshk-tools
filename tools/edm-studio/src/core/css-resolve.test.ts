@@ -33,7 +33,7 @@ describe('resolveCssBundle 单链路', () => {
     put(path.join(root, 'brand/css/brand.css'), '.brand{color:blue}')
     put(path.join(root, 'brand/fragment/fam/default/css/local.css'), '.local{color:green}')
     const c = ctx(root)
-    const html = '<link rel="stylesheet" href="@shared/shared.css"><link rel="stylesheet" href="@root/brand/css/brand.css"><link rel="stylesheet" href="./css/local.css"><link rel="stylesheet" href="@shared/shared.css"><div>x</div>'
+    const html = '<link rel="stylesheet" href="@system/css/shared.css"><link rel="stylesheet" href="@root/brand/css/brand.css"><link rel="stylesheet" href="./css/local.css"><link rel="stylesheet" href="@system/css/shared.css"><div>x</div>'
     const sources: CssResolveSource[] = [{ html, ctx: c, fallbackCss: '.fallback{}' }]
 
     const linked = await resolveCssBundle({ sources })
@@ -46,10 +46,10 @@ describe('resolveCssBundle 单链路', () => {
     expect(fallback.refs).toEqual([])
   })
 
-  it('公共样式层：@shared/email-utils.css 与 @root/<brand>/css/palette.css 显式 link 生效', async () => {
+  it('公共样式层：@system/css/reset.css 与 @root/<brand>/css/palette.css 显式 link 生效', async () => {
     const edmRoot = fileURLToPath(new URL('../../assets/edm', import.meta.url))
     const c = ctx(edmRoot)
-    const html = '<link rel="stylesheet" href="@shared/email-utils.css"><link rel="stylesheet" href="@root/elabscience/css/palette.css"><div>x</div>'
+    const html = '<link rel="stylesheet" href="@system/css/reset.css"><link rel="stylesheet" href="@root/elabscience/css/palette.css"><div>x</div>'
     const bundle = await resolveCssBundle({ sources: [{ html, ctx: c }] })
     expect(bundle.css).toContain('box-sizing: border-box')
     expect(bundle.css).toContain('.bg-blue')
@@ -62,7 +62,7 @@ describe('resolveCssBundle 单链路', () => {
     put(path.join(root, 'css/shared.css'), shared)
     const c = ctx(root)
     const explicit = await resolveCssBundle({
-      sources: [{ html: '<link rel="stylesheet" href="@shared/shared.css"><div>x</div>', ctx: c }],
+      sources: [{ html: '<link rel="stylesheet" href="@system/css/shared.css"><div>x</div>', ctx: c }],
     })
     const fallback = await resolveCssBundle({ sources: [{ html: '<div>x</div>', ctx: c, fallbackCss: shared }] })
     expect(explicit.css).toBe(fallback.css)
@@ -76,7 +76,7 @@ describe('四入口预览侧共用 resolveCssBundle', () => {
     const root = tempRoot()
     const out = tempRoot()
     put(path.join(root, 'css/shared.css'), '.shared{color:red}')
-    put(path.join(root, 'elab/fragment/banner/default/fragment.njk'), '<link rel="stylesheet" href="@shared/shared.css"><div class="text-center">{{ title }}</div>')
+    put(path.join(root, 'elab/fragment/banner/default/fragment.njk'), '<link rel="stylesheet" href="@system/css/shared.css"><div class="text-center">{{ title }}</div>')
     put(path.join(root, 'elab/fragment/banner/default/sample.yaml'), 'title: hi')
     put(path.join(root, 'elab/template/standard/default/template.njk'), '<html><head></head><body>{{ slot_body | safe }}</body></html>')
     put(path.join(root, 'elab/template/standard/default/sample.yaml'), '{}')

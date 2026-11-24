@@ -1,14 +1,40 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { resolveSafe } from '@sshk/repository'
 import { injectCssIntoHead } from './css-refs.js'
+// 框架重置层（2026-11-24 用户口径）：normalize.css 为自动注入的两项之一。
+// 构建期（electron-vite/rollup）经 vite ?raw 内联为字符串——安装包零 node_modules 也可用；
+// vitest 5 对 css 文件导入（含 ?raw）一律 stub 为空串（实测项目内/node_modules 均空），
+// 故运行时回退 createRequire 解析包内文件读取，两条链路产出一致。
+import normalizeRaw from 'normalize.css/normalize.css?raw'
+
+let normalizeCssCache: string | null = null
+
+/** normalize.css 内容：构建期 ?raw 优先，vitest 下回退 createRequire 读包文件；两者皆失败返回空并告警 */
+export function normalizeResetCss(warnings: string[]): string {
+  if (normalizeCssCache !== null) return normalizeCssCache
+  if (normalizeRaw && normalizeRaw.length > 0) {
+    normalizeCssCache = normalizeRaw
+    return normalizeCssCache
+  }
+  try {
+    normalizeCssCache = readFileSync(
+      createRequire(import.meta.url).resolve('normalize.css/normalize.css'),
+      'utf8',
+    )
+  } catch (err) {
+    warnings.push(`normalize.css 读取失败（重置层为空）：${(err as Error).message.split('\n')[0]}`)
+    normalizeCssCache = ''
+  }
+  return normalizeCssCache
+}
 
 /**
  * EDM css 汇集（数据契约补记 A/B/C，2026-11-24 用户口径）：
- * 唯一自动注入项是 uno 原子类（扫描参与渲染的 njk 源码动态生成）；
- * 其余一切 css（含 base-reset）必须由 njk 显式 <link> 引入并经 resolveCssBundle 解析后才生效，
- * 不再由本层自动前置/落盘——避免「自动链 + 显式链」两套来源导致的顺序与覆盖不确定。
+ * 自动注入仅两项：normalize.css（npm 框架重置）→ uno 原子类（扫描参与渲染的 njk 源码动态生成）。
+ * 其余一切 css——含系统/自定义根与所有品牌下的文件、邮件适配 reset.css——必须由 njk
+ * 显式 <link> 引入并经 resolveCssBundle 解析后才生效，本层不自动前置/落盘。
  * 汇集结果在 assembled 阶段以 <style> 注入 head，再由 juice 统一内联。
- * unocss 依赖未安装时优雅降级为警告，不阻断渲染。
  */
 
 export interface CssSource {
@@ -53,13 +79,16 @@ export async function collectCss(input: CollectCssInput): Promise<CssBundle> {
   const warnings: string[] = []
   const parts: string[] = []
 
-  // 唯一自动注入：uno 原子类。base-reset 等其他 css 一律由 njk 显式 link 解析后进入 sources
+  // 自动注入 ①：normalize.css 框架重置（构建期 ?raw / 运行时回退读取）
+  const normalize = normalizeResetCss(warnings)
+  if (normalize.trim()) parts.push(normalize)
+  // 自动注入 ②：uno 原子类。reset.css（邮件适配增量）等其余 css 一律由 njk 显式 link 解析后进入 sources
   if (input.unoEnabled) {
     const uno = await unoCss(input.scanCodes ?? [], warnings)
     if (uno.trim()) parts.push(uno)
   }
 
-  // 汇集顺序：uno → local（品牌/模板文件）→ inline（DB / 显式 link 解析内容）
+  // 汇集顺序：normalize → uno → local（品牌/模板文件）→ inline（DB / 显式 link 解析内容）
   for (const source of input.sources.filter((s) => s.mode === 'local')) {
     if (!source.file) { warnings.push('local css 缺少文件路径，已跳过'); continue }
     try {

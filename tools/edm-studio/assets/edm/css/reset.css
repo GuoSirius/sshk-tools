@@ -1,0 +1,133 @@
+/* EDM 基础样式层（原 base-reset + email-utils 合并，2026-11-24）：Meyer 全量清零 + 元素基线 + 邮件客户端适配 + 真实装饰基类。
+ * 框架自动注入仅 normalize.css（构建期内联）与 unocss 两项；
+ * 本文件等一切 css 均须 njk 显式引用 @system/css/reset.css 才生效（2026-11-24 用户口径）。
+ * 原子类一律由 unocss 运行时生成，本文件不重复定义。 */
+
+/* Meyer 全量清零（normalize.css 不做全元素 reset） */
+html,
+body,
+div,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+blockquote,
+a,
+em,
+img,
+small,
+strike,
+strong,
+sub,
+sup,
+b,
+u,
+i,
+ol,
+ul,
+li,
+table,
+tbody,
+tfoot,
+thead,
+tr,
+th,
+td {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 100%;
+  font: inherit;
+  vertical-align: baseline;
+}
+
+/* 通配符兜底（juice 实测可内联纯 * 规则） */
+* {
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+ol,
+ul {
+  list-style: none;
+}
+blockquote,
+q {
+  quotes: none;
+}
+
+/* 文档基线 */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  line-height: 1.5;
+  color: #000;
+  font-size: 16px;
+}
+body {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 表格：邮件布局主体（table-layout:fixed + mso 间距归零） */
+table {
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+  border-collapse: collapse;
+  mso-table-lspace: 0pt;
+  mso-table-rspace: 0pt;
+}
+
+/* 元素基线 */
+span {
+  display: inline-block;
+}
+img {
+  display: inline-block;
+  max-width: 100%;
+  max-height: 100%;
+  border: 0;
+  outline: none;
+  text-decoration: none;
+  -ms-interpolation-mode: bicubic;
+}
+a {
+  display: inline-block;
+  color: #000;
+  cursor: pointer;
+  text-decoration: none;
+}
+body,
+table,
+td,
+a {
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+/* Outlook.com */
+.ExternalClass {
+  width: 100%;
+}
+.ExternalClass,
+.ExternalClass p,
+.ExternalClass span,
+.ExternalClass font,
+.ExternalClass td,
+.ExternalClass div {
+  line-height: inherit;
+}
+
+/* 标题装饰统一用真实元素，邮件客户端不内联伪元素 */
+.title-mark {
+  display: inline-block;
+  vertical-align: middle;
+}

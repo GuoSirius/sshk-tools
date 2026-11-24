@@ -50,10 +50,10 @@ describe('系统 EDM 资产迁移不变量', () => {
       expect(preview.html).toContain('<style>')
 
       if (v.dir !== 'default') continue // v1 为旧演示资产，不纳入迁移纪律校验
-      // base-reset 不再自动注入（2026-11-24 口径），必须由 njk 显式 link 才生效
-      expect(v.html).toContain('<link rel="stylesheet" href="@shared/base-reset.css">')
-      expect(v.html).toContain('<link rel="stylesheet" href="@shared/email-utils.css">')
-      expect(preview.html).toContain('mso-table-lspace') // reset 经显式 link 解析后确实内联
+      // 框架自动注入仅 normalize.css + uno；reset.css（基础样式层）等一切 css 必须显式 link
+      expect(v.html).toContain('<link rel="stylesheet" href="@system/css/reset.css">')
+      expect(v.html).not.toContain('@shared/') // @shared 前缀已废弃，统一 @root/@system/@custom 三前缀
+      expect(preview.html).toContain('mso-table-lspace') // reset.css 经显式 link 解析后确实内联
       type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
       const fields = v.fields as FieldLike[]
       const declared = new Set(fields.filter((f) => f.type === 'richtext').map((f) => f.key))
@@ -91,7 +91,7 @@ describe('系统 EDM 资产迁移不变量', () => {
       expect(composed.html).toContain(brand.code === 'elabscience' ? 'Elabscience' : 'Procell')
       expect(composed.html).toContain('Connect with us')
       expect(composed.html).toContain('<style>')
-      expect(composed.html.match(/@shared\/email-utils/g)).toBeNull()
+      expect(composed.html.match(/@shared\//g)).toBeNull()
     }
   })
 })

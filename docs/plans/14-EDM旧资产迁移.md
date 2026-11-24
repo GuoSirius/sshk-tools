@@ -75,6 +75,8 @@ resolveCssBundle({ sources })            # sources = 参与渲染的全部 njk �
 
 > **2026-11-24 后续口径（实施后调整，历史结论不回改）**：上表/流程图中「自动前置 base-reset」已废弃。`ensureBaseReset` 删除，渲染层**唯一自动注入项是 uno 原子类**；base-reset 等一切 css 改由 njk 显式引用 `@shared/base-reset.css` 才生效（56 个 default njk 已全部补齐，v1 不迁移）。真相源 `assets/edm/css/base-reset.css` 随 edm 树发布，dev/build 同解析。守护断言见 `edm-assets.test.ts`（default 必带 base-reset link + reset 已内联）与 `css-bundle.test.ts`（无 link 时 css 不含 reset）。
 
+> **2026-11-24 终版口径（第三版，同日二次调整，历史批注不回改）**：①自动注入收敛为两项——normalize.css（npm 依赖，`vite ?raw` 构建期内联）+ uno 原子类；②一切 css（系统/自定义根、所有品牌，含基础样式层）一律 njk 显式 `<link>` 才生效；③`base-reset.css` 与 `email-utils.css` 合并重命名为 `assets/edm/css/reset.css`（Meyer 清零 + 元素基线 + 邮件适配 + title-mark），56 个 default njk 统一引用 `@system/css/reset.css`；④逻辑 URI 前缀收敛为 `@root`（来源根自动判断）/@system/@custom 三个，`@shared` 废弃（引用即报错）。守护断言见 `edm-assets.test.ts`（default 必带 @system/css/reset.css link、禁 @shared 残留、reset 已内联）与 `css-bundle.test.ts`（自动注入含 normalize 特征、不含 mso 增量）。
+
 ### 1.4 uno 直用结论（回应用户 #1）
 
 **njk 源码可直接写 UnoCSS 原子类**，链路已内建且依赖已安装（`@unocss/core` + `@unocss/preset-wind3` 在 edm-studio dependencies）：
