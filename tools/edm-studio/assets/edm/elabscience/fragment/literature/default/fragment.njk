@@ -17,7 +17,7 @@
           <td rowspan="2" style="padding-right: 12px;" class="image-box">
             <img src="{{ overview_image }}" />
           </td>
-          <td class="h-0 pb-24">
+          <td class="h-[0px] pb-[24px]">
             <a href="{{ overview_link }}" class="decoration-none">
               <strong>{{ overview_title }}</strong>
             </a>
@@ -39,7 +39,7 @@
 </tr>
 
 <tr>
-  <td colspan="4" class="h-24"></td>
+  <td colspan="4" class="h-[24px]"></td>
 </tr>
 
 <tr>
@@ -49,7 +49,7 @@
 </tr>
 
 <tr>
-  <td colspan="4" class="h-24"></td>
+  <td colspan="4" class="h-[24px]"></td>
 </tr>
 
 <tr>
@@ -58,7 +58,7 @@
     <table cellspacing="0" cellpadding="0" border="0" class="table-dashed border-separate" style="padding: 16px;">
       <colgroup>
         {% if information_imageWidth %}
-        <col width="{{ information_imageWidth }}" />
+          <col width="{{ information_imageWidth }}" />
         {% endif %}
         <col />
       </colgroup>
@@ -71,15 +71,15 @@
         <tr>
           <td {% if information_imageWidth %}rowspan="2"{% endif %} {% if information_imageWidth %}style="padding-right: 12px;"{% endif %} class="image-box align-middle {% if not information_imageWidth %}pb-12 text-center{% endif %}">
             {% for it0 in information_image %}
-            <img src="{{ it0 }}" />
+              <img src="{{ it0 }}" />
             {% endfor %}
           </td>
-        {% if not information_imageWidth %}
-        </tr>
+          {% if not information_imageWidth %}
+          </tr>
 
-        <tr>
-        {% endif %}
-          <td class="h-0 {% if information_link %}pb-24{% endif %}">
+          <tr>
+          {% endif %}
+          <td class="h-[0px] {% if information_link %}pb-24{% endif %}">
             <p>{{ information_content | safe }}</p>
           </td>
         </tr>
@@ -87,7 +87,7 @@
         <tr>
           <td class="{% if not information_imageWidth %}text-center{% endif %}">
             {% if information_link %}
-            <a href="{{ information_link }}" class="button decoration-none">{{ information_buttonText }}</a>
+              <a href="{{ information_link }}" class="button decoration-none">{{ information_buttonText }}</a>
             {% endif %}
           </td>
         </tr>
@@ -102,19 +102,19 @@
 </tr>
 
 {% if information_summary %}
-<tr>
-  <td colspan="4" class="h-24"></td>
-</tr>
+  <tr>
+    <td colspan="4" class="h-[24px]"></td>
+  </tr>
 
-<tr>
-  <td></td>
-  <td colspan="2">{{ information_summary | safe }}</td>
-  <td></td>
-</tr>
+  <tr>
+    <td></td>
+    <td colspan="2">{{ information_summary | safe }}</td>
+    <td></td>
+  </tr>
 {% endif %}
 
 <tr>
-  <td colspan="4" class="h-24"></td>
+  <td colspan="4" class="h-[24px]"></td>
 </tr>
 
 <tr>
@@ -126,7 +126,7 @@
 </tr>
 
 <tr>
-  <td colspan="4" class="h-12"></td>
+  <td colspan="4" class="h-[12px]"></td>
 </tr>
 
 <tr>
@@ -145,14 +145,14 @@
         </tr>
 
         {% for it1 in productLists %}
-        <tr{% if loop.index0 % 2 == 0 %} class="stripe-row"{% endif %}>
-          <td>
-            <a href="{{ it1.link }}" class="text-link">{{ it1.name }}</a>
-          </td>
-          <td>
-            <a href="{{ it1.link }}" class="text-link">{{ it1.catNo }}</a>
-          </td>
-        </tr>
+          <tr{% if loop.index0 % 2 == 0 %} class="stripe-row"{% endif %}>
+            <td>
+              <a href="{{ it1.link }}" class="text-link">{{ it1.name }}</a>
+            </td>
+            <td>
+              <a href="{{ it1.link }}" class="text-link">{{ it1.catNo }}</a>
+            </td>
+          </tr>
         {% endfor %}
       </tbody>
     </table>

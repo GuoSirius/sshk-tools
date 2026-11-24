@@ -12,20 +12,20 @@
         <a href="{{ logoLink }}"><img src="{{ logoImage }}" alt="{{ logoAlt }}" /></a>
       </td>
     </tr>
-    <tr><td colspan="4" class="h-16"></td></tr>
+    <tr><td colspan="4" class="h-[16px]"></td></tr>
     <tr>
       <td></td>
       <td colspan="2">
         <table cellspacing="0" cellpadding="0" border="0" class="navigation text-center table-auto">
           <tbody><tr>
-            {% for item in navLinks %}
-            <td><a href="{{ item.href }}" class="decoration-none edm-nav-link">{{ item.label }}</a></td>
-            {% endfor %}
+              {% for item in navLinks %}
+                <td><a href="{{ item.href }}" class="decoration-none edm-nav-link">{{ item.label }}</a></td>
+              {% endfor %}
           </tr></tbody>
         </table>
       </td>
       <td></td>
     </tr>
-    <tr><td colspan="4" class="h-16"></td></tr>
+    <tr><td colspan="4" class="h-[16px]"></td></tr>
   </tbody>
 </table>

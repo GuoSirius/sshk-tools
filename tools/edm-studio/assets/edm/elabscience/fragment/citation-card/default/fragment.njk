@@ -4,47 +4,47 @@
 <link rel="stylesheet" href="./css/citation-card.css">
 
 <tr>
-                <td colspan="4" class="h-36"></td>
-              </tr>
+  <td colspan="4" class="h-[36px]"></td>
+</tr>
 
-              <tr>
-                <td></td>
-                <td colspan="2">
-                  <table cellspacing="0" cellpadding="0" border="0">
-                    <colgroup>
-                      <col width="35%" />
-                      <col />
-                    </colgroup>
+<tr>
+  <td></td>
+  <td colspan="2">
+    <table cellspacing="0" cellpadding="0" border="0">
+      <colgroup>
+        <col width="35%" />
+        <col />
+      </colgroup>
 
-                    <tbody class="align-top">
-                      <tr>
-                        <td rowspan="3" style="padding-right: 12px;" class="image-box">
-                          <a {% if link2 %}href="{{ link2 }}"{% endif %}>
-                            <img src="{{ image1 }}" />
-                          </a>
-                        </td>
-                        <td class="h-0 pb-12"><span class="title color-orange">{{ text4 }}</span></td>
-                      </tr>
+      <tbody class="align-top">
+        <tr>
+          <td rowspan="3" style="padding-right: 12px;" class="image-box">
+            <a {% if link2 %}href="{{ link2 }}"{% endif %}>
+              <img src="{{ image1 }}" />
+            </a>
+          </td>
+          <td class="h-[0px] pb-[12px]"><span class="title [color:#f7750b]">{{ text4 }}</span></td>
+        </tr>
 
-                      <tr>
-                        <td>
-                          <p class="pb-5">{{ text5 }}</p>
+        <tr>
+          <td>
+            <p class="pb-[5px]">{{ text5 }}</p>
 
-                          <p><span class="color-blue dot-small">●</span>{{ text6 }}</p>
-                          <p><span class="color-blue dot-small">●</span>{{ text7 }}</p>
-                          <p><span class="color-blue dot-small">●</span>{{ text8 }}</p>
+            <p><span class="color-blue dot-small">●</span>{{ text6 }}</p>
+            <p><span class="color-blue dot-small">●</span>{{ text7 }}</p>
+            <p><span class="color-blue dot-small">●</span>{{ text8 }}</p>
 
-                          <p class="pt-12">{{ text9 }}</p>
-                        </td>
-                      </tr>
+            <p class="pt-[12px]">{{ text9 }}</p>
+          </td>
+        </tr>
 
-                      <tr>
-                        <td class="text-right pt-24">
-                          <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button font-bold decoration-none">{{ text10 }}</a>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </td>
-                <td></td>
-              </tr>
+        <tr>
+          <td class="text-right pt-[24px]">
+            <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button font-bold decoration-none">{{ text10 }}</a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </td>
+  <td></td>
+</tr>
