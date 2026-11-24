@@ -2,28 +2,40 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Picture, Search } from '@element-plus/icons-vue'
-import { FilePickerDialog, createHostImageLibrary } from '@sshk/file-picker'
-import { useToolId } from '@sshk/ui-kit'
+import { FilePickerDialog, copyTextToClipboard, type FilePickerLibrary } from '@sshk/file-picker'
 import { toDisplaySrc } from '@sshk/rich-text'
-import { host } from '../host'
 
 /**
- * 表单设计的图片字段控件（image / image-list 单元）：与 EDM ImageField 同源实现。
- * 点「选择图片」唤起共享 FilePickerDialog（可上传本地图片或挑已有图），确认回填 URL；
- * 保留 URL 直填兜底（离线/手输场景）与一键复制（2026-11-24 用户口径：参考 EDM，不再裸 URL 输入框）。
+ * 图片字段控件（image / image-list 单元）——EDM 与表单设计共用的唯一实现
+ * （2026-11-24 收敛：此前 EDM/tools 与 forms 各有一份 ImageField.vue，控件顺序漂移不一致）。
+ * 控件顺序定版口径（用户 2026-11-24）：缩略图 → URL 直填 → 复制 → 「选择图片」。
+ * 「选择图片」唤起共享 FilePickerDialog（可上传本地图片或挑已有图），确认回填 URL；
+ * URL 直填兜底（离线/手输场景）与一键复制保留。
+ *
+ * library / stateKey 由宿主 FormFieldRenderer 经 `imageLibrary` / `imageStateKey` 转发注入：
+ * stateKey 按宿主前缀隔离（edm::image-field / forms::image-field）——选择器设置持久化，
+ * EDM 的 resolveLastUploadTarget（内联转存）也复用该键定位上次上传目标。
  *
  * 预览显示：file:// 资源渲染进程加载不了（Chromium 拦截），显示层统一转 localres://
  * 由主进程白名单放行；存储值保持 file://。预览失败显示图标占位（非裸裂图块）。
+ *
+ * 图片上传能力统一（用户 2026-11-23 口径）：图片/富文本/粘贴上传全部收敛到 FilePicker，
+ * 本组件不带裸 <input type=file>；校验收敛应用级全局。
  */
 const props = withDefaults(
-  defineProps<{ modelValue?: string; readonly?: boolean }>(),
-  { modelValue: '', readonly: false },
+  defineProps<{
+    modelValue?: string
+    readonly?: boolean
+    /** 宿主图片库桥接（createHostImageLibrary 产物），未注入时「选择图片」禁用、URL 直填仍可用 */
+    library?: FilePickerLibrary
+    /** FilePicker 设置持久化键（按宿主隔离，如 edm::image-field / forms::image-field） */
+    stateKey?: string
+  }>(),
+  { modelValue: '', readonly: false, library: undefined, stateKey: 'default' },
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const previewBroken = ref(false)
-const toolId = useToolId()
-const library = computed(() => createHostImageLibrary(toolId.value, host.upload, { includeLocalProfiles: true }))
 const pickerOpen = ref(false)
 
 const displaySrc = computed(() => toDisplaySrc(String(props.modelValue ?? '').trim()))
@@ -37,12 +49,10 @@ function onConfirm(items: { url: string }[]): void {
 async function copyUrl(): Promise<void> {
   const url = String(props.modelValue ?? '').trim()
   if (!url) { ElMessage.warning('还没有图片 URL'); return }
-  try {
-    await host.os.clipboardWrite(url)
-    ElMessage.success('图片 URL 已复制')
-  } catch (err) {
-    ElMessage.error(`复制失败：${(err as Error).message}`)
-  }
+  // 复制走 file-picker 的兜底实现（Clipboard API + execCommand 回退，PickerThumbGrid 同款），宿主解耦
+  const ok = await copyTextToClipboard(url)
+  if (ok) ElMessage.success('图片 URL 已复制')
+  else ElMessage.error('复制失败：剪贴板不可用')
 }
 </script>
 
@@ -74,9 +84,9 @@ async function copyUrl(): Promise<void> {
     <el-tooltip content="复制图片 URL" placement="top">
       <el-button size="small" :icon="CopyDocument" :disabled="!modelValue" @click="copyUrl" />
     </el-tooltip>
-    <el-button size="small" :icon="Search" :disabled="readonly" @click="pickerOpen = true">选择图片</el-button>
+    <el-button size="small" :icon="Search" :disabled="readonly || !library" style="margin-left: 0" @click="pickerOpen = true">选择图片</el-button>
     <FilePickerDialog
-      v-if="!readonly"
+      v-if="!readonly && library"
       v-model:open="pickerOpen"
       mode="image"
       title="选择图片"
@@ -84,7 +94,7 @@ async function copyUrl(): Promise<void> {
       :library="library"
       :multiple="false"
       :resolve-src="toDisplaySrc"
-      state-key="forms::image-field"
+      :state-key="stateKey"
       @confirm="onConfirm"
     />
   </div>

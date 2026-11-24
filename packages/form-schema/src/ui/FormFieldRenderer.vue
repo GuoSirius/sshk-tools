@@ -22,14 +22,17 @@ const props = withDefaults(
     imageLibrary?: RichTextImageLibrary
     /** 富文本位置记忆 stateKey 前缀（按 stateKey 分桶口径，2026-11-23 终审保留） */
     richStateKeyPrefix?: string
-    /** 单图控件组件（v-model:modelValue + readonly，如 EDM ImageField）；缺省回落 URL 直填 */
+    /** 单图控件组件（v-model:modelValue + readonly；另转发 imageLibrary→library、imageStateKey→state-key）；
+     *  缺省回落 URL 直填。共享实现见本包 ui/ImageField.vue */
     imageField?: Component
+    /** 图片字段 FilePicker 设置持久化键（转发注入控件的 state-key，按宿主隔离如 edm::/forms::） */
+    imageStateKey?: string
     /** richtext 字段下方渲染「AI 润色」入口并上抛 polish 事件（EDM 接线用） */
     polishable?: boolean
     /** 润色请求进行中（EDM aiLoading 透传，按钮 loading 态） */
     polishLoading?: boolean
   }>(),
-  { readonly: false, depth: 0, imageLibrary: undefined, richStateKeyPrefix: '', imageField: undefined, polishable: false, polishLoading: false },
+  { readonly: false, depth: 0, imageLibrary: undefined, richStateKeyPrefix: '', imageField: undefined, imageStateKey: '', polishable: false, polishLoading: false },
 )
 const emit = defineEmits<{
   (e: 'update:modelValue', v: Record<string, unknown>): void
@@ -197,8 +200,8 @@ function onPolish(f: FieldDef): void {
             />
             <!-- AI 润色入口经 polishable 开关（EDM 接线；通用宿主关闭） -->
             <div v-if="polishable && !readonly" class="polish-row">
-              <el-button size="small" text type="primary" :loading="polishLoading" @click="onPolish(f)">AI 润色</el-button>
               <FormHint inline>保持标签结构与链接不变，仅改写文字；预览确认后才写回</FormHint>
+              <el-button size="small" text type="primary" :loading="polishLoading" @click="onPolish(f)">AI 润色</el-button>
             </div>
           </template>
           <!-- 单选 -->
@@ -232,13 +235,15 @@ function onPolish(f: FieldDef): void {
           >
             <el-option v-for="o in f.options ?? []" :key="o.value" :value="o.value" :label="o.label" />
           </el-select>
-          <!-- 单图（注入组件优先，缺省回落 URL 直填） -->
+          <!-- 单图（注入组件优先，缺省回落 URL 直填）；library/state-key 转发注入控件 -->
           <template v-else-if="f.type === 'image'">
             <component
               :is="imageField"
               v-if="imageField"
               :model-value="strVal(f.key)"
               :readonly="readonly"
+              :library="imageLibrary"
+              :state-key="imageStateKey"
               @update:model-value="(v: string) => set(f.key, v)"
             />
             <el-input v-else clearable
@@ -256,6 +261,8 @@ function onPolish(f: FieldDef): void {
                 v-if="imageField"
                 :model-value="String(img ?? '')"
                 :readonly="readonly"
+                :library="imageLibrary"
+                :state-key="imageStateKey"
                 @update:model-value="(v: string) => setArr(f.key, arrVal(f.key).map((x, j) => (j === i ? v : x)))"
               />
               <el-input v-else clearable
@@ -293,6 +300,7 @@ function onPolish(f: FieldDef): void {
                 :image-library="imageLibrary"
                 :rich-state-key-prefix="`${richStateKeyPrefix}${f.key}:${i}:`"
                 :image-field="imageField"
+                :image-state-key="imageStateKey"
                 :polishable="polishable"
                 :polish-loading="polishLoading"
                 @update:model-value="(v: Record<string, unknown>) => updateRow(f.key, i, v)"
@@ -370,5 +378,5 @@ function onPolish(f: FieldDef): void {
 .table-cell-label { font-size: 12px; opacity: .7; display: flex; gap: 6px; align-items: center; }
 .table-cell-label code { font-size: 11px; opacity: .6; }
 .error-text { font-size: 12px; color: var(--el-color-danger); }
-.polish-row { display: flex; align-items: center; gap: 8px; }
+.polish-row { display: flex; align-items: center; justify-content: end; gap: 8px; }
 </style>

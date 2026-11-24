@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "latest",
+    "@sshk/code-editor": "workspace:*",
+    "@sshk/file-picker": "workspace:*",
     "@sshk/rich-text": "workspace:*",
     "@sshk/ui-kit": "workspace:*",
     "element-plus": "latest",

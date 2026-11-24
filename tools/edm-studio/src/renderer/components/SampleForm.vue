@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { FormFieldRenderer } from '@sshk/form-schema/ui'
+import { AiPolishDialog, FormFieldRenderer, ImageField, useAiChat } from '@sshk/form-schema/ui'
 import type { FieldDef } from '../sample-schema'
 import { CodeEditor } from '@sshk/code-editor'
 import { useToolId } from '@sshk/ui-kit'
-import ImageField from './ImageField.vue'
 import { createImageLibrary } from '../upload.js'
-import { llmApi, configApi, AI_PROVIDER_KEY, AI_MODEL_KEY, type LlmProviderLite } from '../tool-api'
-import { generateSample, polishRichText, type ChatMessage } from '../ai-copy'
+import { llmApi, configApi, AI_PROVIDER_KEY, AI_MODEL_KEY } from '../tool-api'
+import { generateSample, polishRichText } from '../ai-copy'
 
 /**
  * 示例数据表单壳（plans/13 B0 拆壳后 EDM 侧只剩 EDM 特有逻辑）：
@@ -39,41 +38,18 @@ function strVal(key: string): string {
 }
 
 // ── D-Q2 AI 文案助手：无 Provider 降级 + diff 预览（接受 / 放弃） ──
-// Provider/模型选择（需求 2026-11-23）：EDM 工具级配置 tools.edm-studio.ai.providerId / ai.model
-// （工具配置页「AI 助手」组）优先；未指定时回落应用激活 Provider，再回落清单首个启用项。
-const aiLoading = ref(false)
-const noProvider = ref(true)
-let provider: LlmProviderLite | null = null
-let modelOverride = ''
-async function ensureProvider(): Promise<boolean> {
-  try {
-    let wantId = ''
-    try { wantId = String(await configApi().get(AI_PROVIDER_KEY) ?? '').trim() } catch { /* 旧宿主无 config 通道时忽略 */ }
-    const list = await llmApi().providers()
-    if (wantId) {
-      provider = list.find((p) => p.enabled && p._id === wantId) ?? null
-    } else {
-      // 跟随应用激活：读 app.llm.activeProviderId；拿不到再回落清单首个启用项
-      let activeId = ''
-      try { activeId = String(await configApi().get('app.llm.activeProviderId') ?? '').trim() } catch { /* 忽略 */ }
-      provider = list.find((p) => p.enabled && p._id === activeId) ?? list.find((p) => p.enabled) ?? null
-    }
-    try { modelOverride = String(await configApi().get(AI_MODEL_KEY) ?? '').trim() } catch { modelOverride = '' }
-  } catch {
-    provider = null
-    modelOverride = ''
-  }
-  noProvider.value = !provider
-  return Boolean(provider)
-}
+// Provider/模型解析链收敛 @sshk/form-schema/ui useAiChat（2026-11-24，与表单设计模块同源）；
+// 通道走 EDM tool-api shim（容忍旧宿主无 config 通道）。
+const { loading: aiLoading, noProvider, ensureProvider, chat } = useAiChat({
+  providerKey: AI_PROVIDER_KEY,
+  modelKey: AI_MODEL_KEY,
+  channels: {
+    configGet: (key) => configApi().get(key),
+    providers: () => llmApi().providers(),
+    chat: (provider, messages, opts) => llmApi().chat(provider, messages, opts),
+  },
+})
 onMounted(() => { void ensureProvider() })
-
-async function chat(messages: ChatMessage[]): Promise<string> {
-  if (!provider) throw new Error('请先在「模型管理」配置并启用模型 Provider')
-  // 模型链：工具级 ai.model 覆盖（options.model）→ Provider 默认模型 → Provider 回退模型（main 侧组装）
-  const res = await llmApi().chat(provider, messages, modelOverride ? { model: modelOverride } : undefined)
-  return res.content
-}
 
 /** AI 填充：schema → 示例数据 → diff 预览（接受 / 放弃） */
 const aiPreview = ref<{ open: boolean; prev: string; next: Record<string, unknown> }>({ open: false, prev: '', next: {} })
@@ -140,6 +116,7 @@ function acceptPolish(): void {
       :image-library="library"
       rich-state-key-prefix="edm:"
       :image-field="ImageField"
+      image-state-key="edm::image-field"
       polishable
       :polish-loading="aiLoading"
       @update:model-value="(v: Record<string, unknown>) => emit('update:modelValue', v)"
@@ -188,29 +165,8 @@ function acceptPolish(): void {
       </template>
     </el-dialog>
 
-    <!-- AI 润色 diff 预览：旧 / 新并排，接受才写回 -->
-    <el-dialog
-      v-model="polish.open"
-      :title="`AI 润色预览 · ${polish.label}（接受才写回）`"
-      width="720px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-    >
-      <div class="diff-grid">
-        <div>
-          <div class="diff-cap">润色前</div>
-          <CodeEditor :model-value="polish.before" language="html" height="240px" readonly />
-        </div>
-        <div>
-          <div class="diff-cap">润色后</div>
-          <CodeEditor :model-value="polish.after" language="html" height="240px" readonly />
-        </div>
-      </div>
-      <template #footer>
-        <el-button size="small" @click="polish.open = false">放弃</el-button>
-        <el-button size="small" type="primary" @click="acceptPolish">接受并写回</el-button>
-      </template>
-    </el-dialog>
+    <!-- AI 润色 diff 预览（共享 AiPolishDialog）：旧 / 新并排，接受才写回 -->
+    <AiPolishDialog v-model:open="polish.open" :label="polish.label" :before="polish.before" :after="polish.after" @accept="acceptPolish" />
   </div>
 </template>
 

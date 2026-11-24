@@ -5,4 +5,7 @@
 export { default as FieldSchemaDesigner } from './FieldSchemaDesigner.vue'
 export { default as FieldPropsPanel } from './FieldPropsPanel.vue'
 export { default as FormFieldRenderer } from './FormFieldRenderer.vue'
+export { default as ImageField } from './ImageField.vue'
+export { default as AiPolishDialog } from './AiPolishDialog.vue'
+export { useAiChat, type AiChatChannels, type UseAiChatOptions } from './use-ai-chat'
 export type { CompositeControlOption } from './types'

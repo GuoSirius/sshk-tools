@@ -237,6 +237,12 @@ importers:
       '@element-plus/icons-vue':
         specifier: latest
         version: 2.3.2(vue@3.5.46(typescript@6.0.3))
+      '@sshk/code-editor':
+        specifier: workspace:*
+        version: link:../code-editor
+      '@sshk/file-picker':
+        specifier: workspace:*
+        version: link:../file-picker
       '@sshk/rich-text':
         specifier: workspace:*
         version: link:../rich-text

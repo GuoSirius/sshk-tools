@@ -32,6 +32,8 @@ export {
 } from './picker-settings'
 export type { DirValidation, DirValidationLevel, FilePickerSettings } from './picker-settings'
 export { contentName, fingerprintKey, hashFile, resolveUploadName } from './upload-dedupe'
+/** 剪贴板兜底复制（Clipboard API + execCommand 回退；图片字段/缩略图卡片共用） */
+export { copyTextToClipboard } from './clipboard'
 /** 宿主上传能力图片库桥接（plans/11：EDM/模板/内容管理单一实现） */
 export { createHostImageLibrary } from './host-library'
 export type { HostUploadBridge, HostImageLibraryOptions } from './host-library'
