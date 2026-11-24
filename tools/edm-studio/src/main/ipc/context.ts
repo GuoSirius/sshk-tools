@@ -29,6 +29,7 @@ export interface EdmIpcContext {
   /** 系统内容只读（R8）：origin='system' 的实体禁止在 NeDB 侧编辑/删除/派生新版本，改 = saveAsNew 派生副本 */
   assertMutable(name: Parameters<Repository['get']>[0], id: string): Promise<void>
   // ── 系统内容编辑门控（R12）：devFeatures 唯一口径（D-2 · P0-2）：dev 恒全权；打包版需 developerMode。main 端校验为安全边界 ──
+  //    2026-11-24 收窄：门控只拦「设计」写入（meta/njk/css），sample.yaml（示例数据）放开走覆盖层，见 content.ts + sample-overlay.ts
   systemEditable(): boolean
   assertSystemEditable(): void
   /** 限制在指定根内（越权即拒）；返回绝对路径 */
@@ -37,6 +38,8 @@ export interface EdmIpcContext {
   resolveEdmRoot(): string
   /** R24 内容根解析：system=系统文件根（assets/edm）；custom=自定义文件根（userData/custom-edm） */
   resolveContentRoot(source: string): string
+  /** 示例数据覆盖层根（2026-11-24：只读系统内容的 sample.yaml 用户改动落 userData，设计文件不进这里） */
+  resolveOverrideRoot(): string
   /** 相对路径规范化（POSIX 分隔，渲染层统一用 /） */
   relOf(file: string): string
 }
@@ -87,6 +90,9 @@ export function createEdmIpcContext(deps: EdmIpcDeps): EdmIpcContext {
     if (source === 'custom') return path.join(app.getPath('userData'), 'custom-edm')
     return resolveEdmRoot()
   }
+  function resolveOverrideRoot(): string {
+    return path.join(app.getPath('userData'), 'system-edm-override')
+  }
   function relOf(file: string): string {
     return path.resolve(resolveEdmRoot(), file).split(path.sep).join('/')
   }
@@ -94,7 +100,7 @@ export function createEdmIpcContext(deps: EdmIpcDeps): EdmIpcContext {
   return {
     repo, outputRoot: deps.outputRoot, config: deps.config,
     str, obj, assertMutable, systemEditable, assertSystemEditable, confine,
-    resolveEdmRoot, resolveContentRoot, relOf,
+    resolveEdmRoot, resolveContentRoot, resolveOverrideRoot, relOf,
   }
 }
 

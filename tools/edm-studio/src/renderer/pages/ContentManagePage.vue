@@ -27,7 +27,9 @@ import { inheritedFavicon } from '../composables/node-favicon'
  * - 树：EDM → 品牌 → 片段/模板（类目）→ 族 → 版本，各级可挂 css 目录（v5 六处）
  * - 右键（v5 分层）：EDM 仅粘贴；品牌/族/版本=另存为+重命名+删除+粘贴；类目=重命名+删除+粘贴；
  *   css 目录=另存为+复制+粘贴+新建文件+重命名+删除；css 文件=另存为+复制+重命名+删除
- * - 编辑门控（R12）：main 裁决 canEdit（dev 全权 / 打包版需 developerMode），只读时隐藏一切编辑 UI
+ * - 编辑门控（R12，2026-11-24 收窄 #189）：main 裁决 canEdit=设计编辑权（dev 全权 / 打包版需 developerMode），
+ *   设计（元数据/字段定义/源码/样式/结构）只读时锁；预览 / 选片段（纯内存）与示例数据 sample.yaml
+ *   （写 userData 覆盖层）恒可用，「恢复默认」删覆盖还原
  * - 右侧：品牌/族=元数据（表单↔数据切换 R17）；版本=元数据/示例/njk/预览；css 文件=多 tab（外置 css）
  *
  * P6-4 拆分（B37-F4）：本文件收缩为「树+详情」布局编排壳，按真实职责抽 composables——
@@ -267,8 +269,59 @@ async function onNode(node: TreeNode): Promise<void> {
     return
   }
   await detail.loadNode(node)
+  void refreshSampleOverride()
   compose!.resetForNode(node)
   await detail.renderPreview(node)
+}
+
+/* ── 示例数据覆盖层状态（2026-11-24 #189）：只读系统内容的 sample.yaml 改动落 userData 覆盖层，
+ *    页头/工具栏据此展示「恢复默认」；预览/选片段/示例数据不受 canEdit（设计闸）限制。 ── */
+const sampleOverridden = ref(false)
+
+async function refreshSampleOverride(): Promise<void> {
+  const n = selected.value
+  if (!n || n.kind !== 'version' || !n.data.samplePath || n.data.source !== 'system') {
+    sampleOverridden.value = false
+    return
+  }
+  try {
+    sampleOverridden.value = ((await api('content:sampleOverrideState', { source: n.data.source, file: n.data.samplePath })) as { overridden: boolean }).overridden
+  } catch {
+    sampleOverridden.value = false
+  }
+}
+
+/** 恢复系统默认示例数据 = 删除覆盖文件（危险操作，二次确认后重载详情与预览） */
+async function resetSampleOverride(): Promise<void> {
+  const n = selected.value
+  if (!n?.data.samplePath) return
+  try {
+    await ElMessageBox.confirm('恢复系统默认示例数据？当前对示例数据的修改将被清除。', '恢复默认示例数据', {
+      type: 'warning',
+      confirmButtonText: '恢复默认',
+      cancelButtonText: '取消',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
+  } catch {
+    return
+  }
+  try {
+    await api('content:resetSampleOverride', { source: n.data.source, file: n.data.samplePath })
+    ElMessage.success('已恢复系统默认示例数据')
+    await detail.loadNode(n)
+    compose!.resetForNode(n)
+    await detail.renderPreview(n)
+  } catch (err) {
+    ElMessage.error(`恢复失败：${(err as Error).message}`)
+  }
+  await refreshSampleOverride()
+}
+
+/** 示例数据保存（表单/数据模式恒可保存）成功后刷新覆盖层状态（「恢复默认」按钮显隐） */
+async function onSaveSample(): Promise<void> {
+  await saveSample()
+  await refreshSampleOverride()
 }
 
 onMounted(async () => {
@@ -294,7 +347,7 @@ onUnmounted(() => {
         内容管理
       </span>
       <div class="head-actions">
-        <el-tag :type="canEdit ? 'success' : 'info'" size="small">{{ canEdit ? '可编辑' : '只读' }}</el-tag>
+        <el-tag :type="canEdit ? 'success' : 'warning'" size="small">{{ canEdit ? '可编辑' : '设计只读' }}</el-tag>
         <el-button size="small" :loading="loading" @click="load()">刷新</el-button>
       </div>
     </div>
@@ -333,7 +386,7 @@ onUnmounted(() => {
             <el-descriptions-item label="片段族">{{ stats.fragments }}</el-descriptions-item>
             <el-descriptions-item label="模板族">{{ stats.templates }}</el-descriptions-item>
           </el-descriptions>
-          <EmptyState :description="canEdit ? '根节点右键可新建品牌 / 编辑内容' : '只读模式：浏览与预览'" />
+          <EmptyState :description="canEdit ? '根节点右键可新建品牌 / 编辑内容' : '设计只读：预览 / 选片段 / 示例数据可编辑；右键「另存为」派生自定义副本'" />
         </div>
         <!-- css 目录：仅展开折叠入口 -->
         <el-empty v-else-if="selected.kind === 'cssDir'" description="点具体 css 文件进行编辑（多 tab 互相参照）；右键可复制 / 粘贴 / 新建文件 / 另存为" :image-size="80" />
@@ -410,17 +463,24 @@ onUnmounted(() => {
                 <FormHint detail="拖拽 ≡ 调整顺序；保存写入 meta.yaml 的 fields:" />
                 <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveFields">保存字段定义</el-button>
               </template>
-              <el-button v-else size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSample">保存</el-button>
+              <!-- 表单/数据模式恒可保存（2026-11-24 #189）：设计只读的系统内容写 userData 覆盖层，「恢复默认」删覆盖即还原 -->
+              <template v-else>
+                <el-tag v-if="sampleOverridden" size="small" type="warning">已自定义</el-tag>
+                <el-button v-if="sampleOverridden" size="small" type="warning" plain @click="resetSampleOverride">恢复默认</el-button>
+                <FormHint v-if="sampleOverridden" detail="示例数据改动存于覆盖层（userData），不影响系统自带文件；恢复默认=删除覆盖">示例数据已覆盖系统默认</FormHint>
+                <el-button size="small" type="primary" class="push-right" @click="onSaveSample">保存</el-button>
+              </template>
             </div>
             <FieldSchemaDesigner v-if="sampleMode === 'design'" v-model="designFields" :readonly="!canEdit" :controls="controlOptions" />
             <div v-else-if="sampleMode === 'form' && sampleSchema.length" class="sample-wrap">
-              <SampleForm v-model="sampleObj" :fields="sampleSchema" :readonly="!canEdit" />
+              <SampleForm v-model="sampleObj" :fields="sampleSchema" />
             </div>
-            <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" @save="saveSample" />
+            <CodeEditor v-else :model-value="sampleText" :path="`sample:${selected.data.path}`" language="yaml" height="calc(100% - 40px)" @update:model-value="(v: string) => (sampleText = v)" @save="onSaveSample" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="预览" name="preview">
             <div class="editor-toolbar">
-              <el-button size="small" type="primary" plain :disabled="!canEdit" @click="composeOpen = true">片段布局配置</el-button>
+              <!-- 选片段/组合纯内存不落盘，设计只读也放开（2026-11-24 #189：不放开则打包版无法看组合效果） -->
+              <el-button size="small" type="primary" plain @click="composeOpen = true">片段布局配置</el-button>
               <FormHint inline>布局 {{ composePlacements.length }} 项 · 宿主模板：{{ composeHostLabel }}</FormHint>
               <el-button size="small" type="success" plain :loading="previewing" class="push-right" @click="renderComposePreview">刷新预览</el-button>
             </div>
@@ -523,7 +583,6 @@ onUnmounted(() => {
         v-model="composePlacements"
         :slots="composeSlotDefs"
         :fragment-options="composeFragmentOptions"
-        :readonly="!canEdit"
         class="compose-editor-dialog"
         @edit-data="openPlacementData"
       />

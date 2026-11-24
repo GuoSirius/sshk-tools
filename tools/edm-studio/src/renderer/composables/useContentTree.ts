@@ -60,7 +60,9 @@ export interface ContentTree {
   cusModel: Ref<{ topCss: string[]; brands: any[] }>
   /** 系统自带可编辑门控（dev / 打包版 developerMode）；自定义恒可写 */
   canEditSystem: Ref<boolean>
-  /** R24：编辑权 = 节点 source==='custom' 或系统门控通过；未选节点默认放开（按钮另有选中守卫） */
+  /** 设计编辑权 = 节点 source==='custom' 或系统门控通过；未选节点默认放开（按钮另有选中守卫）。
+   *  2026-11-24 收窄（台账 #189）：此闸只管「设计」（元数据/字段定义/源码/样式/结构编辑）；
+   *  预览、选片段（组合纯内存）与示例数据 sample.yaml（覆盖层）不受此闸限制。 */
   canEdit: ComputedRef<boolean>
   loading: Ref<boolean>
   selected: Ref<TreeNode | null>
@@ -216,7 +218,6 @@ export function useContentTree(deps: ContentTreeDeps = {}): ContentTree {
   const canEditSystem = ref(false)
   const loading = ref(false)
   const selected = ref<TreeNode | null>(null)
-  /** R24：编辑权 = 节点 source==='custom' 或系统门控通过；未选节点默认放开（按钮另有选中守卫） */
   const canEdit = computed<boolean>(() => !selected.value || selected.value.data.source === 'custom' || canEditSystem.value)
 
   /** R24 双顶层树：自定义（source=custom，上）/ 系统自带（source=system，下），下层结构不变 */

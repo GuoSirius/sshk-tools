@@ -27,6 +27,8 @@ export interface CssRootOptions {
   /** 产物根：传入时注入 normalize.css + uno（框架自动注入两项；四入口一致，预览/生成必须都传） */
   outputRoot?: string
   unoEnabled?: boolean
+  /** 示例数据覆盖（userData overlay，2026-11-24 #189）：存在时替代版本目录 sample.yaml（只读系统内容的用户自改示例） */
+  sampleOverride?: Record<string, unknown>
 }
 
 function cssCtx(root: string, versionDir: string, opts: CssRootOptions): CssRefContext {
@@ -132,7 +134,7 @@ export async function renderSystemPreview(
   const dir = versionDirOf(root, sel)
   const source = await readSourceOf(dir)
   if (!source) throw new Error(`找不到源文件：${dir}`)
-  const sample = (await readYaml<Record<string, unknown>>(path.join(dir, 'sample.yaml'))) ?? {}
+  const sample = opts.sampleOverride ?? ((await readYaml<Record<string, unknown>>(path.join(dir, 'sample.yaml'))) ?? {})
 
   const sources: CssResolveSource[] = [{ html: source, ctx: cssCtx(root, dir, opts) }]
   const explicit = hasExplicitCssRefs(sources)
