@@ -37,7 +37,7 @@ async function onDeveloperModeChange(next: unknown): Promise<void> {
     if (!alreadyAuthed) {
       const secret = await promptSecret(
         '开发者模式',
-        '输入开发者口令开启（默认 sshk-tools@888；若曾自定义或经备份导入过口令，则以自定义为准。注意大小写，@ 为半角）',
+        '输入开发者口令（与打包版「打开开发者工具」同一口令）。区分大小写、符号须半角；若曾自定义或经备份导入过口令，则以自定义为准',
         '验证并开启',
         '开发者口令',
       )

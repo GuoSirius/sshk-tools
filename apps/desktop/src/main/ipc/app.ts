@@ -38,7 +38,7 @@ export function registerAppIpc(ctx: IpcContext): void {
     if (ctx.isDev) { ctx.getMainWindow()?.webContents.toggleDevTools(); return true }
     if (!isDevOpAuthorized('devtools')) {
       if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
-        throw new AppError('访问密钥不正确（开发者口令默认 sshk-tools@888；若曾自定义或经备份导入过口令，则以自定义为准。注意大小写与 @ 需为半角）', 'permission')
+        throw new AppError('访问密钥不正确，请核对后重试（区分大小写、符号须半角）', 'permission')
       }
       markDevOpAuthorized('devtools')
     }
@@ -51,7 +51,7 @@ export function registerAppIpc(ctx: IpcContext): void {
     if (isDevOpAuthorized(op)) return true
     if (ctx.isDev) { markDevOpAuthorized(op); return true }
     if (!devtoolsKeyMatches(String(cfg.get('app.devtoolsKeyHash') ?? ''), String(key ?? ''))) {
-      throw new AppError('访问密钥不正确（开发者口令默认 sshk-tools@888；若曾自定义或经备份导入过口令，则以自定义为准。注意大小写与 @ 需为半角）', 'permission')
+      throw new AppError('访问密钥不正确，请核对后重试（区分大小写、符号须半角）', 'permission')
     }
     markDevOpAuthorized(op)
     return true
