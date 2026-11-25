@@ -4,7 +4,7 @@ import { ElMessageBox } from 'element-plus'
 export interface Named { _id: string; name: string; [k: string]: unknown }
 export interface BrandRow extends Named { code: string }
 export interface VersionRow extends Named { version: number; label?: string; type?: string; source?: { html: string; css?: string; cssMode?: string }; templateId?: string; fragmentId?: string; slots?: { key: string; type: string }[]; policy?: { blacklist: string[]; whitelist: string[] }; sampleData?: Record<string, unknown>; fields?: unknown[] }
-export interface PlacementRow { slot: string; fragmentVersionId: string; order?: number; repeat?: number; data?: Record<string, unknown> }
+export interface PlacementRow { slot: string; fragmentVersionId: string; order?: number; repeat?: number; alias?: string; data?: Record<string, unknown> }
 export interface MailRow extends Named {
   origin?: 'system' | 'custom'
   brandId: string

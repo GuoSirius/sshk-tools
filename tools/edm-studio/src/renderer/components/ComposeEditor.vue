@@ -12,13 +12,23 @@ import { ArrowDown, ArrowRight, Delete, Rank } from '@element-plus/icons-vue'
 import { FormHint } from '@sshk/ui-kit'
 
 /**
- * 统一组合编辑器（R19/R20）：区块布局 + 片段摆放 —— 拖拽排序 / 重复次数 / 移动区块。
+ * 统一组合编辑器（R19/R20）：区块布局 + 片段摆放 —— 拖拽排序 / 备注名 / 移动区块。
  * 区块清单（slots）= 模板族 meta slots: + 模板 njk 源码 slot_*（源码新增即时生效）；fragmentOptions 已由父级按黑白名单过滤；
  * placement.data 的编辑由父级处理（edit-data 事件），本组件只管布局。
+ * mailMode（2026-11-25 用户反馈）：备注名输入与「片段数据」仅邮件组装场景出现——
+ * 模板/片段的布局配置为内存态、无处保存，出现可编辑项反而误导。
  */
 const props = withDefaults(
-  defineProps<{ slots: SlotDef[]; fragmentOptions: FragmentOption[]; modelValue: PlacementItem[]; readonly?: boolean }>(),
-  { readonly: false },
+  defineProps<{
+    slots: SlotDef[]
+    fragmentOptions: FragmentOption[]
+    modelValue: PlacementItem[]
+    readonly?: boolean
+    mailMode?: boolean
+    /** 备注名校验失败（保存尝试后仍未填）的 placement uid 集合，标红输入框 */
+    aliasErrors?: Set<string>
+  }>(),
+  { readonly: false, mailMode: false, aliasErrors: () => new Set<string>() },
 )
 const emit = defineEmits<{
   (e: 'update:modelValue', v: PlacementItem[]): void
@@ -79,7 +89,7 @@ function addPlacement(slotKey: string): void {
   }
   emitChange([
     ...props.modelValue,
-    { uid: `p_${Date.now()}_${uidSeed++}`, fragmentId: opt.id, label: opt.label, slot: slotKey, order: itemsOf(slotKey).length, repeat: 1 },
+    { uid: `p_${Date.now()}_${uidSeed++}`, fragmentId: opt.id, label: opt.label, slot: slotKey, order: itemsOf(slotKey).length },
   ])
   // 连续添加保留该区块的片段选择
 }
@@ -106,14 +116,14 @@ async function removePlacement(p: PlacementItem): Promise<void> {
   }
   emitChange(rest)
 }
-function setRepeat(p: PlacementItem, v: number | undefined): void {
-  emitChange(props.modelValue.map((x) => (x.uid === p.uid ? { ...x, repeat: Math.max(1, Math.floor(v ?? 1)) } : x)))
+function setAlias(p: PlacementItem, v: string): void {
+  emitChange(props.modelValue.map((x) => (x.uid === p.uid ? { ...x, alias: v } : x)))
 }
 </script>
 
 <template>
   <div class="compose" :class="{ readonly }">
-    <FormHint inline>拖拽 ≡ 区块内排序；次数 = 重复渲染；「片段数据」= 该片段独立表单数据（留空回落模板数据）</FormHint>
+    <FormHint inline>拖拽 ≡ 区块内排序；「片段数据」= 该片段独立表单数据（留空回落模板数据）{{ mailMode ? '；备注名用于区分同片段的多次使用，必填' : '' }}</FormHint>
     <div class="blocks">
       <div v-for="s in slots" :key="s.key" class="block">
         <!-- 区块头 sticky 吸顶（#198 ⑦）：片段下拉 + 添加随滚动常驻，就地添加不用来回滚 -->
@@ -150,19 +160,21 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
           <div v-for="p in itemsOf(s.key)" :key="p.uid" class="placement">
             <span class="handle" title="拖拽排序"><el-icon><Rank /></el-icon></span>
             <span class="lbl" :title="p.label">{{ p.label }}</span>
-            <el-input-number
-              :model-value="p.repeat"
+            <!-- 备注名（2026-11-25 用户反馈：替代原「次数」，区分同片段多次使用；仅 mail 场景可编辑保存 -->
+            <el-input
+              v-if="mailMode"
+              :model-value="p.alias"
               size="small"
-              :min="1"
-              :max="99"
-              controls-position="right"
-              class="repeat"
-              @update:model-value="(v: number | undefined) => setRepeat(p, v)"
+              clearable
+              placeholder="备注名"
+              class="alias"
+              :class="{ 'alias-error': aliasErrors.has(p.uid) }"
+              @update:model-value="(v: string) => setAlias(p, v)"
             />
             <el-select :model-value="p.slot" size="small" class="slot-sel" @update:model-value="(v: string) => moveTo(p, v)">
               <el-option v-for="s2 in slots" :key="s2.key" :value="s2.key" :label="`→ ${s2.label || s2.key}`" />
             </el-select>
-            <el-button size="small" text type="primary" @click="emit('editData', p)">片段数据</el-button>
+            <el-button v-if="mailMode" size="small" text type="primary" @click="emit('editData', p)">片段数据</el-button>
             <el-button v-if="!readonly" size="small" text type="danger" :icon="Delete" @click="removePlacement(p)" />
           </div>
         </VueDraggable>
@@ -194,7 +206,8 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
 .handle { cursor: grab; color: var(--el-text-color-secondary); display: inline-flex; padding: 2px; border-radius: 4px; }
 .handle:hover { color: var(--el-color-primary); background: var(--el-fill-color-light); }
 .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.repeat { width: 90px; flex: none; }
+.alias { width: 120px; flex: none; }
+.alias.alias-error :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
 .slot-sel { width: 110px; flex: none; }
 .block-empty { padding: 10px; font-size: 12px; opacity: .5; text-align: center; }
 .drag-ghost { opacity: .5; background: var(--el-color-primary-light-9, rgba(64,158,255,.08)); }

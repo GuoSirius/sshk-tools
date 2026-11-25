@@ -11,6 +11,7 @@ import {
   type Mail,
   type TemplateVersion,
   type FragmentVersion,
+  type Fragment,
 } from '@sshk/repository'
 
 import { compose, type ComposePlacement } from '../../core/compose.js'
@@ -135,20 +136,25 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     // 跨品牌硬规定（第三层 · 生成前）：以模板版本品牌为基准校验所有片段
     await assertBindingsSameBrand(tv.brandId, mail.bindings)
     // R19 统一组合引擎：placements（per-placement data/order/repeat，Q12）→ slot_* → 三阶段
-    const fragments: Array<{ fv: FragmentVersion; binding: Mail['bindings'][number] }> = []
+    const fragments: Array<{ fv: FragmentVersion; binding: Mail['bindings'][number]; name?: string }> = []
     for (const b of mail.bindings) {
       const fv = await repo.get<FragmentVersion>('fragmentVersions', b.fragmentVersionId)
-      if (fv) fragments.push({ fv, binding: b })
+      if (!fv) continue
+      const frag = await repo.get<Fragment>('fragments', fv.fragmentId)
+      fragments.push({ fv, binding: b, name: frag?.name })
     }
+    // strict 生成兜底（2026-11-25 反馈 5）：placement 未带独立数据且 mail.data 为空时
+    // 回落片段 sampleData，避免「用户没填就生成」必然 strict 报错；mail.data 有值时仍优先（用户显式填写）
+    const mailData = mail.data && Object.keys(mail.data).length > 0 ? (mail.data as Record<string, unknown>) : undefined
     const cssResult = await resolveEntitiesCss([{ entity: tv, kind: 'template' }, ...fragments.map((x) => ({ entity: x.fv, kind: 'fragment' as const }))])
-    const placements: ComposePlacement[] = fragments.map(({ fv, binding: b }, i) => ({
+    const placements: ComposePlacement[] = fragments.map(({ fv, binding: b, name }, i) => ({
       html: cssResult.htmls[i + 1] ?? fv.source.html,
-      data: (b.data ?? mail.data ?? {}) as Record<string, unknown>,
+      data: (b.data ?? mailData ?? fv.sampleData ?? {}) as Record<string, unknown>,
       meta: cssResult.metas[i + 1],
       slot: b.slot,
       order: b.order,
       repeat: b.repeat,
-      label: fv.label ?? '片段',
+      label: `${name ?? fv.fragmentId}（${b.slot}）`,
     }))
     const stages = await compose({
       templateHtml: cssResult.htmls[0] ?? tv.source.html,

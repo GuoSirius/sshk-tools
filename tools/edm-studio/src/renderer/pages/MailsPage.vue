@@ -120,7 +120,7 @@ async function onSaveAsConfirm(): Promise<void> {
   saveAsDialog.saving = true
   try {
     const created = (await api('mail:save', {
-      name, origin: 'custom', brandId: src.brandId, templateVersionId: src.templateVersionId,
+      name, origin: src.origin ?? 'custom', brandId: src.brandId, templateVersionId: src.templateVersionId,
       bindings: src.bindings ?? [], data: src.data ?? {},
     })) as MailRow
     await loadMails()
@@ -251,8 +251,8 @@ function onAction(key: string, row: MailRow): void {
     </template>
 
     <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
-      <el-table-column type="index" label="#" width="46" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
-      <el-table-column type="selection" width="40" reserve-selection />
+      <el-table-column type="index" label="#" width="46" align="center" fixed="left" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
+      <el-table-column type="selection" width="40" reserve-selection fixed="left" />
       <el-table-column prop="name" label="邮件名" min-width="140" fixed="left" show-overflow-tooltip />
       <el-table-column label="来源" width="76" align="center"><template #default="{ row }"><el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag></template></el-table-column>
       <el-table-column label="品牌" width="120" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template></el-table-column>

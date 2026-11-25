@@ -107,7 +107,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
         label: `${fragName} / ${fv?.label ?? ''}`,
         slot: b.slot,
         order: b.order ?? i,
-        repeat: b.repeat ?? 1,
+        alias: b.alias,
         data: b.data,
       }
     })
@@ -120,10 +120,16 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
       void ensureComposeLabels() // 异步补全三级下拉的「目录名（meta.name）」，首开加载一次
       const m = deps.mail()
       const tv = m ? tplVersionsAll.value.find((v) => v._id === m.templateVersionId) : undefined
+      // 来源回显按模板版本 ID 前缀推导（tplv_sys_/cus_），修正历史数据 origin 与模板根不一致
+      // 导致的二次打开下拉显示原始 ID（品牌/模板下拉按 origin 过滤后不含当前值）
+      const origin = m?.templateVersionId
+        ? m.templateVersionId.startsWith('cus_') ? 'custom' : 'system'
+        : (m?.origin ?? 'custom')
       draft.value = m
-        ? { _id: m._id, name: String(m.name ?? ''), origin: m.origin ?? 'custom', brandId: m.brandId ?? '', templateId: tv?.templateId ?? '', templateVersionId: m.templateVersionId ?? '' }
+        ? { _id: m._id, name: String(m.name ?? ''), origin, brandId: m.brandId ?? '', templateId: tv?.templateId ?? '', templateVersionId: m.templateVersionId ?? '' }
         : { _id: '', name: '', origin: 'custom', brandId: '', templateId: '', templateVersionId: '' }
       placements.value = m ? toPlacements(m.bindings) : []
+      aliasTouched.value = false
       mailDataText.value = m?.data ? JSON.stringify(m.data, null, 2) : '{}'
       previewHtml.value = ''
       activeTab.value = 'slots'
@@ -174,7 +180,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
       const res = (await api('mail:preview', {
         templateVersionId: draft.value.templateVersionId,
         placements: placements.value.map((p) => ({
-          fragmentVersionId: p.fragmentId, slot: p.slot, order: p.order, repeat: p.repeat, data: p.data,
+          fragmentVersionId: p.fragmentId, slot: p.slot, order: p.order, data: p.data,
         })),
         mailData: parseMailData(),
       })) as { html: string }
@@ -194,7 +200,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
       brandId: draft.value.brandId,
       templateVersionId: draft.value.templateVersionId,
       bindings: placements.value.map((p) => ({
-        slot: p.slot, fragmentVersionId: p.fragmentId, order: p.order, repeat: p.repeat, data: p.data,
+        slot: p.slot, fragmentVersionId: p.fragmentId, order: p.order, alias: p.alias, data: p.data,
       })),
       data: parseMailData(),
     }
@@ -205,12 +211,30 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     return draft.value._id
   }
 
+  /** 备注名校验（2026-11-25 用户反馈）：每个 placement 必填别名，保存尝试后未填的标红；
+   *  前端校验失败直接停留、不发 IPC（双层校验铁律） */
+  const aliasTouched = ref(false)
+  const aliasErrors = computed<Set<string>>(() => {
+    if (!aliasTouched.value) return new Set()
+    return new Set(placements.value.filter((p) => !p.alias?.trim()).map((p) => p.uid))
+  })
+  function checkAlias(): boolean {
+    aliasTouched.value = true
+    const missing = placements.value.filter((p) => !p.alias?.trim()).length
+    if (missing) {
+      ElMessage.warning(`${missing} 个片段未填备注名，无法区分同片段的多次使用`)
+      return false
+    }
+    return true
+  }
+
   /** 确认（修订 14）：mail 场景=保存数据（不刷新预览、不关弹框由调用方决定） */
   async function doConfirm(): Promise<void> {
     if (!draft.value.name.trim() || !draft.value.brandId || !draft.value.templateVersionId) {
       ElMessage.warning('名称、品牌、模板版本必填')
       return
     }
+    if (!checkAlias()) return
     saving.value = true
     try {
       const id = await persist()
@@ -228,6 +252,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     if (!draft.value.name.trim() || !draft.value.brandId || !draft.value.templateVersionId) {
       ElMessage.warning('名称、品牌、模板版本必填'); return
     }
+    if (!checkAlias()) return
     saving.value = true
     try {
       const id = await persist()
@@ -298,7 +323,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
   return {
     scene: 'mail' as ComposeScene,
     draft, placements, mailDataText, previewHtml, previewing, saving, activeTab,
-    originOptions, brandOptions, allBrands, templateOptions, versionOptions, templateSlots, fragmentOptions, currentTv,
+    originOptions, brandOptions, allBrands, templateOptions, versionOptions, templateSlots, fragmentOptions, currentTv, aliasErrors,
     onOriginChange, onBrandChange, onTemplateFamilyChange, onTemplateChange, switchTab, onDataEditorSave,
     refreshPreview, buildPayload, doConfirm, doGenerate, doExport, doCopy,
     placementData, openPlacementData, savePlacementData,

@@ -27,6 +27,10 @@ console.debug(`[sshk] renderer __SSHK_DEV__ = ${SSHK_DEV}`)
 installPlainApi()
 // 弹框打开自动聚焦首个输入（用户 2026-11-18）：全局 MutationObserver，一处安装全项目生效
 setupDialogAutofocus()
+// 全局拦截隐式表单提交（2026-11-25 用户反馈：弹框内单输入框回车导致整页刷新）：
+// el-form 渲染原生 <form>，单文本输入回车会触发浏览器隐式 submit → 整页重载；
+// 项目内无真实 form 提交（全部走 IPC），统一 preventDefault，一处安装全项目生效
+document.addEventListener('submit', (e) => e.preventDefault())
 // H3 渲染层日志：三处兜底捕获 + console.error 镜像 → 主进程落盘（挂在 app 实例上，见下方 mount 前）
 
 // 外部运行时包渲染层契约：产物不 import 任何模块（Blob URL 下裸导入无法解析），

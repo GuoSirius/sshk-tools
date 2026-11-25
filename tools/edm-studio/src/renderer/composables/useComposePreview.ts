@@ -214,7 +214,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     composeSlots.value = []
     composeTemplate.value = ''
     composePlacements.value = node.data.cat === 'fragment'
-      ? [{ uid: `p_${Date.now()}_0`, fragmentId: JSON.stringify(versionSelector(node)), label: node.label, slot: '', order: 0, repeat: 1 }]
+      ? [{ uid: `p_${Date.now()}_0`, fragmentId: JSON.stringify(versionSelector(node)), label: node.label, slot: '', order: 0 }]
       : []
   }
 
@@ -245,7 +245,6 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
         selector: JSON.parse(p.fragmentId) as SysSelector,
         slot: p.slot,
         order: p.order,
-        repeat: p.repeat,
         data: p.data,
       }))
       const res = (await api('content:render', { source: deps.selected.value?.data.source ?? 'system', selector: templateSel, placements })) as { html: string }

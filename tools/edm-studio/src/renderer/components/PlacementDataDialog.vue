@@ -3,6 +3,7 @@
     :model-value="open"
     title="片段数据"
     width="560px"
+    class="pd-dialog"
     append-to-body
     :close-on-click-modal="false"
     :close-on-press-escape="false"
@@ -14,7 +15,7 @@
         <SampleForm v-model="formObj" :fields="fields" />
       </el-tab-pane>
       <el-tab-pane label="JSON" name="json">
-        <CodeEditor :model-value="jsonText" language="json" height="320px" @update:model-value="(v: string) => (jsonText = v)" />
+        <CodeEditor :model-value="jsonText" language="json" height="100%" @update:model-value="(v: string) => (jsonText = v)" />
       </el-tab-pane>
     </el-tabs>
     <template #footer>
@@ -94,5 +95,14 @@ function doSave(): void {
 </script>
 
 <style scoped>
-.pd-tabs :deep(.el-tabs__content) { padding-top: 4px; }
+.pd-tabs { height: 100%; display: flex; flex-direction: column; }
+.pd-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; padding-top: 4px; overflow: auto; }
+.pd-tabs :deep(.el-tab-pane) { height: 100%; }
+</style>
+
+<!-- 非 scoped：append-to-body 后 dialog 节点 teleport 到 body，scoped 数据属性不在节点上；
+     固定高度为全项目弹框硬性口径（2026-11-25 用户反馈：片段数据弹框高度也要固定） -->
+<style>
+.el-dialog.pd-dialog { height: min(70vh, 560px); display: flex; flex-direction: column; max-height: none; }
+.el-dialog.pd-dialog .el-dialog__body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 </style>

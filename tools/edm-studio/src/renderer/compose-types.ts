@@ -10,6 +10,7 @@ export interface PlacementItem {
   label: string
   slot: string
   order: number
-  repeat: number
+  /** 备注名（2026-11-25 用户反馈：区分同片段多次使用，仅邮件组装可编辑保存；必填） */
+  alias?: string
   data?: Record<string, unknown>
 }

@@ -86,8 +86,10 @@ export interface SlotBinding {
   fragmentVersionId: string
   /** 同区块内顺序（缺省按数组顺序） */
   order?: number
-  /** 重复次数（≥1，缺省 1） */
+  /** 重复次数（≥1，缺省 1；2026-11-25 起 UI 移除，仅兼容存量数据） */
   repeat?: number
+  /** 备注名（2026-11-25：区分同片段多次使用，邮件组装时必填并随 mail:save 持久化） */
+  alias?: string
   /** 该 placement 独立数据（缺省回落 mail.data；Q12 拍板：按 placement 各带 data） */
   data?: Record<string, unknown>
 }

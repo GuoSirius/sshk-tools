@@ -51,7 +51,7 @@ const mailDeps = useComposeDialog({
 // 解构成顶层 ref：模板只自动解包顶层 ref，不解析 mailDeps.xxx 的嵌套 ref
 const {
   draft, mailDataText, previewing, saving, activeTab: innerTab,
-  originOptions, brandOptions, templateOptions, versionOptions, placementData,
+  originOptions, brandOptions, templateOptions, versionOptions, placementData, aliasErrors,
 } = mailDeps
 
 // 场景统一视图：mail 取内部态，template/fragment 取外部 props
@@ -147,7 +147,14 @@ function saveEditData(data: Record<string, unknown>): void {
       </div>
     </template>
 
-    <el-tabs v-model="activeTab" class="compose-tabs" @tab-change="(name: string | number) => switchTab(name as 'slots' | 'preview')">
+    <!-- tab 区：mail=插槽块/组装预览双 tab；模板/片段布局配置只留插槽块（2026-11-25 反馈 6：
+         组装后回主页预览，且内存态无处保存，不出现「片段数据」「备注名」等可编辑项） -->
+    <el-tabs
+      v-model="activeTab"
+      class="compose-tabs"
+      :class="{ 'no-tabs': !isMail }"
+      @tab-change="(name: string | number) => switchTab(name as 'slots' | 'preview')"
+    >
       <el-tab-pane label="插槽块" name="slots">
         <div class="slot-layout">
           <div class="slot-editor">
@@ -156,6 +163,8 @@ function saveEditData(data: Record<string, unknown>): void {
               :model-value="placements"
               :slots="slots"
               :fragment-options="fragmentOptions"
+              :mail-mode="isMail"
+              :alias-errors="aliasErrors"
               @update:model-value="updatePlacements"
               @edit-data="openEditData"
             />
@@ -177,7 +186,7 @@ function saveEditData(data: Record<string, unknown>): void {
           </div>
         </div>
       </el-tab-pane>
-      <el-tab-pane label="组装预览" name="preview">
+      <el-tab-pane v-if="isMail" label="组装预览" name="preview">
         <div class="preview-bar">
           <FormHint inline>草稿渲染（不落库）</FormHint>
           <el-button v-if="isMail" size="small" type="success" plain :loading="previewing" @click="mailDeps.refreshPreview">刷新预览</el-button>
@@ -224,6 +233,9 @@ function saveEditData(data: Record<string, unknown>): void {
 .sel-item :deep(.el-select), .sel-item :deep(.el-input) { width: 100%; }
 
 .compose-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 模板/片段布局配置（内存态）：只留插槽块内容，tab 头隐藏 */
+.compose-tabs.no-tabs :deep(.el-tabs__header) { display: none; }
+.compose-tabs.no-tabs :deep(.el-tabs__content) { padding-top: 0; }
 .compose-tabs :deep(.el-tabs__header) { flex: none; margin-bottom: 0; }
 .compose-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; padding-top: 8px; }
 .compose-tabs :deep(.el-tab-pane) { height: 100%; }
