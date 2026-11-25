@@ -17,6 +17,7 @@ import { compose, type ComposePlacement } from '../../core/compose.js'
 import { resolveCssBundle } from '../../core/css-resolve.js'
 import { resolveRenderMeta } from '../render-meta.js'
 import type { RenderMeta } from '../../core/render-meta.js'
+import type { TemplateRoots } from '../../core/template-loader.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
 
 /** 邮件域 action（R19 统一组合引擎；产物覆盖式 D19）+ 产物根分享解析（plans/09 ShareHub） */
@@ -31,7 +32,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
    */
   async function resolveEntitiesCss(
     entries: Array<{ entity: FragmentVersion | TemplateVersion; kind: 'fragment' | 'template' }>,
-  ): Promise<{ css: string; htmls: string[]; metas: RenderMeta[] }> {
+  ): Promise<{ css: string; htmls: string[]; metas: RenderMeta[]; roots?: TemplateRoots }> {
     const points = entries.map(({ entity, kind }) => {
       const isCustom = entity.origin === 'custom'
       const sourceRoot = ctx.resolveContentRoot(isCustom ? 'custom' : 'system')
@@ -60,7 +61,12 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     for (const w of bundle.warnings) console.warn(`[edm] css 引用警告：${w}`)
     // 四级 meta 反查（修订 1/13）：真相源在磁盘 meta.yaml，与 css 共用推导出的版本目录
     const metas = await Promise.all(points.map(({ metaPoint }) => resolveRenderMeta(metaPoint)))
-    return { css: bundle.css, htmls: bundle.htmls, metas }
+    // 模板引用根（需求 2）：首个实体即模板，其 ctx 结构兼容 TemplateRoots
+    const tplCtx = points[0]?.ctx
+    const roots: TemplateRoots | undefined = tplCtx
+      ? { systemRoot: tplCtx.systemRoot, customRoot: tplCtx.customRoot, sourceRoot: tplCtx.sourceRoot, versionDir: tplCtx.versionDir }
+      : undefined
+    return { css: bundle.css, htmls: bundle.htmls, metas, roots }
   }
 
   /**
@@ -133,6 +139,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       meta: cssResult.metas[0],
       strict: true,
       resolvedCss: cssResult.css,
+      roots: cssResult.roots,
     })
     const snap = outputSnapshotOptions(ctx.config, TOOL_IDS.edmStudio, app.getPath('userData'))
     const outputs = {
@@ -176,6 +183,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       meta: cssResult.metas[0],
       strict: false,
       resolvedCss: cssResult.css,
+      roots: cssResult.roots,
     })
     return { html: stages.assembled }
   })

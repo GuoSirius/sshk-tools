@@ -177,7 +177,7 @@ assets/edm/
 - css 引用**优先显式 `<link>`**（#10），约定四条路径形态：
   - 顶层公共：`<link rel="stylesheet" href="@system/css/email-utils.css">`
   - 品牌层：`<link rel="stylesheet" href="@root/elabscience/css/palette.css">`（custom 派生副本 @root 自动指向自定义根，派生时品牌 css 整树拷贝，路径不失效）
-  - 版本内：`<link rel="stylesheet" href="./css/xxx.css">`（相对版本目录，禁止 `..`）
+  - 版本内：`<link rel="stylesheet" href="./css/xxx.css">`（相对版本目录；2026-11-25 修订 3：允许 `..` 上溯，解析 normalize 后兜底限定在来源根内，越界才拒绝）
   - **不用族级 `css/`**（避免 `@root/<brand>/<kind>/<family>/css/…` 长路径）：片段/模板私有 css 一律放版本 `default/css/`；跨片段共用即上提品牌层
 - njk 内不出现其他外链 stylesheet；每个 njk 声明自己需要的完整依赖集，收集侧自动去重（重复声明无害）。
 

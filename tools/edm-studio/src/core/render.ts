@@ -4,9 +4,10 @@ import { htmlMinify } from './minify.js'
 import { createHash } from 'node:crypto'
 import { injectCss } from './css-bundle.js'
 import { buildRenderMeta, EMPTY_RENDER_META, type RenderMeta } from './render-meta.js'
+import { TemplateLoader, type TemplateRoots, type MemoryTemplates } from './template-loader.js'
 
 export interface RenderInput {
-  /** 模板版本 njk 源码 */
+  /** 模板版本 njk 源码（无落盘路径时直接用它 renderString；磁盘优先时仅作回落） */
   templateHtml: string
   /** 槽位绑定：slot key → 片段版本渲染产物（已渲染 HTML 字符串） */
   bindings: Record<string, string>
@@ -16,6 +17,12 @@ export interface RenderInput {
   cssBundle?: string
   /** 模板四级元数据（2026-11-25 修订 1/13）：注入 meta.* 命名空间 + meta.favicon */
   meta?: RenderMeta
+  /** 模板引用解析根（需求 2）：提供时挂 loader，模板内 extends/include/import 可走逻辑 URI */
+  roots?: TemplateRoots
+  /** 内存模板表（DB 字符串源码注册；磁盘优先、内存回落 Q2） */
+  memoryTemplates?: MemoryTemplates
+  /** 落盘模板名（磁盘优先）：提供时用 env.render(name) 走 loader，否则 renderString(templateHtml) */
+  templateName?: string
 }
 
 export interface RenderStages {
@@ -26,8 +33,8 @@ export interface RenderStages {
 }
 
 /** 每次渲染创建独立 Environment（消除 nunjucks.configure 全局单例的并发串扰隐患） */
-function makeEnv(strict: boolean, autoEscape: boolean): nunjucks.Environment {
-  return new nunjucks.Environment(undefined, { throwOnUndefined: strict, autoescape: autoEscape })
+function makeEnv(strict: boolean, autoEscape: boolean, loader?: nunjucks.ILoader): nunjucks.Environment {
+  return new nunjucks.Environment(loader, { throwOnUndefined: strict, autoescape: autoEscape })
 }
 
 /**
@@ -43,9 +50,14 @@ export async function renderMail(input: RenderInput): Promise<RenderStages> {
     meta: buildRenderMeta(input.meta ?? EMPTY_RENDER_META),
     ...Object.fromEntries(Object.entries(input.bindings).map(([k, v]) => [`slot_${k}`, v])),
   }
-  const env = makeEnv(input.render.strict, input.render.autoEscape)
+  // 需求 2：有 roots 时挂 loader（extends/include/import 可解析）；有 templateName 走磁盘优先，否则字符串回落
+  const loader = input.roots ? new TemplateLoader(input.roots, input.memoryTemplates) : undefined
+  const env = makeEnv(input.render.strict, input.render.autoEscape, loader)
+  const rendered = loader && input.templateName
+    ? env.render(input.templateName, context)
+    : env.renderString(input.templateHtml, context)
   // css 汇集结果放最前，juice 的 applyStyleTags 会把它内联到 style 属性
-  const assembled = injectCss(env.renderString(input.templateHtml, context), input.cssBundle ?? '')
+  const assembled = injectCss(rendered, input.cssBundle ?? '')
 
   const inlined = juice(assembled, {
     removeStyleTags: true,

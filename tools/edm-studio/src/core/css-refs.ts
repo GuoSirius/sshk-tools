@@ -59,22 +59,28 @@ export function stripCssLinks(html: string): string {
 }
 
 /**
- * 逻辑 URI → 绝对路径。含 `..` 一律拒绝（这正是用户要消除的层级错误来源）。
- * http(s)/data 外链返回 null 并交由调用方告警。
+ * 逻辑 URI → 绝对路径（2026-11-25 修订 3：允许 `..` 上溯，解析后兜底限定在对应根内）。
+ * - 前缀决定允许根：@system→systemRoot / @custom→customRoot / @root 与裸路径→sourceRoot / ./→versionDir
+ * - path.resolve 归一化后若越出允许根即拒绝（防目录穿越）；不因出现 `..` 字面就 throw
+ * - http(s)/data/file 外链返回 null 并交由调用方告警
  */
 export function resolveCssRef(href: string, ctx: CssRefContext): string | null {
   const h = href.trim()
   if (/^(https?:|data:|file:)/i.test(h)) return null
-  if (h.includes('..')) {
-    throw new Error(`CSS 引用不允许 ".."：${href}，请改用 @root / @system / @custom 逻辑路径`)
+  const pick = (base: string, rest: string, scope: string, guardRoot = base): string => {
+    const resolved = path.resolve(path.resolve(base), rest.replace(/^\/+/, ''))
+    const root = path.resolve(guardRoot)
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new Error(`CSS 引用越出 ${scope} 根：${href}`)
+    }
+    return resolved
   }
-  const pick = (base: string, rest: string): string => path.resolve(base, rest.replace(/^\/+/, ''))
-  if (h.startsWith('@system/')) return pick(ctx.systemRoot, h.slice('@system/'.length))
-  if (h.startsWith('@custom/')) return pick(ctx.customRoot, h.slice('@custom/'.length))
-  if (h.startsWith('@root/')) return pick(ctx.sourceRoot, h.slice('@root/'.length))
+  if (h.startsWith('@system/')) return pick(ctx.systemRoot, h.slice('@system/'.length), '@system')
+  if (h.startsWith('@custom/')) return pick(ctx.customRoot, h.slice('@custom/'.length), '@custom')
+  if (h.startsWith('@root/')) return pick(ctx.sourceRoot, h.slice('@root/'.length), '@root')
 
-  // ./xxx 或 xxx：相对当前文件所在版本目录
-  return pick(ctx.versionDir, h.replace(/^\.\//, ''))
+  // ./xxx 或 xxx：相对当前版本目录解析，但允许 ../ 在来源根内上溯（兜底限 sourceRoot）
+  return pick(ctx.versionDir, h.replace(/^\.\//, ''), '@root', ctx.sourceRoot)
 }
 
 /** 按源码出现顺序收集、去重（片段 repeat / 多个片段引用同一 css 只收一次） */

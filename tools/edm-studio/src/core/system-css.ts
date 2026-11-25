@@ -19,6 +19,7 @@ import {
   type CssRefContext,
 } from './css-refs.js'
 import { resolveCssBundle, type CssResolveSource } from './css-resolve.js'
+import type { TemplateRoots } from './template-loader.js'
 
 export interface CssRootOptions {
   /** 系统根（@system 基准）；缺省取当前 root */
@@ -160,6 +161,7 @@ export async function renderSystemPreview(
     meta: opts.meta,
     render: { strict: false, autoEscape: true },
     cssBundle,
+    roots: cssCtx(root, dir, opts) as TemplateRoots,
   })
   return { html: stages.assembled, cssFiles }
 }
@@ -253,6 +255,7 @@ export async function renderSystemCompose(
     meta: opts.meta,
     strict: false,
     resolvedCss: bundle.css,
+    roots: cssCtx(root, templateDir, opts) as TemplateRoots,
   })
   return {
     html: stages.assembled,

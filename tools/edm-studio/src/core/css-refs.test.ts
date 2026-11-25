@@ -42,9 +42,15 @@ describe('R28 逻辑 URI 解析', () => {
     expect(resolveCssRef('./css/a.css', c)).toBe(path.join(c.versionDir, 'css/a.css'))
   })
 
-  it('含 .. 直接报错（消除层级推算错误），外链返回 null', () => {
-    const c = ctx(tempRoot(), tempRoot())
-    expect(() => resolveCssRef('../../css/a.css', c)).toThrow('不允许')
+  it('修订 3：允许 .. 上溯但兜底限根内；越界拒绝；外链返回 null', () => {
+    const root = tempRoot()
+    const c = ctx(root, tempRoot())
+    // ./ 基准是 versionDir，../ 上溯到 fam 层仍在来源根内 → 允许
+    expect(resolveCssRef('../css/a.css', c)).toBe(path.join(root, 'brand/template/fam/css/a.css'))
+    // @system 根内上溯：从 css/ 回到根
+    expect(resolveCssRef('@system/css/../reset.css', c)).toBe(path.join(root, 'reset.css'))
+    // 越出根（上溯层数超过层级）→ 拒绝
+    expect(() => resolveCssRef('../../../../../outside.css', c)).toThrow('越出')
     expect(resolveCssRef('https://cdn.example.com/a.css', c)).toBeNull()
   })
 
@@ -83,9 +89,9 @@ describe('R28 提取 / 去重 / head 提前', () => {
 
   it('缺失文件与非法引用给出告警但不抛错', () => {
     const c = ctx(tempRoot(), tempRoot())
-    const linked = collectLinkedCss([{ html: '<link rel="stylesheet" href="@system/css/nope.css"><link rel="stylesheet" href="../../a.css">', ctx: c }])
+    const linked = collectLinkedCss([{ html: '<link rel="stylesheet" href="@system/css/nope.css"><link rel="stylesheet" href="../../../../../outside.css">', ctx: c }])
     expect(linked.warnings.some((w) => w.includes('不存在'))).toBe(true)
-    expect(linked.warnings.some((w) => w.includes('不允许'))).toBe(true)
+    expect(linked.warnings.some((w) => w.includes('越出'))).toBe(true)
   })
 
   it('injectCssIntoHead 放进 head；无 head 时补 head；空 css 不动', () => {

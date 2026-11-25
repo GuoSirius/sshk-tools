@@ -9,6 +9,7 @@
  */
 import { buildRenderMeta, EMPTY_RENDER_META, type RenderMeta } from './render-meta.js'
 import { renderFragmentHtml, renderMail, type RenderStages } from './render.js'
+import type { TemplateRoots, MemoryTemplates } from './template-loader.js'
 import { collectCss, type CssSource } from './css-bundle.js'
 
 export interface ComposePlacement {
@@ -43,6 +44,12 @@ export interface ComposeInput {
   outputRoot?: string
   /** 已由 resolveCssBundle 解析好的完整 css（含框架自动注入 + 显式 link css）；传入时跳过本层汇集，避免重复 */
   resolvedCss?: string
+  /** 模板引用解析根（需求 2：extends/include/import） */
+  roots?: TemplateRoots
+  /** 内存模板表（DB 字符串源码注册；磁盘优先、内存回落） */
+  memoryTemplates?: MemoryTemplates
+  /** 落盘模板名（磁盘优先；提供时 renderMail 走 env.render） */
+  templateName?: string
 }
 
 export interface ComposeResult extends RenderStages {
@@ -116,6 +123,9 @@ export async function compose(input: ComposeInput): Promise<ComposeResult> {
     meta: templateMeta,
     render: { strict, autoEscape: true },
     cssBundle,
+    roots: input.roots,
+    memoryTemplates: input.memoryTemplates,
+    templateName: input.templateName,
   })
   return { ...stages, bindings }
 }
