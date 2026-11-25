@@ -179,9 +179,9 @@ function saveEditData(data: Record<string, unknown>): void {
       <!-- 模板数据 tab（#201）：邮件级模板变量（主题/preheader 等）每封邮件独立，表单默认 + JSON 兜底 -->
       <el-tab-pane v-if="isMail" label="模板数据" name="mailData">
         <div class="mail-data">
-          <div class="md-head">
+          <div class="md-head mx-[1px]">
             <FormHint detail="邮件级模板变量（如主题、preheader），每封邮件独立；模板 njk 里的同名变量从这里取值，片段未填「片段数据」时也回落到这里。" />
-            <el-radio-group v-model="dataTab" size="small">
+            <el-radio-group v-model="dataTab" size="small" class="flex-none">
               <el-radio-button value="form">表单</el-radio-button>
               <el-radio-button value="json">JSON</el-radio-button>
             </el-radio-group>
@@ -191,6 +191,7 @@ function saveEditData(data: Record<string, unknown>): void {
               v-if="dataTab === 'form' && mailDataFields.length"
               :model-value="mailDataObj"
               :fields="mailDataFields"
+              :show-ai-fill="false"
               @update:model-value="mailDeps.onMailDataFormChange"
             />
             <el-empty v-else-if="dataTab === 'form'" description="当前模板未声明 fields（meta.yaml fields:），请切 JSON 编辑" :image-size="70" />
@@ -217,19 +218,16 @@ function saveEditData(data: Record<string, unknown>): void {
 
     <template #footer>
       <div class="footer">
-        <el-button @click="doClose">取消</el-button>
-        <span class="spacer" />
         <template v-if="isMail">
-          <el-button type="primary" :loading="saving" @click="onConfirm">确认</el-button>
+          <el-button type="primary" :loading="saving" @click="onConfirm">保存</el-button>
           <el-button type="success" :loading="saving" @click="onGenerate">生成</el-button>
-          <el-button type="warning" @click="onExport">导出</el-button>
-          <el-button type="warning" @click="onCopy">复制</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" @click="onConfirm">确认（保存并刷新预览）</el-button>
-          <el-button type="warning" @click="onExport">导出</el-button>
-          <el-button type="warning" @click="onCopy">复制</el-button>
+          <el-button type="primary" @click="onConfirm">保存并刷新预览</el-button>
         </template>
+        <el-button type="warning" @click="onExport">导出</el-button>
+        <el-button type="warning" @click="onCopy">复制</el-button>
+        <el-button @click="doClose">取消</el-button>
       </div>
     </template>
   </el-dialog>
@@ -270,8 +268,7 @@ function saveEditData(data: Record<string, unknown>): void {
 .md-body :deep(.code-editor) { height: 100% !important; }
 .preview-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
 .preview-frame { width: 100%; height: 100%; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
-.footer { display: flex; align-items: center; }
-.footer .spacer { flex: 1; }
+.footer { display: flex; align-items: center; justify-content: center; }
 .footer .el-button + .el-button { margin-left: 8px; }
 </style>
 

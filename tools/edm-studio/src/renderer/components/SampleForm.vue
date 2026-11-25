@@ -20,8 +20,10 @@ const props = withDefaults(
     fields: FieldDef[]
     modelValue: Record<string, unknown>
     readonly?: boolean
+    /** 是否显示顶层「AI 填充」（2026-11-25：正式组装场景关闭，内容管理示例数据编辑保留） */
+    showAiFill?: boolean
   }>(),
-  { readonly: false },
+  { readonly: false, showAiFill: true },
 )
 const emit = defineEmits<{ (e: 'update:modelValue', v: Record<string, unknown>): void }>()
 
@@ -123,8 +125,9 @@ function acceptPolish(): void {
       @polish="aiPolish"
     >
       <template #toolbar>
-        <!-- D-Q2 顶层工具行：AI 填充按钮 -->
-        <div v-if="fields.length > 0" class="ai-bar">
+        <!-- D-Q2 顶层工具行：AI 填充按钮（正式组装场景 showAiFill=false 隐藏） -->
+        <div v-if="showAiFill && fields.length > 0" class="ai-bar">
+          <span class="ai-hint">{{ noProvider ? '需在「模型管理」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</span>
           <el-button
             size="small"
             type="primary"
@@ -136,7 +139,6 @@ function acceptPolish(): void {
           >
             AI 填充
           </el-button>
-          <span class="ai-hint">{{ noProvider ? '需在「模型管理」配置并启用 Provider 后使用' : '按字段 schema 生成示例数据，预览确认后才写入' }}</span>
         </div>
       </template>
     </FormFieldRenderer>
@@ -172,7 +174,7 @@ function acceptPolish(): void {
 
 <style scoped>
 .sample-form { display: flex; flex-direction: column; gap: 10px; }
-.ai-bar { display: flex; align-items: center; gap: 10px; }
+.ai-bar { display: flex; align-items: center; justify-content: end; gap: 10px; }
 .ai-hint { font-size: 12px; opacity: .7; }
 .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .diff-cap { font-size: 12px; opacity: .7; margin-bottom: 4px; }

@@ -12,7 +12,7 @@
     <!-- 双 tab（#200）：默认表单 tab 按 fields schema 填写，JSON tab 查看和编辑原始数据 -->
     <el-tabs v-model="activeTab" class="pd-tabs">
       <el-tab-pane v-if="fields.length" label="表单" name="form">
-        <SampleForm v-model="formObj" :fields="fields" />
+        <SampleForm v-model="formObj" :fields="fields" :show-ai-fill="false" />
       </el-tab-pane>
       <el-tab-pane label="JSON" name="json">
         <CodeEditor :model-value="jsonText" language="json" height="100%" @update:model-value="(v: string) => (jsonText = v)" />
