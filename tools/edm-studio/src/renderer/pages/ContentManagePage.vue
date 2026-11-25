@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, configOnChanged } from '../tool-api'
+import { MagicStick } from '@element-plus/icons-vue'
+import { api, configOnChanged, osApi } from '../tool-api'
 import { EmptyState, FormHint, TimeText, callHostApi, useToolId } from '@sshk/ui-kit'
 import { IPC_CHANNELS, type ControlRecord, type FormRecord } from '@sshk/shared'
 import { expandFields, normalizeFields, type FieldDef } from '@sshk/form-schema'
 import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../components/SampleForm.vue'
 import { FieldSchemaDesigner } from '@sshk/form-schema/ui'
-import ComposeEditor from '../components/ComposeEditor.vue'
+import ComposeDialog from '../components/ComposeDialog.vue'
 import CssTabsEditor from '../components/CssTabsEditor.vue'
 import SaveAsDialog from '../components/SaveAsDialog.vue'
 import FaviconField from '../components/FaviconField.vue'
@@ -107,9 +108,9 @@ const ctxDomain = useContextMenu({
 /* ── 模板绑定解构 ── */
 const { canEditSystem, canEdit, loading, selected, defaultExpandedKeys, treeReady, stats, allCssDirs, setTreeRef, load, codeNameState, confirmCodeName, cancelCodeName } = treeDomain
 const treeData = treeDomain.tree
-const { metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing, sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, switchSampleMode, switchMetaMode, saveMeta, saveSource, saveStyle, saveSample, saveFields } = detail
+const { metaMode, metaText, sourceText, sampleText, styleText, previewHtml, previewing, sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, switchSampleMode, switchMetaMode, saveMeta, formatSource, saveSource, formatStyle, saveStyle, saveSample, saveFields } = detail
 const { composeTemplate, composePlacements, composeOpen, composeHostLabel, hostTemplateOptions, composeFragmentOptions, composeSlotDefs, onHostTemplateChange, renderComposePreview, closeComposeDialog, placementData, openPlacementData, savePlacementData } = compose
-const { cssTabs, activeCss, openCssTab, onCssEdit, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
+const { cssTabs, activeCss, openCssTab, onCssEdit, formatCssTab, saveCss, saveAllCss, closeCssTab } = cssTabsDomain
 const { menu, menuItems, onContextMenu, onDocMouseDown, onMenu } = ctxDomain
 const { saveAsState, saveAsTargetOptions, confirmSaveAs } = saveAsDomain
 
@@ -324,6 +325,24 @@ async function onSaveSample(): Promise<void> {
   await refreshSampleOverride()
 }
 
+/** 统一组装弹框：template/fragment 场景复制/导出当前预览 HTML（#189 设计只读、预览放开） */
+async function onComposeCopy(): Promise<void> {
+  if (!previewHtml.value) { ElMessage.warning('当前无预览内容'); return }
+  try {
+    await osApi().clipboardWrite(previewHtml.value)
+    ElMessage.success(`已复制当前预览代码（${previewHtml.value.length} 字符）`)
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
+async function onComposeExport(): Promise<void> {
+  if (!previewHtml.value) { ElMessage.warning('当前无预览内容'); return }
+  try {
+    const save = await osApi().pickSave({ fileName: 'preview.html', extensions: ['html'] })
+    if (!save) return
+    await osApi().writeText(save, previewHtml.value)
+    ElMessage.success(`已导出当前预览：${save}`)
+  } catch (err) { ElMessage.error((err as Error).message) }
+}
+
 /**
  * 门控实时性（2026-11-24 #190）：canEditSystem 由 main 每次实时裁决（isDevFeaturesEnabled），
  * 但工具页在 KeepAlive 缓存下 onMounted 只跑一次——打包版开关「开发者模式」后回到本页若不重查，
@@ -394,7 +413,7 @@ onUnmounted(() => {
       <div class="detail-pane">
         <!-- css 文件多 tab 编辑（选中 css 文件时） -->
         <template v-if="selected?.kind === 'cssFile' && cssTabs.length">
-          <CssTabsEditor v-model:active="activeCss" :tabs="cssTabs" :can-edit="canEdit" @edit="onCssEdit" @save="saveCss" @save-all="saveAllCss" @close="closeCssTab" />
+          <CssTabsEditor v-model:active="activeCss" :tabs="cssTabs" :can-edit="canEdit" @edit="onCssEdit" @format="formatCssTab" @save="saveCss" @save-all="saveAllCss" @close="closeCssTab" />
         </template>
         <el-empty v-else-if="!selected" description="选择左侧节点查看 / 编辑" :image-size="80" class="detail-empty" />
         <!-- EDM 根概览 -->
@@ -511,15 +530,17 @@ onUnmounted(() => {
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="源码" name="source">
             <div class="editor-toolbar">
-              <FormHint inline detail="在 njk 源码写 &lt;link rel=&quot;stylesheet&quot; href=&quot;@root/css/xxx.css&quot;&gt; 引入 css：@root/=当前来源根（系统自带或自定义，一般用这个）；@system/=系统根；@custom/=自定义根；./=当前版本目录。禁止 ..，外链会被跳过。内联 css 也可直接写在 &lt;style&gt; 内。">内联 css 也可写在 njk 的 &lt;style&gt; 内</FormHint>
-              <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveSource">保存</el-button>
+              <FormHint detail="在 njk 源码写 &lt;link rel=&quot;stylesheet&quot; href=&quot;@root/css/xxx.css&quot;&gt; 引入 css：@root/=当前来源根（系统自带或自定义，一般用这个）；@system/=系统根；@custom/=自定义根；./=当前版本目录。禁止 ..，外链会被跳过。内联 css 也可直接写在 &lt;style&gt; 内。">内联 css 也可写在 njk 的 &lt;style&gt; 内</FormHint>
+              <el-button size="small" type="warning" plain :icon="MagicStick" :disabled="!canEdit" class="push-right" @click="formatSource">格式化</el-button>
+              <el-button size="small" type="primary" :disabled="!canEdit" class="!ml-0" @click="saveSource">保存</el-button>
             </div>
             <CodeEditor :model-value="sourceText" :path="`source:${selected.data.path}`" language="njk" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (sourceText = v)" @save="saveSource" />
           </el-tab-pane>
           <el-tab-pane v-if="selected.kind === 'version'" label="样式" name="style">
             <div class="editor-toolbar">
-              <FormHint inline>内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</FormHint>
-              <el-button size="small" type="primary" :disabled="!canEdit" class="push-right" @click="saveStyle">保存</el-button>
+              <FormHint>内联样式：保存至版本目录 style.css，渲染时最后注入（优先级最高）；外置 css 走左树 css 目录</FormHint>
+              <el-button size="small" type="warning" plain :icon="MagicStick" :disabled="!canEdit" class="push-right" @click="formatStyle">格式化</el-button>
+              <el-button size="small" type="primary" :disabled="!canEdit" class="!ml-0" @click="saveStyle">保存</el-button>
             </div>
             <CodeEditor :model-value="styleText" :path="`style:${selected.data.path}`" language="css" :readonly="!canEdit" height="calc(100% - 40px)" @update:model-value="(v: string) => (styleText = v)" @save="saveStyle" />
           </el-tab-pane>
@@ -577,39 +598,41 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 片段布局配置弹框（R22：宿主模板选择 + 组合编辑器收进弹框，预览页只留预览） -->
-    <el-dialog v-model="composeOpen" title="片段布局配置" width="720px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div v-if="selected?.data.cat === 'fragment'" class="editor-toolbar" style="padding-bottom: 10px">
-        <FormHint inline>宿主模板</FormHint>
-        <el-select
-          size="small"
-          filterable
-          style="width: 300px"
-          :model-value="composeTemplate"
-          placeholder="选择宿主模板（组合预览）"
-          @update:model-value="(v: string) => { composeTemplate = v; onHostTemplateChange(v) }"
-        >
-          <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
-        </el-select>
-        <FormHint inline>拖拽 = 区块内排序；次数 = 重复渲染</FormHint>
-      </div>
-      <div v-else class="editor-toolbar" style="padding-bottom: 10px">
-        <FormHint inline>拖入片段布局，模板 css + 片段 css 就近合并看真实效果</FormHint>
-      </div>
-      <ComposeEditor
-        v-if="composeSlotDefs.length"
-        v-model="composePlacements"
-        :slots="composeSlotDefs"
-        :fragment-options="composeFragmentOptions"
-        class="compose-editor-dialog"
-        @edit-data="openPlacementData"
-      />
-      <el-empty v-else description="先选择宿主模板" :image-size="60" />
-      <template #footer>
-        <el-button @click="composeOpen = false">取消</el-button>
-        <el-button type="primary" @click="closeComposeDialog">完成并刷新预览</el-button>
+    <!-- 统一组装弹框（2026-11-25 三场景整合：template/fragment 外部受控，复用 ComposeDialog） -->
+    <ComposeDialog
+      :visible="composeOpen"
+      :scene="selected?.data.cat === 'fragment' ? 'fragment' : 'template'"
+      title="片段布局配置"
+      :slots="composeSlotDefs"
+      :fragment-options="composeFragmentOptions"
+      :placements="composePlacements"
+      :preview-html="previewHtml"
+      @update:visible="(v: boolean) => { composeOpen = v; if (!v) closeComposeDialog() }"
+      @update:placements="(v) => (composePlacements = v)"
+      @edit-data="openPlacementData"
+      @confirm="closeComposeDialog"
+      @export="onComposeExport"
+      @copy="onComposeCopy"
+    >
+      <template #selector-extra>
+        <div v-if="selected?.data.cat === 'fragment'" class="editor-toolbar" style="padding-bottom: 10px">
+          <FormHint inline>宿主模板</FormHint>
+          <el-select
+            size="small"
+            filterable
+            style="width: 300px"
+            :model-value="composeTemplate"
+            placeholder="选择宿主模板（组合预览）"
+            @update:model-value="(v: string) => { composeTemplate = v; onHostTemplateChange(v) }"
+          >
+            <el-option v-for="t in hostTemplateOptions" :key="t.id" :value="t.id" :label="t.label" />
+          </el-select>
+        </div>
+        <div v-else class="editor-toolbar" style="padding-bottom: 10px">
+          <FormHint inline>拖入片段布局，模板 css + 片段 css 就近合并看真实效果</FormHint>
+        </div>
       </template>
-    </el-dialog>
+    </ComposeDialog>
   </div>
 </template>
 

@@ -1,0 +1,229 @@
+<script setup lang="ts">
+/**
+ * 统一组装弹框（2026-11-25 需求 3.9-3.13）：邮件组装 / 模板预览 / 片段预览三场景共用一套布局。
+ * - 顶部两行联动下拉：来源+品牌 / 模板+版本（mail 场景；template/fragment 由外部受控适配）
+ * - tab：插槽块（默认，ComposeEditor 含折叠）/ 组装预览（iframe srcdoc）
+ * - 底部：mail=[取消/确认(保存数据)/生成(先存再生成)/导出(依赖生成)/复制(final)]
+ *          template/fragment=[取消/关闭/确认(保存并刷新预览)/导出/复制]
+ * mail 场景内部走 useComposeDialog 自管；template/fragment 由外部 props 受控。
+ */
+import { computed } from 'vue'
+import { FormHint } from '@sshk/ui-kit'
+import { CodeEditor } from '@sshk/code-editor'
+import ComposeEditor from './ComposeEditor.vue'
+import SampleForm from './SampleForm.vue'
+import { useComposeDialog } from '../composables/useComposeDialog'
+import type { MailRow } from '../tool-api'
+import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
+
+type Scene = 'mail' | 'template' | 'fragment'
+
+const props = withDefaults(defineProps<{
+  visible: boolean
+  scene: Scene
+  mail?: MailRow | null
+  /** 外部受控（template/fragment 场景）：插槽清单 */
+  slots?: SlotDef[]
+  fragmentOptions?: FragmentOption[]
+  placements?: PlacementItem[]
+  previewHtml?: string
+  /** 外部受控标题 */
+  title?: string
+}>(), { mail: null, slots: () => [], fragmentOptions: () => [], placements: () => [], previewHtml: '', title: '' })
+
+const emit = defineEmits<{
+  (e: 'update:visible', v: boolean): void
+  (e: 'saved', id: string): void
+  (e: 'update:placements', v: PlacementItem[]): void
+  (e: 'editData', item: PlacementItem): void
+  (e: 'confirm'): void
+  (e: 'export'): void
+  (e: 'copy'): void
+  (e: 'close'): void
+}>()
+
+// mail 场景：内部 composable 自管（传 mail 快照，saved 上抛）
+const mailDeps = useComposeDialog({
+  visible: () => props.visible && props.scene === 'mail',
+  mail: () => props.mail ?? null,
+  onSaved: (id) => emit('saved', id),
+})
+// 解构成顶层 ref：模板只自动解包顶层 ref，不解析 mailDeps.xxx 的嵌套 ref
+const {
+  draft, mailDataText, previewing, saving, activeTab: innerTab,
+  originOptions, brandOptions, templateBrandOptions, placementData,
+} = mailDeps
+
+// 场景统一视图：mail 取内部态，template/fragment 取外部 props
+const slots = computed<SlotDef[]>(() => (props.scene === 'mail' ? mailDeps.templateSlots.value : props.slots))
+const fragmentOptions = computed<FragmentOption[]>(() => (props.scene === 'mail' ? mailDeps.fragmentOptions.value : props.fragmentOptions))
+const placements = computed<PlacementItem[]>(() => (props.scene === 'mail' ? mailDeps.placements.value : props.placements))
+const previewHtml = computed(() => (props.scene === 'mail' ? mailDeps.previewHtml.value : props.previewHtml))
+/** tab 可写代理：mail 走内部态，template/fragment 外部受控也存一份本地态 */
+const activeTab = computed<'slots' | 'preview'>({
+  get: () => innerTab.value,
+  set: (v) => { innerTab.value = v },
+})
+
+function updatePlacements(v: PlacementItem[]): void {
+  if (props.scene === 'mail') mailDeps.placements.value = v
+  else emit('update:placements', v)
+}
+function switchTab(tab: 'slots' | 'preview'): void {
+  if (props.scene === 'mail') mailDeps.switchTab(tab)
+  else if (tab === 'preview') emit('confirm') // 外部受控：切预览触发父级保存并刷新预览
+}
+
+const titleText = computed(() => props.title || (props.scene === 'mail' ? (props.mail ? '编辑邮件' : '新增邮件') : props.scene === 'template' ? '模板预览' : '片段预览'))
+const isMail = computed(() => props.scene === 'mail')
+
+function doClose(): void {
+  // telesсope dialog 关闭统一走 doClose（v-model setter no-op，避免最小化等形态回发误关）
+  emit('update:visible', false)
+  emit('close')
+}
+function onConfirm(): void {
+  if (isMail.value) void mailDeps.doConfirm()
+  else emit('confirm') // template/fragment：保存并刷新预览，不关弹框
+}
+async function onGenerate(): Promise<void> {
+  if (!isMail.value) return
+  await mailDeps.doGenerate()
+}
+function onExport(): void {
+  if (isMail.value) void mailDeps.doExport(props.mail ?? null)
+  else emit('export') // 外部场景：导出当前预览，父级承接
+}
+function onCopy(): void {
+  if (isMail.value) void mailDeps.doCopy(props.mail ?? null)
+  else emit('copy') // 外部场景：复制当前预览，父级承接
+}
+function openEditData(item: PlacementItem): void {
+  if (isMail.value) mailDeps.openPlacementData(item)
+  else emit('editData', item) // template/fragment：交父级打开其 placement 数据弹框
+}
+function saveEditData(): void {
+  if (isMail.value) mailDeps.savePlacementData()
+}
+</script>
+
+<template>
+  <el-dialog
+    :model-value="visible"
+    :title="titleText"
+    width="1060px"
+    top="4vh"
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
+    @update:model-value="(v: boolean) => { if (!v) doClose() }"
+  >
+    <!-- 场景特有选择器（template/fragment 的宿主模板选择等） -->
+    <slot name="selector-extra" />
+
+    <!-- mail 场景顶部两行联动下拉 -->
+    <template v-if="isMail">
+      <div class="selector-row">
+        <el-form-item label="来源" class="sel-item">
+          <el-select v-model="draft.origin" size="small" style="width: 130px" @change="mailDeps.onOriginChange">
+            <el-option v-for="o in originOptions" :key="o.value" :value="o.value" :label="o.label" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="品牌" class="sel-item">
+          <el-select v-model="draft.brandId" size="small" filterable style="width: 220px" placeholder="选择品牌" @change="mailDeps.onBrandChange">
+            <el-option v-for="b in brandOptions" :key="b.value" :value="b.value" :label="b.label" />
+          </el-select>
+        </el-form-item>
+      </div>
+      <div class="selector-row">
+        <el-form-item label="模板" class="sel-item">
+          <el-select v-model="draft.templateVersionId" size="small" filterable style="width: 320px" placeholder="选择模板版本" @change="mailDeps.onTemplateChange">
+            <el-option v-for="t in templateBrandOptions" :key="t.value" :value="t.value" :label="t.label" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="邮件名" class="sel-item">
+          <el-input v-model="draft.name" size="small" clearable placeholder="邮件名称" style="width: 200px" />
+        </el-form-item>
+      </div>
+    </template>
+
+    <el-tabs v-model="activeTab" class="compose-tabs" @tab-change="(name: string | number) => switchTab(name as 'slots' | 'preview')">
+      <el-tab-pane label="插槽块" name="slots">
+        <div class="slot-layout">
+          <div class="slot-editor">
+            <ComposeEditor
+              v-if="slots.length"
+              :model-value="placements"
+              :slots="slots"
+              :fragment-options="fragmentOptions"
+              @update:model-value="updatePlacements"
+              @edit-data="openEditData"
+            />
+            <el-empty v-else description="请先选择模板版本（模板未声明 slots 区块）" :image-size="70" />
+          </div>
+          <div v-if="isMail" class="slot-data">
+            <div class="data-head">模板数据</div>
+            <CodeEditor
+              :model-value="mailDataText"
+              language="json"
+              height="100%"
+              @update:model-value="(v: string) => (mailDataText = v)"
+              @save="mailDeps.onDataEditorSave()"
+            />
+            <FormHint>片段未单独填数据时的回落</FormHint>
+          </div>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="组装预览" name="preview">
+        <div class="preview-bar">
+          <FormHint inline>草稿渲染（不落库）</FormHint>
+          <el-button v-if="isMail" size="small" type="success" plain :loading="previewing" @click="mailDeps.refreshPreview">刷新预览</el-button>
+        </div>
+        <iframe v-if="previewHtml" class="preview-frame" :srcdoc="previewHtml" />
+        <el-empty v-else description="切到本 tab 自动生成预览" :image-size="70" />
+      </el-tab-pane>
+    </el-tabs>
+
+    <template #footer>
+      <div class="footer">
+        <el-button @click="doClose">取消</el-button>
+        <span class="spacer" />
+        <template v-if="isMail">
+          <el-button type="primary" :loading="saving" @click="onConfirm">确认</el-button>
+          <el-button type="success" :loading="saving" @click="onGenerate">生成</el-button>
+          <el-button type="warning" @click="onExport">导出</el-button>
+          <el-button type="warning" @click="onCopy">复制</el-button>
+        </template>
+        <template v-else>
+          <el-button type="primary" @click="onConfirm">确认（保存并刷新预览）</el-button>
+          <el-button type="warning" @click="onExport">导出</el-button>
+          <el-button type="warning" @click="onCopy">复制</el-button>
+        </template>
+      </div>
+    </template>
+  </el-dialog>
+
+  <!-- placement 独立数据编辑（mail 场景） -->
+  <el-dialog v-if="isMail" v-model="placementData.open" title="片段数据" width="560px" append-to-body :close-on-click-modal="false" :close-on-press-escape="false">
+    <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
+    <CodeEditor v-else :model-value="placementData.yamlText" language="json" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" @save="saveEditData" />
+    <template #footer>
+      <el-button @click="placementData.open = false">取消</el-button>
+      <el-button type="primary" @click="saveEditData">保存并刷新预览</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<style scoped>
+.selector-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.sel-item { margin-bottom: 0; }
+.compose-tabs :deep(.el-tabs__content) { padding-top: 8px; }
+.slot-layout { display: flex; gap: 12px; height: 460px; }
+.slot-editor { flex: 1; min-width: 0; overflow: auto; }
+.slot-data { width: 34%; flex: none; display: flex; flex-direction: column; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; padding: 6px; min-width: 0; }
+.data-head { font-size: 13px; font-weight: 600; padding-bottom: 4px; }
+.preview-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
+.preview-frame { width: 100%; height: 470px; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
+.footer { display: flex; align-items: center; }
+.footer .spacer { flex: 1; }
+.footer .el-button + .el-button { margin-left: 8px; }
+</style>

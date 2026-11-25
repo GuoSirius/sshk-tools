@@ -8,7 +8,7 @@ import { computed, ref, watch } from 'vue'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
 import { VueDraggable } from 'vue-draggable-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Rank } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Delete, Rank } from '@element-plus/icons-vue'
 import { FormHint } from '@sshk/ui-kit'
 
 /**
@@ -28,6 +28,15 @@ const emit = defineEmits<{
 const pickFragment = ref('')
 const pickSlot = ref('')
 let uidSeed = 0
+
+/** 区块展开折叠（2026-11-25 需求 3.12）：本地态、默认全展开，不影响 placement 数据 */
+const collapsedKeys = ref<Set<string>>(new Set())
+function toggleBlock(key: string): void {
+  const next = new Set(collapsedKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedKeys.value = next
+}
 
 /** 落点区块选定后，片段下拉按 slot.type ↔ 片段 type 匹配过滤（无 type 约束时全给） */
 const pickOptions = computed<FragmentOption[]>(() => {
@@ -121,12 +130,15 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
     <div class="blocks">
       <div v-for="s in slots" :key="s.key" class="block">
         <div class="block-head">
+          <el-button size="small" text class="fold-btn" :aria-label="collapsedKeys.has(s.key) ? '展开区块' : '折叠区块'" @click="toggleBlock(s.key)">
+            <el-icon><ArrowDown v-if="!collapsedKeys.has(s.key)" /><ArrowRight v-else /></el-icon>
+          </el-button>
           <span class="block-name">{{ s.label || s.key }}</span>
           <code class="block-key">{{ s.key }}</code>
           <span class="block-count">{{ itemsOf(s.key).length }} 项</span>
         </div>
         <VueDraggable
-          v-if="itemsOf(s.key).length"
+          v-if="!collapsedKeys.has(s.key) && itemsOf(s.key).length"
           :model-value="itemsOf(s.key)"
           :handle="'.handle'"
           :animation="180"
@@ -154,7 +166,7 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
             <el-button v-if="!readonly" size="small" text type="danger" :icon="Delete" @click="removePlacement(p)" />
           </div>
         </VueDraggable>
-        <div v-else class="block-empty">空区块 —— 上方选择片段与落点后「添加」</div>
+        <div v-else-if="!collapsedKeys.has(s.key)" class="block-empty">空区块 —— 上方选择片段与落点后「添加」</div>
       </div>
     </div>
   </div>
@@ -167,7 +179,8 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
 .pick-sm { width: 130px; }
 .blocks { display: flex; flex-direction: column; gap: 8px; padding-right: 3px; overflow: auto; min-height: 0; }
 .block { flex: none; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; overflow: hidden; }
-.block-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(128,128,128,.08); font-size: 13px; }
+.block-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(128,128,128,.08); font-size: 13px; }
+.fold-btn { flex: none; width: 18px; height: 18px; padding: 0; margin-right: 2px; }
 .block-name { font-weight: 600; }
 .block-key { font-size: 11px; opacity: .6; }
 .block-count { margin-left: auto; font-size: 12px; opacity: .6; }

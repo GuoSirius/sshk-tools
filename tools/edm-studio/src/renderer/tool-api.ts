@@ -16,6 +16,8 @@ interface SshkOsApi {
   clipboardWrite(text: string): Promise<unknown>
   shellOpen(target: string): Promise<unknown>
   pickSave(opts?: { fileName?: string; extensions?: string[]; defaultPath?: string }): Promise<string>
+  /** 文本写盘（路径来自 pickSave）；template/fragment 预览导出用 */
+  writeText(path: string, content: string): Promise<boolean>
 }
 interface SshkLlmApi {
   providers(): Promise<LlmProviderLite[]>
