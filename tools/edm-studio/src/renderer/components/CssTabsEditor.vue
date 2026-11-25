@@ -4,6 +4,7 @@
  * 隐藏 pane 内挂载 Monaco 会失效，故编辑器常驻、tab 只做切换（原注释迁移）。
  */
 import { computed } from 'vue'
+import { MagicStick } from '@element-plus/icons-vue'
 import { CodeEditor } from '@sshk/code-editor'
 import { FormHint } from '@sshk/ui-kit'
 import type { CssTab } from '../composables/useCssTabs'
@@ -18,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:active', v: string): void
   (e: 'edit', file: string, v: string): void
+  (e: 'format', tab: CssTab): void
   (e: 'save', tab: CssTab): void
   (e: 'save-all'): void
   (e: 'close', file: string): void
@@ -40,6 +42,7 @@ function basename(p: string): string {
     <template v-if="activeTab">
       <div class="editor-toolbar">
         <FormHint inline>外置 css：渲染时 &lt;link&gt; 引入（就近链，越深优先级越高）</FormHint>
+        <el-button size="small" type="warning" plain :icon="MagicStick" :disabled="!canEdit" @click="emit('format', activeTab)">格式化</el-button>
         <el-button size="small" type="primary" class="push-right" @click="emit('save', activeTab)">保存</el-button>
         <el-button size="small" type="success" plain :disabled="!tabs.some((x) => x.dirty)" @click="emit('save-all')">保存全部</el-button>
       </div>

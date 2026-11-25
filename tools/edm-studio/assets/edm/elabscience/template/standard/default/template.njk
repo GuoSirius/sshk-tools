@@ -2,22 +2,71 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <meta http-equiv="x-ua-compatible" content="IE=Edge,chrome=1" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover"
+    />
+    <!-- 上述3个meta标签*必须*放在最前面，任何其他内容都*必须*跟随其后！ -->
+    <meta name="render" content="webkit|ie-comp|ie-stand" />
+
+    <!-- 禁止页面缓存 -->
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Cache-Control" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <!-- IE10 and IE11 on Windows Phone have a small tap highlight when you tap an element. Adding this meta tag removes this. -->
+    <meta name="msapplication-tap-highlight" content="no" />
+
     <title>{{ subject }}</title>
-    <link rel="stylesheet" href="@system/css/reset.css">
-    <link rel="stylesheet" href="@root/elabscience/template/standard/css/template.css">
-    <link rel="stylesheet" href="@root/elabscience/css/palette.css">
-    <link rel="stylesheet" href="@root/elabscience/css/components.css">
-    <link rel="stylesheet" href="./css/standard.css">
+    <meta name="keywords" content="" />
+    <meta name="description" content="" />
+
+    {% if meta.favicon %}
+    <link rel="shortcut icon" href="{{ meta.favicon }}" />
+    {% endif %}
+
+    <link rel="stylesheet" href="@system/css/reset.css" />
+    <link rel="stylesheet" href="@root/elabscience/template/standard/css/template.css" />
+    <link rel="stylesheet" href="@root/elabscience/css/palette.css" />
+    <link rel="stylesheet" href="@root/elabscience/css/components.css" />
+    <link rel="stylesheet" href="./css/standard.css" />
   </head>
   <body>
-    <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ preheader }}</div>
+    <!-- 1) 真正的预览文案：必须是 body 第一个文本节点 -->
+    <div
+      style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;"
+    >
+      {{ preheader }}
+    </div>
+    
+    <!-- 2) 填充：挡住正文/退订链接被拼进预览行 -->
+    <div
+      style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;overflow:hidden;mso-hide:all;"
+      aria-hidden="true"
+    >
+      <!-- 重复十几组 -->
+      {% for i in range(0, 48) %} &#847;&zwnj;&nbsp;&#8199;&shy;&#847;&zwnj;&nbsp;&#8199;&shy;&#847;&zwnj;&nbsp;&#8199;&shy;
+      {% endfor %}
+    </div>
+
     <table cellspacing="0" cellpadding="0" border="0" id="app" class="app" role="presentation">
-      <colgroup><col width="10px" /><col /><col /><col width="10px" /></colgroup>
+      <colgroup>
+        <col width="10px" />
+        <col />
+        <col />
+        <col width="10px" />
+      </colgroup>
       <tbody>
-        <tr><td colspan="4">{{ slot_header | safe }}</td></tr>
-        <tr><td colspan="4">{{ slot_body | safe }}</td></tr>
-        <tr><td colspan="4">{{ slot_footer | safe }}</td></tr>
+        <tr>
+          <td colspan="4">{{ slot_header | safe }}</td>
+        </tr>
+        <tr>
+          <td colspan="4">{{ slot_body | safe }}</td>
+        </tr>
+        <tr>
+          <td colspan="4">{{ slot_footer | safe }}</td>
+        </tr>
       </tbody>
     </table>
   </body>

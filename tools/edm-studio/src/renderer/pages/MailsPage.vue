@@ -85,7 +85,8 @@ async function onNameConfirm(): Promise<void> {
   nameDialog.saving = true
   try {
     if (nameDialog.editing) {
-      await api('mail:save', { _id: nameDialog.editing._id, name, brandId: nameDialog.editing.brandId, templateVersionId: nameDialog.editing.templateVersionId, bindings: nameDialog.editing.bindings ?? [], data: nameDialog.editing.data ?? {} })
+      // 改名走独立通道：不碰 bindings/品牌，跨品牌校验只在组装环节（#198 ②）
+      await api('mail:rename', { _id: nameDialog.editing._id, name })
       await loadMails()
       nameDialog.open = false
       ElMessage.success('邮件名称已更新')

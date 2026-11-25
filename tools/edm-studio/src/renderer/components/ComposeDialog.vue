@@ -51,7 +51,7 @@ const mailDeps = useComposeDialog({
 // 解构成顶层 ref：模板只自动解包顶层 ref，不解析 mailDeps.xxx 的嵌套 ref
 const {
   draft, mailDataText, previewing, saving, activeTab: innerTab,
-  originOptions, brandOptions, templateBrandOptions, placementData,
+  originOptions, brandOptions, templateOptions, versionOptions, placementData,
 } = mailDeps
 
 // 场景统一视图：mail 取内部态，template/fragment 取外部 props
@@ -113,6 +113,7 @@ function saveEditData(): void {
     :title="titleText"
     width="1060px"
     top="4vh"
+    class="compose-dialog"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     @update:model-value="(v: boolean) => { if (!v) doClose() }"
@@ -120,28 +121,28 @@ function saveEditData(): void {
     <!-- 场景特有选择器（template/fragment 的宿主模板选择等） -->
     <slot name="selector-extra" />
 
-    <!-- mail 场景顶部两行联动下拉 -->
+    <!-- mail 场景顶部两行联动下拉（#198 ④⑤）：两列等宽栅格；模板族/版本拆两个下拉；组装弹框不改邮件名 -->
     <template v-if="isMail">
-      <div class="selector-row">
+      <div class="selector-grid">
         <el-form-item label="来源" class="sel-item">
-          <el-select v-model="draft.origin" size="small" style="width: 130px" @change="mailDeps.onOriginChange">
+          <el-select v-model="draft.origin" size="small" @change="mailDeps.onOriginChange">
             <el-option v-for="o in originOptions" :key="o.value" :value="o.value" :label="o.label" />
           </el-select>
         </el-form-item>
         <el-form-item label="品牌" class="sel-item">
-          <el-select v-model="draft.brandId" size="small" filterable style="width: 220px" placeholder="选择品牌" @change="mailDeps.onBrandChange">
+          <el-select v-model="draft.brandId" size="small" filterable placeholder="选择品牌" @change="mailDeps.onBrandChange">
             <el-option v-for="b in brandOptions" :key="b.value" :value="b.value" :label="b.label" />
           </el-select>
         </el-form-item>
-      </div>
-      <div class="selector-row">
         <el-form-item label="模板" class="sel-item">
-          <el-select v-model="draft.templateVersionId" size="small" filterable style="width: 320px" placeholder="选择模板版本" @change="mailDeps.onTemplateChange">
-            <el-option v-for="t in templateBrandOptions" :key="t.value" :value="t.value" :label="t.label" />
+          <el-select v-model="draft.templateId" size="small" filterable placeholder="选择模板" :disabled="!draft.brandId" @change="mailDeps.onTemplateFamilyChange">
+            <el-option v-for="t in templateOptions" :key="t.value" :value="t.value" :label="t.label" />
           </el-select>
         </el-form-item>
-        <el-form-item label="邮件名" class="sel-item">
-          <el-input v-model="draft.name" size="small" clearable placeholder="邮件名称" style="width: 200px" />
+        <el-form-item label="版本" class="sel-item">
+          <el-select v-model="draft.templateVersionId" size="small" filterable placeholder="选择版本" :disabled="!draft.templateId" @change="mailDeps.onTemplateChange">
+            <el-option v-for="v in versionOptions" :key="v.value" :value="v.value" :label="v.label" />
+          </el-select>
         </el-form-item>
       </div>
     </template>
@@ -161,7 +162,10 @@ function saveEditData(): void {
             <el-empty v-else description="请先选择模板版本（模板未声明 slots 区块）" :image-size="70" />
           </div>
           <div v-if="isMail" class="slot-data">
-            <div class="data-head">模板数据</div>
+            <div class="data-head">
+              模板数据
+              <FormHint detail="邮件级模板变量数据：模板 njk 里的 {{ 变量 }} 从这里取值；每个片段若未填「片段数据」，也会回落到这里。空 {} 表示尚未填写。" />
+            </div>
             <CodeEditor
               :model-value="mailDataText"
               language="json"
@@ -169,7 +173,7 @@ function saveEditData(): void {
               @update:model-value="(v: string) => (mailDataText = v)"
               @save="mailDeps.onDataEditorSave()"
             />
-            <FormHint>片段未单独填数据时的回落</FormHint>
+            <FormHint inline>片段未单独填数据时的回落；Ctrl+S 刷新预览</FormHint>
           </div>
         </div>
       </el-tab-pane>
@@ -214,16 +218,35 @@ function saveEditData(): void {
 </template>
 
 <style scoped>
-.selector-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
-.sel-item { margin-bottom: 0; }
-.compose-tabs :deep(.el-tabs__content) { padding-top: 8px; }
-.slot-layout { display: flex; gap: 12px; height: 460px; }
-.slot-editor { flex: 1; min-width: 0; overflow: auto; }
-.slot-data { width: 34%; flex: none; display: flex; flex-direction: column; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; padding: 6px; min-width: 0; }
+/* 顶部两列等宽栅格（#198 ⑤）：selector-extra 场景特有选择器也纳入等宽列 */
+.selector-grid { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; row-gap: 4px; }
+.sel-item { margin-bottom: 0; min-width: 0; }
+.sel-item :deep(.el-select), .sel-item :deep(.el-input) { width: 100%; }
+
+.compose-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.compose-tabs :deep(.el-tabs__header) { flex: none; margin-bottom: 0; }
+.compose-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; padding-top: 8px; }
+.compose-tabs :deep(.el-tab-pane) { height: 100%; }
+
+/* 滚动区仅限插槽编辑区 / 组装预览（#198 ⑥）：弹框整体不滚，header/footer/选择器固定 */
+.slot-layout { display: flex; gap: 12px; height: 100%; min-height: 0; }
+.slot-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+.slot-data { width: 34%; flex: none; display: flex; flex-direction: column; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; padding: 6px; min-width: 0; min-height: 0; }
 .data-head { font-size: 13px; font-weight: 600; padding-bottom: 4px; }
+/* CodeEditor 根节点带 inline height:100%，与标题/说明相加会溢出；强覆盖交给 flex 撑满 */
+.slot-data :deep(.code-editor) { flex: 1 1 auto; min-height: 0; height: 0 !important; }
 .preview-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
-.preview-frame { width: 100%; height: 470px; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
+.preview-frame { width: 100%; height: 100%; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
 .footer { display: flex; align-items: center; }
 .footer .spacer { flex: 1; }
 .footer .el-button + .el-button { margin-left: 8px; }
+</style>
+
+<!-- 非 scoped 全局块：弹框 teleport 到 body，scoped 数据属性打不到弹框节点（本项目既定口径） -->
+<style>
+/* 组装弹框固定高度（#198 ③）：全项目硬性要求——大内容弹框给视口百分比高度，
+   滚动交给内部自绘区（slot-editor / preview），弹框整体与 body 不滚动。
+   先例 ToolManifestDialog .manifest-shell { height: min(66vh, 640px) }。 */
+.el-dialog.compose-dialog { height: min(84vh, 780px); max-height: none; overflow: hidden; }
+.el-dialog.compose-dialog .el-dialog__body { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; }
 </style>

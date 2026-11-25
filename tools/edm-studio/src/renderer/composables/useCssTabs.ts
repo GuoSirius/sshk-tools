@@ -1,5 +1,6 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { formatCss } from '@sshk/code-editor/format'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -34,6 +35,8 @@ export interface CssTabs {
   /** 重命名目录后迁移已开 tab 的 file/id（tab 不丢，未保存内容保留） */
   renameTabsUnder(oldPath: string, newPath: string): void
   onCssEdit(file: string, v: string): void
+  /** 格式化当前 css tab（仅改编辑器文本并标脏，需再保存落盘） */
+  formatCssTab(tab: CssTab): Promise<void>
   saveCss(tab: CssTab): Promise<void>
   saveAllCss(): Promise<void>
   closeCssTab(id: string): Promise<void>
@@ -75,6 +78,17 @@ export function useCssTabs(deps: CssTabsDeps): CssTabs {
       tab.dirty = true
     }
   }
+  async function formatCssTab(tab: CssTab): Promise<void> {
+    const next = await formatCss(tab.content)
+    if (next === tab.content) {
+      ElMessage.info('样式格式无需调整')
+      return
+    }
+    tab.content = next
+    tab.dirty = true
+    ElMessage.success('样式已格式化，点「保存」写盘')
+  }
+
   async function saveCss(tab: CssTab): Promise<void> {
     try {
       await deps.write(tab.file, tab.content, tab.source)
@@ -101,7 +115,7 @@ export function useCssTabs(deps: CssTabsDeps): CssTabs {
     if (activeCss.value === id) activeCss.value = cssTabs.value[0]?.id ?? ''
   }
 
-  return { cssTabs, activeCss, activeTab, openCssTab, dropTabsUnder, renameTabsUnder, onCssEdit, saveCss, saveAllCss, closeCssTab }
+  return { cssTabs, activeCss, activeTab, openCssTab, dropTabsUnder, renameTabsUnder, onCssEdit, formatCssTab, saveCss, saveAllCss, closeCssTab }
 }
 
 /** 路径末段（本地 helper：与 useContentTree.basename 同实现） */

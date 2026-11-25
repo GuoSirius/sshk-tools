@@ -8,6 +8,7 @@ import { isCodeReadonly, META_CODE_MODE, resolveMetaCode, validateMetaIdentity }
 import { foreignPolicyIds, toStringList } from '../../core/fragment-policy'
 import { api } from '../tool-api'
 import { uploadInlineImages } from '../upload.js'
+import { formatCss, formatNjk } from '@sshk/code-editor/format'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -53,7 +54,11 @@ export interface NodeDetail {
   switchSampleMode(mode: 'form' | 'data' | 'design'): void
   switchMetaMode(mode: 'form' | 'data'): void
   saveMeta(): Promise<void>
+  /** 格式化 njk 源码（模板标记原样保留，仅改编辑器文本，需再点保存落盘） */
+  formatSource(): Promise<void>
   saveSource(): Promise<void>
+  /** 格式化版本内联 style.css（仅改编辑器文本，需再点保存落盘） */
+  formatStyle(): Promise<void>
   saveStyle(): Promise<void>
   saveSample(): Promise<void>
   /** 字段设计器写回：把 fields 外科手术式替换进 meta.yaml（保留其余键与注释） */
@@ -336,6 +341,16 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     }
   }
 
+  async function formatSource(): Promise<void> {
+    const next = await formatNjk(sourceText.value)
+    if (next === sourceText.value) {
+      ElMessage.info('源码格式无需调整')
+      return
+    }
+    sourceText.value = next
+    ElMessage.success('源码已格式化，点「保存」写盘')
+  }
+
   async function saveSource(): Promise<void> {
     const node = deps.selected.value
     if (!node?.data.sourcePath) return
@@ -347,6 +362,16 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }
+  }
+
+  async function formatStyle(): Promise<void> {
+    const next = await formatCss(styleText.value)
+    if (next === styleText.value) {
+      ElMessage.info('样式格式无需调整')
+      return
+    }
+    styleText.value = next
+    ElMessage.success('样式已格式化，点「保存」写盘')
   }
 
   /** 版本级内联样式：<verDir>/style.css，渲染时最后注入（优先级最高） */
@@ -439,6 +464,6 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     sampleMode, sampleSchema, sampleObj, form, showForm, faviconHint, dirNameOf,
     loadNode, renderPreview,
     switchSampleMode, switchMetaMode,
-    saveMeta, saveSource, saveStyle, saveSample, saveFields,
+    saveMeta, formatSource, saveSource, formatStyle, saveStyle, saveSample, saveFields,
   }
 }

@@ -104,6 +104,18 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     return repo.update<Mail>('mails', id, meta)
   })
 
+  // 仅改邮件名（#198 ②）：纯元信息改动，不碰 bindings / 品牌 / 模板，不做跨品牌校验；
+  // 跨品牌混用只在组装（mail:generate/mail:preview/mail:save 全量保存）时检测，改名不误伤。
+  handlers.set('mail:rename', async (data: Payload) => {
+    const id = str(data, '_id')
+    const name = str(data, 'name').trim()
+    if (!id) throw new AppError('邮件 id 必填', 'validation')
+    if (!name) throw new AppError('邮件名称必填', 'validation')
+    const mail = await repo.get<Mail>('mails', id)
+    if (!mail) throw new AppError('邮件不存在', 'io')
+    return repo.update<Mail>('mails', id, { name })
+  })
+
   handlers.set('mail:remove', async (data: Payload) => {
     const id = str(data, '_id')
     await repo.archive('mails', id)

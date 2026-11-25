@@ -15,6 +15,8 @@ import type { MailRow, VersionRow } from '../tool-api'
 import { brands, fragments, frgvVersions, templates, tplVersionsAll } from '../store'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
 import { normalizeFields, type FieldDef } from '../sample-schema'
+import { composeLabel, ensureComposeLabels } from './useComposeLabels'
+import { formatNodeLabel } from './node-label'
 
 export type ComposeScene = 'mail' | 'template' | 'fragment'
 
@@ -39,8 +41,9 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     name: string
     origin: 'system' | 'custom'
     brandId: string
+    templateId: string
     templateVersionId: string
-  }>({ _id: '', name: '', origin: 'custom', brandId: '', templateVersionId: '' })
+  }>({ _id: '', name: '', origin: 'custom', brandId: '', templateId: '', templateVersionId: '' })
   const placements = ref<PlacementItem[]>([])
   const mailDataText = ref('{}')
   const previewHtml = ref('')
@@ -58,19 +61,26 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
   const brandOptions = computed(() =>
     brands.value
       .filter((b) => (b as { origin?: string }).origin === draft.value.origin)
-      .map((b) => ({ value: b._id, label: `${b.name}（${b.code}）` })),
+      .map((b) => ({ value: b._id, label: composeLabel('brands', b._id, formatNodeLabel(b.code, b.name)) })),
   )
-  const allBrands = computed(() => brands.value.map((b) => ({ value: b._id, label: `${b.name}（${b.code}）` })))
+  const allBrands = computed(() =>
+    brands.value.map((b) => ({ value: b._id, label: composeLabel('brands', b._id, formatNodeLabel(b.code, b.name)) })),
+  )
 
-  const templateBrandOptions = computed(() =>
+  /** 模板族下拉（#198 ④）：目录名（meta.name），按来源+品牌过滤 */
+  const templateOptions = computed(() =>
+    templates.value
+      .filter((t) => (t as { origin?: string }).origin === draft.value.origin)
+      .filter((t) => (t as { brandId?: string }).brandId === draft.value.brandId)
+      .map((t) => ({ value: t._id, label: composeLabel('templates', t._id, t.name) })),
+  )
+
+  /** 版本下拉（#198 ④）：与模板拆开，目录名（meta.name），按所选模板族过滤 */
+  const versionOptions = computed(() =>
     tplVersionsAll.value
-      .filter((v) => v.brandId === draft.value.brandId)
-      .map((v) => ({ value: v._id, label: `${templateName(v.templateId ?? '')} / ${v.label ?? `v${v.version}`}` })),
+      .filter((v) => v.templateId === draft.value.templateId && v.brandId === draft.value.brandId)
+      .map((v) => ({ value: v._id, label: composeLabel('versions', v._id, formatNodeLabel(v.label || `v${v.version}`, v.name)) })),
   )
-
-  function templateName(templateId: string): string {
-    return templates.value.find((t) => t._id === templateId)?.name ?? templateId.slice(0, 10)
-  }
 
   const currentTv = computed<VersionRow | undefined>(() => tplVersionsAll.value.find((v) => v._id === draft.value.templateVersionId))
   const templateSlots = computed<SlotDef[]>(() =>
@@ -107,10 +117,12 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     () => deps.visible(),
     (open) => {
       if (!open) return
+      void ensureComposeLabels() // 异步补全三级下拉的「目录名（meta.name）」，首开加载一次
       const m = deps.mail()
+      const tv = m ? tplVersionsAll.value.find((v) => v._id === m.templateVersionId) : undefined
       draft.value = m
-        ? { _id: m._id, name: String(m.name ?? ''), origin: m.origin ?? 'custom', brandId: m.brandId ?? '', templateVersionId: m.templateVersionId ?? '' }
-        : { _id: '', name: '', origin: 'custom', brandId: '', templateVersionId: '' }
+        ? { _id: m._id, name: String(m.name ?? ''), origin: m.origin ?? 'custom', brandId: m.brandId ?? '', templateId: tv?.templateId ?? '', templateVersionId: m.templateVersionId ?? '' }
+        : { _id: '', name: '', origin: 'custom', brandId: '', templateId: '', templateVersionId: '' }
       placements.value = m ? toPlacements(m.bindings) : []
       mailDataText.value = m?.data ? JSON.stringify(m.data, null, 2) : '{}'
       previewHtml.value = ''
@@ -120,14 +132,21 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
 
   function onOriginChange(): void {
     draft.value.brandId = ''
+    draft.value.templateId = ''
     draft.value.templateVersionId = ''
     placements.value = []
     previewHtml.value = ''
   }
-  /** 跨品牌硬规定：切品牌清空模板与片段布局 */
+  /** 跨品牌硬规定：切品牌清空模板族/版本与片段布局 */
   function onBrandChange(): void {
+    draft.value.templateId = ''
     draft.value.templateVersionId = ''
     placements.value = []
+    previewHtml.value = ''
+  }
+  /** 切模板族：清空版本（上级变清空下级），保留布局待版本定了再按 slot 校正 */
+  function onTemplateFamilyChange(): void {
+    draft.value.templateVersionId = ''
     previewHtml.value = ''
   }
   function onTemplateChange(): void {
@@ -291,8 +310,8 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
   return {
     scene: 'mail' as ComposeScene,
     draft, placements, mailDataText, previewHtml, previewing, saving, activeTab,
-    originOptions, brandOptions, allBrands, templateBrandOptions, templateSlots, fragmentOptions, currentTv,
-    onOriginChange, onBrandChange, onTemplateChange, switchTab, onDataEditorSave,
+    originOptions, brandOptions, allBrands, templateOptions, versionOptions, templateSlots, fragmentOptions, currentTv,
+    onOriginChange, onBrandChange, onTemplateFamilyChange, onTemplateChange, switchTab, onDataEditorSave,
     refreshPreview, buildPayload, doConfirm, doGenerate, doExport, doCopy,
     placementData, openPlacementData, savePlacementData,
     /**

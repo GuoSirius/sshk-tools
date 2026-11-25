@@ -28,6 +28,7 @@
       "@app/*": ["./apps/desktop/src/*"],
       "@build/*": ["./apps/desktop/build/*"],
       "@sshk/rich-text/pure": ["./packages/rich-text/src/pure.ts"],
+      "@sshk/code-editor/format": ["./packages/code-editor/src/format.ts"],
       "@sshk/repository": ["./packages/repository/src/index.ts"],
       "@sshk/backup": ["./packages/backup/src/index.ts"],
       "@sshk/ui-kit": ["./packages/ui-kit/src/index.ts"],

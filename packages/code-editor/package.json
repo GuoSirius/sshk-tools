@@ -5,7 +5,8 @@
   "type": "module",
   "description": "sshk-tools 共享代码编辑器：Monaco 封装、语言注册中心、扩展名→语言映射",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./format": "./src/format.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

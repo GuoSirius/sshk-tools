@@ -6,6 +6,7 @@
  */
 import { format } from 'prettier/standalone'
 import * as htmlPlugin from 'prettier/plugins/html'
+import * as postcssPlugin from 'prettier/plugins/postcss'
 
 const VOID_TAGS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr',
@@ -40,6 +41,56 @@ export async function formatHtml(html: string): Promise<string> {
     })
   } catch {
     return html
+  }
+}
+
+/** Nunjucks 标记（插值/语句/注释）：Prettier 会在其内部折行，须占位后再格式化，原样还原 */
+const TPL_TOKEN = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\{#[\s\S]*?#\}/g
+const TPL_PREFIX = '__SSHK_TPL_TOKEN_'
+
+function guardTemplateTokens(text: string): { text: string; restore(out: string): string } | null {
+  // 用户源码恰好含占位前缀时不格式化，避免误替换
+  if (text.includes(TPL_PREFIX)) return null
+  const tokens: string[] = []
+  const masked = text.replace(TPL_TOKEN, (m) => `${TPL_PREFIX}${tokens.push(m) - 1}__`)
+  return {
+    text: masked,
+    restore: (out) => out.replace(new RegExp(`${TPL_PREFIX}(\\d+)__`, 'g'), (_m, i: string) => tokens[Number(i)] ?? ''),
+  }
+}
+
+/** njk 源码格式化：模板标记零改写，残缺 HTML / 解析失败原样返回 */
+export async function formatNjk(njk: string): Promise<string> {
+  const guarded = guardTemplateTokens(njk)
+  if (!guarded || !isBalanced(guarded.text)) return njk
+  try {
+    const out = await format(guarded.text, {
+      parser: 'html',
+      plugins: [htmlPlugin],
+      printWidth: 120,
+      tabWidth: 2,
+      htmlWhitespaceSensitivity: 'css',
+    })
+    return guarded.restore(out)
+  } catch {
+    return njk
+  }
+}
+
+/** CSS 格式化（版本内联 style.css / 外置 css 共用）：模板插值原样保留，非法 CSS 原样返回 */
+export async function formatCss(css: string): Promise<string> {
+  const guarded = guardTemplateTokens(css)
+  if (!guarded) return css
+  try {
+    const out = await format(guarded.text, {
+      parser: 'css',
+      plugins: [postcssPlugin],
+      printWidth: 120,
+      tabWidth: 2,
+    })
+    return guarded.restore(out)
+  } catch {
+    return css
   }
 }
 

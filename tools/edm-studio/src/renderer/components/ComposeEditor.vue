@@ -4,7 +4,7 @@ export type { SlotDef, FragmentOption, PlacementItem } from '../compose-types'
 </script>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
 import { VueDraggable } from 'vue-draggable-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -25,8 +25,8 @@ const emit = defineEmits<{
   (e: 'editData', item: PlacementItem): void
 }>()
 
-const pickFragment = ref('')
-const pickSlot = ref('')
+/** 每个区块头部各自的片段选择（#198 ⑦：下拉收进区块头、sticky 吸顶，滚动时仍可就地添加） */
+const pickBySlot = ref<Record<string, string>>({})
 let uidSeed = 0
 
 /** 区块展开折叠（2026-11-25 需求 3.12）：本地态、默认全展开，不影响 placement 数据 */
@@ -38,17 +38,19 @@ function toggleBlock(key: string): void {
   collapsedKeys.value = next
 }
 
-/** 落点区块选定后，片段下拉按 slot.type ↔ 片段 type 匹配过滤（无 type 约束时全给） */
-const pickOptions = computed<FragmentOption[]>(() => {
-  const slotType = props.slots.find((s) => s.key === (pickSlot.value || props.slots[0]?.key))?.type
+/** 按区块类型过滤片段选项（无 type 约束时全给），供各区块头部独立下拉使用 */
+function pickOptions(slotKey: string): FragmentOption[] {
+  const slotType = props.slots.find((s) => s.key === slotKey)?.type
   if (!slotType) return props.fragmentOptions
   return props.fragmentOptions.filter((o) => !o.type || o.type === slotType)
-})
+}
 
-/** 源码新增/删除 slot 后下拉项变化：仍有效的选择保留，失效才回退首项（不因连续添加而清空） */
+/** 源码新增/删除 slot 后清理失效的按区块选择（有效选择保留，不因连续添加而清空） */
 watch(() => props.slots, (slots) => {
-  const first = slots[0]?.key
-  if (first && !slots.some((s) => s.key === pickSlot.value)) pickSlot.value = first
+  const keys = new Set(slots.map((s) => s.key))
+  const next: Record<string, string> = {}
+  for (const [k, v] of Object.entries(pickBySlot.value)) if (keys.has(k)) next[k] = v
+  pickBySlot.value = next
 }, { immediate: true })
 
 function itemsOf(slot: string): PlacementItem[] {
@@ -63,16 +65,11 @@ function onSlotReorder(slotKey: string, arr: PlacementItem[]): void {
   const reordered = arr.map((p, i) => ({ ...p, slot: slotKey, order: i }))
   emitChange([...others, ...reordered])
 }
-function addPlacement(): void {
+function addPlacement(slotKey: string): void {
   if (props.readonly) return
-  const opt = props.fragmentOptions.find((o) => o.id === pickFragment.value)
+  const opt = pickOptions(slotKey).find((o) => o.id === pickBySlot.value[slotKey])
   if (!opt) {
     ElMessage.warning('请先选择片段')
-    return
-  }
-  const slotKey = pickSlot.value || props.slots[0]?.key || ''
-  if (!slotKey) {
-    ElMessage.warning('请先选择落点区块')
     return
   }
   const slotType = props.slots.find((s) => s.key === slotKey)?.type
@@ -84,8 +81,7 @@ function addPlacement(): void {
     ...props.modelValue,
     { uid: `p_${Date.now()}_${uidSeed++}`, fragmentId: opt.id, label: opt.label, slot: slotKey, order: itemsOf(slotKey).length, repeat: 1 },
   ])
-  // 连续添加保留片段与落点选择；仅在原先未指定落点时把自动落点回显到下拉
-  if (!pickSlot.value) pickSlot.value = slotKey
+  // 连续添加保留该区块的片段选择
 }
 function moveTo(p: PlacementItem, slotKey: string): void {
   if (slotKey === p.slot) return
@@ -117,24 +113,28 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
 
 <template>
   <div class="compose" :class="{ readonly }">
-    <div class="toolbar">
-      <el-select v-model="pickFragment" size="small" filterable placeholder="选择片段" class="pick">
-        <el-option v-for="f in pickOptions" :key="f.id" :value="f.id" :label="f.label" />
-      </el-select>
-      <el-select v-model="pickSlot" size="small" placeholder="落点区块" class="pick-sm">
-        <el-option v-for="s in slots" :key="s.key" :value="s.key" :label="s.label || s.key" />
-      </el-select>
-      <el-button size="small" type="primary" plain :disabled="readonly || !pickFragment" @click="addPlacement">添加</el-button>
-      <FormHint inline>拖拽 ≡ 区块内排序；次数 = 重复渲染</FormHint>
-    </div>
+    <FormHint inline>拖拽 ≡ 区块内排序；次数 = 重复渲染；「片段数据」= 该片段独立表单数据（留空回落模板数据）</FormHint>
     <div class="blocks">
       <div v-for="s in slots" :key="s.key" class="block">
+        <!-- 区块头 sticky 吸顶（#198 ⑦）：片段下拉 + 添加随滚动常驻，就地添加不用来回滚 -->
         <div class="block-head">
           <el-button size="small" text class="fold-btn" :aria-label="collapsedKeys.has(s.key) ? '展开区块' : '折叠区块'" @click="toggleBlock(s.key)">
             <el-icon><ArrowDown v-if="!collapsedKeys.has(s.key)" /><ArrowRight v-else /></el-icon>
           </el-button>
           <span class="block-name">{{ s.label || s.key }}</span>
           <code class="block-key">{{ s.key }}</code>
+          <el-select
+            v-model="pickBySlot[s.key]"
+            size="small"
+            filterable
+            clearable
+            placeholder="选择片段"
+            class="head-pick"
+            @change="() => {}"
+          >
+            <el-option v-for="f in pickOptions(s.key)" :key="f.id" :value="f.id" :label="f.label" />
+          </el-select>
+          <el-button size="small" type="primary" plain :disabled="readonly || !pickBySlot[s.key]" @click="addPlacement(s.key)">添加</el-button>
           <span class="block-count">{{ itemsOf(s.key).length }} 项</span>
         </div>
         <VueDraggable
@@ -162,28 +162,32 @@ function setRepeat(p: PlacementItem, v: number | undefined): void {
             <el-select :model-value="p.slot" size="small" class="slot-sel" @update:model-value="(v: string) => moveTo(p, v)">
               <el-option v-for="s2 in slots" :key="s2.key" :value="s2.key" :label="`→ ${s2.label || s2.key}`" />
             </el-select>
-            <el-button size="small" text type="primary" @click="emit('editData', p)">数据</el-button>
+            <el-button size="small" text type="primary" @click="emit('editData', p)">片段数据</el-button>
             <el-button v-if="!readonly" size="small" text type="danger" :icon="Delete" @click="removePlacement(p)" />
           </div>
         </VueDraggable>
-        <div v-else-if="!collapsedKeys.has(s.key)" class="block-empty">空区块 —— 上方选择片段与落点后「添加」</div>
+        <div v-else-if="!collapsedKeys.has(s.key)" class="block-empty">空区块 —— 在上方选择片段后「添加」</div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.compose { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; }
-.pick { width: 220px; }
-.pick-sm { width: 130px; }
-.blocks { display: flex; flex-direction: column; gap: 8px; padding-right: 3px; overflow: auto; min-height: 0; }
-.block { flex: none; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; overflow: hidden; }
-.block-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(128,128,128,.08); font-size: 13px; }
+.compose { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; }
+.blocks { display: flex; flex-direction: column; gap: 8px; padding-right: 3px; overflow: auto; min-height: 0; flex: 1; }
+.block { flex: none; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; }
+/* sticky 吸顶（#198 ⑦）：滚动区块列表时头部片段下拉常驻可用；z-index 盖住下方行 */
+.block-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: var(--el-bg-color, rgba(30,30,30,.98));
+  border-radius: 6px 6px 0 0; font-size: 13px;
+}
 .fold-btn { flex: none; width: 18px; height: 18px; padding: 0; margin-right: 2px; }
-.block-name { font-weight: 600; }
-.block-key { font-size: 11px; opacity: .6; }
-.block-count { margin-left: auto; font-size: 12px; opacity: .6; }
+.block-name { font-weight: 600; white-space: nowrap; }
+.block-key { font-size: 11px; opacity: .6; white-space: nowrap; }
+.head-pick { width: 200px; flex: none; }
+.block-count { margin-left: auto; font-size: 12px; opacity: .6; white-space: nowrap; }
 .block-body { display: flex; flex-direction: column; }
 .placement { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-top: 1px solid rgba(128,128,128,.12); font-size: 13px; }
 .placement:first-child { border-top: none; }
