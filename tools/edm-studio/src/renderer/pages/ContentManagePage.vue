@@ -10,6 +10,7 @@ import { CodeEditor } from '@sshk/code-editor'
 import SampleForm from '../components/SampleForm.vue'
 import { FieldSchemaDesigner } from '@sshk/form-schema/ui'
 import ComposeDialog from '../components/ComposeDialog.vue'
+import PlacementDataDialog from '../components/PlacementDataDialog.vue'
 import CssTabsEditor from '../components/CssTabsEditor.vue'
 import SaveAsDialog from '../components/SaveAsDialog.vue'
 import FaviconField from '../components/FaviconField.vue'
@@ -588,15 +589,14 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
-    <!-- placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML） -->
-    <el-dialog v-model="placementData.open" title="片段数据" width="560px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
-      <CodeEditor v-else :model-value="placementData.yamlText" language="yaml" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" @save="savePlacementData" />
-      <template #footer>
-        <el-button @click="placementData.open = false">取消</el-button>
-        <el-button type="primary" @click="savePlacementData">保存并刷新预览</el-button>
-      </template>
-    </el-dialog>
+    <!-- placement 独立数据编辑（Q12；#200 双 tab：表单/JSON 统一组件） -->
+    <PlacementDataDialog
+      :open="placementData.open"
+      :fields="placementData.fields"
+      :data="placementData.data"
+      @update:open="(v: boolean) => (placementData.open = v)"
+      @save="savePlacementData"
+    />
 
     <!-- 统一组装弹框（2026-11-25 三场景整合：template/fragment 外部受控，复用 ComposeDialog） -->
     <ComposeDialog

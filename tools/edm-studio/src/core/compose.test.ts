@@ -83,3 +83,16 @@ describe('compose 元数据注入（2026-11-25 修订 1/13）', () => {
     expect(result.assembled).toContain('<p>片段|邮件主题|frag|tpl</p>')
   })
 })
+
+describe('compose strict 渲染报错定位（2026-11-25 用户反馈）', () => {
+  it('strict 缺字段抛错带片段名上下文，替代 unknown path 裸错', async () => {
+    await expect(
+      compose({
+        templateHtml: '<div>{{ slot_body | safe }}</div>',
+        placements: [{ html: '<a href="{{ logoLink }}">x</a>', slot: 'body', label: '页头' }],
+        data: {},
+        strict: true,
+      }),
+    ).rejects.toThrow('片段「页头」渲染失败')
+  })
+})

@@ -11,6 +11,7 @@ import { buildRenderMeta, EMPTY_RENDER_META, type RenderMeta } from './render-me
 import { renderFragmentHtml, renderMail, type RenderStages } from './render.js'
 import type { TemplateRoots, MemoryTemplates } from './template-loader.js'
 import { collectCss, type CssSource } from './css-bundle.js'
+import { AppError } from '@sshk/shared'
 
 export interface ComposePlacement {
   /** 片段 njk 源码 */
@@ -27,6 +28,8 @@ export interface ComposePlacement {
   order?: number
   /** 重复次数（≥1，缺省 1） */
   repeat?: number
+  /** 片段展示名（仅用于渲染报错定位，2026-11-25：strict 报错原先不带上下文难排查） */
+  label?: string
 }
 
 export interface ComposeInput {
@@ -68,13 +71,19 @@ export function buildBindings(
   placements.forEach((p, i) => {
     if (!p.slot || !p.html.trim()) return
     const repeat = Math.max(1, Math.floor(p.repeat ?? 1))
-    const html = renderFragmentHtml({
-      html: p.html,
-      data: p.data ?? fallback,
-      meta: p.meta ?? EMPTY_RENDER_META,
-      templateCtx,
-      render: { strict, autoEscape: true },
-    })
+    let html: string
+    try {
+      html = renderFragmentHtml({
+        html: p.html,
+        data: p.data ?? fallback,
+        meta: p.meta ?? EMPTY_RENDER_META,
+        templateCtx,
+        render: { strict, autoEscape: true },
+      })
+    } catch (err) {
+      // strict 渲染失败（缺字段/语法错）带片段上下文重抛，替代「unknown path Line x」式裸错
+      throw new AppError(`片段「${p.label ?? p.slot}」渲染失败：${(err as Error).message}`, 'validation')
+    }
     const list = grouped.get(p.slot) ?? []
     for (let r = 0; r < repeat; r++) list.push({ order: p.order ?? i, html })
     grouped.set(p.slot, list)

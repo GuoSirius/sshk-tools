@@ -3,7 +3,6 @@ import { ElMessage } from 'element-plus'
 import * as yaml from 'js-yaml'
 import type { PlacementItem, SlotDef } from '../compose-types'
 import { normalizeFields, type FieldDef } from '../sample-schema'
-import { parseYamlObject } from '../sample-schema'
 import { api } from '../tool-api'
 import { mergeFragmentPolicy, policyAllows, type FragmentPolicy } from '../../core/fragment-policy'
 import { extractSlotKeysFromSource, mergeSourceSlots, type SourceSlotDef } from '../../core/slots'
@@ -43,9 +42,9 @@ export interface ComposePreview {
   renderComposePreview(): Promise<void>
   /** 完成布局配置：关弹框并刷新组合预览 */
   closeComposeDialog(): void
-  placementData: Ref<{ open: boolean; uid: string; fields: FieldDef[]; obj: Record<string, unknown>; yamlText: string }>
+  placementData: Ref<{ open: boolean; uid: string; fields: FieldDef[]; data: Record<string, unknown> }>
   openPlacementData(item: PlacementItem): Promise<void>
-  savePlacementData(): void
+  savePlacementData(data: Record<string, unknown>): void
   /** 预读全部族 meta（policy / slots / fields），组合预览选项构造用（后台不阻塞 load） */
   prefetchFamilyMetas(): Promise<void>
 }
@@ -264,9 +263,9 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     void renderComposePreview()
   }
 
-  /* placement 独立数据编辑（Q12）：有 fields schema 用 SampleForm，否则 YAML */
-  const placementData = ref<{ open: boolean; uid: string; fields: FieldDef[]; obj: Record<string, unknown>; yamlText: string }>({
-    open: false, uid: '', fields: [], obj: {}, yamlText: '',
+  /* placement 独立数据编辑（Q12；#200 双 tab：表单/JSON 编辑统一在 PlacementDataDialog 内部） */
+  const placementData = ref<{ open: boolean; uid: string; fields: FieldDef[]; data: Record<string, unknown> }>({
+    open: false, uid: '', fields: [], data: {},
   })
   async function openPlacementData(item: PlacementItem): Promise<void> {
     let fields: FieldDef[] = []
@@ -276,23 +275,11 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
       const verPath = sel.versionDir ? `${famPath}/${sel.versionDir}` : famPath
       const verMeta = ((yaml.load(await deps.read(`${verPath}/meta.yaml`, deps.selected.value?.data.source ?? 'system')) as Record<string, unknown>) ?? {})
       fields = normalizeFields((verMeta['fields'] as unknown) ?? familyMetaCache.value[famPath]?.fields ?? [])
-    } catch { /* 无 schema 走 YAML */ }
-    const obj = { ...(item.data ?? {}) }
-    placementData.value = { open: true, uid: item.uid, fields, obj, yamlText: yaml.dump(obj, { lineWidth: -1 }) }
+    } catch { /* 无 schema 走 JSON */ }
+    placementData.value = { open: true, uid: item.uid, fields, data: { ...(item.data ?? {}) } }
   }
-  function savePlacementData(): void {
+  function savePlacementData(data: Record<string, unknown>): void {
     const st = placementData.value
-    let data: Record<string, unknown>
-    if (st.fields.length) {
-      data = { ...st.obj }
-    } else {
-      try {
-        data = parseYamlObject(st.yamlText)
-      } catch (err) {
-        ElMessage.error(`片段数据不是合法 YAML：${(err as Error).message}`)
-        return
-      }
-    }
     composePlacements.value = composePlacements.value.map((p) => (p.uid === st.uid ? { ...p, data } : p))
     st.open = false
     void renderComposePreview()

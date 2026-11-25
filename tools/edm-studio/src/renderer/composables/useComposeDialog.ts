@@ -279,29 +279,17 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     void refreshPreview()
   }
 
-  /* placement 独立数据编辑（Q12） */
-  const placementData = ref<{ open: boolean; uid: string; fields: FieldDef[]; obj: Record<string, unknown>; yamlText: string }>({
-    open: false, uid: '', fields: [], obj: {}, yamlText: '',
+  /* placement 独立数据编辑（Q12；#200 双 tab：表单/JSON 编辑统一在 PlacementDataDialog 内部） */
+  const placementData = ref<{ open: boolean; uid: string; fields: FieldDef[]; data: Record<string, unknown> }>({
+    open: false, uid: '', fields: [], data: {},
   })
   function openPlacementData(item: PlacementItem): void {
     const fv = frgvVersions.value.find((v) => v._id === item.fragmentId)
     const fields = normalizeFields((fv?.fields as unknown) ?? [])
-    const obj = { ...(item.data ?? fv?.sampleData ?? {}) }
-    placementData.value = { open: true, uid: item.uid, fields, obj, yamlText: JSON.stringify(obj, null, 2) }
+    placementData.value = { open: true, uid: item.uid, fields, data: { ...(item.data ?? fv?.sampleData ?? {}) } }
   }
-  function savePlacementData(): void {
+  function savePlacementData(data: Record<string, unknown>): void {
     const st = placementData.value
-    let data: Record<string, unknown>
-    if (st.fields.length) {
-      data = { ...st.obj }
-    } else {
-      try {
-        data = (JSON.parse(st.yamlText) as Record<string, unknown>) ?? {}
-      } catch (err) {
-        ElMessage.error(`JSON 解析失败：${(err as Error).message}`)
-        return
-      }
-    }
     placements.value = placements.value.map((p) => (p.uid === st.uid ? { ...p, data } : p))
     st.open = false
     void refreshPreview()

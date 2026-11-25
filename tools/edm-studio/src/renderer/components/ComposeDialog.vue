@@ -11,7 +11,7 @@ import { computed } from 'vue'
 import { FormHint } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import ComposeEditor from './ComposeEditor.vue'
-import SampleForm from './SampleForm.vue'
+import PlacementDataDialog from './PlacementDataDialog.vue'
 import { useComposeDialog } from '../composables/useComposeDialog'
 import type { MailRow } from '../tool-api'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
@@ -102,8 +102,8 @@ function openEditData(item: PlacementItem): void {
   if (isMail.value) mailDeps.openPlacementData(item)
   else emit('editData', item) // template/fragment：交父级打开其 placement 数据弹框
 }
-function saveEditData(): void {
-  if (isMail.value) mailDeps.savePlacementData()
+function saveEditData(data: Record<string, unknown>): void {
+  if (isMail.value) mailDeps.savePlacementData(data)
 }
 </script>
 
@@ -206,15 +206,15 @@ function saveEditData(): void {
     </template>
   </el-dialog>
 
-  <!-- placement 独立数据编辑（mail 场景） -->
-  <el-dialog v-if="isMail" v-model="placementData.open" title="片段数据" width="560px" append-to-body :close-on-click-modal="false" :close-on-press-escape="false">
-    <SampleForm v-if="placementData.fields.length" v-model="placementData.obj" :fields="placementData.fields" />
-    <CodeEditor v-else :model-value="placementData.yamlText" language="json" height="320px" @update:model-value="(v: string) => (placementData.yamlText = v)" @save="saveEditData" />
-    <template #footer>
-      <el-button @click="placementData.open = false">取消</el-button>
-      <el-button type="primary" @click="saveEditData">保存并刷新预览</el-button>
-    </template>
-  </el-dialog>
+  <!-- placement 独立数据编辑（mail 场景；#200 双 tab：表单/JSON） -->
+  <PlacementDataDialog
+    v-if="isMail"
+    :open="placementData.open"
+    :fields="placementData.fields"
+    :data="placementData.data"
+    @update:open="(v: boolean) => (placementData.open = v)"
+    @save="saveEditData"
+  />
 </template>
 
 <style scoped>

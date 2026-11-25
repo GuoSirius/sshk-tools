@@ -15,7 +15,7 @@ import {
 
 import { compose, type ComposePlacement } from '../../core/compose.js'
 import { resolveCssBundle } from '../../core/css-resolve.js'
-import { resolveRenderMeta } from '../render-meta.js'
+import { resolveRenderMeta, parseVersionEntityId } from '../render-meta.js'
 import type { RenderMeta } from '../../core/render-meta.js'
 import type { TemplateRoots } from '../../core/template-loader.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
@@ -36,17 +36,22 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const points = entries.map(({ entity, kind }) => {
       const isCustom = entity.origin === 'custom'
       const sourceRoot = ctx.resolveContentRoot(isCustom ? 'custom' : 'system')
-      const parts = entity._id.split('_')
-      const prefix = kind === 'fragment' ? (isCustom ? 'frgv' : 'frg') : (isCustom ? 'tplv' : 'tpl')
-      const pos = parts.indexOf(prefix)
-      const start = pos >= 0 ? pos + (isCustom ? 1 : 2) : -1
-      const brandCode = start >= 0 ? (parts[start] ?? '') : ''
-      const familyCode = start >= 0 ? parts.slice(start + 1).join('_') : ''
-      const versionDir = path.join(sourceRoot, brandCode, kind, familyCode, entity.label || 'default')
-      if (!brandCode || !familyCode) console.warn(`[edm] 版本 ${entity._id} 无法推导 css 解析目录，回退播种快照`)
+      // ID 口径统一走 parseVersionEntityId（2026-11-25 修复：旧前缀 'tpl'/'frg' 与实际
+      // 'tplv'/'frgv' 不符导致 system 版本目录推导恒失败，css/meta 全部回退播种快照）
+      const parsed = parseVersionEntityId(entity._id, kind, entity.origin, entity.label)
+      if (!parsed) console.warn(`[edm] 版本 ${entity._id} 无法推导 css 解析目录，回退播种快照`)
+      const versionDir = parsed
+        ? path.join(sourceRoot, parsed.brandCode, kind, parsed.familyCode, parsed.versionDirName)
+        : sourceRoot
       return {
         html: entity.source.html,
-        metaPoint: { sourceRoot, brandCode, kind, familyCode, versionDir },
+        metaPoint: {
+          sourceRoot,
+          brandCode: parsed?.brandCode ?? '',
+          kind,
+          familyCode: parsed?.familyCode ?? '',
+          versionDir,
+        },
         ctx: {
           sourceRoot,
           systemRoot: ctx.resolveContentRoot('system'),
@@ -143,6 +148,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       slot: b.slot,
       order: b.order,
       repeat: b.repeat,
+      label: fv.label ?? '片段',
     }))
     const stages = await compose({
       templateHtml: cssResult.htmls[0] ?? tv.source.html,
@@ -190,6 +196,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       slot: String(p['slot'] ?? ''),
       order: typeof p['order'] === 'number' ? (p['order'] as number) : undefined,
       repeat: typeof p['repeat'] === 'number' ? (p['repeat'] as number) : undefined,
+      label: fv.label ?? '片段',
     }))
     const stages = await compose({
       templateHtml: cssResult.htmls[0] ?? tv.source.html,

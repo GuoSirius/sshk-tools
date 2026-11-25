@@ -53,9 +53,37 @@ export async function resolveRenderMeta(p: MetaResolvePoint): Promise<RenderMeta
 }
 
 /**
+ * 版本实体 ID 解析（口径唯一来源，与 edm-seed 生成规则同步维护；mail.ts 目录推导共用本函数）。
+ * system = frgv|tplv _ sys _ <brand> _ <fam…> _ <dir>；custom = cus _ frgv|tplv _ <brand> _ <fam…> _ <dir>。
+ * dir 段 = 实体 label（缺省 'default'）；族名可含下划线，故按 label 后缀剥离而非段数切分。
+ * 解析失败（结构不符 / 前缀与 kind 不匹配）返回 null，调用侧回退播种快照并告警。
+ */
+export function parseVersionEntityId(
+  id: string,
+  kind: 'fragment' | 'template',
+  origin: string | undefined,
+  label: string | undefined,
+): { brandCode: string; familyCode: string; versionDirName: string } | null {
+  const dirName = label || 'default'
+  const suffix = `_${dirName}`
+  // 至少 prefix/sys/brand/fam 四段才认定尾部是 dir，防「族名=default 的短 ID」被误剥
+  const hasDir = id.endsWith(suffix) && id.split('_').length >= 5
+  const parts = (hasDir ? id.slice(0, -suffix.length) : id).split('_')
+  const expect = kind === 'fragment' ? 'frgv' : 'tplv'
+  let brandCode: string | undefined
+  if (origin === 'custom') {
+    if (parts[0] === 'cus' && parts[1] === expect) brandCode = parts[2]
+  } else {
+    if (parts[0] === expect && parts[1] === 'sys') brandCode = parts[2]
+  }
+  const familyCode = parts.slice(3).join('_')
+  if (!brandCode || !familyCode) return null
+  return { brandCode, familyCode, versionDirName: hasDir ? dirName : '' }
+}
+
+/**
  * 从 repo 版本实体 ID 反查四级 meta（权限/品牌校验已在调用侧完成）。
- * ID 口径（edm-seed）：system=tplv|frgv_sys_<brand>_<fam>_<dir>；custom=cus_tplv|frgv_<brand>_<fam>_<dir>。
- * 与 mail.ts resolveEntitiesCss 的目录推导保持同一份规则，缺失一律 graceful 降级为空 meta。
+ * 与 mail.ts resolveEntitiesCss 共用 parseVersionEntityId，缺失一律 graceful 降级为空 meta。
  */
 export async function resolveMetaByVersionId(
   id: string,
@@ -66,13 +94,8 @@ export async function resolveMetaByVersionId(
 ): Promise<RenderMeta> {
   const isCustom = origin === 'custom'
   const sourceRoot = resolveContentRoot(isCustom ? 'custom' : 'system')
-  const prefix = kind === 'fragment' ? (isCustom ? 'frgv' : 'frg') : (isCustom ? 'tplv' : 'tpl')
-  const parts = id.split('_')
-  const pos = parts.indexOf(prefix)
-  const start = pos >= 0 ? pos + (isCustom ? 1 : 2) : -1
-  const brandCode = start >= 0 ? (parts[start] ?? '') : ''
-  const familyCode = start >= 0 ? parts.slice(start + 1).join('_') : ''
-  if (!brandCode || !familyCode) return {}
-  const versionDir = path.join(sourceRoot, brandCode, kind, familyCode, label || 'default')
-  return resolveRenderMeta({ sourceRoot, brandCode, kind, familyCode, versionDir })
+  const parsed = parseVersionEntityId(id, kind, origin, label)
+  if (!parsed) return {}
+  const versionDir = path.join(sourceRoot, parsed.brandCode, kind, parsed.familyCode, parsed.versionDirName)
+  return resolveRenderMeta({ sourceRoot, brandCode: parsed.brandCode, kind, familyCode: parsed.familyCode, versionDir })
 }
