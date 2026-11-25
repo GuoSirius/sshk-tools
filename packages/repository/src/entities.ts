@@ -93,6 +93,8 @@ export interface SlotBinding {
 }
 
 export interface MailOutputs {
+  /** 组装好的模板源码（未填表单变量，Q4 保留 njk 原样） */
+  template?: string
   assembled?: string
   inlined?: string
   final?: string

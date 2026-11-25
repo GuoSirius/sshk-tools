@@ -1,32 +1,27 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, useTablePage, useToolId } from '@sshk/ui-kit'
 import { ShareDialog } from '@sshk/share-core/ui'
-import { EDM_OUTPUT_FILES, inMsRange, toFileName } from '@sshk/shared'
-import { brands, mails, tplVersionsAll, loadMails } from '../store'
+import { readShareTicket, isTicketAlive } from '@sshk/share-core/ui'
+import { inMsRange, toFileName } from '@sshk/shared'
+import { brands, mails, templates, tplVersionsAll, loadMails } from '../store'
 import { api, confirmRemove, osApi, type MailRow } from '../tool-api'
-import MailEditor from '../components/MailEditor.vue'
+import ComposeDialog from '../components/ComposeDialog.vue'
 
 /**
- * 邮件管理页（R20，§6.3 拍板语义）：
- * 列表：名称/来源/品牌/模板版本/片段数/生成时间；操作 = 生成 | 导出 | 更多(编辑/复制为新邮件/打开产物/删除)。
- * 编辑走 MailEditor 分步流程；导出 zip 含各形态 html；分享复用局域网 token 通道。
- *
- * P6-1 收尾（#156）：接 useTablePage（草稿/生效筛选+分页）/ListPageShell/ListPagination/TableOpsColumn
- * 公共组件栈（布局 CSS 全部上收 theme.css .lp-*）；批量勾选单一真相 = useSelection（§七），
- * 批量删除/导出读 selection，删除成功后 prune 防「幽灵计数」。
- * 数据源 = state 单例 mails（shell ensureLoaded / 编辑器 saved 回调里 loadMails），
- * fetch 只回读该 ref，watch 到集合替换后本地 refresh（不再发 IPC，零重复请求）。
+ * 邮件管理页（2026-11-25 重构）：
+ * 表格 9 列（邮件名/操作固定列），行操作 6 项（内联 分享/编辑/组装，更多 导出/另存为/删除）。
+ * 新增/编辑只填邮件名（去分步），确认后新邮件自动进组装弹框（Q3）；组装/预览/导出/复制统一走 ComposeDialog。
+ * 分享：顶层=所有列表项（root=outputs），行级=每封独立 root（Q5）；分享状态区分顶层/行级并可复制链接。
+ * 导出四形态：template（模板源码）/assembled/inlined/final，单封与批量均以邮件名为目录打 zip（修订 14）。
  */
 const toolId = useToolId()
 const editorOpen = ref(false)
 const editorMail = ref<MailRow | null>(null)
-const mailGenerating = ref('')
 
-// ── 列表状态（P6-1：useTablePage 统一承载 草稿/生效筛选 + 客户端分页）──
+// ── 列表状态（useTablePage 统一承载筛选+分页）──
 const table = useTablePage<MailRow, { kw: string; origin: string; brand: string; dateRange: [string, string] | null }>({
-  // 数据源：state.loadMails 写入 mails 单例；fetch 直返镜像（客户端过滤/分页由本组件承载，无 IPC）
   fetch: async () => mails.value,
   rowKey: (r) => r._id,
   filters: () => ({ kw: '', origin: 'all', brand: 'all', dateRange: null }),
@@ -36,7 +31,6 @@ const table = useTablePage<MailRow, { kw: string; origin: string; brand: string;
       if (k && !row.name.toLowerCase().includes(k)) return false
       if (f.origin !== 'all' && (row.origin ?? 'custom') !== f.origin) return false
       if (f.brand !== 'all' && row.brandId !== f.brand) return false
-      // 时间范围：毫秒闭区间（shared 统一封装，规范精确到秒）；限定范围时未生成邮件不参与
       if (f.dateRange) {
         if (!row.lastGeneratedAt) return false
         if (!inMsRange(row.lastGeneratedAt, f.dateRange[0], f.dateRange[1])) return false
@@ -48,12 +42,9 @@ const table = useTablePage<MailRow, { kw: string; origin: string; brand: string;
 })
 const rowKey = table.rowKey
 const selection = table.selection!
-// 集合被 loadMails 整体替换时本地重切分页（fetch 无 IPC，零重复请求），并清理已不存在的勾选
 watch(mails, () => {
   void table.refresh().then(() => selection.prune(new Set(mails.value.map(rowKey))))
 })
-
-/** 批量勾选单一真相 = useSelection（§七）：el-table selection-change 全量同步（reserve-selection 跨页保留） */
 function syncSelection(tableRows: MailRow[]): void {
   selection.clear()
   selection.selectMany(tableRows.map(rowKey))
@@ -63,12 +54,13 @@ function brandLabel(brandId: string): string {
   const b = brands.value.find((x) => x._id === brandId)
   return b ? b.name : brandId.slice(0, 10) + '…'
 }
-function tplLabel(id: string): string {
-  const v = tplVersionsAll.value.find((t) => t._id === id)
-  return v ? (v.label ?? `v${v.version}`) : id.slice(0, 12) + '…'
+function tplVersionLabel(tvId: string): string {
+  const v = tplVersionsAll.value.find((t) => t._id === tvId)
+  return v ? (v.label ?? `v${v.version}`) : tvId.slice(0, 12) + '…'
 }
-function placementCount(row: MailRow): number {
-  return row.bindings?.length ?? 0
+function tplName(tvId: string): string {
+  const v = tplVersionsAll.value.find((t) => t._id === tvId)
+  return v ? (templates.value.find((t) => t._id === v.templateId)?.name ?? '—') : '—'
 }
 
 const brandOptions = computed(() => {
@@ -77,74 +69,91 @@ const brandOptions = computed(() => {
   return [...map].map(([value, label]) => ({ value, label }))
 })
 
+// ── 新增/编辑：只填邮件名（去分步）──
+const nameDialog = reactive({ open: false, editing: null as MailRow | null, name: '', saving: false })
 function openEditor(row?: MailRow): void {
-  editorMail.value = row ?? null
-  editorOpen.value = true
+  if (row) {
+    // 编辑：只改名，确认后回列表
+    Object.assign(nameDialog, { open: true, editing: row, name: row.name })
+  } else {
+    Object.assign(nameDialog, { open: true, editing: null, name: '' })
+  }
+}
+async function onNameConfirm(): Promise<void> {
+  const name = nameDialog.name.trim()
+  if (!name) { ElMessage.warning('邮件名称必填'); return }
+  nameDialog.saving = true
+  try {
+    if (nameDialog.editing) {
+      await api('mail:save', { _id: nameDialog.editing._id, name, brandId: nameDialog.editing.brandId, templateVersionId: nameDialog.editing.templateVersionId, bindings: nameDialog.editing.bindings ?? [], data: nameDialog.editing.data ?? {} })
+      await loadMails()
+      nameDialog.open = false
+      ElMessage.success('邮件名称已更新')
+    } else {
+      // 新增：只建空白邮件（brandId/templateVersionId 由组装弹框内选），确认后自动进组装（Q3）
+      const created = (await api('mail:save', { name, origin: 'custom', brandId: '', templateVersionId: '', bindings: [], data: {} })) as MailRow
+      await loadMails()
+      nameDialog.open = false
+      editorMail.value = created
+      editorOpen.value = true
+    }
+  } catch (err) { ElMessage.error((err as Error).message) }
+  finally { nameDialog.saving = false }
 }
 
+/** 组装弹框 saved 回调：刷新列表（新建邮件在弹框内选品牌/模板后落库） */
 async function onEditorSaved(): Promise<void> {
   await loadMails()
 }
 
-async function generateMail(row: MailRow): Promise<void> {
-  mailGenerating.value = row._id
+/** 另存为（§4.6）：以某邮件为基础新建，确认后打开组装弹框快速修改 */
+const saveAsDialog = reactive({ open: false, source: null as MailRow | null, name: '', saving: false })
+function openSaveAs(row: MailRow): void {
+  Object.assign(saveAsDialog, { open: true, source: row, name: `${row.name} 副本`, saving: false })
+}
+async function onSaveAsConfirm(): Promise<void> {
+  const name = saveAsDialog.name.trim()
+  if (!name) { ElMessage.warning('名称必填'); return }
+  const src = saveAsDialog.source
+  if (!src) return
+  saveAsDialog.saving = true
   try {
-    await api('mail:generate', { _id: row._id })
+    const created = (await api('mail:save', {
+      name, origin: 'custom', brandId: src.brandId, templateVersionId: src.templateVersionId,
+      bindings: src.bindings ?? [], data: src.data ?? {},
+    })) as MailRow
     await loadMails()
-    ElMessage.success('三阶段产物已生成（覆盖式）')
+    saveAsDialog.open = false
+    editorMail.value = created
+    editorOpen.value = true
+    ElMessage.success('已另存为新邮件，可快速修改')
   } catch (err) { ElMessage.error((err as Error).message) }
-  finally { mailGenerating.value = '' }
+  finally { saveAsDialog.saving = false }
 }
 
-/** 复制为新邮件（§6.3）：以此为参考深拷一份，简单修改即成新邮件 */
-async function duplicateMail(row: MailRow): Promise<void> {
-  try {
-    await api('mail:save', {
-      name: `${row.name} 副本`,
-      origin: 'custom',
-      brandId: row.brandId,
-      templateVersionId: row.templateVersionId,
-      bindings: row.bindings ?? [],
-      data: row.data ?? {},
-    })
-    await loadMails()
-    ElMessage.success('已复制为新邮件，可编辑后生成')
-  } catch (err) { ElMessage.error((err as Error).message) }
-}
-
-async function openOutput(row: MailRow): Promise<void> {
-  if (row.outputs?.final) await osApi().shellOpen(`outputs/edm/${row._id}/${EDM_OUTPUT_FILES.final}`)
-}
-
-// ── 导出（单封 .html(final) / 批量 .zip 含各形态 html）──
+// ── 导出（单封/批量统一 zip，每封目录含四形态）──
 async function exportMail(row: MailRow): Promise<void> {
   try {
     if (!row.outputs?.final) { ElMessage.warning('该邮件尚未生成产物'); return }
-    const save = await osApi().pickSave({ fileName: `${row.name || 'mail'}.html`, extensions: ['html'] })
+    const save = await osApi().pickSave({ fileName: `${row.name || 'mail'}.zip`, extensions: ['zip'] })
     if (!save) return
     const res = (await api('mail:export', { ids: [row._id], outPath: save })) as { count: number; outPath: string }
-    ElMessage.success(`已导出 ${res.count} 封：${res.outPath}`)
+    ElMessage.success(`已导出 ${res.count} 封（含四形态）：${res.outPath}`)
   } catch (err) { ElMessage.error((err as Error).message) }
 }
-
-/** 勾选单一真相（§七）：从 useSelection 反查行集合；已生成产物者才可导出 */
 function selectedRows(): MailRow[] {
   return mails.value.filter((m) => selection.has(m._id))
 }
-
 async function batchExport(): Promise<void> {
   try {
     const rows = selectedRows().filter((row) => row.outputs?.final)
     if (rows.length === 0) { ElMessage.warning('请先勾选已生成产物的邮件'); return }
-    const date = toFileName()
-    const save = await osApi().pickSave({ fileName: `sshk-mails-${date}.zip`, extensions: ['zip'] })
+    const save = await osApi().pickSave({ fileName: `sshk-mails-${toFileName()}.zip`, extensions: ['zip'] })
     if (!save) return
     const res = (await api('mail:export', { ids: rows.map((r) => r._id), outPath: save })) as { count: number; outPath: string }
-    ElMessage.success(`已批量导出 ${res.count} 封（zip 含各形态 html）：${res.outPath}`)
+    ElMessage.success(`已批量导出 ${res.count} 封（zip 含四形态）：${res.outPath}`)
   } catch (err) { ElMessage.error((err as Error).message) }
 }
-
-/** 批量删除（批量约定；危险操作二次确认）；删除后 prune 清理失效勾选（§七） */
 async function batchRemove(): Promise<void> {
   const rows = selectedRows()
   if (rows.length === 0) { ElMessage.warning('请先勾选要删除的邮件'); return }
@@ -158,64 +167,65 @@ async function batchRemove(): Promise<void> {
   ElMessage.success(`已删除 ${rows.length} 封邮件`)
 }
 
-// ── 分享（plans/09 ShareHub）：工具只解析产物根目录，分享本体交给宿主 ShareHub + ShareDialog ──
-const shareDialog = reactive({ open: false, root: '', entry: '', label: '邮件产物', loading: false })
-async function openShare(): Promise<void> {
+// ── 分享：顶层=所有列表项；行级=每封独立 root（Q5）──
+const shareDialog = reactive({ open: false, root: '', entry: '', label: '邮件产物', loading: false, mailId: '' })
+let topRoot = ''
+async function resolveTopRoot(): Promise<string> {
+  if (topRoot) return topRoot
+  try {
+    const resolved = (await api('share:resolve')) as { root: string }
+    topRoot = resolved.root
+  } catch { topRoot = '' }
+  return topRoot
+}
+async function openShare(row?: MailRow): Promise<void> {
   shareDialog.loading = true
   try {
-    const resolved = await api('share:resolve') as { root: string; entry: string; label: string }
-    Object.assign(shareDialog, { open: true, root: resolved.root, entry: resolved.entry, label: resolved.label })
+    const resolved = (await api('share:resolve', row ? { mailId: row._id } : {})) as { root: string; entry: string; label: string }
+    Object.assign(shareDialog, { open: true, root: resolved.root, entry: resolved.entry, label: resolved.label, mailId: row?._id ?? '' })
+    if (!row) topRoot = resolved.root
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { shareDialog.loading = false }
 }
+/** 分享状态：未分享 / 已分享(顶层) / 已分享(行级)；按四元组键读票（顶层 label=邮件产物，行级=单封邮件产物） */
+function shareState(row: MailRow): 'none' | 'top' | 'row' {
+  const root = topRoot
+  if (!root) return 'none'
+  const top = readShareTicket(toolId.value, '邮件产物', root, '')
+  const own = readShareTicket(toolId.value, '单封邮件产物', `${root}/${row._id}`, '')
+  if (isTicketAlive(own)) return 'row'
+  if (isTicketAlive(top)) return 'top'
+  return 'none'
+}
+function copyShareLink(row: MailRow): void {
+  const root = topRoot
+  if (!root) { ElMessage.warning('请先生成邮件产物'); return }
+  const ticket = readShareTicket(toolId.value, '单封邮件产物', `${root}/${row._id}`, '')
+    ?? readShareTicket(toolId.value, '邮件产物', root, '')
+  if (!ticket?.urls?.length) { ElMessage.warning('该邮件尚无有效分享链接'); return }
+  void osApi().clipboardWrite(ticket.urls[0]!)
+  ElMessage.success('分享链接已复制')
+}
+onMounted(() => { void resolveTopRoot() })
+watch(mails, () => { void resolveTopRoot() })
 
-// ── 操作列（TableOpsColumn：≤3 内联 + 更多下拉；语义配色 §5.1）──
-// 行内「生成」的 per-row loading 态以 disabled 兜底（TableOpsColumn 无 per-row loading；
-// 生成期间禁用全部行生成按钮防并发，完成即恢复）。
-// 配色按 UI 规范 §5.1：新建/主操作=primary，复制/导出=warning，次要=info，删除=danger。
+// ── 操作列（内联 ≤3：分享/编辑/组装；更多：导出/另存为/删除）──
 const ops = computed(() => [
-  { key: 'generate', label: '生成', type: 'primary' as const, disabled: mailGenerating.value !== '' },
-  { key: 'export', label: '导出', type: 'warning' as const },
+  { key: 'share', label: '分享', type: 'success' as const },
+  { key: 'edit', label: '编辑', type: 'primary' as const },
+  { key: 'compose', label: '组装', type: 'primary' as const },
 ])
 const moreOps = [
-  { key: 'edit', label: '编辑', type: 'primary' as const },
-  { key: 'duplicate', label: '复制为新邮件', type: 'warning' as const },
-  { key: 'copyCode', label: '复制代码', type: 'warning' as const },
-  { key: 'open', label: '打开产物', type: 'info' as const },
+  { key: 'export', label: '导出', type: 'warning' as const },
+  { key: 'saveAs', label: '另存为', type: 'warning' as const },
   { key: 'delete', label: '删除', type: 'danger' as const },
 ]
-
-// ── 复制代码（F-03，requirement.txt：复制渲染/juice/压缩后的最终代码）──
-// 三形态选择弹框：assembled=组合原始 / inlined=内联资源 / final=juice 压缩（邮件发送形态）
-const COPY_FORMS = [
-  { value: 'assembled', label: '原始组合（assembled）' },
-  { value: 'inlined', label: '内联资源（inlined）' },
-  { value: 'final', label: '压缩最终（final）' },
-] as const
-const copyCode = reactive({ open: false, mail: null as MailRow | null, form: 'final' as (typeof COPY_FORMS)[number]['value'], loading: false })
-function openCopyCode(row: MailRow): void {
-  if (!row.outputs?.final) { ElMessage.warning('尚未生成产物，请先「生成」'); return }
-  Object.assign(copyCode, { open: true, mail: row, form: 'final' })
-}
-async function doCopyCode(): Promise<void> {
-  if (!copyCode.mail) return
-  copyCode.loading = true
-  try {
-    const html = await api<string>('mail:readOutput', { _id: copyCode.mail._id, form: copyCode.form })
-    await osApi().clipboardWrite(html)
-    ElMessage.success(`已复制${COPY_FORMS.find((f) => f.value === copyCode.form)?.label ?? ''}代码（${html.length} 字符）`)
-    copyCode.open = false
-  } catch (err) { ElMessage.error((err as Error).message) }
-  finally { copyCode.loading = false }
-}
-
 function onAction(key: string, row: MailRow): void {
-  if (key === 'generate') void generateMail(row)
-  else if (key === 'export') void exportMail(row)
+  if (key === 'share') void openShare(row)
   else if (key === 'edit') openEditor(row)
-  else if (key === 'duplicate') void duplicateMail(row)
-  else if (key === 'copyCode') openCopyCode(row)
-  else if (key === 'open') void openOutput(row)
+  else if (key === 'compose') { editorMail.value = row; editorOpen.value = true }
+  else if (key === 'export') void exportMail(row)
+  else if (key === 'saveAs') openSaveAs(row)
   else if (key === 'delete') void confirmRemove('删除邮件', row.name, async () => { await api('mail:remove', { _id: row._id }); await loadMails() })
 }
 </script>
@@ -223,39 +233,10 @@ function onAction(key: string, row: MailRow): void {
 <template>
   <ListPageShell flush :loading="table.loading.value">
     <template #filter>
-      <div class="f-item">
-        <span class="f-label">搜索</span>
-        <el-input v-model="table.draft.value.kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="table.search" />
-      </div>
-      <div class="f-item">
-        <span class="f-label">来源</span>
-        <el-select v-model="table.draft.value.origin" size="small" style="width: 180px">
-          <el-option label="全部" value="all" />
-          <el-option label="系统" value="system" />
-          <el-option label="自定义" value="custom" />
-        </el-select>
-      </div>
-      <div class="f-item">
-        <span class="f-label">品牌</span>
-        <el-select v-model="table.draft.value.brand" size="small" filterable style="width: 180px">
-          <el-option label="全部" value="all" />
-          <el-option v-for="b in brandOptions" :key="b.value" :label="b.label" :value="b.value" />
-        </el-select>
-      </div>
-      <div class="f-item">
-        <span class="f-label">生成时间</span>
-        <el-date-picker
-          v-model="table.draft.value.dateRange"
-          size="small"
-          type="datetimerange"
-          range-separator="至"
-          start-placeholder="开始时间"
-          end-placeholder="结束时间"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
-          style="width: 360px"
-        />
-      </div>
+      <div class="f-item"><span class="f-label">搜索</span><el-input v-model="table.draft.value.kw" size="small" clearable placeholder="名称" style="width: 180px" @keyup.enter="table.search" /></div>
+      <div class="f-item"><span class="f-label">来源</span><el-select v-model="table.draft.value.origin" size="small" style="width: 180px"><el-option label="全部" value="all" /><el-option label="系统" value="system" /><el-option label="自定义" value="custom" /></el-select></div>
+      <div class="f-item"><span class="f-label">品牌</span><el-select v-model="table.draft.value.brand" size="small" filterable style="width: 180px"><el-option label="全部" value="all" /><el-option v-for="b in brandOptions" :key="b.value" :label="b.label" :value="b.value" /></el-select></div>
+      <div class="f-item"><span class="f-label">生成时间</span><el-date-picker v-model="table.draft.value.dateRange" size="small" type="datetimerange" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" :default-time="[new Date(2000,0,1,0,0,0), new Date(2000,0,1,23,59,59)]" style="width: 360px" /></div>
       <el-button size="small" type="primary" @click="table.search">查询</el-button>
       <el-button size="small" @click="table.reset">重置</el-button>
     </template>
@@ -265,67 +246,61 @@ function onAction(key: string, row: MailRow): void {
       <el-button size="small" type="danger" plain :disabled="selection.count.value === 0" @click="batchRemove">批量删除（{{ selection.count.value }}）</el-button>
       <el-divider direction="vertical" />
       <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>
-      <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openShare">分享产物</el-button>
+      <el-button size="small" type="success" plain :loading="shareDialog.loading" @click="openShare()">分享产物</el-button>
     </template>
 
     <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
       <el-table-column type="index" label="#" width="46" align="center" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
       <el-table-column type="selection" width="40" reserve-selection />
-      <el-table-column prop="name" label="邮件" min-width="140" show-overflow-tooltip />
-      <el-table-column label="来源" width="76" align="center">
+      <el-table-column prop="name" label="邮件名" min-width="140" fixed="left" show-overflow-tooltip />
+      <el-table-column label="来源" width="76" align="center"><template #default="{ row }"><el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag></template></el-table-column>
+      <el-table-column label="品牌" width="120" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template></el-table-column>
+      <el-table-column label="模板" width="120" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ tplName(row.templateVersionId) }}</span></template></el-table-column>
+      <el-table-column label="版本" width="80"><template #default="{ row }"><span class="muted">{{ tplVersionLabel(row.templateVersionId) }}</span></template></el-table-column>
+      <el-table-column label="生成时间" width="150"><template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template></el-table-column>
+      <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" placeholder="—" /></template></el-table-column>
+      <el-table-column label="分享状态" width="120" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag>
+          <div class="share-cell">
+            <el-tag v-if="shareState(row) === 'row'" size="small" type="success">已分享(行级)</el-tag>
+            <el-tag v-else-if="shareState(row) === 'top'" size="small" type="info">已分享(顶层)</el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">未分享</el-tag>
+            <el-button v-if="shareState(row) !== 'none'" size="small" text type="primary" @click="copyShareLink(row)">复制链接</el-button>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column label="品牌" width="120" show-overflow-tooltip>
-        <template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template>
-      </el-table-column>
-      <el-table-column label="模板版本" width="110">
-        <template #default="{ row }"><span class="muted">{{ tplLabel(row.templateVersionId) }}</span></template>
-      </el-table-column>
-      <el-table-column label="片段" width="60" align="center">
-        <template #default="{ row }"><span class="muted">{{ placementCount(row) }}</span></template>
-      </el-table-column>
-      <el-table-column label="生成时间" width="150">
-        <template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template>
-      </el-table-column>
-      <TableOpsColumn :actions="ops" :more="moreOps" width="220" fixed="right" @action="(key: string, row: Record<string, unknown>) => onAction(key, row as unknown as MailRow)" />
+      <TableOpsColumn :actions="ops" :more="moreOps" width="180" fixed="right" @action="(key: string, row: Record<string, unknown>) => onAction(key, row as unknown as MailRow)" />
     </el-table>
-    <EmptyState
-      v-else
-      :description="mails.length === 0 ? '还没有邮件；点「新增邮件」走 名称→来源→品牌→模板→片段布局→数据→生成 的完整流程' : '没有符合条件的邮件，试试调整筛选条件'"
-    />
+    <EmptyState v-else :description="mails.length === 0 ? '还没有邮件；点「新增邮件」填名称后进入组装' : '没有符合条件的邮件，试试调整筛选条件'" />
 
     <template #footer>
-      <span class="muted foot-hint">产物覆盖式（D19）· ShareHub 安全分享（TTL/可撤销）· 导出 zip 含各形态 html</span>
+      <span class="muted foot-hint">产物覆盖式 · ShareHub 安全分享（TTL/可撤销）· 导出 zip 含四形态</span>
       <ListPagination v-model:page="table.page.value" v-model:pageSize="table.pageSize.value" :total="table.total.value" />
     </template>
 
-    <!-- 编辑器与分享弹框（el-dialog teleport 到 body，锚点留在表格区无视觉影响） -->
-    <MailEditor v-model:visible="editorOpen" :mail="editorMail" @saved="onEditorSaved" />
-    <ShareDialog
-      v-model:open="shareDialog.open"
-      :tool-id="toolId"
-      :label="shareDialog.label"
-      :default-root="shareDialog.root"
-      :default-entry="shareDialog.entry"
-    />
-    <!-- 复制代码弹框（F-03：三形态选择，写入剪贴板） -->
-    <el-dialog v-model="copyCode.open" title="复制邮件代码" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-radio-group v-model="copyCode.form">
-        <el-radio v-for="f in COPY_FORMS" :key="f.value" :value="f.value">{{ f.label }}</el-radio>
-      </el-radio-group>
-      <p class="muted" style="margin-top: 8px">取「{{ copyCode.mail?.name ?? '' }}」当前已生成的产物代码写入剪贴板。</p>
-      <template #footer>
-        <el-button @click="copyCode.open = false">取消</el-button>
-        <el-button type="primary" :loading="copyCode.loading" @click="doCopyCode">复制</el-button>
-      </template>
+    <!-- 统一组装弹框（scene=mail） -->
+    <ComposeDialog v-model:visible="editorOpen" scene="mail" :mail="editorMail" @saved="onEditorSaved" />
+
+    <!-- 新增/编辑邮件名弹框 -->
+    <el-dialog v-model="nameDialog.open" :title="nameDialog.editing ? '编辑邮件名' : '新增邮件'" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-form label-width="auto"><el-form-item label="邮件名" required><el-input v-model="nameDialog.name" clearable placeholder="邮件名称" @keyup.enter="onNameConfirm" /></el-form-item></el-form>
+      <template #footer><el-button @click="nameDialog.open = false">取消</el-button><el-button type="primary" :loading="nameDialog.saving" @click="onNameConfirm">确认</el-button></template>
     </el-dialog>
+
+    <!-- 另存为弹框 -->
+    <el-dialog v-model="saveAsDialog.open" title="另存为新邮件" width="420px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-form label-width="auto"><el-form-item label="新邮件名" required><el-input v-model="saveAsDialog.name" clearable placeholder="新邮件名称" /></el-form-item></el-form>
+      <p class="muted">将以「{{ saveAsDialog.source?.name ?? '' }}」的模板/片段/数据为基础复制，确认后进入组装快速修改。</p>
+      <template #footer><el-button @click="saveAsDialog.open = false">取消</el-button><el-button type="primary" :loading="saveAsDialog.saving" @click="onSaveAsConfirm">确认</el-button></template>
+    </el-dialog>
+
+    <!-- 分享弹框 -->
+    <ShareDialog v-model:open="shareDialog.open" :tool-id="toolId" :label="shareDialog.label" :default-root="shareDialog.root" :default-entry="shareDialog.entry" />
   </ListPageShell>
 </template>
 
 <style scoped>
 .muted { opacity: 0.6; font-size: 12px; }
-/* footer 提示语推到最左（.lp-foot 默认居右）：等价旧 space-between 布局 */
 .foot-hint { margin-right: auto; margin-top: 6px; }
+.share-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 </style>

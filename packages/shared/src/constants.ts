@@ -35,6 +35,8 @@ export function toolConfigKey(toolId: string, key: string): string {
 
 /** 三阶段邮件产物文件名（覆盖式，固定路径） */
 export const EDM_OUTPUT_FILES = {
+  /** 组装好的模板：模板 + 片段源码按 slot 拼接、未填表单变量（2026-11-25 修订 14 / Q4） */
+  template: 'template.html',
   assembled: 'assembled.html',
   inlined: 'inlined.html',
   final: 'final.html',

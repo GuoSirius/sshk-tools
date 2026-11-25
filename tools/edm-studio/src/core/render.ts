@@ -26,6 +26,8 @@ export interface RenderInput {
 }
 
 export interface RenderStages {
+  /** 组装好的模板源码（模板 + 片段源码按 slot 拼接、未渲染；Q4 保留 njk 变量原样） */
+  assembledTemplate?: string
   assembled: string
   inlined: string
   final: string

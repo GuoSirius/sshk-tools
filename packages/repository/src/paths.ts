@@ -97,7 +97,7 @@ export function readOutput(root: string, rel: string): string {
 }
 
 /** 邮件产物固定路径（覆盖式，无时间戳） */
-export function edmOutputRel(mailId: string, stage: 'assembled' | 'inlined' | 'final'): string {
+export function edmOutputRel(mailId: string, stage: 'template' | 'assembled' | 'inlined' | 'final'): string {
   return `outputs/edm/${mailId}/${EDM_OUTPUT_FILES[stage]}`
 }
 

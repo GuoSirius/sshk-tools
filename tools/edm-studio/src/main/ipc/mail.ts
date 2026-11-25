@@ -143,6 +143,9 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     })
     const snap = outputSnapshotOptions(ctx.config, TOOL_IDS.edmStudio, app.getPath('userData'))
     const outputs = {
+      template: stages.assembledTemplate
+        ? writeOutput(ctx.outputRoot, edmOutputRel(mail._id, 'template'), stages.assembledTemplate, snap)
+        : undefined,
       assembled: writeOutput(ctx.outputRoot, edmOutputRel(mail._id, 'assembled'), stages.assembled, snap),
       inlined: writeOutput(ctx.outputRoot, edmOutputRel(mail._id, 'inlined'), stages.inlined, snap),
       final: writeOutput(ctx.outputRoot, edmOutputRel(mail._id, 'final'), stages.final, snap),
@@ -195,8 +198,11 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const mail = await repo.get<Mail>('mails', str(data, '_id'))
     if (!mail) throw new AppError('邮件不存在')
     const form = String(data['form'] ?? 'final')
-    const rel = form === 'assembled' ? mail.outputs.assembled : form === 'inlined' ? mail.outputs.inlined : mail.outputs.final
-    if (!rel) throw new AppError('尚未生成产物')
+    const rel = form === 'template' ? mail.outputs.template
+      : form === 'assembled' ? mail.outputs.assembled
+      : form === 'inlined' ? mail.outputs.inlined
+      : mail.outputs.final
+    if (!rel) throw new AppError('尚未生成该形态产物，请先生成')
     return readOutput(ctx.outputRoot, rel)
   })
 
@@ -207,40 +213,44 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     if (ids.length === 0) throw new AppError('ids 必填')
     if (!outPath) throw new AppError('outPath 必填（os.pickSave 结果）')
     const read = async (rel?: string): Promise<string> => (rel ? await readOutput(ctx.outputRoot, rel) : '')
-    const items: { id: string; name: string; assembled: string; inlined: string; final: string }[] = []
+    const items: { id: string; name: string; template: string; assembled: string; inlined: string; final: string }[] = []
     for (const id of ids) {
       const mail = await repo.get<Mail>('mails', id)
       if (!mail?.outputs.final) continue
       items.push({
         id,
         name: mail.name,
+        template: await read(mail.outputs.template),
         assembled: await read(mail.outputs.assembled),
         inlined: await read(mail.outputs.inlined),
         final: await read(mail.outputs.final),
       })
     }
     if (items.length === 0) throw new AppError('所选邮件均无产物，请先生成')
-    if (items.length === 1 && !outPath.endsWith('.zip')) {
-      await fs.writeFile(outPath, items[0]!.final, 'utf8')
-      return { count: 1, outPath }
-    }
-    // zip 内文件名：名称非法字符替换为 _，空名回退 id；每封含三个形态
+    // 修订 14：单封与批量统一走 zip（每封一个邮件名目录，含四形态）；单封 .html 由「复制」承接
+    // zip 内以邮件名为目录：每封一个 safe(name)/ 目录，含四形态（需求 3.1）
     const safe = (s: string): string => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'mail'
     const enc = (s: string): Uint8Array => new TextEncoder().encode(s)
     const files: Record<string, Uint8Array> = {}
     for (const it of items) {
-      if (it.assembled) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.assembled}`] = enc(it.assembled)
-      if (it.inlined) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.inlined}`] = enc(it.inlined)
-      if (it.final) files[`${safe(it.name)}.${EDM_OUTPUT_FILES.final}`] = enc(it.final)
+      const dir = `${safe(it.name)}/`
+      if (it.template) files[`${dir}${EDM_OUTPUT_FILES.template}`] = enc(it.template)
+      if (it.assembled) files[`${dir}${EDM_OUTPUT_FILES.assembled}`] = enc(it.assembled)
+      if (it.inlined) files[`${dir}${EDM_OUTPUT_FILES.inlined}`] = enc(it.inlined)
+      if (it.final) files[`${dir}${EDM_OUTPUT_FILES.final}`] = enc(it.final)
     }
     await fs.writeFile(outPath, zipSync(files, { level: 6 }))
     return { count: items.length, outPath }
   })
 
   // ── 分享解析（plans/09 ShareHub）：产物根目录绝对路径，交给 ShareDialog 创建路由 ──
-  handlers.set('share:resolve', async () => {
-    const root = path.join(ctx.outputRoot, 'outputs')
+  handlers.set('share:resolve', async (data: Payload) => {
+    const mailId = str(data, 'mailId')
+    // 行级分享：每封独立 root（Q5），TTL/撤销互不干扰；顶层分享=所有列表项（root=outputs）
+    const root = mailId
+      ? path.join(ctx.outputRoot, 'outputs', mailId)
+      : path.join(ctx.outputRoot, 'outputs')
     if (!existsSync(root)) throw new AppError('尚无产物目录，请先生成邮件', 'io')
-    return { root, entry: '', label: '邮件产物' }
+    return { root, entry: '', label: mailId ? '单封邮件产物' : '邮件产物' }
   })
 }

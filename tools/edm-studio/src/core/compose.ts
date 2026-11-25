@@ -87,6 +87,26 @@ export function buildBindings(
   return out
 }
 
+/**
+ * 组装好的模板源码（Q4 保留 njk 变量原样）：模板源码里的 `{{ slot_<key> | safe }}`
+ * 占位替换为该区块片段源码（按 order 排序、repeat 重复），不做任何渲染。
+ * 与 renderMail 的方案 A（渲染后 HTML 注入 slot_*）并存：本函数只产出「填好片段但未填表单数据」的源码。
+ */
+export function buildAssembledTemplate(templateHtml: string, placements: ComposePlacement[]): string {
+  const bySlot = new Map<string, string[]>()
+  placements.forEach((p) => {
+    if (!p.slot || !p.html.trim()) return
+    const repeat = Math.max(1, Math.floor(p.repeat ?? 1))
+    const list = bySlot.get(p.slot) ?? []
+    for (let r = 0; r < repeat; r++) list.push(p.html)
+    bySlot.set(p.slot, list)
+  })
+  return templateHtml.replace(/\{\{\s*slot_([A-Za-z_][\w-]*)\s*(\|\s*safe\s*)?\}\}/g, (match, key: string) => {
+    const parts = bySlot.get(key)
+    return parts?.length ? parts.join('\n') : match
+  })
+}
+
 /** 组合渲染主入口：placements → slot 绑定 → css 汇集 → njk → juice → minify */
 export async function compose(input: ComposeInput): Promise<ComposeResult> {
   const strict = input.strict ?? true
@@ -127,5 +147,5 @@ export async function compose(input: ComposeInput): Promise<ComposeResult> {
     memoryTemplates: input.memoryTemplates,
     templateName: input.templateName,
   })
-  return { ...stages, bindings }
+  return { ...stages, assembledTemplate: buildAssembledTemplate(input.templateHtml, input.placements), bindings }
 }

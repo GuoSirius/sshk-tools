@@ -5,7 +5,18 @@ export interface Named { _id: string; name: string; [k: string]: unknown }
 export interface BrandRow extends Named { code: string }
 export interface VersionRow extends Named { version: number; label?: string; type?: string; source?: { html: string; css?: string; cssMode?: string }; templateId?: string; fragmentId?: string; slots?: { key: string; type: string }[]; policy?: { blacklist: string[]; whitelist: string[] }; sampleData?: Record<string, unknown>; fields?: unknown[] }
 export interface PlacementRow { slot: string; fragmentVersionId: string; order?: number; repeat?: number; data?: Record<string, unknown> }
-export interface MailRow extends Named { origin?: 'system' | 'custom'; brandId: string; templateVersionId: string; bindings?: PlacementRow[]; outputs?: Record<string, string>; lastGeneratedAt?: string; data?: Record<string, unknown> }
+export interface MailRow extends Named {
+  origin?: 'system' | 'custom'
+  brandId: string
+  templateVersionId: string
+  bindings?: PlacementRow[]
+  /** 四形态产物相对路径（template/assembled/inlined/final） */
+  outputs?: Record<string, string>
+  lastGeneratedAt?: string
+  /** 最近更新时间（BaseEntity.updatedAt，列表「更新时间」列） */
+  updatedAt?: string
+  data?: Record<string, unknown>
+}
 
 /**
  * window.api 由桌面端 preload 注入（全局类型声明在 apps/desktop env.d.ts）。
