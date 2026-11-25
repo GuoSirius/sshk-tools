@@ -46,10 +46,10 @@ describe('resolveCssBundle 单链路', () => {
     expect(fallback.refs).toEqual([])
   })
 
-  it('公共样式层：@system/css/reset.css 与 @root/<brand>/css/brand.css 显式 link 生效', async () => {
+  it('公共样式层：@system/css/reset.css 与 @root/<brand>/css/standard-default.css 显式 link 生效', async () => {
     const edmRoot = fileURLToPath(new URL('../../assets/edm', import.meta.url))
     const c = ctx(edmRoot)
-    const html = '<link rel="stylesheet" href="@system/css/reset.css"><link rel="stylesheet" href="@root/elabscience/css/brand.css"><div>x</div>'
+    const html = '<link rel="stylesheet" href="@system/css/reset.css"><link rel="stylesheet" href="@root/elabscience/css/standard-default.css"><div>x</div>'
     const bundle = await resolveCssBundle({ sources: [{ html, ctx: c }] })
     expect(bundle.css).toContain('box-sizing: border-box')
     expect(bundle.css).toContain('.bg-blue')

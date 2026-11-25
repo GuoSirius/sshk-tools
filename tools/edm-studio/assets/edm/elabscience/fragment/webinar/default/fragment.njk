@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="@system/css/reset.css">
-<link rel="stylesheet" href="@root/elabscience/css/brand.css">
+<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
 <link rel="stylesheet" href="./css/webinar.css">
 
 <tr>
@@ -54,7 +54,7 @@
 
 <tr>
   <td></td>
-  <td colspan="2" class="bg-gray" style="padding: 0 0 16px;">
+  <td colspan="2" class="bg-gray pb-[16px]">
     <table cellspacing="0" cellpadding="0" border="0">
       <colgroup>
         <col />
@@ -62,7 +62,7 @@
 
       <tbody class="align-middle">
         <tr>
-          <td class="bg-white" style="padding: 8px 16px 0;">
+          <td class="bg-white p-[8px_16px_0]">
             <span class="title {{ introduction_className }}">{{ introduction_title }}</span>
           </td>
         </tr>
@@ -72,7 +72,7 @@
         </tr>
 
         <tr>
-          <td style="padding: 0 16px;">
+          <td class="px-[16px]">
             {% for it1 in introduction_lists %}
               <p class="pb-[5px] {{ introduction_itemClassName }}">{{ it1 | safe }}</p>
             {% endfor %}
@@ -81,7 +81,7 @@
 
         {% if introduction_buttonText %}
           <tr>
-            <td class="text-right pt-[18px]" style="padding-right: 16px;">
+            <td class="text-right pt-[18px] pr-[16px]">
               <a {% if introduction_buttonLink %}href="{{ introduction_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ introduction_buttonText }}</a>
             </td>
           </tr>
@@ -98,7 +98,7 @@
 
 <tr>
   <td></td>
-  <td colspan="2" class="bg-gray" style="padding: 0 0 16px;">
+  <td colspan="2" class="bg-gray pb-[16px]">
     <table cellspacing="0" cellpadding="0" border="0">
       <colgroup>
         <col />
@@ -106,7 +106,7 @@
 
       <tbody class="align-middle">
         <tr>
-          <td class="bg-white" style="padding: 8px 16px 0;">
+          <td class="bg-white p-[8px_16px_0]">
             <span class="title {{ reserve_className }}">{{ reserve_title }}</span>
           </td>
         </tr>
@@ -116,18 +116,18 @@
         </tr>
 
         <tr>
-          <td style="padding: 0 16px;">
+          <td class="px-[16px]">
             {% for it2 in reserve_lists %}
               <p class="pb-[5px] {{ reserve_itemClassName }}">{{ it2 }}</p>
             {% endfor %}
             <p class="pb-[5px] calendar {{ reserve_itemClassName }}"><strong>{{ reserve_weekDate }}</strong></p>
-            <p class="pb-[5px] {{ reserve_itemClassName }}"><span class="clock" style="display: inline-block; width: 18px; height: 24px; margin-bottom: -3px;"></span>{{ reserve_time }}</p>
+            <p class="pb-[5px] {{ reserve_itemClassName }}"><span class="clock inline-block w-[18px] h-[24px] -mb-[3px]"></span>{{ reserve_time }}</p>
           </td>
         </tr>
 
         {% if reserve_buttonText %}
           <tr>
-            <td class="text-right pt-[18px]" style="padding-right: 16px;">
+            <td class="text-right pt-[18px] pr-[16px]">
               <a {% if reserve_buttonLink %}href="{{ reserve_buttonLink }}"{% endif %} class="button-linear-orange font-bold decoration-none">{{ reserve_buttonText }}</a>
             </td>
           </tr>
@@ -167,11 +167,11 @@
 
       <tbody class="align-top">
         <tr>
-          <td rowspan="2" style="padding-right: 12px;" class="image-box">
+          <td rowspan="2" class="image-box pr-[12px]">
             <img src="{{ speaker_avatar }}" />
           </td>
           <td class="h-[0px] pb-[24px]">
-            <p><strong class="text-size-[27px] font-bold" style="margin-right: 20px;">Speaker</strong> {{ speaker_username }}</p>
+            <p><strong class="text-size-[27px] font-bold mr-[20px]">Speaker</strong> {{ speaker_username }}</p>
             <p>{{ speaker_jobTitle }}</p>
           </td>
         </tr>

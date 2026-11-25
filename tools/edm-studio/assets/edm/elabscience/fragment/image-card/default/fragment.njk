@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="@system/css/reset.css">
-<link rel="stylesheet" href="@root/elabscience/css/brand.css">
+<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
 <link rel="stylesheet" href="./css/image-card.css">
 
 <tr>
@@ -24,7 +24,7 @@
               <img src="{{ image1 }}" />
             </a>
           </td>
-          <td style="padding-left: 16px;">
+          <td class="pl-[16px]">
             <p class="pb-[12px]">{{ text4 }}</p>
 
             <p>{{ text5 }}</p>
@@ -39,7 +39,7 @@
         <tr>
           <td></td>
           <td colspan="2" class="text-center">
-            <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button-orange bg-light-orange decoration-none text-center font-bold rounded-[16px]" style="min-width: 240px;">{{ text6 }}</a>
+            <a {% if link3 %}href="{{ link3 }}"{% endif %} class="button-orange bg-light-orange decoration-none text-center font-bold rounded-[16px] min-w-[240px]">{{ text6 }}</a>
           </td>
           <td></td>
         </tr>

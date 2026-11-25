@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="@system/css/reset.css">
-<link rel="stylesheet" href="@root/elabscience/css/brand.css">
+<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
 <link rel="stylesheet" href="./css/new-arrivals.css">
 
 <tr>
@@ -161,7 +161,7 @@
                 <td class="pt-[24px]">
                   <p class="image-box"><img src="{{ it3.image }}" alt="{{ it3.name }}" /></p>
                   <p class="pt-[8px]">{{ it3.name }}</p>
-                  <p class="pt-[12px]"><a href="{{ it3.link }}" class="button font-bold decoration-none" style="border-radius: 16px;">{{ it3.buttonText }}</a></p>
+                  <p class="pt-[12px]"><a href="{{ it3.link }}" class="button font-bold decoration-none rounded-[16px]">{{ it3.buttonText }}</a></p>
                 </td>
               {% endif %}
             </tr>
@@ -196,7 +196,7 @@
           <tr>
             {% for it7 in productLists %}
               <td class="pt-[8px]">
-                <a href="{{ it7.link }}" class="button font-bold decoration-none" style="border-radius: 16px;">{{ it7.buttonText }}</a>
+                <a href="{{ it7.link }}" class="button font-bold decoration-none rounded-[16px]">{{ it7.buttonText }}</a>
               </td>
             {% endfor %}
           </tr>

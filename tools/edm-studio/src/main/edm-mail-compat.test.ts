@@ -7,7 +7,7 @@
  * ⑤ njk 不再用「伪 unocss」数字/颜色类（h-24/color-333/border-rd-10），改 arbitrary value/property；
  * ⑥ 关键 arbitrary class 能被 unocss 生成且 juice 内联为真实像素/纯色（不靠 CSS 变量 alpha）；
  * ⑦ unocss 生成带 CSS 变量的同名 class（color-blue / bg-white 等）必须有品牌 css 兜底定义，
- *    且 default njk 必须 link 合并后的 brand.css —— 否则 Tailwind 默认色 + var() 会泄漏到内联结果。
+ *    且 default njk 必须 link 合并后的 standard-default.css —— 否则 Tailwind 默认色 + var() 会泄漏到内联结果。
  * ⑧ 框架自动注入仅 normalize.css（构建期内联）+ uno；reset.css（邮件适配）由 default njk 显式 link；见 edm-assets.test.ts。
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -136,24 +136,54 @@ describe('EDM 迁移资产邮件兼容性', () => {
     expect(juice.inlineContent('<div class="[color:#fff]">x</div>', whiteCss).replace(/\s*:\s*/g, ':')).toContain('color:#fff')
   })
 
-  it('unocss 带 CSS 变量的同名 class 必须有品牌 css 兜底，且 njk 都 link 了 brand.css', async () => {
+  it('#209 内联 style 转出的原子类经 unocss + juice 内联为等价纯值', async () => {
+    const uno = await createGenerator({ presets: [presetWind3({ preflight: false })] })
+    // 逐类独立内联，避免同元素多类互相覆盖；border/颜色用任意属性语法，不产生 var() alpha
+    const cases: Array<[string, string]> = [
+      ['[border:1px_solid_#b6d8fc]', 'border:1px solid #b6d8fc'],
+      ['[border:1px_solid_#e6f3f2]', 'border:1px solid #e6f3f2'],
+      ['[border-bottom:1px_solid_#e8e8e8]', 'border-bottom:1px solid #e8e8e8'],
+      ['[border-bottom:1px_solid_#ebebeb]', 'border-bottom:1px solid #ebebeb'],
+      ['[border-left:2px_solid_#e30012]', 'border-left:2px solid #e30012'],
+      ['[background-color:#faf6f3]', 'background-color:#faf6f3'],
+      ['p-[5px_8px]', 'padding:5px 8px'],
+      ['p-[16px_8px]', 'padding:16px 8px'],
+      ['p-[0_12px_0]', 'padding:0 12px 0'],
+      ['p-[8px_16px_0]', 'padding:8px 16px 0'],
+      ['px-[16px]', 'padding-left:16px'],
+      ['pb-[16px]', 'padding-bottom:16px'],
+      ['pr-[12px]', 'padding-right:12px'],
+      ['min-w-[240px]', 'min-width:240px'],
+      ['min-h-[59px]', 'min-height:59px'],
+      ['leading-[1.4]', 'line-height:1.4'],
+      ['-mb-[3px]', 'margin-bottom:-3px'],
+    ]
+    for (const [cls, expected] of cases) {
+      const css = (await uno.generate(cls, { preflights: false })).css
+      const inlined = juice.inlineContent(`<div class="${cls}">x</div>`, css).replace(/\s*:\s*/g, ':')
+      expect(inlined, cls).toContain(expected)
+      expect(inlined, cls).not.toContain('--un-')
+    }
+  })
+
+  it('unocss 带 CSS 变量的同名 class 必须有品牌 css 兜底，且 njk 都 link 了 standard-default.css', async () => {
     const uno = await createGenerator({ presets: [presetWind3({ preflight: false })] })
     for (const brand of ['elabscience', 'procell']) {
       const brandDir = path.join(EDM_ROOT, brand)
       const njkFiles = walk(brandDir).filter((f) => f.endsWith('.njk'))
       expect(njkFiles.length, `${brand} 未找到 default njk`).toBeGreaterThan(0)
 
-      // ① 所有 default njk 必须 link 合并后的 brand.css，否则品牌兜底定义进不了 bundle；
+      // ① 所有 default njk 必须 link 合并后的 standard-default.css，否则品牌兜底定义进不了 bundle；
       //    旧 palette/components link 出现即视为漏改（#204 合并后防漏断言）
       for (const file of njkFiles) {
         const text = readFileSync(file, 'utf8')
-        expect(text, `${path.relative(EDM_ROOT, file)} 未 link brand.css，品牌色将被 unocss 默认值覆盖`)
-          .toMatch(/href="@root\/[^"]+\/css\/brand\.css"/)
-        expect(text, `${path.relative(EDM_ROOT, file)} 仍 link 已合并旧文件`).not.toMatch(/css\/(?:palette|components)\.css/)
+        expect(text, `${path.relative(EDM_ROOT, file)} 未 link standard-default.css，品牌色将被 unocss 默认值覆盖`)
+          .toMatch(/href="@root\/[^"]+\/css\/standard-default\.css"/)
+        expect(text, `${path.relative(EDM_ROOT, file)} 仍 link 已合并旧文件`).not.toMatch(/css\/(?:palette|components|brand)\.css/)
       }
-      // ② 品牌级 css/ 目录只应保留合并后的 brand.css（版本私有 css/ 不在本断言范围）
+      // ② 品牌级 css/ 目录只应保留合并后的 standard-default.css（版本私有 css/ 不在本断言范围）
       const brandCssDir = path.join(brandDir, 'css')
-      expect(readdirSync(brandCssDir).filter((f) => f.endsWith('.css')).sort()).toEqual(['brand.css'])
+      expect(readdirSync(brandCssDir).filter((f) => f.endsWith('.css')).sort()).toEqual(['standard-default.css'])
 
       // ③ 收集该品牌 njk 实际用到的 class，找出 unocss 会生成 CSS 变量的那些
       const used = new Set<string>()
@@ -170,7 +200,7 @@ describe('EDM 迁移资产邮件兼容性', () => {
         .filter((name): name is string => Boolean(name))
       expect(risky.length, `${brand} 未检出需兜底的 class，测试可能已失效`).toBeGreaterThan(0)
 
-      // ④ 每个 risky class 必须在品牌 css（brand.css 已收编 palette + brand-utils）中有定义
+      // ④ 每个 risky class 必须在品牌 css（standard-default.css 已收编 palette + brand-utils）中有定义
       const linkedCss = [path.join(EDM_ROOT, 'css', 'reset.css'), ...walk(brandDir).filter((f) => f.endsWith('.css'))]
         .map((f) => readFileSync(f, 'utf8'))
         .join('\n')

@@ -126,12 +126,15 @@ export function nodeIcon(kind: unknown, cat?: string): { path: string; color: st
 /* ── 树构造（R24：每个节点携带 source，决定读写根与编辑门控） ── */
 function cssDirNode(parentPath: string, files: string[], idPrefix: string, source: Source): TreeNode {
   const dirPath = parentPath ? `${parentPath}/css` : 'css'
+  // manifest 的 collectCss 在版本级返回带 css/ 前缀的相对路径（如 css/template.css），
+  // 树节点只认文件名：label 不显示目录段，path 也不拼出 css/css/ 重复前缀。
+  const names = files.map((f) => storagePathSplit(f).pop() ?? f)
   return {
     id: `${idPrefix}:css`,
     label: 'css',
     kind: 'cssDir',
-    data: { kind: 'cssDir', source, path: dirPath, cssFiles: [...files], label: 'css' },
-    children: files.map((f) => ({
+    data: { kind: 'cssDir', source, path: dirPath, cssFiles: [...names], label: 'css' },
+    children: names.map((f) => ({
       id: `${idPrefix}:css:${f}`,
       label: f,
       kind: 'cssFile' as const,
@@ -143,7 +146,8 @@ function cssDirNode(parentPath: string, files: string[], idPrefix: string, sourc
 function versionNode(brand: string, cat: Cat, fam: string, v: any, source: Source): TreeNode {
   const famPath = `${brand}/${cat}/${fam}`
   const verPath = v.dir ? `${famPath}/${v.dir}` : famPath
-  const verCss = (v.css as string[]).filter((c) => c.startsWith('css/')).map((c) => c.slice(4))
+  // 只筛出 css/ 目录下的文件；目录段由 cssDirNode 统一归一化为文件名
+  const verCss = (v.css as string[]).filter((c) => c.startsWith('css/'))
   return {
     id: `ver:${source}:${brand}:${cat}:${fam}:${v.dir || 'default'}`,
     label: formatNodeLabel(v.dir || 'default', v.meta?.name),

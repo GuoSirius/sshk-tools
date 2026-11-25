@@ -143,13 +143,12 @@ njk 源码（如 <td class="pb-8 text-center text-[14px]">）
 
 ```
 assets/edm/
-├── css/                                  ← 顶层公共层（#2：两模板公用 css 提取至此）
-│   └── email-utils.css                   ← 两品牌逐字相同的重置区 + 通用原子类交集
-│                                            （现演示文件 normalize.css / uno.css 属早期 demo，一并清场删除）
+├── css/                                  ← 顶层公共层（一切 css 须 njk 显式 link 才生效）
+│   └── reset.css                         ← 邮件适配重置（Meyer 全量清零 + 元素基线 + mso 单元格间距 + title-mark；#209 补齐 hr/dl/dt/dd/pre/code/del/ins/caption 与 td/th 的 mso 间距归零）
 ├── elabscience/
 │   ├── meta.yaml                         ← 已有；补 description/favicon
 │   ├── css/
-│   │   └── brand.css                     ← 品牌样式单一文件（2026-11-25 #204 合并 palette.css + components.css 而成）：
+│   │   └── standard-default.css          ← 品牌样式单一文件（2026-11-25 #204 合并 palette.css + components.css；#209 由 brand.css 改名）：
 │   │                                        palette（bg-* 品牌色兜底：#006db8/#3a82db/#f7750b 系）在前，
 │   │                                        components（title 系/wifi-/gold-/circle-/square-icon-title、button 系、
 │   │                                        table-bordered/stripe/dashed 系、装饰图标列表类）在后；
@@ -166,9 +165,9 @@ assets/edm/
 │   └── template/
 │       └── standard/
 │           ├── meta.yaml                 ← 族：code/name/description/slots 声明
-│           ├── css/template.css          ← .app 骨架（750px+colgroup+h-N 间隔行）
 │           ├── default/                  ← 迁移骨架版（覆盖现演示 default）
-│           │   ├── meta.yaml / template.njk / sample.yaml / css/
+│           │   ├── meta.yaml / template.njk / sample.yaml
+│           │   └── css/template.css      ← .app 骨架（750px+colgroup+h-N 间隔行；#209 从族级上移至版本级）
 │           └── v1/                       ← 现演示版原样保留（#16），预留给下一版开发
 ```
 
@@ -176,23 +175,25 @@ assets/edm/
 - **迁移版本一律 `default/`**（版本号=目录派生 1）；**现有 v1 目录一律不动**（#5/#9/#16）。default（迁移真相）与 v1（旧演示）并存期，树中 latest 取 default（readdir 字母序 default 在前，同版本号 1 先者胜）。
 - 片段族 code = 目录名（kebab-case）；meta `name` 中文显示名；品牌间同构族同 code。
 - css 引用**优先显式 `<link>`**（#10），约定四条路径形态：
-  - 顶层公共：`<link rel="stylesheet" href="@system/css/email-utils.css">`
-  - 品牌层：`<link rel="stylesheet" href="@root/elabscience/css/brand.css">`（#204 palette+components 合并为单一文件；custom 派生副本 @root 自动指向自定义根，派生时品牌 css 整树拷贝，路径不失效）
+  - 顶层公共：`<link rel="stylesheet" href="@system/css/reset.css">`（框架自动注入仅 normalize.css + unocss；reset 须显式 link）
+  - 品牌层：`<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">`（#204 palette+components 合并为单一文件，#209 由 brand.css 改名；custom 派生副本 @root 自动指向自定义根，派生时品牌 css 整树拷贝，路径不失效）
+  - 跨版本共用骨架：`<link rel="stylesheet" href="@root/elabscience/template/standard/default/css/template.css">`（#209 从族级移至 default 版本级，fragments 的 header/footer 与模板 njk 显式引入）
   - 版本内：`<link rel="stylesheet" href="./css/xxx.css">`（相对版本目录；2026-11-25 修订 3：允许 `..` 上溯，解析 normalize 后兜底限定在来源根内，越界才拒绝）
-  - **不用族级 `css/`**（避免 `@root/<brand>/<kind>/<family>/css/…` 长路径）：片段/模板私有 css 一律放版本 `default/css/`；跨片段共用即上提品牌层
+  - **不用族级 `css/`**（避免 `@root/<brand>/<kind>/<family>/css/…` 长路径）：片段/模板私有 css 一律放版本 `default/css/`；跨片段共用即上提品牌层或 default 骨架层
 - njk 内不出现其他外链 stylesheet；每个 njk 声明自己需要的完整依赖集，收集侧自动去重（重复声明无害）。
 
 ### 3.2 CSS 分层映射表（样式分离规则）
 
 | 旧 `<style>` 分区（elab 行号） | 新落位 | 引入方式 |
 |---|---|---|
-| 重置区 L25-72（两品牌逐字相同） | 顶层 `email-utils.css` | 系统根 |
-| 通用原子类两品牌交集（间隔/排版/颜色/定位等） | 顶层 `email-utils.css` | 系统根 |
-| 骨架类 .app/.header/.main/.footer L75-131 | `template/standard/css/template.css` | 模板 njk `./css/`? 否——骨架 css 在族级 css/，**用 `@root/<brand>/template/standard/css/template.css` 显式引入**（族级 css/ 目录只此一处特例，其余场景不用族级） |
-| 表格组件 / 标题类 / 装饰图标 / 按钮 | 品牌 `brand.css`（#204 合并） | @root |
-| bg-* 色板 | 品牌 `brand.css`（#204 合并） | @root |
-| 品牌特有原子类差集 | 历史 `brand-utils.css` 从未被 link，早已并入品牌 css；#204 后统一由 `brand.css` 承载 | @root |
+| 重置区 L25-72（两品牌逐字相同） | 顶层 `reset.css` | 系统根，njk 显式 `@system/css/reset.css` |
+| 通用原子类（间隔/排版/颜色/定位等） | unocss 运行时按 class 生成 | 框架自动注入，**不落 css 文件** |
+| 骨架类 .app/.header/.main/.footer L75-131 | `template/standard/default/css/template.css` | **`@root/<brand>/template/standard/default/css/template.css` 显式引入**（#209 已从族级移至版本级，族级 css/ 不再有特例；header/footer 片段与模板 njk 均 link） |
+| 表格组件 / 标题类 / 装饰图标 / 按钮 | 品牌 `standard-default.css`（#204 合并，#209 改名） | @root |
+| bg-* 色板 | 品牌 `standard-default.css`（#204 合并，#209 改名） | @root |
+| 品牌特有原子类差集 | 历史 `brand-utils.css` 从未被 link，早已并入品牌 css；#204 后统一由 `standard-default.css` 承载 | @root |
 | 页面特定类（.card/.word-cloud-item；procell .poster） | 随对应片段版本 `default/css/`；无主的丢弃 | `./css/` |
+| 元素上的简单内联 style（间距/尺寸/边框/圆角/纯色） | unocss 原子类（#209：110 处转换；条件式/动态值/mso-hide/品牌类同属性冲突的保留 inline） | class 属性，运行时生成 |
 
 ### 3.3 片段族清单（#11 扩充口径：可复用尽量提取，批次 5 按此细化命名）
 
@@ -335,3 +336,16 @@ slots:
 | 7 | 收口（计划状态、台账 #187、索引变更记录） | 本提交（收口文档） | 最终 `pnpm verify` 全绿并推送 main |
 
 > 落地口径补丁：批次 5 族数最终为 26/品牌（基础 4 + series + 22 模式族），守护测试断言据此下调为 `>=26`；批次 6 渐变保留 `background-image` 视觉增强，但同规则必须声明 `background-color` 纯色回落供 Outlook 降级。
+
+### 9.1 后续 CSS 收口（2026-11-25 #204~#209）
+
+| 编号 | 调整 | 终态 |
+|---|---|---|
+| #204 | `components.css` + `palette.css` → 单一品牌 css | 两品牌各一个文件 |
+| #205 | 删 `.ExternalClass` 死代码（juice 全内联剥 `<style>` 后对最终邮件无效） | reset.css 仅保留 `title-mark` 一个 class |
+| #206 | `w-100/h-100` → `w-full/h-full`（unocss 前者=25rem） | 由 unocss 生成，品牌 css 删定义 |
+| #207 | `pb-12/pb-24` → `pb-[12px]/pb-[24px]` | arbitrary value 直出像素 |
+| #208 | 内容树 CSS 节点只显示文件名 | `cssDirNode` 统一 basename，避免 `css/css/` 重复路径 |
+| #209 | **本轮全量治理**：①reset.css 补 `hr/dl/dt/dd/pre/code/del/ins/caption/abbr/center` 与 `td/th` mso-table 间距归零；②品牌 css `brand.css` → `standard-default.css`、骨架 css 从族级移入 `template/standard/default/css/template.css`、删空 `standard.css` link，56 个 default njk 全部改链；③110 处内联 style 转 unocss 原子类（border/颜色用任意属性语法避免 var() alpha），保留 10 处：条件式 2、品牌类同属性冲突 4、动态色值 1、mso-hide 预览 3 | `pnpm verify` 95 文件 / 601 tests 全绿 |
+
+保留项判据（#209）：条件式 style 属性自身被 `{% if %}` 包裹；品牌类设置了同属性且品牌 css 在 unocss 之后注入会覆盖；动态 `{{ }}` 值；`mso-hide:all` 等 unocss 无等价写法。

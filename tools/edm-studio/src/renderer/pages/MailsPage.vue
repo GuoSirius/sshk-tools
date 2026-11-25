@@ -258,14 +258,14 @@ function onAction(key: string, row: MailRow): void {
     <el-table v-if="table.data.value.length > 0" :data="table.data.value" size="small" height="100%" :row-key="rowKey" @selection-change="syncSelection">
       <el-table-column type="index" label="#" width="46" align="center" fixed="left" :index="(i: number) => (table.page.value - 1) * table.pageSize.value + i + 1" />
       <el-table-column type="selection" width="40" reserve-selection fixed="left" />
-      <el-table-column prop="name" label="邮件名" min-width="140" fixed="left" show-overflow-tooltip />
-      <el-table-column label="来源" width="76" align="center"><template #default="{ row }"><el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag></template></el-table-column>
+      <el-table-column prop="name" label="邮件名" min-width="128" fixed="left" show-overflow-tooltip />
+      <el-table-column label="来源" width="80" align="center"><template #default="{ row }"><el-tag size="small" :type="row.origin === 'system' ? 'warning' : 'info'">{{ row.origin === 'system' ? '系统' : '自定义' }}</el-tag></template></el-table-column>
       <el-table-column label="品牌" width="120" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ brandLabel(row.brandId) }}</span></template></el-table-column>
       <el-table-column label="模板" width="120" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ tplName(row.templateVersionId) }}</span></template></el-table-column>
       <el-table-column label="版本" width="80"><template #default="{ row }"><span class="muted">{{ tplVersionLabel(row.templateVersionId) }}</span></template></el-table-column>
-      <el-table-column label="生成时间" width="150"><template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template></el-table-column>
-      <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" placeholder="—" /></template></el-table-column>
-      <el-table-column label="分享状态" width="120" align="center">
+      <el-table-column label="生成时间" width="128"><template #default="{ row }"><TimeText :value="row.lastGeneratedAt" placeholder="未生成" /></template></el-table-column>
+      <el-table-column label="更新时间" width="128"><template #default="{ row }"><TimeText :value="row.updatedAt" placeholder="—" /></template></el-table-column>
+      <el-table-column label="分享状态" width="100" align="center">
         <template #default="{ row }">
           <!-- 未分享=tag；已分享=直接给「复制链接」，颜色+tip 区分公用(顶层·蓝)/私有(行级·橙) -->
           <el-tag v-if="shareState(row) === 'none'" size="small" type="info" effect="plain">未分享</el-tag>

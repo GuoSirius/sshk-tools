@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="@system/css/reset.css">
-<link rel="stylesheet" href="@root/elabscience/css/brand.css">
+<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
 <link rel="stylesheet" href="./css/literature.css">
 
 <tr>
@@ -13,7 +13,7 @@
 
       <tbody class="align-top">
         <tr>
-          <td rowspan="2" style="padding-right: 12px;" class="image-box">
+          <td rowspan="2" class="image-box pr-[12px]">
             <img src="{{ overview_image }}" />
           </td>
           <td class="h-[0px] pb-[24px]">
@@ -25,9 +25,9 @@
 
         <tr>
           <td>
-            <p style="margin-bottom: 12px;"><strong>Publication Date:</strong> {{ overview_publicationDate }}</p>
-            <p style="margin-bottom: 12px;"><strong>Journal:</strong> <i>{{ overview_journal }}</i></p>
-            <p style="margin-bottom: 12px;"><strong>Impact Factor:</strong> {{ overview_impactFactor }}</p>
+            <p class="mb-[12px]"><strong>Publication Date:</strong> {{ overview_publicationDate }}</p>
+            <p class="mb-[12px]"><strong>Journal:</strong> <i>{{ overview_journal }}</i></p>
+            <p class="mb-[12px]"><strong>Impact Factor:</strong> {{ overview_impactFactor }}</p>
             <p><strong>DOI:</strong> {{ overview_doi }}</p>
           </td>
         </tr>
@@ -54,7 +54,7 @@
 <tr>
   <td></td>
   <td colspan="2">
-    <table cellspacing="0" cellpadding="0" border="0" class="table-dashed border-separate" style="padding: 16px;">
+    <table cellspacing="0" cellpadding="0" border="0" class="table-dashed border-separate p-[16px]">
       <colgroup>
         {% if information_imageWidth %}
           <col width="{{ information_imageWidth }}" />

@@ -27,6 +27,17 @@ sup,
 b,
 u,
 i,
+dl,
+dt,
+dd,
+pre,
+code,
+del,
+ins,
+caption,
+hr,
+abbr,
+center,
 ol,
 ul,
 li,
@@ -76,12 +87,17 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* 表格：邮件布局主体（table-layout:fixed + mso 间距归零） */
+/* 表格：邮件布局主体 */
 table {
   width: 100%;
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: collapse;
+}
+/* Outlook 桌面版在单元格两侧各加约 0.15pt 间距；table 单独归零无效，td/th 必须一并覆盖 */
+table,
+td,
+th {
   mso-table-lspace: 0pt;
   mso-table-rspace: 0pt;
 }
