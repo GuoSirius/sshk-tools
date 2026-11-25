@@ -2,7 +2,7 @@
  * elabscience 品牌样式（2026-11-25 合并 palette.css + components.css → brand.css）
  * 顺序约定：品牌色兜底类须在 unocss 同名类之后注入（collectCss: normalize→uno→local），本文件整体作为 local 注入，天然满足；文件内 palette 在前、组件在后。
  * 冗余原子类已清除：text-size-[Npx]/align-*/inline-block/w-full/h-full 等由 unocss 运行时等价生成（juice 内联已验证）。
- * w-100/h-100（=100%，unocss 却是 25rem）、品牌色/边框兜底类、bg-none（语义 background:none）保留，勿删。
+ * w-100/h-100 已统一为 unocss 等价的 w-full/h-full；品牌色/边框兜底类保留，勿删。
  */
 /* elabscience 品牌色板（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
 
@@ -354,13 +354,7 @@
   color: #0365B0;
 }
 
-.w-100 {
-  width: 100%;
-}
 
-.h-100 {
-  height: 100%;
-}
 
 
 

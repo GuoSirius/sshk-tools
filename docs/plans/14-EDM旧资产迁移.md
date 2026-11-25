@@ -153,7 +153,7 @@ assets/edm/
 │   │                                        palette（bg-* 品牌色兜底：#006db8/#3a82db/#f7750b 系）在前，
 │   │                                        components（title 系/wifi-/gold-/circle-/square-icon-title、button 系、
 │   │                                        table-bordered/stripe/dashed 系、装饰图标列表类）在后；
-│   │                                        冗余 unocss 等价类已清除，w-100/h-100（=100%）与品牌色兜底保留。
+│   │                                        冗余 unocss 等价类已清除；w-100/h-100（unocss=25rem）已统一改为 w-full/h-full（=100%），品牌色兜底保留。
 │   │                                        历史 brand-utils.css 从未被 njk link，早前已并入 palette.css；旧两文件均已删除。
 │   ├── fragment/
 │   │   ├── header/default/{meta.yaml, fragment.njk, sample.yaml, css/}

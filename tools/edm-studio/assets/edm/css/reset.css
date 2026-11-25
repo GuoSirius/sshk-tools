@@ -113,18 +113,8 @@ a {
   -ms-text-size-adjust: 100%;
 }
 
-/* Outlook.com */
-.ExternalClass {
-  width: 100%;
-}
-.ExternalClass,
-.ExternalClass p,
-.ExternalClass span,
-.ExternalClass font,
-.ExternalClass td,
-.ExternalClass div {
-  line-height: inherit;
-}
+/* Outlook.com 的 .ExternalClass 包装层规则已删除（#205）：
+   juice(removeStyleTags:true) 全内联时源码无该元素、规则随 <style> 被剥掉，对最终邮件无效（死代码）。 */
 
 /* 标题装饰统一用真实元素，邮件客户端不内联伪元素 */
 .title-mark {

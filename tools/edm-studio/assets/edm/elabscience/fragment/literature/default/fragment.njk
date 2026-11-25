@@ -68,7 +68,7 @@
         </tr>
 
         <tr>
-          <td {% if information_imageWidth %}rowspan="2"{% endif %} {% if information_imageWidth %}style="padding-right: 12px;"{% endif %} class="image-box align-middle {% if not information_imageWidth %}pb-12 text-center{% endif %}">
+          <td {% if information_imageWidth %}rowspan="2"{% endif %} {% if information_imageWidth %}style="padding-right: 12px;"{% endif %} class="image-box align-middle {% if not information_imageWidth %}pb-[12px] text-center{% endif %}">
             {% for it0 in information_image %}
               <img src="{{ it0 }}" />
             {% endfor %}
@@ -78,7 +78,7 @@
 
           <tr>
           {% endif %}
-          <td class="h-[0px] {% if information_link %}pb-24{% endif %}">
+          <td class="h-[0px] {% if information_link %}pb-[24px]{% endif %}">
             <p>{{ information_content | safe }}</p>
           </td>
         </tr>

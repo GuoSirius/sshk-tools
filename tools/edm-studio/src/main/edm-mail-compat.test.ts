@@ -100,14 +100,14 @@ describe('EDM 迁移资产邮件兼容性', () => {
   it('reset.css 只保留基础层与真实装饰基类，不重复定义原子类', () => {
     const css = readFileSync(path.join(EDM_ROOT, 'css', 'reset.css'), 'utf8')
     const classDefs = [...css.matchAll(/^\.([\w-]+)\s*\{/gm)].map((m) => m[1])
-    // 仅允许 title-mark 与 ExternalClass（Outlook 适配）两个类；间距/圆角/颜色/边框/对齐/字重等一律交 unocss
-    expect(classDefs.sort()).toEqual(['ExternalClass', 'title-mark'])
+    // 仅允许 title-mark 一个真实装饰基类；ExternalClass 因 juice 全内联剥除已删除（#205），其余交 unocss
+    expect(classDefs.sort()).toEqual(['title-mark'])
   })
 
   it('njk 无伪 unocss 数字/颜色类，均改用 arbitrary 语法', () => {
     const files = walk(EDM_ROOT).filter((f) => f.endsWith('.njk'))
-    // h-100 / w-100 是品牌 css 里的百分比类（height/width:100%），合法保留，不在此列
-    const legacy = /(?:^|\s)(?:h-(?!100\b)\d+|pt-\d+|pb-\d+|px-\d+|py-\d+)(?:\s|$)|border-rd-\d+|color-(?:333|white|orange|red)(?:\s|$)/g
+    // #206 起 w-100/h-100 已统一为 unocss 等价的 w-full/h-full（unocss 的 -100 是 25rem≠100%），禁用检测纳入
+    const legacy = /(?:^|\s)(?:h-\d+|w-100|pt-\d+|pb-\d+|px-\d+|py-\d+)(?:\s|$)|border-rd-\d+|color-(?:333|white|orange|red)(?:\s|$)/g
     for (const file of files) {
       const text = readFileSync(file, 'utf8')
       // 只检查 class="..." 内的 token，避免误伤文案里的数字
