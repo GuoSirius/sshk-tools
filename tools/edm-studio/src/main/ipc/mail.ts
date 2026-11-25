@@ -15,6 +15,8 @@ import {
 
 import { compose, type ComposePlacement } from '../../core/compose.js'
 import { resolveCssBundle } from '../../core/css-resolve.js'
+import { resolveRenderMeta } from '../render-meta.js'
+import type { RenderMeta } from '../../core/render-meta.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
 
 /** 邮件域 action（R19 统一组合引擎；产物覆盖式 D19）+ 产物根分享解析（plans/09 ShareHub） */
@@ -29,8 +31,8 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
    */
   async function resolveEntitiesCss(
     entries: Array<{ entity: FragmentVersion | TemplateVersion; kind: 'fragment' | 'template' }>,
-  ): Promise<{ css: string; htmls: string[] }> {
-    const sources = entries.map(({ entity, kind }) => {
+  ): Promise<{ css: string; htmls: string[]; metas: RenderMeta[] }> {
+    const points = entries.map(({ entity, kind }) => {
       const isCustom = entity.origin === 'custom'
       const sourceRoot = ctx.resolveContentRoot(isCustom ? 'custom' : 'system')
       const parts = entity._id.split('_')
@@ -43,6 +45,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       if (!brandCode || !familyCode) console.warn(`[edm] 版本 ${entity._id} 无法推导 css 解析目录，回退播种快照`)
       return {
         html: entity.source.html,
+        metaPoint: { sourceRoot, brandCode, kind, familyCode, versionDir },
         ctx: {
           sourceRoot,
           systemRoot: ctx.resolveContentRoot('system'),
@@ -52,9 +55,12 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
         fallbackCss: entity.source.cssMode === 'inline' ? entity.source.css : undefined,
       }
     })
+    const sources = points.map(({ html, ctx: ctxArg, fallbackCss }) => ({ html, ctx: ctxArg, fallbackCss }))
     const bundle = await resolveCssBundle({ sources, outputRoot: ctx.outputRoot, unoEnabled: true })
     for (const w of bundle.warnings) console.warn(`[edm] css 引用警告：${w}`)
-    return { css: bundle.css, htmls: bundle.htmls }
+    // 四级 meta 反查（修订 1/13）：真相源在磁盘 meta.yaml，与 css 共用推导出的版本目录
+    const metas = await Promise.all(points.map(({ metaPoint }) => resolveRenderMeta(metaPoint)))
+    return { css: bundle.css, htmls: bundle.htmls, metas }
   }
 
   /**
@@ -115,6 +121,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const placements: ComposePlacement[] = fragments.map(({ fv, binding: b }, i) => ({
       html: cssResult.htmls[i + 1] ?? fv.source.html,
       data: (b.data ?? mail.data ?? {}) as Record<string, unknown>,
+      meta: cssResult.metas[i + 1],
       slot: b.slot,
       order: b.order,
       repeat: b.repeat,
@@ -123,6 +130,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       templateHtml: cssResult.htmls[0] ?? tv.source.html,
       placements,
       data: (mail.data ?? {}) as Record<string, unknown>,
+      meta: cssResult.metas[0],
       strict: true,
       resolvedCss: cssResult.css,
     })
@@ -156,6 +164,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
     const placements: ComposePlacement[] = fragments.map(({ fv, p }, i) => ({
       html: cssResult.htmls[i + 1] ?? fv.source.html,
       data: (p['data'] as Record<string, unknown> | undefined) ?? undefined,
+      meta: cssResult.metas[i + 1],
       slot: String(p['slot'] ?? ''),
       order: typeof p['order'] === 'number' ? (p['order'] as number) : undefined,
       repeat: typeof p['repeat'] === 'number' ? (p['repeat'] as number) : undefined,
@@ -164,6 +173,7 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
       templateHtml: cssResult.htmls[0] ?? tv.source.html,
       placements,
       data: (data['mailData'] as Record<string, unknown>) ?? {},
+      meta: cssResult.metas[0],
       strict: false,
       resolvedCss: cssResult.css,
     })

@@ -45,13 +45,14 @@ describe('系统 EDM 资产迁移不变量', () => {
         expect(() => env.renderString(v.html, v.sample)).not.toThrow()
       }
       const preview = await renderSystemPreview(EDM_ROOT, v.sel, { outputRoot: OUTPUT })
-      expect(preview.html).not.toContain('<link')
+      // #188 纪律针对 css link（须剥离内联）；favicon 等 head link 是合法功能标签，不在剥离范围
+      expect(preview.html).not.toContain('<link rel="stylesheet"')
       expect(preview.html).not.toContain('{{')
       expect(preview.html).toContain('<style>')
 
       if (v.dir !== 'default') continue // v1 为旧演示资产，不纳入迁移纪律校验
       // 框架自动注入仅 normalize.css + uno；reset.css（基础样式层）等一切 css 必须显式 link
-      expect(v.html).toContain('<link rel="stylesheet" href="@system/css/reset.css">')
+      expect(v.html).toMatch(/<link rel="stylesheet" href="@system\/css\/reset\.css"\s*\/?\s*>/)
       expect(preview.html).toContain('mso-table-lspace') // reset.css 经显式 link 解析后确实内联
       type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
       const fields = v.fields as FieldLike[]
@@ -85,7 +86,7 @@ describe('系统 EDM 资产迁移不变量', () => {
         { selector: sel('fragment', 'literature'), slot: 'body', order: 2 },
         { selector: sel('fragment', 'footer'), slot: 'footer' },
       ], { outputRoot: OUTPUT })
-      expect(composed.html).not.toContain('<link')
+      expect(composed.html).not.toContain('<link rel="stylesheet"')
       expect(composed.html).not.toContain('{{')
       expect(composed.html).toContain(brand.code === 'elabscience' ? 'Elabscience' : 'Procell')
       expect(composed.html).toContain('Connect with us')

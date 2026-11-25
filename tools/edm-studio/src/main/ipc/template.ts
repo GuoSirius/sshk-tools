@@ -1,6 +1,7 @@
 import { AppError } from '@sshk/shared'
 import type { Template, TemplateVersion } from '@sshk/repository'
 import { compose } from '../../core/compose.js'
+import { resolveMetaByVersionId } from '../render-meta.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
 
 /** 模板族 / 模板版本域 action（版本不可变 D8；tplv:update 为 R22b 自定义库直编豁免） */
@@ -112,11 +113,13 @@ export function registerTemplateActions(ctx: EdmIpcContext, handlers: Map<string
       ? await repo.get<TemplateVersion>('templateVersions', id)
       : await repo.get<import('@sshk/repository').FragmentVersion>('fragmentVersions', id)
     if (!v) throw new AppError('版本不存在', 'io')
+    const meta = await resolveMetaByVersionId(v._id, cat, v.origin, v.label, (s) => ctx.resolveContentRoot(s))
     const stages = await compose({
       templateHtml: v.source.html,
       templateCss: v.source.cssMode === 'inline' ? v.source.css : undefined,
       placements: [],
       data: (v.sampleData ?? {}) as Record<string, unknown>,
+      meta,
       strict: false,
       outputRoot: ctx.outputRoot,
       unoEnabled: true,

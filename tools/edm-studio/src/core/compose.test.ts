@@ -63,3 +63,23 @@ describe('compose 统一组合引擎（R19）', () => {
     expect(result.assembled).not.toContain('<p>ok</p>')
   })
 })
+
+describe('compose 元数据注入（2026-11-25 修订 1/13）', () => {
+  it('片段可见模板 ctx（template.* 命名空间），片段自身 meta 不被模板覆盖', async () => {
+    const result = await compose({
+      templateHtml: '<div>{{ slot_body | safe }}</div>',
+      placements: [
+        {
+          html: '<p>{{ title }}|{{ template.title }}|{{ meta.family.code }}|{{ template.meta.family.code }}</p>',
+          slot: 'body',
+          data: { title: '片段' },
+          meta: { family: { code: 'frag', name: '片段族' } },
+        },
+      ],
+      data: { title: '邮件主题' },
+      meta: { family: { code: 'tpl', name: '模板族' } },
+      strict: false,
+    })
+    expect(result.assembled).toContain('<p>片段|邮件主题|frag|tpl</p>')
+  })
+})

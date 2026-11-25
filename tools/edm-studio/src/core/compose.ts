@@ -4,9 +4,11 @@
  * 区块契约（B1/Q11）：模板族 meta `slots:` 声明区块清单；模板 njk 内 `{{ slot_<key> | safe }}` 引用；
  * 同区块多 placement 按 order 排序拼接、repeat>1 重复追加（兼容数据契约 §7 的 slot_* 变量注入，
  * 现有模板资产 njk 零改动）。
+ * 2026-11-25 修订 1/13：模板/片段四级 meta 分别注入 meta.*；片段渲染时模板 ctx 整体挂 template.*
+ * （不合并覆盖片段字段），未传模板 ctx 则片段独立渲染照常。
  */
-import nunjucks from 'nunjucks'
-import { renderFragment, renderMail, type RenderStages } from './render.js'
+import { buildRenderMeta, EMPTY_RENDER_META, type RenderMeta } from './render-meta.js'
+import { renderFragmentHtml, renderMail, type RenderStages } from './render.js'
 import { collectCss, type CssSource } from './css-bundle.js'
 
 export interface ComposePlacement {
@@ -16,6 +18,8 @@ export interface ComposePlacement {
   css?: string
   /** 该 placement 独立数据（缺省回落 input.data） */
   data?: Record<string, unknown>
+  /** 片段四级元数据（修订 1/13：注入片段 ctx 的 meta.*） */
+  meta?: RenderMeta
   /** 区块 key（模板 slots 声明） */
   slot: string
   /** 同区块内顺序，缺省按传入顺序 */
@@ -30,6 +34,8 @@ export interface ComposeInput {
   placements: ComposePlacement[]
   /** 模板级数据（placement 未带 data 时回落） */
   data: Record<string, unknown>
+  /** 模板四级元数据（注入 meta.*，并作为片段 template.meta.*） */
+  meta?: RenderMeta
   /** 片段渲染 strict（缺字段抛错）；预览 false 容错、生成 true */
   strict?: boolean
   unoEnabled?: boolean
@@ -49,13 +55,19 @@ export function buildBindings(
   placements: ComposePlacement[],
   fallback: Record<string, unknown>,
   strict: boolean,
+  templateCtx?: Record<string, unknown>,
 ): Record<string, string> {
-  nunjucks.configure({ autoescape: true, throwOnUndefined: strict })
   const grouped = new Map<string, { order: number; html: string }[]>()
   placements.forEach((p, i) => {
     if (!p.slot || !p.html.trim()) return
     const repeat = Math.max(1, Math.floor(p.repeat ?? 1))
-    const html = renderFragment(p.html, p.data ?? fallback)
+    const html = renderFragmentHtml({
+      html: p.html,
+      data: p.data ?? fallback,
+      meta: p.meta ?? EMPTY_RENDER_META,
+      templateCtx,
+      render: { strict, autoEscape: true },
+    })
     const list = grouped.get(p.slot) ?? []
     for (let r = 0; r < repeat; r++) list.push({ order: p.order ?? i, html })
     grouped.set(p.slot, list)
@@ -71,7 +83,10 @@ export function buildBindings(
 /** 组合渲染主入口：placements → slot 绑定 → css 汇集 → njk → juice → minify */
 export async function compose(input: ComposeInput): Promise<ComposeResult> {
   const strict = input.strict ?? true
-  const bindings = buildBindings(input.placements, input.data, strict)
+  const templateMeta = buildRenderMeta(input.meta ?? EMPTY_RENDER_META)
+  // 模板 ctx = 模板 data 平铺 + meta.*；片段整份挂 template.*，不合并覆盖片段自身字段
+  const templateCtx: Record<string, unknown> = { ...input.data, meta: templateMeta }
+  const bindings = buildBindings(input.placements, input.data, strict, templateCtx)
 
   const cssSources: CssSource[] = []
   const scanCodes = [input.templateHtml]
@@ -98,6 +113,7 @@ export async function compose(input: ComposeInput): Promise<ComposeResult> {
     templateHtml: input.templateHtml,
     bindings,
     data: input.data,
+    meta: templateMeta,
     render: { strict, autoEscape: true },
     cssBundle,
   })

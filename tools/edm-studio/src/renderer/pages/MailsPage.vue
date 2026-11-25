@@ -169,16 +169,17 @@ async function openShare(): Promise<void> {
   finally { shareDialog.loading = false }
 }
 
-// ── 操作列（TableOpsColumn：≤3 内联 + 更多下拉；语义配色 §2.5）──
+// ── 操作列（TableOpsColumn：≤3 内联 + 更多下拉；语义配色 §5.1）──
 // 行内「生成」的 per-row loading 态以 disabled 兜底（TableOpsColumn 无 per-row loading；
 // 生成期间禁用全部行生成按钮防并发，完成即恢复）。
+// 配色按 UI 规范 §5.1：新建/主操作=primary，复制/导出=warning，次要=info，删除=danger。
 const ops = computed(() => [
   { key: 'generate', label: '生成', type: 'primary' as const, disabled: mailGenerating.value !== '' },
-  { key: 'export', label: '导出', type: 'success' as const },
+  { key: 'export', label: '导出', type: 'warning' as const },
 ])
 const moreOps = [
   { key: 'edit', label: '编辑', type: 'primary' as const },
-  { key: 'duplicate', label: '复制为新邮件', type: 'success' as const },
+  { key: 'duplicate', label: '复制为新邮件', type: 'warning' as const },
   { key: 'copyCode', label: '复制代码', type: 'warning' as const },
   { key: 'open', label: '打开产物', type: 'info' as const },
   { key: 'delete', label: '删除', type: 'danger' as const },
@@ -260,7 +261,7 @@ function onAction(key: string, row: MailRow): void {
     </template>
 
     <template #ops>
-      <el-button size="small" type="success" plain :disabled="selection.count.value === 0" @click="batchExport">批量导出（{{ selection.count.value }}）</el-button>
+      <el-button size="small" type="warning" plain :disabled="selection.count.value === 0" @click="batchExport">批量导出（{{ selection.count.value }}）</el-button>
       <el-button size="small" type="danger" plain :disabled="selection.count.value === 0" @click="batchRemove">批量删除（{{ selection.count.value }}）</el-button>
       <el-divider direction="vertical" />
       <el-button size="small" type="primary" plain @click="openEditor()">新增邮件</el-button>

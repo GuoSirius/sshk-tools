@@ -10,8 +10,9 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import * as yaml from 'js-yaml'
-import { renderFragment, renderMail } from './render.js'
+import { renderFragmentHtml, renderMail } from './render.js'
 import { compose, type ComposePlacement } from './compose.js'
+import type { RenderMeta } from './render-meta.js'
 import {
   hasExplicitCssRefs,
   injectCssIntoHead,
@@ -29,6 +30,8 @@ export interface CssRootOptions {
   unoEnabled?: boolean
   /** 示例数据覆盖（userData overlay，2026-11-24 #189）：存在时替代版本目录 sample.yaml（只读系统内容的用户自改示例） */
   sampleOverride?: Record<string, unknown>
+  /** 模板四级 meta（2026-11-25 修订 1/13，注入 meta.*） */
+  meta?: RenderMeta
 }
 
 function cssCtx(root: string, versionDir: string, opts: CssRootOptions): CssRefContext {
@@ -146,7 +149,7 @@ export async function renderSystemPreview(
   const cssFiles = explicit ? bundle.refs : await collectSystemCss(root, sel)
 
   if (sel.kind === 'fragment') {
-    const body = renderFragment(html, sample)
+    const body = renderFragmentHtml({ html, data: sample, meta: opts.meta, render: { strict: false, autoEscape: true } })
     return { html: injectCssIntoHead(body, cssBundle), cssFiles }
   }
 
@@ -154,6 +157,7 @@ export async function renderSystemPreview(
     templateHtml: html,
     bindings: {},
     data: sample,
+    meta: opts.meta,
     render: { strict: false, autoEscape: true },
     cssBundle,
   })
@@ -167,6 +171,8 @@ export interface ComposePlacementSelector {
   order?: number
   repeat?: number
   data?: Record<string, unknown>
+  /** 片段四级 meta（修订 1/13，注入片段 ctx 的 meta.*） */
+  meta?: RenderMeta
 }
 
 interface RawPlacement {
@@ -174,6 +180,7 @@ interface RawPlacement {
   ctx: CssRefContext
   html: string
   data: Record<string, unknown>
+  meta?: RenderMeta
   slot: string
   order?: number
   repeat?: number
@@ -205,6 +212,7 @@ export async function renderSystemCompose(
       ctx: cssCtx(root, dir, opts),
       html,
       data,
+      meta: p.meta,
       slot: p.slot,
       order: p.order,
       repeat: p.repeat,
@@ -231,6 +239,7 @@ export async function renderSystemCompose(
     items.push({
       html: htmls[i + 1] ?? r.html,
       data: r.data,
+      meta: r.meta,
       slot: r.slot,
       order: r.order,
       repeat: r.repeat,
@@ -241,6 +250,7 @@ export async function renderSystemCompose(
     templateHtml: htmls[0] ?? templateHtml,
     placements: items,
     data: {},
+    meta: opts.meta,
     strict: false,
     resolvedCss: bundle.css,
   })

@@ -5,6 +5,7 @@ import { AppError } from '@sshk/shared'
 import { loadEdmModel } from '../edm-manifest.js'
 import { validateMetaIdentity } from '../../core/meta-contract.js'
 import { renderSystemPreview, renderSystemCompose, type SystemSelector, type CssRootOptions } from '../../core/system-css.js'
+import { resolveRenderMeta } from '../render-meta.js'
 import { hasSampleOverride, isSampleFile, readSampleOverride, readSampleOverrideYaml, resetSampleOverride, writeSampleOverride } from '../sample-overlay.js'
 import { SYSTEM_FILE_EXTS, type ActionHandler, type EdmIpcContext, type Payload } from './context'
 
@@ -167,9 +168,20 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
       customRoot: ctx.resolveContentRoot('custom'),
       outputRoot: ctx.outputRoot,
     }
+    // 四级 meta 反查（修订 1/13）：真相源在磁盘 meta.yaml，缺失层级 graceful 降级；root 已按 source 解析
+    const metaOf = (s: SystemSelector) => resolveRenderMeta({
+      sourceRoot: root,
+      brandCode: s.brandCode,
+      kind: s.kind,
+      familyCode: s.familyCode,
+      versionDir: s.versionDir
+        ? path.join(root, s.brandCode, s.kind, s.familyCode, s.versionDir)
+        : path.join(root, s.brandCode, s.kind, s.familyCode),
+    })
+    const templateMeta = await metaOf(sel)
     if (raw.length === 0) {
       // 只读系统内容：单渲用覆盖层 sample.yaml（用户改过的示例数据），缺省回落系统根
-      const opts: CssRootOptions = { ...cssRoots }
+      const opts: CssRootOptions = { ...cssRoots, meta: templateMeta }
       if (source === 'system') {
         const over = await readSampleOverrideYaml(ctx.resolveOverrideRoot(), sampleRelOf(sel))
         if (over) opts.sampleOverride = over
@@ -192,10 +204,11 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
             order: typeof p['order'] === 'number' ? p['order'] : undefined,
             repeat: typeof p['repeat'] === 'number' ? p['repeat'] : undefined,
             data: d,
+            meta: await metaOf(ps),
           }
         }),
       ),
-      cssRoots,
+      { ...cssRoots, meta: templateMeta },
     )
   })
 
