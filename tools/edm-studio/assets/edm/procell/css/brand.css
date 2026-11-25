@@ -1,3 +1,72 @@
+/*
+ * procell 品牌样式（2026-11-25 合并 palette.css + components.css → brand.css）
+ * 顺序约定：品牌色兜底类须在 unocss 同名类之后注入（collectCss: normalize→uno→local），本文件整体作为 local 注入，天然满足；文件内 palette 在前、组件在后。
+ * 冗余原子类已清除：text-size-[Npx]/align-*/inline-block/w-full/h-full 等由 unocss 运行时等价生成（juice 内联已验证）。
+ * w-100/h-100（=100%，unocss 却是 25rem）、品牌色/边框兜底类、bg-none（语义 background:none）保留，勿删。
+ */
+/* procell 品牌色板（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
+
+
+.bg-primary {
+  background-color: #32afb4;
+}
+
+.bg-light-primary {
+  background-color: #3ac2c5;
+}
+
+.bg-secondary {
+  background-color: #18c0b0;
+}
+
+.bg-white {
+  background-color: #fff;
+}
+
+.bg-gray {
+  background-color: #f5f5f5;
+}
+
+.bg-orange {
+  background-color: #ff9720;
+}
+
+.bg-light-blue {
+  background-color: #e8f7fc;
+}
+
+.bg-lightning {
+  padding: 12px 16px 12px 24px;
+  background: url('https://pri-cella.oss-ap-southeast-1.aliyuncs.com/edm/202609010927/lightning-bg.webp') no-repeat scroll left top / 100% 100%;
+}
+
+/* 品牌语义色/边框类：必须与 unocss 同名类同文件或更晚注入，
+   否则 unocss 的 Tailwind 默认值 + CSS 变量会覆盖品牌色（Outlook 不认 var()）。 */
+.border {
+  border: 1px solid #dedede;
+}
+
+.border-dashed {
+  border: 1px dashed #5AAFA9;
+}
+
+.color-primary {
+  color: #32afb4;
+}
+
+.color-secondary {
+  color: #18c0b0;
+}
+
+.color-blue {
+  color: #0048c2;
+}
+
+.color-cyan {
+  color: #005f66;
+}
+
+
 /* procell 品牌组件类（标题 / 表格 / 按钮 / 装饰图标）（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
 
 .table-bordered {
@@ -144,33 +213,18 @@
   color: #18c0b0;
 }
 
-.w-full, .w-100 {
+.w-100 {
   width: 100%;
 }
 
-.h-full, .h-100 {
+.h-100 {
   height: 100%;
 }
 
-.align-top {
-  vertical-align: top;
-}
 
-.align-text-top {
-  vertical-align: text-top;
-}
 
-.align-mid, .align-middle {
-  vertical-align: middle;
-}
 
-.align-bottom {
-  vertical-align: bottom;
-}
 
-.align-text-bottom {
-  vertical-align: text-bottom;
-}
 
 .color-light-orange {
   color: #fd8b37;
@@ -180,66 +234,18 @@
   color: #e92614;
 }
 
-.cursor-not-allowed {
-  cursor: not-allowed;
-}
 
-.text-size-\[10px\] {
-  font-size: 10px;
-}
 
-.text-size-\[12px\] {
-  font-size: 12px;
-}
 
-.text-size-\[14px\] {
-  font-size: 14px;
-}
 
-.text-size-\[16px\] {
-  font-size: 16px;
-}
 
-.text-size-\[18px\] {
-  font-size: 18px;
-}
 
-.text-size-\[20px\] {
-  font-size: 20px;
-}
 
-.text-size-\[22px\] {
-  font-size: 22px;
-}
 
-.text-size-\[24px\] {
-  font-size: 24px;
-}
 
-.text-size-\[25px\] {
-  font-size: 25px;
-}
 
-.text-size-\[26px\] {
-  font-size: 26px;
-}
 
-.text-size-\[27px\] {
-  font-size: 27px;
-}
 
-.text-size-\[28px\] {
-  font-size: 28px;
-}
 
-.text-size-\[30px\] {
-  font-size: 30px;
-}
 
-.text-size-\[32px\] {
-  font-size: 32px;
-}
 
-.text-size-\[36px\] {
-  font-size: 36px;
-}

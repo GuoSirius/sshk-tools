@@ -1,6 +1,6 @@
-/* EDM 基础样式层（原 base-reset + email-utils 合并，2026-11-24）：Meyer 全量清零 + 元素基线 + 邮件客户端适配 + 真实装饰基类。
+/* Meyer 全量清零 + 元素基线 + 邮件客户端适配 + 真实装饰基类。
  * 框架自动注入仅 normalize.css（构建期内联）与 unocss 两项；
- * 本文件等一切 css 均须 njk 显式引用 @system/css/reset.css 才生效（2026-11-24 用户口径）。
+ * 本文件等一切 css 均须 njk 显式引用 @system/css/reset.css 才生效。
  * 原子类一律由 unocss 运行时生成，本文件不重复定义。 */
 
 /* Meyer 全量清零（normalize.css 不做全元素 reset） */

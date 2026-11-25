@@ -1,3 +1,116 @@
+/*
+ * elabscience 品牌样式（2026-11-25 合并 palette.css + components.css → brand.css）
+ * 顺序约定：品牌色兜底类须在 unocss 同名类之后注入（collectCss: normalize→uno→local），本文件整体作为 local 注入，天然满足；文件内 palette 在前、组件在后。
+ * 冗余原子类已清除：text-size-[Npx]/align-*/inline-block/w-full/h-full 等由 unocss 运行时等价生成（juice 内联已验证）。
+ * w-100/h-100（=100%，unocss 却是 25rem）、品牌色/边框兜底类、bg-none（语义 background:none）保留，勿删。
+ */
+/* elabscience 品牌色板（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
+
+
+
+.bg-primary {
+  background-color: #3a82db;
+}
+
+.bg-light-primary {
+  background-color: #f0f6ff;
+}
+
+.bg-white {
+  background-color: #fff;
+}
+
+.bg-gray {
+  background-color: #f6f6f6;
+}
+
+.bg-dark-gray {
+  background-color: #f2f2f2;
+}
+
+.bg-blue {
+  background-color: #006db8;
+}
+
+.bg-blue-30 {
+  background-color: rgba(0, 109, 184, 0.30);
+}
+
+.bg-blue-60 {
+  background-color: rgba(245, 250, 255, 0.60);
+}
+
+.bg-sky-blue {
+  background-color: #1078e3;
+}
+
+.bg-pale-blue {
+  background-color: #e4f4ff;
+}
+
+.bg-light-blue {
+  background-color: #f9fbfe;
+}
+
+.bg-orange {
+  background-color: #f7750b;
+}
+
+.bg-light-orange {
+  background-color: #ff9630;
+}
+
+.bg-orange-30 {
+  background-color: rgb(247, 117, 11, 0.30);
+}
+
+/* Outlook 忽略 background-image 时回落到纯色 background-color */
+.bg-linear-orange {
+  background-color: #f7750b;
+  background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
+}
+
+.bg-linear-blue {
+  background-color: #1078e3;
+  background-image: linear-gradient(-90deg, #6effec 0%, #117be4 100%);
+}
+
+/* 品牌语义色/边框类：必须与 unocss 同名类同文件或更晚注入，
+   否则 unocss 的 Tailwind 默认值 + CSS 变量会覆盖品牌色（Outlook 不认 var()）。 */
+.border {
+  border: 1px solid #DCEFF3;
+}
+
+.border-dashed {
+  border: 1px dashed #3a82db;
+}
+
+.border-gray {
+  border-color: #e0e0e0;
+}
+
+.border-blue {
+  border-color: #006db8;
+}
+
+
+.color-primary {
+  color: #2c2c2c;
+}
+
+.color-black {
+  color: #000;
+}
+
+.color-blue {
+  color: #006db8;
+}
+
+.color-yellow {
+  color: #ffaa15;
+}
+
+
 /* elabscience 品牌组件类（标题 / 表格 / 按钮 / 装饰图标）（juice-cli/edm 旧资产迁移 · plans/14 批次 1） */
 
 .table-bordered {
@@ -241,33 +354,18 @@
   color: #0365B0;
 }
 
-.w-full, .w-100 {
+.w-100 {
   width: 100%;
 }
 
-.h-full, .h-100 {
+.h-100 {
   height: 100%;
 }
 
-.align-top {
-  vertical-align: top;
-}
 
-.align-text-top {
-  vertical-align: text-top;
-}
 
-.align-mid, .align-middle {
-  vertical-align: middle;
-}
 
-.align-bottom {
-  vertical-align: bottom;
-}
 
-.align-text-bottom {
-  vertical-align: text-bottom;
-}
 
 .color-light-blue {
   color: #0097ff;
@@ -277,66 +375,18 @@
   color: #f88634;
 }
 
-.cursor-not-allowed {
-  cursor: not-allowed;
-}
 
-.text-size-\[10px\] {
-  font-size: 10px;
-}
 
-.text-size-\[12px\] {
-  font-size: 12px;
-}
 
-.text-size-\[14px\] {
-  font-size: 14px;
-}
 
-.text-size-\[16px\] {
-  font-size: 16px;
-}
 
-.text-size-\[18px\] {
-  font-size: 18px;
-}
 
-.text-size-\[20px\] {
-  font-size: 20px;
-}
 
-.text-size-\[22px\] {
-  font-size: 22px;
-}
 
-.text-size-\[24px\] {
-  font-size: 24px;
-}
 
-.text-size-\[25px\] {
-  font-size: 25px;
-}
 
-.text-size-\[26px\] {
-  font-size: 26px;
-}
 
-.text-size-\[27px\] {
-  font-size: 27px;
-}
 
-.text-size-\[28px\] {
-  font-size: 28px;
-}
 
-.text-size-\[30px\] {
-  font-size: 30px;
-}
 
-.text-size-\[32px\] {
-  font-size: 32px;
-}
 
-.text-size-\[36px\] {
-  font-size: 36px;
-}
