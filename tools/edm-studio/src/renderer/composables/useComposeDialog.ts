@@ -49,7 +49,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
   const previewHtml = ref('')
   const previewing = ref(false)
   const saving = ref(false)
-  const activeTab = ref<'slots' | 'preview'>('slots')
+  const activeTab = ref<'slots' | 'preview' | 'mailData'>('slots')
   let uidSeed = 0
 
   /** 来源切换：品牌选项按 origin 过滤；清空品牌/模板/布局/预览（联动铁律：上级变清空下级） */
@@ -131,6 +131,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
       placements.value = m ? toPlacements(m.bindings) : []
       aliasTouched.value = false
       mailDataText.value = m?.data ? JSON.stringify(m.data, null, 2) : '{}'
+      syncMailDataObj()
       previewHtml.value = ''
       activeTab.value = 'slots'
     },
@@ -295,13 +296,28 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     }
   }
 
-  /** 切到预览 tab 时即时渲染（模板数据 CodeEditor 的 Ctrl+S 也走此） */
-  function switchTab(tab: 'slots' | 'preview'): void {
+  /** 切到预览 tab 时即时渲染（模板数据 JSON 的 Ctrl+S 也走此）；切模板数据 tab 时同步表单态 */
+  function switchTab(tab: 'slots' | 'preview' | 'mailData'): void {
     activeTab.value = tab
     if (tab === 'preview') void refreshPreview()
+    if (tab === 'mailData') syncMailDataObj()
   }
   function onDataEditorSave(): void {
     void refreshPreview()
+  }
+
+  /* 模板数据 tab（#201）：邮件级模板变量（主题、preheader 等）每封邮件独立；
+     数据源仍是 mailDataText（persist 解析），表单态由 fields schema 双向桥接 */
+  const mailDataFields = computed<FieldDef[]>(() => normalizeFields((currentTv.value?.fields as unknown) ?? []))
+  const mailDataObj = ref<Record<string, unknown>>({})
+  function syncMailDataObj(): void {
+    try {
+      mailDataObj.value = (JSON.parse(mailDataText.value) as Record<string, unknown>) ?? {}
+    } catch { /* JSON 不合法：表单保持上次合法值，错误由 JSON tab 编辑时处理 */ }
+  }
+  function onMailDataFormChange(v: Record<string, unknown> | undefined): void {
+    mailDataObj.value = v ?? {}
+    mailDataText.value = JSON.stringify(mailDataObj.value, null, 2)
   }
 
   /* placement 独立数据编辑（Q12；#200 双 tab：表单/JSON 编辑统一在 PlacementDataDialog 内部） */
@@ -324,6 +340,7 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     scene: 'mail' as ComposeScene,
     draft, placements, mailDataText, previewHtml, previewing, saving, activeTab,
     originOptions, brandOptions, allBrands, templateOptions, versionOptions, templateSlots, fragmentOptions, currentTv, aliasErrors,
+    mailDataFields, mailDataObj, onMailDataFormChange,
     onOriginChange, onBrandChange, onTemplateFamilyChange, onTemplateChange, switchTab, onDataEditorSave,
     refreshPreview, buildPayload, doConfirm, doGenerate, doExport, doCopy,
     placementData, openPlacementData, savePlacementData,

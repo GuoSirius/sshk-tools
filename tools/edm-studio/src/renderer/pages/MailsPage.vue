@@ -207,7 +207,12 @@ function copyShareLink(row: MailRow): void {
   void osApi().clipboardWrite(ticket.urls[0]!)
   ElMessage.success('分享链接已复制')
 }
-onMounted(() => { void resolveTopRoot() })
+onMounted(() => {
+  void resolveTopRoot()
+  // 菜单切换（内容管理↔邮件管理）会重挂载本页：store 的 ensureLoaded 有 loaded 标记只跑一次，
+  // 数据不会自动刷新，这里每次挂载都拉一次列表保证最新
+  void loadMails()
+})
 watch(mails, () => { void resolveTopRoot() })
 
 // ── 操作列（内联 ≤3：分享/编辑/组装；更多：导出/另存为/删除）──
@@ -262,12 +267,15 @@ function onAction(key: string, row: MailRow): void {
       <el-table-column label="更新时间" width="150"><template #default="{ row }"><TimeText :value="row.updatedAt" placeholder="—" /></template></el-table-column>
       <el-table-column label="分享状态" width="120" align="center">
         <template #default="{ row }">
-          <div class="share-cell">
-            <el-tag v-if="shareState(row) === 'row'" size="small" type="success">已分享(行级)</el-tag>
-            <el-tag v-else-if="shareState(row) === 'top'" size="small" type="info">已分享(顶层)</el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">未分享</el-tag>
-            <el-button v-if="shareState(row) !== 'none'" size="small" text type="primary" @click="copyShareLink(row)">复制链接</el-button>
-          </div>
+          <!-- 未分享=tag；已分享=直接给「复制链接」，颜色+tip 区分公用(顶层·蓝)/私有(行级·橙) -->
+          <el-tag v-if="shareState(row) === 'none'" size="small" type="info" effect="plain">未分享</el-tag>
+          <el-tooltip
+            v-else
+            :content="shareState(row) === 'top' ? '公用分享：全部邮件共用一个链接' : '私有分享：仅本封邮件的独立链接'"
+            placement="top"
+          >
+            <el-button size="small" text :type="shareState(row) === 'top' ? 'primary' : 'warning'" @click="copyShareLink(row)">复制链接</el-button>
+          </el-tooltip>
         </template>
       </el-table-column>
       <TableOpsColumn :actions="ops" :more="moreOps" width="180" fixed="right" @action="(key: string, row: Record<string, unknown>) => onAction(key, row as unknown as MailRow)" />
@@ -303,5 +311,4 @@ function onAction(key: string, row: MailRow): void {
 <style scoped>
 .muted { opacity: 0.6; font-size: 12px; }
 .foot-hint { margin-right: auto; margin-top: 6px; }
-.share-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 </style>

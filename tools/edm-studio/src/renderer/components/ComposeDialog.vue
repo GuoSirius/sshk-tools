@@ -7,11 +7,12 @@
  *          template/fragment=[取消/关闭/确认(保存并刷新预览)/导出/复制]
  * mail 场景内部走 useComposeDialog 自管；template/fragment 由外部 props 受控。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { FormHint } from '@sshk/ui-kit'
 import { CodeEditor } from '@sshk/code-editor'
 import ComposeEditor from './ComposeEditor.vue'
 import PlacementDataDialog from './PlacementDataDialog.vue'
+import SampleForm from './SampleForm.vue'
 import { useComposeDialog } from '../composables/useComposeDialog'
 import type { MailRow } from '../tool-api'
 import type { FragmentOption, PlacementItem, SlotDef } from '../compose-types'
@@ -52,6 +53,7 @@ const mailDeps = useComposeDialog({
 const {
   draft, mailDataText, previewing, saving, activeTab: innerTab,
   originOptions, brandOptions, templateOptions, versionOptions, placementData, aliasErrors,
+  mailDataFields, mailDataObj,
 } = mailDeps
 
 // 场景统一视图：mail 取内部态，template/fragment 取外部 props
@@ -60,16 +62,18 @@ const fragmentOptions = computed<FragmentOption[]>(() => (props.scene === 'mail'
 const placements = computed<PlacementItem[]>(() => (props.scene === 'mail' ? mailDeps.placements.value : props.placements))
 const previewHtml = computed(() => (props.scene === 'mail' ? mailDeps.previewHtml.value : props.previewHtml))
 /** tab 可写代理：mail 走内部态，template/fragment 外部受控也存一份本地态 */
-const activeTab = computed<'slots' | 'preview'>({
+const activeTab = computed<'slots' | 'preview' | 'mailData'>({
   get: () => innerTab.value,
   set: (v) => { innerTab.value = v },
 })
+/** 模板数据 tab 内部双形态：表单（fields schema）/ JSON（#201） */
+const dataTab = ref<'form' | 'json'>('form')
 
 function updatePlacements(v: PlacementItem[]): void {
   if (props.scene === 'mail') mailDeps.placements.value = v
   else emit('update:placements', v)
 }
-function switchTab(tab: 'slots' | 'preview'): void {
+function switchTab(tab: 'slots' | 'preview' | 'mailData'): void {
   if (props.scene === 'mail') mailDeps.switchTab(tab)
   else if (tab === 'preview') emit('confirm') // 外部受控：切预览触发父级保存并刷新预览
 }
@@ -170,19 +174,34 @@ function saveEditData(data: Record<string, unknown>): void {
             />
             <el-empty v-else description="请先选择模板版本（模板未声明 slots 区块）" :image-size="70" />
           </div>
-          <div v-if="isMail" class="slot-data">
-            <div class="data-head">
-              模板数据
-              <FormHint detail="邮件级模板变量数据：模板 njk 里的 {{ 变量 }} 从这里取值；每个片段若未填「片段数据」，也会回落到这里。空 {} 表示尚未填写。" />
-            </div>
+        </div>
+      </el-tab-pane>
+      <!-- 模板数据 tab（#201）：邮件级模板变量（主题/preheader 等）每封邮件独立，表单默认 + JSON 兜底 -->
+      <el-tab-pane v-if="isMail" label="模板数据" name="mailData">
+        <div class="mail-data">
+          <div class="md-head">
+            <FormHint detail="邮件级模板变量（如主题、preheader），每封邮件独立；模板 njk 里的同名变量从这里取值，片段未填「片段数据」时也回落到这里。" />
+            <el-radio-group v-model="dataTab" size="small">
+              <el-radio-button value="form">表单</el-radio-button>
+              <el-radio-button value="json">JSON</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="md-body">
+            <SampleForm
+              v-if="dataTab === 'form' && mailDataFields.length"
+              :model-value="mailDataObj"
+              :fields="mailDataFields"
+              @update:model-value="mailDeps.onMailDataFormChange"
+            />
+            <el-empty v-else-if="dataTab === 'form'" description="当前模板未声明 fields（meta.yaml fields:），请切 JSON 编辑" :image-size="70" />
             <CodeEditor
+              v-if="dataTab === 'json'"
               :model-value="mailDataText"
               language="json"
               height="100%"
               @update:model-value="(v: string) => (mailDataText = v)"
-              @save="mailDeps.onDataEditorSave()"
+              @save="mailDeps.refreshPreview()"
             />
-            <FormHint inline>片段未单独填数据时的回落；Ctrl+S 刷新预览</FormHint>
           </div>
         </div>
       </el-tab-pane>
@@ -241,12 +260,14 @@ function saveEditData(data: Record<string, unknown>): void {
 .compose-tabs :deep(.el-tab-pane) { height: 100%; }
 
 /* 滚动区仅限插槽编辑区 / 组装预览（#198 ⑥）：弹框整体不滚，header/footer/选择器固定 */
-.slot-layout { display: flex; gap: 12px; height: 100%; min-height: 0; }
+.slot-layout { display: flex; height: 100%; min-height: 0; }
 .slot-editor { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
-.slot-data { width: 34%; flex: none; display: flex; flex-direction: column; border: 1px solid rgba(128,128,128,.2); border-radius: 6px; padding: 6px; min-width: 0; min-height: 0; }
-.data-head { font-size: 13px; font-weight: 600; padding-bottom: 4px; }
-/* CodeEditor 根节点带 inline height:100%，与标题/说明相加会溢出；强覆盖交给 flex 撑满 */
-.slot-data :deep(.code-editor) { flex: 1 1 auto; min-height: 0; height: 0 !important; }
+/* 模板数据 tab（#201）：头行说明+形态切换固定，下方表单/JSON 填充剩余高度 */
+.mail-data { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
+.md-head { display: flex; align-items: center; justify-content: space-between; flex: none; }
+.md-body { flex: 1; min-height: 0; display: flex; }
+.md-body > * { flex: 1; min-width: 0; min-height: 0; }
+.md-body :deep(.code-editor) { height: 100% !important; }
 .preview-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
 .preview-frame { width: 100%; height: 100%; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
 .footer { display: flex; align-items: center; }

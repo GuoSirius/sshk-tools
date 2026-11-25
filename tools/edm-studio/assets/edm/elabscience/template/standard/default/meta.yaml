@@ -6,12 +6,13 @@ fields:
   - type: input
     key: subject
     label: 邮件主题
-    required: true
-    maxLength: 80
+    required: false
     placeholder: 邮件标题
+    maxLength: 80
   - type: input
     key: preheader
     label: 预览摘要
     required: false
-    maxLength: 120
     placeholder: 收件箱预览文字
+    maxLength: 120
+
