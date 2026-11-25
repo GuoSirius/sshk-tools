@@ -629,7 +629,7 @@ onUnmounted(() => {
           </el-select>
         </div>
         <div v-else class="editor-toolbar" style="padding-bottom: 10px">
-          <FormHint inline>拖入片段布局，模板 css + 片段 css 就近合并看真实效果</FormHint>
+          <FormHint inline>拖入片段布局（拖拽 ≡ 区块内排序），模板 css + 片段 css 就近合并看真实效果；片段始终使用示例数据</FormHint>
         </div>
       </template>
     </ComposeDialog>

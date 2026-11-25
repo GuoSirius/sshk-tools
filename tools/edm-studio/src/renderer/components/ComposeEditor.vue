@@ -123,7 +123,8 @@ function setAlias(p: PlacementItem, v: string): void {
 
 <template>
   <div class="compose" :class="{ readonly }">
-    <FormHint inline>拖拽 ≡ 区块内排序；「片段数据」= 该片段独立表单数据（留空回落模板数据）{{ mailMode ? '；备注名用于区分同片段的多次使用，必填' : '' }}</FormHint>
+    <!-- 说明按场景分化（2026-11-25 反馈：非 mail 场景无「片段数据」，提示重复且误导；非 mail 由宿主给一行说明） -->
+    <FormHint v-if="mailMode" inline>拖拽 ≡ 区块内排序；「片段数据」= 该片段独立表单数据（留空回落模板数据）；备注名用于区分同片段的多次使用，必填</FormHint>
     <div class="blocks">
       <div v-for="s in slots" :key="s.key" class="block">
         <!-- 区块头 sticky 吸顶（#198 ⑦）：片段下拉 + 添加随滚动常驻，就地添加不用来回滚 -->
