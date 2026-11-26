@@ -37,6 +37,7 @@
     "iconv-lite": "latest",
     "koffi": "latest",
     "marked": "latest",
+    "screenfull": "latest",
     "unocss": "latest",
     "vue": "latest",
     "vue-draggable-plus": "latest",

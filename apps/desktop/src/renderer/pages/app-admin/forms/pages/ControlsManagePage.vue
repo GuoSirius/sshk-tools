@@ -7,7 +7,8 @@
  * - 编辑 = 元信息 + 根容器类型（list/repeater/table）+ 字段设计器（itemFields 可插复合控件引用）
  * - 双层校验：前端 key/label/类型校验不过不发 IPC；后端白名单收口兜底
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import screenfull from 'screenfull'
 import { ElMessage } from 'element-plus'
 import { FullScreen } from '@element-plus/icons-vue'
 import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
@@ -54,8 +55,6 @@ async function load(): Promise<void> {
     loading.value = false
   }
 }
-onMounted(() => { void load() })
-
 /** 引用计数：反查 forms.controlsUsed */
 function refCount(key: string): number {
   return forms.value.filter((f) => (f.controlsUsed ?? []).includes(key)).length
@@ -66,8 +65,53 @@ const controlOptions = computed(() =>
 
 // ── 编辑弹框 ──
 const editOpen = ref(false)
-/** 弹框全屏（嵌套设计器横向空间不足时用户切换，2026-11-26 口径） */
+/** 弹框原生全屏（嵌套设计器横向空间不足时用户切换；2026-11-26 由 EP fullscreen 改 screenfull） */
 const dialogFull = ref(false)
+let fullTarget: HTMLElement | null = null
+function getDialogEl(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.controls-manage-dialog')
+}
+async function toggleFull(): Promise<void> {
+  if (!screenfull.isEnabled) return
+  if (dialogFull.value) {
+    dialogFull.value = false
+    fullTarget = null
+    if (screenfull.isFullscreen) { try { await screenfull.exit() } catch { /* 已退出 */ } }
+    return
+  }
+  const el = getDialogEl()
+  if (!el) return
+  fullTarget = el
+  try {
+    await screenfull.request(el)
+    dialogFull.value = true
+  } catch {
+    // 浏览器/系统拒绝全屏：保持普通态，避免 UI 与真实状态错位
+    fullTarget = null
+  }
+}
+/** 用户按 Esc / 系统层退出原生全屏时同步按钮与设计器高度 */
+function onFullscreenChange(): void {
+  if (screenfull.isFullscreen) return
+  fullTarget = null
+  dialogFull.value = false
+}
+/** 关闭弹框时一并退出原生全屏，防止下次打开残留全屏态（EP destroy-on-close 会拆节点） */
+watch(editOpen, (open) => {
+  if (open || !screenfull.isEnabled || !screenfull.isFullscreen) return
+  fullTarget = null
+  dialogFull.value = false
+  void screenfull.exit()
+})
+onMounted(() => {
+  void load()
+  if (screenfull.isEnabled) screenfull.on('change', onFullscreenChange)
+})
+onUnmounted(() => {
+  if (!screenfull.isEnabled) return
+  screenfull.off('change', onFullscreenChange)
+  if (screenfull.isFullscreen && fullTarget) void screenfull.exit()
+})
 const editTitle = computed(() => viewing.value ? '查看控件（内置）' : editing.value ? '编辑控件' : '新建控件')
 const editId = ref<string | null>(null)
 const editBuiltin = ref(false)
@@ -261,7 +305,8 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
     <el-dialog
       v-model="editOpen"
       :title="editTitle"
-      :fullscreen="dialogFull"
+      class="controls-manage-dialog"
+      :class="{ 'is-native-full': dialogFull }"
       width="860px"
       top="6vh"
       destroy-on-close
@@ -271,7 +316,7 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
       <template #header>
         <div class="dlg-head">
           <span class="dlg-title">{{ editTitle }}</span>
-          <el-button text size="small" :icon="FullScreen" @click="dialogFull = !dialogFull">
+          <el-button text size="small" :icon="FullScreen" @click="toggleFull">
             {{ dialogFull ? '还原' : '全屏' }}
           </el-button>
         </div>
@@ -328,6 +373,16 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
 .designer-wrap { height: 420px; display: flex; }
 .designer-wrap > * { flex: 1; }
 .designer-wrap.full { height: calc(100vh - 300px); min-height: 420px; }
-.dlg-head { display: flex; align-items: center; justify-content: space-between; padding-right: 24px; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; }
 .dlg-title { font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
+</style>
+
+<!-- 非 scoped：dialog teleport 到 body，节点上没有本组件 data-v 属性（项目已知坑） -->
+<style>
+/* 原生全屏：EP 不再加 is-fullscreen class，需自行铺满并维持内部 flex 布局 */
+.controls-manage-dialog.is-native-full { width: 100vw !important; height: 100vh !important; max-height: 100vh !important; margin: 0 !important; top: 0 !important; border-radius: 0 !important; display: flex; flex-direction: column; overflow: hidden; }
+.controls-manage-dialog.is-native-full .el-dialog__header { flex: none; }
+.controls-manage-dialog.is-native-full .el-dialog__body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.controls-manage-dialog.is-native-full .el-dialog__footer { flex: none; }
+.controls-manage-dialog.is-native-full .designer-wrap.full { flex: 1; height: auto; min-height: 0; }
 </style>

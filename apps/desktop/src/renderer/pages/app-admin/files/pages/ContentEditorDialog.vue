@@ -3,15 +3,18 @@
  * 内容编辑弹框壳（plans/11 §3-5 / #8）：四态控件（最小化/最大化/全屏），打开默认最大化。
  * 编辑核心在 ContentEditorCore（dialog/page 两壳共用）。
  * - 最小化：弹框隐藏，收为可拖拽悬浮条（复用 TransferPanel useDraggable 范式），点击标题栏复原
- * - 最大化：铺满整个应用可视区（100vw×100vh、margin 0）；全屏：进出还原进入前模式（2026-11-20）
- * - 富文本 fullScreen() 是 @sshk/rich-text 内部 Teleport 到 body + z-index 满级，天然盖住本弹框
+ * - 最大化：铺满整个应用可视区（100vw×100vh、margin 0）；全屏：screenfull 原生全屏（真·全屏，
+ *   隐藏系统任务栏），进出还原进入前模式（2026-11-20 定版，2026-11-26 由 EP fullscreen 改原生）
+ * - 富文本 fullScreen() 是 @sshk/rich-text 内部 Teleport 到 body + z-index 满级，可盖住本弹框
+ *   （注：原生全屏时本弹框处于 top layer，富文本内部全屏无法越过它；两者不要同时启用）
  *
  * ⚠️ 弹框节点样式必须放非 scoped 全局块（项目已知坑：teleport 到 body 的节点上没有本组件
  *   的 data-v 属性，:deep() 打不进去）；本模板自绘元素（.ce-head/.ce-body 等）可走 scoped。
  * 滚动口径（用户 2026-11-19）：滚动层 = .ce-body，头部/脚部不随内容滚；
  * 弹框自身 padding 归零，滚动条贴弹框最右缘，留白由 .ce-head/.ce-content 自身 padding 补偿。
  */
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import screenfull from 'screenfull'
 import { ElMessageBox } from 'element-plus'
 import { useDraggable } from '@vueuse/core'
 import { Rank } from '@element-plus/icons-vue'
@@ -48,15 +51,57 @@ const editTitle = computed(() => {
 
 watch(visible, (open) => {
   if (!open) return
+  if (winMode.value === 'fullscreen') void leaveFullscreen()
   winMode.value = 'maximized'
   minimized.value = false
 })
 
+/** 原生全屏目标节点（teleport 后的 dialog），进入时记录以便精确清理 */
+let fullTarget: HTMLElement | null = null
+function getDialogEl(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.content-editor-dialog')
+}
+/** 请求原生全屏（screenfull）；失败则回退状态，避免 UI 与真实全屏不一致 */
+async function enterFullscreen(): Promise<boolean> {
+  if (!screenfull.isEnabled) return false
+  const el = getDialogEl()
+  if (!el) return false
+  fullTarget = el
+  try {
+    await screenfull.request(el)
+    return true
+  } catch {
+    fullTarget = null
+    return false
+  }
+}
+async function leaveFullscreen(): Promise<void> {
+  fullTarget = null
+  if (!screenfull.isEnabled || !screenfull.isFullscreen) return
+  try { await screenfull.exit() } catch { /* 已退出则忽略 */ }
+}
+/** 用户按 Esc / 系统层退出原生全屏时同步四态 UI */
+function onFullscreenChange(): void {
+  if (screenfull.isFullscreen) return
+  fullTarget = null
+  if (winMode.value === 'fullscreen') winMode.value = preFullscreenMode.value
+}
+onMounted(() => { if (screenfull.isEnabled) screenfull.on('change', onFullscreenChange) })
+
 function setMode(mode: WinMode): void {
   // 全屏进出：进入时记住当前模式，退出时还原（而非强制回最大化）
-  if (mode === 'fullscreen') { preFullscreenMode.value = winMode.value; winMode.value = 'fullscreen' }
-  else if (winMode.value === 'fullscreen') winMode.value = preFullscreenMode.value
-  else winMode.value = mode
+  if (mode === 'fullscreen' && winMode.value !== 'fullscreen') {
+    preFullscreenMode.value = winMode.value
+    winMode.value = 'fullscreen'
+    void enterFullscreen().then((ok) => {
+      if (!ok && winMode.value === 'fullscreen') winMode.value = preFullscreenMode.value
+    })
+  } else if (winMode.value === 'fullscreen') {
+    winMode.value = preFullscreenMode.value
+    void leaveFullscreen()
+  } else {
+    winMode.value = mode
+  }
   minimized.value = false
 }
 /**
@@ -98,9 +143,21 @@ function watchAnchor(): void {
   anchorRo = new ResizeObserver(() => { if (!userMoved.value) anchorBar() })
   anchorRo.observe(anchorEl)
 }
-onUnmounted(() => { anchorRo?.disconnect(); anchorRo = null })
+onUnmounted(() => {
+  anchorRo?.disconnect()
+  anchorRo = null
+  if (screenfull.isEnabled) {
+    screenfull.off('change', onFullscreenChange)
+    if (screenfull.isFullscreen && fullTarget) void screenfull.exit()
+  }
+})
 /** 最小化：停靠页面主体右下角（随侧栏展开收起跟随），手柄可拖拽走 */
 function doMinimize(): void {
+  // 原生全屏下必须先退出：全屏元素处于 top layer，悬浮手柄会被完全遮住
+  if (winMode.value === 'fullscreen') {
+    winMode.value = preFullscreenMode.value
+    void leaveFullscreen()
+  }
   preMinimizeMode.value = winMode.value
   userMoved.value = false
   // 挂载前先按估算尺寸定锚：bar 尚未渲染（barRef 空），避免首帧闪到 (0,0) 左上角
@@ -111,7 +168,11 @@ function doMinimize(): void {
 /** 点悬浮条复原：还原到最小化之前的窗口状态 */
 function restore(): void { minimized.value = false; winMode.value = preMinimizeMode.value }
 /** 由父组件触发复原（其它编辑操作二次确认后）：按用户口径默认最大化显示 */
-function restoreMaximized(): void { minimized.value = false; winMode.value = 'maximized' }
+function restoreMaximized(): void {
+  if (winMode.value === 'fullscreen') void leaveFullscreen()
+  minimized.value = false
+  winMode.value = 'maximized'
+}
 /** 关闭（#126：有未保存内容先二次确认；项目铁律禁遮罩禁 ESC） */
 async function doClose(): Promise<void> {
   if (coreRef.value?.isDirty) {
@@ -122,6 +183,7 @@ async function doClose(): Promise<void> {
       })
     } catch { return } // 取消/ESC → 留在编辑
   }
+  if (winMode.value === 'fullscreen') void leaveFullscreen()
   minimized.value = false
   visible.value = false
 }
@@ -164,7 +226,6 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
     <el-dialog
       v-model="dialogVisible"
       :show-header="false"
-      :fullscreen="winMode === 'fullscreen'"
       :width="winMode === 'normal' ? '900px' : '100vw'"
       :top="winMode === 'normal' ? '6vh' : '0'"
       :close-on-click-modal="false"
@@ -239,7 +300,8 @@ watch([x, y], () => clampBar(), { flush: 'sync' })
 .content-editor-dialog { padding: 0 !important; margin: 0 auto !important; overflow: hidden !important; }
 .content-editor-dialog .el-dialog__header { display: none; }
 .content-editor-dialog .el-dialog__body { overflow: hidden; }
-/* 最大化/全屏：铺满整个应用可视区（用户 2026-11-19），弹框成 flex 列，body 弹性滚动、header/footer 固定 */
+/* 最大化/铺满：CONTENT 铺满整个应用可视区；原生全屏由 screenfull 提升到 top layer，
+   本样式仍负责弹框内部布局（flex 列、body 弹性、header/footer 固定） */
 .content-editor-dialog.ce-fullmode { display: flex; flex-direction: column; margin: 0 !important; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0 !important; overflow: hidden; }
 .content-editor-dialog.ce-fullmode .el-dialog__body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 0; }
 .content-editor-dialog.ce-fullmode .el-dialog__footer { flex: none; padding: 12px 16px 16px; border-top: 1px solid var(--el-border-color); }
