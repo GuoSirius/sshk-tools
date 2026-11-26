@@ -303,12 +303,16 @@ const type = (): FieldType => cf.value.type
 .prop-title { font-weight: 600; font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .ctl-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--el-color-warning) 16%, transparent); color: var(--el-color-warning); }
 .ref-hint { font-size: 12px; opacity: .65; line-height: 1.5; width: 100%; }
-.prop-form { max-width: 520px; }
+.prop-form {}
 .opts { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .opt-row { display: flex; gap: 6px; align-items: center; }
 .col-row { display: flex; gap: 6px; align-items: center; }
 .col-row .el-input { flex: 1; min-width: 0; }
 .field-err { color: var(--el-color-danger); font-size: 12px; line-height: 1.4; margin-top: 2px; }
-.nested { border: 1px dashed var(--sshk-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 6px; width: 100%; }
+.nested { border: 1px dashed var(--sshk-border, rgba(128,128,128,.3)); border-radius: 6px; padding: 6px; width: 100%; overflow-x: auto; }
+/* 递归设计器：内层 prop-form 嵌在父面板 <el-form-item label="子字段"> 的 content 内，
+   EP 默认 `.el-form-item .el-form-item{margin-bottom:0}` 会把嵌套面板的行距压成 0（截图红框紧凑现象）；
+   显式恢复 EP 默认 18px，与外层面板一致。特异性 0-2-1 > EP 0-2-0，无需 !important。 */
+.prop-form :deep(.el-form-item) { margin-bottom: 18px; }
 .prop-empty { opacity: .6; font-size: 13px; padding: 24px 0; text-align: center; }
 </style>

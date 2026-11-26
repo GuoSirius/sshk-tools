@@ -182,7 +182,7 @@ refreshErrors()
 </script>
 
 <template>
-  <div ref="rootEl" class="designer" :class="{ readonly: readonly }">
+  <div ref="rootEl" class="designer" :class="{ readonly: readonly, nested: nested }">
     <!-- 左：字段列表（画布） -->
     <div class="list-pane">
       <div class="list-head">
@@ -287,4 +287,8 @@ refreshErrors()
 .empty { padding: 24px 8px; text-align: center; opacity: .6; font-size: 12px; }
 .prop-pane { flex: 1; min-width: 0; border: 1px solid var(--sshk-border, rgba(128,128,128,.2)); border-radius: 6px; padding: 10px 12px; overflow: auto; }
 .readonly .field-item { cursor: default; }
+/* 嵌套层保持与外层一致的左右布局（用户 2026-11-26：弹框加全屏 + 横向滚动，不做纵排）。
+   嵌套过深横向放不下时，给嵌套设计器保底 min-width 不被压缩，滚动由外层容器
+   （FieldPropsPanel .nested / 父 prop-pane 的 overflow:auto）提供水平滚动条。 */
+.designer.nested { min-width: 640px; }
 </style>

@@ -9,6 +9,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { FullScreen } from '@element-plus/icons-vue'
 import { EmptyState, ConfirmDialog, TimeText, ListPageShell, ListPagination, useTablePage } from '@sshk/ui-kit'
 import { FieldSchemaDesigner } from '@sshk/form-schema/ui'
 import {
@@ -65,6 +66,9 @@ const controlOptions = computed(() =>
 
 // ── 编辑弹框 ──
 const editOpen = ref(false)
+/** 弹框全屏（嵌套设计器横向空间不足时用户切换，2026-11-26 口径） */
+const dialogFull = ref(false)
+const editTitle = computed(() => viewing.value ? '查看控件（内置）' : editing.value ? '编辑控件' : '新建控件')
 const editId = ref<string | null>(null)
 const editBuiltin = ref(false)
 const editLabel = ref('')
@@ -256,13 +260,22 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
     <!-- 新建/编辑弹框：元信息 + 根容器类型 + itemFields 设计器（查看态 readonly） -->
     <el-dialog
       v-model="editOpen"
-      :title="viewing ? '查看控件（内置）' : editing ? '编辑控件' : '新建控件'"
+      :title="editTitle"
+      :fullscreen="dialogFull"
       width="860px"
       top="6vh"
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="false"
     >
+      <template #header>
+        <div class="dlg-head">
+          <span class="dlg-title">{{ editTitle }}</span>
+          <el-button text size="small" :icon="FullScreen" @click="dialogFull = !dialogFull">
+            {{ dialogFull ? '还原' : '全屏' }}
+          </el-button>
+        </div>
+      </template>
       <el-form label-width="auto" size="small">
         <el-form-item label="名称" required>
           <div class="field-col">
@@ -285,7 +298,7 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
           </el-select>
         </el-form-item>
       </el-form>
-      <div class="designer-wrap">
+      <div class="designer-wrap" :class="{ full: dialogFull }">
         <FieldSchemaDesigner
           :model-value="itemFields"
           :readonly="viewing || editBuiltin"
@@ -314,4 +327,7 @@ function onSelectionChange(list: ControlRecord[]): void { selected.value = list 
 .ce-field-tip { font-size: 12px; color: var(--el-color-danger); line-height: 1.4; }
 .designer-wrap { height: 420px; display: flex; }
 .designer-wrap > * { flex: 1; }
+.designer-wrap.full { height: calc(100vh - 300px); min-height: 420px; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; padding-right: 24px; }
+.dlg-title { font-size: 16px; font-weight: 600; color: var(--el-text-color-primary); }
 </style>
