@@ -47,6 +47,9 @@ function walk(dir: string): string[] {
 const COMPAT_WAIVERS: Record<string, string[]> = {
   'css/reset.css': ['伪元素', '交互伪类'],
   'elabscience/template/standard/default/css/template.css': ['阴影'],
+  // standard-default.css 是迁移进来的既有富样式资产：伪元素/伪类由 juice 全套选项承接，
+  // 渐变均带 background-color 纯色回落，box-shadow/混合模式属渐进增强（与 reset.css / template.css 同一口径）
+  'elabscience/css/standard-default.css': ['伪元素', '交互伪类', '结构性伪类', '阴影', '混合模式', '渐变 shorthand（需拆为 background-image）'],
 }
 
 const FORBIDDEN: Array<{ re: RegExp; label: string }> = [

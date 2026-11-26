@@ -188,12 +188,18 @@ async function openShare(row?: MailRow): Promise<void> {
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { shareDialog.loading = false }
 }
+/** 行级分享票键的 root：必须与主进程 path.join(outputRoot,'outputs','edm',mailId) 逐字一致
+ *  （ShareDialog 按 root 原样入 localStorage 键，模板里手拼 '/' 在 Windows 会因反斜杠错位查不到票） */
+function rowShareRoot(row: MailRow, top: string): string {
+  const sep = top.includes('\\') ? '\\' : '/'
+  return [top, row._id].join(sep)
+}
 /** 分享状态：未分享 / 已分享(顶层) / 已分享(行级)；按四元组键读票（顶层 label=邮件产物，行级=单封邮件产物） */
 function shareState(row: MailRow): 'none' | 'top' | 'row' {
   const root = topRoot
   if (!root) return 'none'
   const top = readShareTicket(toolId.value, '邮件产物', root, '')
-  const own = readShareTicket(toolId.value, '单封邮件产物', `${root}/${row._id}`, '')
+  const own = readShareTicket(toolId.value, '单封邮件产物', rowShareRoot(row, root), '')
   if (isTicketAlive(own)) return 'row'
   if (isTicketAlive(top)) return 'top'
   return 'none'
@@ -201,7 +207,7 @@ function shareState(row: MailRow): 'none' | 'top' | 'row' {
 function copyShareLink(row: MailRow): void {
   const root = topRoot
   if (!root) { ElMessage.warning('请先生成邮件产物'); return }
-  const ticket = readShareTicket(toolId.value, '单封邮件产物', `${root}/${row._id}`, '')
+  const ticket = readShareTicket(toolId.value, '单封邮件产物', rowShareRoot(row, root), '')
     ?? readShareTicket(toolId.value, '邮件产物', root, '')
   if (!ticket?.urls?.length) { ElMessage.warning('该邮件尚无有效分享链接'); return }
   void osApi().clipboardWrite(ticket.urls[0]!)

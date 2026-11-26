@@ -271,10 +271,12 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
   // ── 分享解析（plans/09 ShareHub）：产物根目录绝对路径，交给 ShareDialog 创建路由 ──
   handlers.set('share:resolve', async (data: Payload) => {
     const mailId = str(data, 'mailId')
-    // 行级分享：每封独立 root（Q5），TTL/撤销互不干扰；顶层分享=所有列表项（root=outputs）
+    // 行级分享：每封独立 root（Q5），TTL/撤销互不干扰；顶层分享=全部邮件产物
+    // ⚠️ 必须与 edmOutputRel 的 outputs/edm/<mailId>/ 对齐（2026-11-26 修复：旧实现漏掉 edm 层，
+    // 行级分享必报「尚无产物目录」；顶层收窄到 outputs/edm，避免把 poster 等其它工具产物一起分享）
     const root = mailId
-      ? path.join(ctx.outputRoot, 'outputs', mailId)
-      : path.join(ctx.outputRoot, 'outputs')
+      ? path.join(ctx.outputRoot, 'outputs', 'edm', mailId)
+      : path.join(ctx.outputRoot, 'outputs', 'edm')
     if (!existsSync(root)) throw new AppError('尚无产物目录，请先生成邮件', 'io')
     return { root, entry: '', label: mailId ? '单封邮件产物' : '邮件产物' }
   })
