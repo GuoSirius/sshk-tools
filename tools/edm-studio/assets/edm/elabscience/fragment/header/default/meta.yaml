@@ -1,26 +1,40 @@
 version: 1
 code: default
-name: 页头·迁移版
-changelog: juice-cli/edm 旧资产迁移（plans/14）
+name: 页头
 fields:
   - type: image
     key: logoImage
     label: 品牌 Logo
+    group: logo
     required: true
-  - type: url
-    key: logoLink
-    label: Logo 链接
+    default: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/header.webp
   - type: input
     key: logoAlt
     label: Logo 替代文字
+    group: logo
+    required: false
+    default: Elabscience
+  - type: url
+    key: logoLink
+    label: Logo 链接
+    group: logo
+    required: false
+    default: https://www.elabscience.com/
   - type: repeater
     key: navLinks
     label: 导航链接
+    required: false
     minRows: 1
+    maxRows: 3
     itemFields:
       - type: input
-        key: label
-        label: 文字
+        key: name
+        label: 名称
+        required: false
       - type: url
-        key: href
+        key: link
         label: 链接
+        required: false
+policy:
+  blacklist: []
+  whitelist: []

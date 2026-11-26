@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, useTablePage, useToolId } from '@sshk/ui-kit'
-import { ShareDialog } from '@sshk/share-core/ui'
-import { readShareTicket, isTicketAlive } from '@sshk/share-core/ui'
-import { inMsRange, toFileName } from '@sshk/shared'
+import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, callHostApi, useTablePage, useToolId, type HostApiSpec } from '@sshk/ui-kit'
+import { ShareDialog, readShareTicket, isTicketAlive } from '@sshk/share-core/ui'
+import { EDM_OUTPUT_FILES, IPC_CHANNELS, inMsRange, isExpiresAlive, toFileName, type ShareRouteInfo } from '@sshk/shared'
 import { brands, mails, templates, tplVersionsAll, loadMails } from '../store'
 import { api, confirmRemove, osApi, type MailRow } from '../tool-api'
 import ComposeDialog from '../components/ComposeDialog.vue'
@@ -168,7 +167,9 @@ async function batchRemove(): Promise<void> {
   ElMessage.success(`已删除 ${rows.length} 封邮件`)
 }
 
-// ── 分享：顶层=所有列表项；行级=每封独立 root（Q5）──
+// ── 分享（对齐 badge-studio plans/09 口径）：root 恒为产物根 outputs/edm；
+//    顶层票 entry='' 只作公用前缀，行级票 entry=<mailId>/final.html 直达产物文件（裸目录页默认 404）──
+const SHARE_LIST_SPEC: HostApiSpec = { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' }
 const shareDialog = reactive({ open: false, root: '', entry: '', label: '邮件产物', loading: false, mailId: '' })
 let topRoot = ''
 async function resolveTopRoot(): Promise<string> {
@@ -188,30 +189,56 @@ async function openShare(row?: MailRow): Promise<void> {
   } catch (err) { ElMessage.error((err as Error).message) }
   finally { shareDialog.loading = false }
 }
-/** 行级分享票键的 root：必须与主进程 path.join(outputRoot,'outputs','edm',mailId) 逐字一致
- *  （ShareDialog 按 root 原样入 localStorage 键，模板里手拼 '/' 在 Windows 会因反斜杠错位查不到票） */
-function rowShareRoot(row: MailRow, top: string): string {
-  const sep = top.includes('\\') ? '\\' : '/'
-  return [top, row._id].join(sep)
+/** 行产物相对路径（与主进程 share:resolve 同一口径）：<mailId>/final.html */
+function rowEntry(row: MailRow): string {
+  return [row._id, EDM_OUTPUT_FILES.final].join('/')
 }
-/** 分享状态：未分享 / 已分享(顶层) / 已分享(行级)；按四元组键读票（顶层 label=邮件产物，行级=单封邮件产物） */
+/** 校验票对应路由仍存活（撤销/过期不复制死链）；list 不可用时退化为信任本地未过期票 */
+async function findAliveRoute(ticket: { id: string; token: string; expiresAt: number } | null): Promise<ShareRouteInfo | null> {
+  if (!ticket || !isExpiresAlive(ticket.expiresAt)) return null
+  try {
+    const routes = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolId.value)
+    const hit = routes.find((r) => r.id === ticket.id && isExpiresAlive(r.expiresAt))
+    return hit ?? null
+  } catch {
+    return { id: ticket.id, token: ticket.token, urls: [], expiresAt: ticket.expiresAt, password: '' } as unknown as ShareRouteInfo
+  }
+}
+/** 拼「前缀 + 相对路径」直达链接：路径逐段编码（中文/空格），带口令补 ?ak= 放末尾（内核每请求必校） */
+function buildShareUrl(prefix: string, relPath: string, route: ShareRouteInfo | null): string {
+  const base = prefix.replace(/\/+$/, '') + '/' + relPath.split('/').map(encodeURIComponent).join('/')
+  const key = route && typeof route.password === 'string' && route.password ? `?ak=${encodeURIComponent(route.password)}` : ''
+  return base + key
+}
+/** 分享状态：未分享 / 已分享(顶层) / 已分享(行级)；按四元组键读票（顶层 label=邮件产物 entry=''，行级=单封邮件产物 entry=<id>/final.html） */
 function shareState(row: MailRow): 'none' | 'top' | 'row' {
   const root = topRoot
   if (!root) return 'none'
   const top = readShareTicket(toolId.value, '邮件产物', root, '')
-  const own = readShareTicket(toolId.value, '单封邮件产物', rowShareRoot(row, root), '')
+  const own = readShareTicket(toolId.value, '单封邮件产物', root, rowEntry(row))
   if (isTicketAlive(own)) return 'row'
   if (isTicketAlive(top)) return 'top'
   return 'none'
 }
-function copyShareLink(row: MailRow): void {
+/** 行级「复制链接」（用户口径）：自己的票 entry 已指向产物 → 直接复制；否则顶层公用前缀 + 本行文件名 → 直达链接。绝不复制裸前缀（目录页 404） */
+async function copyShareLink(row: MailRow): Promise<void> {
   const root = topRoot
   if (!root) { ElMessage.warning('请先生成邮件产物'); return }
-  const ticket = readShareTicket(toolId.value, '单封邮件产物', rowShareRoot(row, root), '')
-    ?? readShareTicket(toolId.value, '邮件产物', root, '')
-  if (!ticket?.urls?.length) { ElMessage.warning('该邮件尚无有效分享链接'); return }
-  void osApi().clipboardWrite(ticket.urls[0]!)
-  ElMessage.success('分享链接已复制')
+  const own = readShareTicket(toolId.value, '单封邮件产物', root, rowEntry(row))
+  const ownRoute = await findAliveRoute(own)
+  if (own?.urls[0] && ownRoute) {
+    await osApi().clipboardWrite(buildShareUrl(own.urls[0], '', ownRoute))
+    ElMessage.success('已复制本邮件的专属分享链接')
+    return
+  }
+  const top = readShareTicket(toolId.value, '邮件产物', root, '')
+  const topRoute = await findAliveRoute(top)
+  if (top?.urls[0] && topRoute) {
+    await osApi().clipboardWrite(buildShareUrl(top.urls[0], rowEntry(row), topRoute))
+    ElMessage.success('已复制分享链接（公用前缀 + 本邮件）')
+    return
+  }
+  ElMessage.warning('还没有可用分享：点「分享产物」生成公用链接，或点本行「分享」单独分享')
 }
 onMounted(() => {
   void resolveTopRoot()

@@ -18,8 +18,8 @@ socials:
     href: https://wa.me/13468889004
     icon: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/whatsapp.webp
 companyName: Elabscience Bionovation Inc.
-phone: 'Toll-free: 1-888-852-8623'
-phoneHref: tel:+18888528623
+phone: 1-888-852-8623
+phoneHref: '+18888528623'
 phoneIcon: https://file.elabscience.com/edm/phone.webp
 siteIcon: https://file.elabscience.com/edm/site.webp
 mailIcon: https://file.elabscience.com/edm/email.webp
@@ -28,7 +28,7 @@ web: www.elabscience.com
 webHref: https://www.elabscience.com
 emails:
   - label: orders@elabscience.com
-    href: mailto:orders@elabscience.com
+    href: orders@elabscience.com
   - label: techsupport@elabscience.com
-    href: mailto:techsupport@elabscience.com
+    href: techsupport@elabscience.com
 address: 14780 Memorial Drive, Suite 105, Houston, Texas, 77079, USA

@@ -1,10 +1,10 @@
 logoImage: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/header.webp
-logoLink: https://www.elabscience.com/
+logoLink: https://www.elabscience.com
 logoAlt: Elabscience
 navLinks:
-  - label: Flow Cytometry Antibodies
-    href: https://www.elabscience.com/products/flow-cytometry-antibodies
-  - label: Apoptosis and Cell Health Detection
-    href: https://www.elabscience.com/products/cell-function-assays
-  - label: Immunoassay Kits
-    href: https://www.elabscience.com/products/immunoassay-kits-and-reagents
+  - name: Flow Cytometry Antibodies
+    link: https://www.elabscience.com/products/flow-cytometry-antibodies
+  - name: Apoptosis and Cell Health Detection
+    link: https://www.elabscience.com/products/cell-function-assays
+  - name: Immunoassay Kits
+    link: https://www.elabscience.com/products/immunoassay-kits-and-reagents

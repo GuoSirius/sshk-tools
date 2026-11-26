@@ -1,102 +1,12 @@
-.bg-primary {
-  background-color: #3a82db;
-}
-
-.bg-light-primary {
-  background-color: #f0f6ff;
-}
-
-.bg-white {
-  background-color: #fff;
-}
-
-.bg-gray {
-  background-color: #f6f6f6;
-}
-
-.bg-dark-gray {
-  background-color: #f2f2f2;
-}
-
-.bg-blue {
-  background-color: #006db8;
-}
-
-.bg-blue-30 {
-  background-color: rgba(0, 109, 184, 0.30);
-}
-
-.bg-blue-60 {
-  background-color: rgba(245, 250, 255, 0.60);
-}
-
-.bg-sky-blue {
-  background-color: #1078e3;
-}
-
-.bg-pale-blue {
-  background-color: #e4f4ff;
-}
-
-.bg-light-blue {
-  background-color: #f9fbfe;
-}
-
-.bg-orange {
-  background-color: #f7750b;
-}
-
-.bg-light-orange {
-  background-color: #ff9630;
-}
-
-.bg-orange-30 {
-  background-color: rgb(247, 117, 11, 0.30);
-}
-
-/* Outlook 忽略 background-image 时回落到纯色 background-color */
-.bg-linear-orange {
-  background-color: #f7750b;
-  background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
-}
-
-.bg-linear-blue {
-  background-color: #1078e3;
-  background-image: linear-gradient(-90deg, #6effec 0%, #117be4 100%);
-}
-
-.border {
-  border: 1px solid #DCEFF3;
-}
-
-.border-dashed {
-  border: 1px dashed #3a82db;
-}
-
-.border-gray {
-  border-color: #e0e0e0;
-}
-
-.border-blue {
-  border-color: #006db8;
-}
-
-.color-primary {
-  color: #2c2c2c;
-}
-
-.color-black {
+a {
   color: #000;
 }
 
-.color-blue {
-  color: #006db8;
+a:hover {
+  text-decoration: underline !important;
 }
 
-.color-yellow {
-  color: #ffaa15;
-}
-
+/* 表格样式 */
 .table-bordered {
   border: 1px solid #DCEFF3;
 }
@@ -107,7 +17,8 @@
   background-color: #4389DE;
 }
 
-.table-bordered th, .table-bordered td {
+.table-bordered th,
+.table-bordered td {
   padding: 10px;
   border: 1px solid #DCEFF3;
 }
@@ -116,12 +27,15 @@
   border: 1px solid #6ca2e4;
 }
 
-/* 斑马纹用显式 stripe-row 类，避免 juice 与 Outlook 均不支持的结构性伪类 */
-.table-stripe .stripe-row td {
+.table-stripe thead {}
+
+.table-stripe .stripe-row,
+.table-stripe tbody tr:nth-child(2n) {
   background-color: #ebf2fb;
 }
 
-.table-stripe th, .table-stripe td {
+.table-stripe th,
+.table-stripe td {
   padding: 5px 8px;
   border: 1px solid #6ca2e4;
 }
@@ -140,15 +54,18 @@
   background-color: #f6f6f6;
 }
 
-.table-gray-stripe .stripe-row td {
+.table-gray-stripe .stripe-row,
+.table-gray-stripe tbody tr:nth-child(2n) {
   background-color: #f6f6f6;
 }
 
-.table-gray-stripe th, .table-gray-stripe td {
+.table-gray-stripe th,
+.table-gray-stripe td {
   padding: 5px 8px;
   border: 1px solid #f6f6f6;
 }
 
+/* 标题、图标样式 */
 .title {
   color: #2c2c2c;
   font-size: 22px;
@@ -160,12 +77,35 @@
   font-weight: bold;
 }
 
+.square-title::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  margin-bottom: -1px;
+  background-color: #3a82db;
+}
+
+.title-mark {
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .title-mark-square {
   width: 16px;
   height: 16px;
   margin-right: 6px;
   vertical-align: -1px;
   background-color: #3a82db;
+}
+
+.title-mark-circle {
+  width: 16px;
+  height: 16px;
+  margin: -2px 6px 0 0;
+  border: 1px solid #1873C2;
+  border-radius: 50%;
 }
 
 .square-icon-title {
@@ -201,12 +141,25 @@
   font-weight: bolder;
 }
 
-.title-mark-circle {
+.circle-title::before,
+.circle-title::after {
+  content: '';
+  display: inline-block;
   width: 16px;
   height: 16px;
-  margin: -2px 6px 0 0;
-  border: 1px solid #1873C2;
+  margin-top: -2px;
+  vertical-align: middle;
   border-radius: 50%;
+  border: 1px solid #1873C2;
+}
+
+.circle-title::before {
+  margin-top: -3px;
+  margin-right: 6px;
+}
+
+.circle-title::after {
+  margin-left: 6px;
 }
 
 .dot {
@@ -302,12 +255,7 @@
   background: url('https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202608251541/Knowledge Stack.webp') 0 5px / 18px 18px no-repeat scroll;
 }
 
-.image-box {
-  line-height: 0;
-  font-size: 0;
-  user-select: none;
-}
-
+/* 按钮类样式 */
 .button {
   padding: 6px 16px;
   color: #fff;
@@ -324,24 +272,148 @@
   background-color: #f7750b;
 }
 
-/* 渐变按钮：Outlook 忽略 background-image 时回落到纯色 background-color */
 .button-linear-orange {
   padding: 5px 12px;
   color: #fff;
   font-size: 16px;
   border-radius: 16px;
-  background-color: #f7750b;
+  box-shadow: 1px 1px 3px 0 #eff7ff;
   background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
+  background: linear-gradient(0deg, #fb5302 0%, #fac228 100%),
+              linear-gradient(0deg, #ed4b26 0%, #ffc02c 100%),
+              linear-gradient(0deg, #ffb100 0%, #ffde43 100%),
+              linear-gradient(#8ad2ff, #8ad2ff);
+  background-color: #f7750b;
+  background-blend-mode: normal, normal, normal, normal;
 }
 
-.text-link, .text-link-hover {
+.text-link {
   color: #0365B0;
+}
+
+.text-link:hover,
+.text-link-hover:hover {
+  color: #0365B0 !important;
+}
+
+/* 背景样式 */
+.bg-primary {
+  background-color: #3a82db;
+}
+
+.bg-light-primary {
+  background-color: #f0f6ff;
+}
+
+.bg-white {
+  background-color: #fff;
+}
+
+.bg-gray {
+  background-color: #f6f6f6;
+}
+
+.bg-dark-gray {
+  background-color: #f2f2f2;
+}
+
+.bg-blue {
+  background-color: #006db8;
+}
+
+.bg-blue-30 {
+  background-color: rgba(0, 109, 184, 0.30);
+}
+
+.bg-blue-60 {
+  background-color: rgba(245, 250, 255, 0.60);
+}
+
+.bg-sky-blue {
+  background-color: #1078e3;
+}
+
+.bg-pale-blue {
+  background-color: #e4f4ff;
+}
+
+.bg-light-blue {
+  background-color: #f9fbfe;
+}
+
+.bg-orange {
+  background-color: #f7750b;
+}
+
+.bg-light-orange {
+  background-color: #ff9630;
+}
+
+.bg-orange-30 {
+  background-color: rgb(247, 117, 11, 0.30);
+}
+
+.bg-linear-orange {
+  box-shadow: 1px 1px 3px 0 #eff7ff;
+  background-image: linear-gradient(0deg, #fb5302 0%, #fac228 100%);
+  background: linear-gradient(0deg, #fb5302 0%, #fac228 100%),
+              linear-gradient(0deg, #ed4b26 0%, #ffc02c 100%),
+              linear-gradient(0deg, #ffb100 0%, #ffde43 100%),
+              linear-gradient(#8ad2ff, #8ad2ff);
+  background-color: #f7750b;
+  background-blend-mode: normal, normal, normal, normal;
+}
+
+.bg-linear-blue {
+  background-color: #1078e3;
+  background-image: linear-gradient(-90deg, #6effec 0%, #117be4 100%);
+}
+
+/* 边框样式 */
+.border {
+  border: 1px solid #DCEFF3;
+}
+
+.border-dashed {
+  border: 1px dashed #3a82db;
+}
+
+.border-gray {
+  border-color: #e0e0e0;
+}
+
+.border-blue {
+  border-color: #006db8;
+}
+
+.color-primary {
+  color: #2c2c2c;
+}
+
+.color-black {
+  color: #000;
+}
+
+.color-blue {
+  color: #006db8;
 }
 
 .color-light-blue {
   color: #0097ff;
 }
 
+.color-yellow {
+  color: #ffaa15;
+}
+
+.color-orange {
+  color: #f7750b;
+}
+
 .color-light-orange {
   color: #f88634;
+}
+
+.color-red {
+  color: #ff0207;
 }

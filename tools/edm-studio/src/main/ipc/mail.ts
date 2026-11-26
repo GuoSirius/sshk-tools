@@ -271,13 +271,17 @@ export function registerMailActions(ctx: EdmIpcContext, handlers: Map<string, Ac
   // ── 分享解析（plans/09 ShareHub）：产物根目录绝对路径，交给 ShareDialog 创建路由 ──
   handlers.set('share:resolve', async (data: Payload) => {
     const mailId = str(data, 'mailId')
-    // 行级分享：每封独立 root（Q5），TTL/撤销互不干扰；顶层分享=全部邮件产物
-    // ⚠️ 必须与 edmOutputRel 的 outputs/edm/<mailId>/ 对齐（2026-11-26 修复：旧实现漏掉 edm 层，
-    // 行级分享必报「尚无产物目录」；顶层收窄到 outputs/edm，避免把 poster 等其它工具产物一起分享）
-    const root = mailId
-      ? path.join(ctx.outputRoot, 'outputs', 'edm', mailId)
-      : path.join(ctx.outputRoot, 'outputs', 'edm')
+    // 与 badge-studio 同一口径（plans/09）：root 恒为产物根 outputs/edm（公用前缀与行级票互通），
+    // 行级 entry = <mailId>/final.html 直达最终产物文件——裸链接打开即文件，不依赖「允许访问目录」
+    // （默认关闭时目录页必 404）。旧实现两处票的 entry 都为 ''，复制链接打开就是 404。
+    const root = path.join(ctx.outputRoot, 'outputs', 'edm')
+    if (mailId) {
+      const entry = [mailId, EDM_OUTPUT_FILES.final].join('/')
+      if (!existsSync(path.join(root, entry))) throw new AppError('邮件产物文件不存在，请先生成：' + entry, 'io')
+      return { root, entry, label: '单封邮件产物' }
+    }
     if (!existsSync(root)) throw new AppError('尚无产物目录，请先生成邮件', 'io')
-    return { root, entry: '', label: mailId ? '单封邮件产物' : '邮件产物' }
+    // 顶层=公用链接前缀（entry 空）：单独打开是目录页；行级「复制链接」会拼本行 entry 后使用
+    return { root, entry: '', label: '邮件产物' }
   })
 }

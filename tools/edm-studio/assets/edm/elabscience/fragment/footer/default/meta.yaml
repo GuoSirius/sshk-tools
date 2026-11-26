@@ -1,58 +1,80 @@
 version: 1
 code: default
-name: 页尾·迁移版
-changelog: juice-cli/edm 旧资产迁移（plans/14）
+name: 页尾
 fields:
   - type: repeater
     key: socials
     label: 社交图标
+    required: false
+    minRows: 1
+    maxRows: 6
     itemFields:
       - type: input
         key: label
         label: 名称
+        required: false
       - type: url
         key: href
         label: 链接
+        required: false
       - type: image
         key: icon
         label: 图标
+        required: false
   - type: input
     key: companyName
     label: 公司名
-  - type: input
-    key: phone
-    label: 电话文案
-  - type: url
-    key: phoneHref
-    label: 电话链接
+    required: false
   - type: image
     key: phoneIcon
     label: 电话图标
+    required: false
   - type: input
-    key: web
-    label: 网址文案
+    key: phone
+    label: 电话文案
+    required: false
   - type: url
-    key: webHref
-    label: 网址链接
+    key: phoneHref
+    label: 电话链接
+    required: false
   - type: image
     key: siteIcon
     label: 网址图标
+    required: false
+  - type: input
+    key: web
+    label: 网址文案
+    required: false
+  - type: url
+    key: webHref
+    label: 网址链接
+    required: false
+  - type: image
+    key: mailIcon
+    label: 邮箱图标
+    required: false
   - type: repeater
     key: emails
     label: 邮箱
+    required: false
+    minRows: 1
+    maxRows: 2
     itemFields:
       - type: input
         key: label
         label: 邮箱地址
+        required: false
       - type: url
         key: href
         label: mailto 链接
-  - type: image
-    key: mailIcon
-    label: 邮箱图标
-  - type: image
-    key: locationIcon
-    label: 地址图标（选填）
+        required: false
   - type: textarea
     key: address
     label: 公司地址
+    required: false
+policy:
+  blacklist: []
+  whitelist: []
+
+
+

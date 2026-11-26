@@ -4,14 +4,14 @@
 <link rel="stylesheet" href="./css/header.css"/>
 <table cellspacing="0" cellpadding="0" border="0">
   <colgroup>
-    <col width="{{ template.leftGap }}"/>
-    <col/> <col/> <col width="{{ template.rightGap }}"/>
+    <col width="{{ template.leftGap | default('10px', true) }}"/>
+    <col/> <col/> <col width="{{ template.rightGap | default('10px', true) }}"/>
   </colgroup>
   <tbody>
     <tr>
       <td colspan="4">
-        <a href="https://www.elabscience.com/" class="image-box">
-          <img src="https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/header.webp" alt="Elabscience" class="w-full"/>
+        <a href="{{ logoLink }}" class="image-box">
+          <img src="{{ logoImage }}" alt="{{ logoAlt }}" class="w-full"/>
         </a>
       </td>
     </tr>
@@ -24,23 +24,19 @@
         <table cellspacing="0" cellpadding="0" border="0" class="text-center table-auto w-full">
           <tbody>
             <tr>
-              <td>
-                <a href="https://www.elabscience.com/products/flow-cytometry-antibodies" class="decoration-none color-[#006DB8]">Flow
-                  Cytometry Antibodies</a>
-              </td>
-              <td>
-                <a href="https://www.elabscience.com/products/cell-function-assays" class="decoration-none color-[#006DB8]">Apoptosis
-                  and Cell Health Detection</a>
-              </td>
-              <td>
-                <a href="https://www.elabscience.com/products/immunoassay-kits-and-reagents" class="decoration-none color-[#006DB8]">
-                  Immunoassay Kits</a>
-              </td>
+              {% for item in navLinks %}
+                <td>
+                  <a href="{{ item.link }}" class="decoration-none color-[#006DB8]">{{ item.name }}</a>
+                </td>
+              {% endfor %}
             </tr>
           </tbody>
         </table>
       </td>
       <td></td>
+    </tr>
+    <tr>
+      <td colspan="4" class="h-[16px]"></td>
     </tr>
   </tbody>
 </table>

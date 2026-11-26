@@ -119,8 +119,3 @@ img {
   user-select: none;
   mso-line-height-rule: at-least;  /* ← 新增，防止 0 行高被压成真 0 */
 }
-
-.pseudo-mark {
-  display: inline-block;
-  vertical-align: middle;
-}
