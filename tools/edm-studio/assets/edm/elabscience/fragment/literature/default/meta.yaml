@@ -1,7 +1,6 @@
 version: 1
 code: default
-name: 文献推广·迁移版
-changelog: juice-cli/edm series 迁移（plans/14）
+name: 文献推广
 fields:
   - type: image
     key: overview_image
@@ -87,3 +86,6 @@ fields:
         key: link
         label: 链接
         required: false
+policy:
+  blacklist: []
+  whitelist: []

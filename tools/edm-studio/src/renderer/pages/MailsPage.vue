@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EmptyState, ListPageShell, ListPagination, TableOpsColumn, TimeText, callHostApi, useTablePage, useToolId, type HostApiSpec } from '@sshk/ui-kit'
-import { ShareDialog, readShareTicket, isTicketAlive } from '@sshk/share-core/ui'
+import { ShareDialog, readShareTicket } from '@sshk/share-core/ui'
 import { EDM_OUTPUT_FILES, IPC_CHANNELS, inMsRange, isExpiresAlive, toFileName, type ShareRouteInfo } from '@sshk/shared'
 import { brands, mails, templates, tplVersionsAll, loadMails } from '../store'
 import { api, confirmRemove, osApi, type MailRow } from '../tool-api'
@@ -170,6 +170,18 @@ async function batchRemove(): Promise<void> {
 // ── 分享（对齐 badge-studio plans/09 口径）：root 恒为产物根 outputs/edm；
 //    顶层票 entry='' 只作公用前缀，行级票 entry=<mailId>/final.html 直达产物文件（裸目录页默认 404）──
 const SHARE_LIST_SPEC: HostApiSpec = { group: 'shareHub', method: 'list', channel: IPC_CHANNELS.shareHubList, label: '分享路由列表' }
+/** 分享路由快照：localStorage 票非响应式 + topRoot 是普通变量，必须靠此 ref 建立响应式依赖，
+ *  否则 ShareDialog 创建/撤销/重新生成后 shareState 不会重算（badge-studio 2026-11-18 同坑实测） */
+const shareRoutes = ref<ShareRouteInfo[]>([])
+async function refreshShareRoutes(): Promise<void> {
+  try {
+    shareRoutes.value = await callHostApi<ShareRouteInfo[]>(SHARE_LIST_SPEC, toolId.value)
+  } catch { shareRoutes.value = [] }
+}
+function onShareChanged(): void { void refreshShareRoutes() }
+function routeAlive(id: string): boolean {
+  return shareRoutes.value.some((r) => r.id === id && isExpiresAlive(r.expiresAt))
+}
 const shareDialog = reactive({ open: false, root: '', entry: '', label: '邮件产物', loading: false, mailId: '' })
 let topRoot = ''
 async function resolveTopRoot(): Promise<string> {
@@ -212,12 +224,14 @@ function buildShareUrl(prefix: string, relPath: string, route: ShareRouteInfo | 
 }
 /** 分享状态：未分享 / 已分享(顶层) / 已分享(行级)；按四元组键读票（顶层 label=邮件产物 entry=''，行级=单封邮件产物 entry=<id>/final.html） */
 function shareState(row: MailRow): 'none' | 'top' | 'row' {
+  // 显式读一次快照建立响应式依赖：否则新建/撤销分享后本 computed 模板不会重算（票在非响应式 localStorage）
+  void shareRoutes.value
   const root = topRoot
   if (!root) return 'none'
   const top = readShareTicket(toolId.value, '邮件产物', root, '')
   const own = readShareTicket(toolId.value, '单封邮件产物', root, rowEntry(row))
-  if (isTicketAlive(own)) return 'row'
-  if (isTicketAlive(top)) return 'top'
+  if (own && routeAlive(own.id)) return 'row'
+  if (top && routeAlive(top.id)) return 'top'
   return 'none'
 }
 /** 行级「复制链接」（用户口径）：自己的票 entry 已指向产物 → 直接复制；否则顶层公用前缀 + 本行文件名 → 直达链接。绝不复制裸前缀（目录页 404） */
@@ -242,11 +256,12 @@ async function copyShareLink(row: MailRow): Promise<void> {
 }
 onMounted(() => {
   void resolveTopRoot()
+  void refreshShareRoutes()
   // 菜单切换（内容管理↔邮件管理）会重挂载本页：store 的 ensureLoaded 有 loaded 标记只跑一次，
   // 数据不会自动刷新，这里每次挂载都拉一次列表保证最新
   void loadMails()
 })
-watch(mails, () => { void resolveTopRoot() })
+watch(mails, () => { void resolveTopRoot(); void refreshShareRoutes() })
 
 // ── 操作列（内联 ≤3：分享/编辑/组装；更多：导出/另存为/删除）──
 const ops = computed(() => [
@@ -337,7 +352,7 @@ function onAction(key: string, row: MailRow): void {
     </el-dialog>
 
     <!-- 分享弹框 -->
-    <ShareDialog v-model:open="shareDialog.open" :tool-id="toolId" :label="shareDialog.label" :default-root="shareDialog.root" :default-entry="shareDialog.entry" />
+    <ShareDialog v-model:open="shareDialog.open" :tool-id="toolId" :label="shareDialog.label" :default-root="shareDialog.root" :default-entry="shareDialog.entry" @changed="onShareChanged" />
   </ListPageShell>
 </template>
 

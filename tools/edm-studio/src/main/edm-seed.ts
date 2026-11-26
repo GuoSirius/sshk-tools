@@ -209,6 +209,17 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
       }
     }
   }
+
+  // 归档旧随机 id 的同 code 品牌（垃圾数据）：早期经 brand:save 建的业务品牌用 entityId 随机 id，
+  // 系统播种按确定性 id brd_<code> 又建一条 → 品牌下拉同名重复。仅命中「系统保留 code + 非确定性 id
+  // + 无 origin 标记（非 system/custom）」的遗留项，软删除可逆，不误伤用户自建品牌。
+  const systemCodes = new Set(model.brands.map((b) => b.code))
+  for (const b of await repo.list<Brand>('brands', { archived: false })) {
+    if (systemCodes.has(b.code) && b._id !== sysBrandId(b.code) && !b.origin) {
+      await repo.archive('brands', b._id)
+      counts.removed++
+    }
+  }
   return counts
 }
 

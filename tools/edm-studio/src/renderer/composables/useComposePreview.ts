@@ -163,28 +163,35 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     return out
   })
 
-  /** 组合编辑器的片段选项：片段预览=当前片段；模板预览=本品牌片段版本（族级 policy 过滤） */
+  /**
+   * 组合编辑器的片段选项（用户 2026-11-26：片段配置预览要能选其他片段看出效果）：
+   * - 片段预览：本品牌全部片段版本（自身置顶；片段间组合不受模板 policy 约束——宿主模板另选，布局是内存态）
+   * - 模板预览：本品牌片段版本，按当前模板族/版本 ID 做 policy 过滤（黑白名单）
+   */
   const composeFragmentOptions = computed<{ id: string; label: string }[]>(() => {
     const node = deps.selected.value
     if (node?.kind !== 'version') return []
-    if (node.data.cat === 'fragment') return [{ id: JSON.stringify(versionSelector(node)), label: node.label }]
     const brand = node.data.brandCode ?? ''
-    const famCode = node.data.familyCode ?? ''
-    const dir = node.data.versionDir ?? ''
-    const tplIds = templateIds(brand, famCode, dir)
-    const out: { id: string; label: string }[] = []
+    const selfId = node.data.cat === 'fragment' ? JSON.stringify(versionSelector(node)) : ''
     const bNode = brandNodeOf(brand, node.data.source)
     const fragCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'fragment')
+    const self: { id: string; label: string }[] = selfId ? [{ id: selfId, label: node.label }] : []
+    const out: { id: string; label: string }[] = []
     for (const fam of fragCat?.children?.filter((n) => n.kind === 'family') ?? []) {
       const famPolicy = familyMetaCache.value[fam.data.path]?.policy
       for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
         const dir = ver.data.versionDir || 'default'
-        const policy = mergeFragmentPolicy(famPolicy, versionPolicyCache.value[`${fam.data.path}/${dir}`])
-        if (!policyAllows(policy, tplIds)) continue
-        out.push({ id: JSON.stringify(versionSelector(ver)), label: `${fam.label} / ${ver.label}` })
+        const id = JSON.stringify(versionSelector(ver))
+        if (id === selfId) continue // 自身已在顶部，避免重复
+        if (node.data.cat === 'template') {
+          // 模板预览：仅列出当前模板允许使用的片段（族 + 版本 policy 叠加）
+          const policy = mergeFragmentPolicy(famPolicy, versionPolicyCache.value[`${fam.data.path}/${dir}`])
+          if (!policyAllows(policy, templateIds(brand, node.data.familyCode ?? '', node.data.versionDir ?? ''))) continue
+        }
+        out.push({ id, label: `${fam.label} / ${ver.label}` })
       }
     }
-    return out
+    return [...self, ...out]
   })
 
   /** 区块清单：片段预览=宿主模板 slots（选定后填充）；模板预览=本族 slots */

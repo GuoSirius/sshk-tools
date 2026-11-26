@@ -71,6 +71,25 @@ describe('R8 系统内容播种', () => {
     expect(await repo.get<FragmentVersion>('fragmentVersions', otherId)).toBeNull()
   })
 
+  it('归档同 code 的旧随机 id 品牌（垃圾数据），确定性 id 保留且二次播种幂等', async () => {
+    const repo = makeRepo()
+    // 模拟早期 brand:save 建的遗留品牌：与系统品牌同 code=procell、随机 id、无 origin
+    await repo.insert<Brand>('brands', {
+      _id: 'brd_01m7enwzrvxwtkmfmyrvf5xhjq', code: 'procell', name: '普诺赛',
+    } as Brand)
+    const first = await seedSystemContent(repo, EDM_ROOT)
+    expect(first.removed).toBeGreaterThan(0)
+    expect((await repo.get<Brand>('brands', 'brd_01m7enwzrvxwtkmfmyrvf5xhjq'))?.archived).toBe(true)
+    expect((await repo.get<Brand>('brands', 'brd_procell'))?.archived).toBeFalsy()
+    // 用户自建品牌（有 origin=custom）不受清理影响
+    await repo.insert<Brand>('brands', {
+      _id: 'brd_custom01', code: 'mybrand', name: '我的品牌', origin: 'custom',
+    } as Brand)
+    const second = await seedSystemContent(repo, EDM_ROOT)
+    expect(second.removed).toBe(0)
+    expect((await repo.get<Brand>('brands', 'brd_custom01'))?.archived).toBeFalsy()
+  })
+
   it('播种实体 origin=system 且确定性 ID 稳定；css 就近链已内联', async () => {
     const repo = makeRepo()
     await seedSystemContent(repo, EDM_ROOT)
