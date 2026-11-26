@@ -1,7 +1,6 @@
 code: citation-card
 name: 文献背书卡
 description: 母版模式族：文献背书卡（plans/14 批次 5 保真迁移）
-type: product
 policy:
   blacklist: []
   whitelist: []

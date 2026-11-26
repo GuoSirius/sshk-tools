@@ -27,7 +27,6 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
       code: { type: 'string', minLength: 1, pattern: '\\S' },
       name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
-      type: { type: 'string' },
       policy: {
         type: 'object',
         description: '片段黑白名单：指示本片段适用于哪些模板',
@@ -69,15 +68,6 @@ export const META_JSON_SCHEMAS: Record<EntityKind, object> = {
       name: { type: 'string', minLength: 1, pattern: '\\S' },
       description: { type: 'string' },
       favicon: { type: 'string' },
-      slots: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['key', 'type'],
-          properties: { key: { type: 'string' }, type: { type: 'string' } },
-          additionalProperties: false,
-        },
-      },
       dataSchema: { type: 'object' },
       tags: { type: 'array', items: { type: 'string' } },
     },

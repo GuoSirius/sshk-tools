@@ -42,8 +42,8 @@ export interface NodeDetail {
   sampleMode: Ref<'form' | 'data' | 'design'>
   sampleSchema: Ref<FieldDef[]>
   sampleObj: Ref<Record<string, unknown>>
-  form: Ref<{ name: string; code: string; description: string; favicon: string; tags: string[]; type: string; version: number; changelog: string; policyB: string[]; policyW: string[] }>
-  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; tags: boolean; typeField: boolean; policy: boolean; version: boolean }>
+  form: Ref<{ name: string; code: string; description: string; favicon: string; tags: string[]; version: number; changelog: string; policyB: string[]; policyW: string[] }>
+  showForm: ComputedRef<{ catBase: boolean; brandBase: boolean; base: boolean; codeReadonly: boolean; favicon: boolean; tags: boolean; policy: boolean; version: boolean }>
   /** favicon 继承提示（版本→族→类型→品牌） */
   faviconHint: ComputedRef<string>
   /** 当前节点真实目录名（code 镜像源） */
@@ -105,7 +105,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
   const sampleSchema = ref<FieldDef[]>([])
   const sampleObj = ref<Record<string, unknown>>({})
   const form = ref({
-    name: '', code: '', description: '', favicon: '', tags: [] as string[], type: '',
+    name: '', code: '', description: '', favicon: '', tags: [] as string[],
     version: 1, changelog: '', policyB: [] as string[], policyW: [] as string[],
   })
 
@@ -122,8 +122,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       favicon: k === 'brand' || ((k === 'category' || k === 'family' || k === 'version') && !isFragment),
       // 标签：品牌 / 类型 / 族有 tags（版本 meta 无 tags 字段）
       tags: k === 'brand' || k === 'category' || k === 'family',
-      // 类型仅片段族可配；黑白名单片段族与版本都可配（版本在族结果上做增量修正）
-      typeField: k === 'family' && isFragment,
+      // #213：片段族 type 已取消（片段可放任何位置）；黑白名单片段族与版本都可配（版本在族结果上做增量修正）
       policy: (k === 'family' || k === 'version') && isFragment,
       version: k === 'version',
     }
@@ -165,7 +164,6 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       description: String(raw.description ?? ''),
       favicon: String(raw.favicon ?? ''),
       tags: toStringList(raw.tags),
-      type: String(raw.type ?? ''),
       // 版本号只读派生：取目录名 vN，不读 meta.yaml 手填值（避免 v1 目录写 version:3 造成显示/最新判定混乱）
       version: node && node.kind === 'version' ? versionOfDirName(dirNameOf(node)) : Number(raw.version ?? 1),
       changelog: String(raw.changelog ?? ''),
@@ -262,7 +260,6 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       patch.description = form.value.description.trim() || undefined
     }
     if (s.tags) patch.tags = form.value.tags.filter((t) => t.trim())
-    if (s.typeField) patch.type = form.value.type.trim() || undefined
     if (s.policy) patch.policy = { blacklist: [...form.value.policyB], whitelist: [...form.value.policyW] }
     if (s.version) {
       // 版本号恒取目录名派生值：meta.yaml 里手填的 version 不会写回，避免与 vN 目录漂移

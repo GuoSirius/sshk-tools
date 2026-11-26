@@ -21,6 +21,7 @@ import { loadEdmModel } from './edm-manifest.js'
 import { collectSystemCssContent } from '../core/system-css.js'
 import { resolveCssBundle } from '../core/css-resolve.js'
 import { mergeFragmentPolicy } from '../core/fragment-policy.js'
+import { extractSlotKeysFromSource } from '../core/slots.js'
 import { unifiedBrandId } from './edm-brand-identity.js'
 
 const sysBrandId = unifiedBrandId
@@ -120,7 +121,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
       const fragId = sysFragmentId(b.code, fam.code)
       const fragPatch = {
         _id: fragId, brandId, name: fam.meta.name, description: fam.meta.description,
-        type: fam.meta.type || 'product', origin: 'system' as const,
+        type: '' /* #213：片段无 type，DB 字段保留兼容 */, origin: 'system' as const,
       }
       if (await upsert<Fragment>('fragments', fragId, fragPatch as Fragment)) counts.fragments++
       const fragExisting = await repo.get<Fragment>('fragments', fragId)
@@ -136,7 +137,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
           _id: fvId, fragmentId: fragId, brandId,
           version: versionNumberOf(v.dir, v.meta.version),
           label: v.dir || 'default',
-          type: fam.meta.type || 'product',
+          type: '' /* #213：片段无 type，DB 字段保留兼容 */,
           source: {
             html,
             css: await systemVersionCss(root, b.code, 'fragment', fam.code, v.dir, html),
@@ -180,7 +181,7 @@ export async function seedSystemContent(repo: Repository, root: string): Promise
             css: await systemVersionCss(root, b.code, 'template', fam.code, v.dir, html),
             cssMode: 'inline' as const,
           },
-          slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
+          slots: extractSlotKeysFromSource(html).map((key) => ({ key, type: '', required: false, multiple: false })),
           dataSchema: fam.meta.dataSchema,
           fields: v.meta.fields ?? undefined,
           sampleData: v.sample ?? undefined,
@@ -253,11 +254,11 @@ export async function seedCustomContent(repo: Repository, root: string, systemRo
       const existingF = await repo.get<Fragment>('fragments', fragId)
       if (!existingF) {
         await repo.insert<Fragment>('fragments', {
-          _id: fragId, brandId, name: fam.meta.name, description: fam.meta.description, type: fam.meta.type || 'product', origin: 'custom',
+          _id: fragId, brandId, name: fam.meta.name, description: fam.meta.description, type: '' /* #213：片段无 type，DB 字段保留兼容 */, origin: 'custom',
         })
         counts.fragments++
       } else {
-        await repo.update<Fragment>('fragments', fragId, { brandId, name: fam.meta.name, description: fam.meta.description, type: fam.meta.type || 'product', origin: 'custom' })
+        await repo.update<Fragment>('fragments', fragId, { brandId, name: fam.meta.name, description: fam.meta.description, type: '' /* #213：片段无 type，DB 字段保留兼容 */, origin: 'custom' })
       }
       let latestFv: { id: string; version: number } | null = null
       for (const v of fam.versions) {
@@ -266,7 +267,7 @@ export async function seedCustomContent(repo: Repository, root: string, systemRo
         const n = versionNumberOf(v.dir, v.meta.version)
         const policy = mergeFragmentPolicy(fam.meta.policy, v.meta.policy)
         const patch = {
-          fragmentId: fragId, brandId, version: n, label: v.dir || 'default', type: fam.meta.type || 'product',
+          fragmentId: fragId, brandId, version: n, label: v.dir || 'default', type: '' /* #213：片段无 type，DB 字段保留兼容 */,
           source: {
             html: (await readText(v.sourcePath)) ?? '',
             css: await versionCss(root, systemRoot, root, b.code, 'fragment', fam.code, v.dir, (await readText(v.sourcePath)) ?? ''),
@@ -306,14 +307,15 @@ export async function seedCustomContent(repo: Repository, root: string, systemRo
         const tvId = cusTemplateVersionId(b.code, fam.code, v.dir)
         want.templateVersions.add(tvId)
         const n = versionNumberOf(v.dir, v.meta.version)
+        const html = (await readText(v.sourcePath)) ?? ''
         const patch = {
           templateId: tplId, brandId, version: n, label: v.dir || 'default',
           source: {
-            html: (await readText(v.sourcePath)) ?? '',
-            css: await versionCss(root, systemRoot, root, b.code, 'template', fam.code, v.dir, (await readText(v.sourcePath)) ?? ''),
+            html,
+            css: await versionCss(root, systemRoot, root, b.code, 'template', fam.code, v.dir, html),
             cssMode: 'inline' as const,
           },
-          slots: (fam.meta.slots ?? []).map((s) => ({ key: s.key, type: s.type, required: false, multiple: false })),
+          slots: extractSlotKeysFromSource(html).map((key) => ({ key, type: '', required: false, multiple: false })),
           dataSchema: fam.meta.dataSchema,
           fields: v.meta.fields ?? undefined,
           sampleData: v.sample ?? undefined,

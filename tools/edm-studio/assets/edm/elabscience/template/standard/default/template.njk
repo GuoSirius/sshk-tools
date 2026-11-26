@@ -27,8 +27,8 @@
     {% endif %}
 
     <link rel="stylesheet" href="@system/css/reset.css" />
-    <link rel="stylesheet" href="@root/elabscience/template/standard/default/css/template.css" />
     <link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
+    <link rel="stylesheet" href="@root/elabscience/template/standard/default/css/template.css" />
   </head>
   <body>
     <!-- 1) 真正的预览文案：必须是 body 第一个文本节点 -->
@@ -50,10 +50,10 @@
 
     <table cellspacing="0" cellpadding="0" border="0" id="app" class="app" role="presentation">
       <colgroup>
-        <col width="10px" />
+        <col width="{{ leftGap }}" />
         <col />
         <col />
-        <col width="10px" />
+        <col width="{{ rightGap }}" />
       </colgroup>
       <tbody>
         <tr>
@@ -61,6 +61,7 @@
         </tr>
         <tr>
           <td colspan="4">{{ slot_body | safe }}</td>
+          <td colspan="4">{{ slot_body2 | safe }}</td>
         </tr>
         <tr>
           <td colspan="4">{{ slot_footer | safe }}</td>

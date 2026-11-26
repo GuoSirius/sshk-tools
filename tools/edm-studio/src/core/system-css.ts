@@ -12,6 +12,7 @@ import path from 'node:path'
 import * as yaml from 'js-yaml'
 import { renderFragmentHtml, renderMail } from './render.js'
 import { compose, type ComposePlacement } from './compose.js'
+import { resolveEntitySample } from './sample-data.js'
 import type { RenderMeta } from './render-meta.js'
 import {
   hasExplicitCssRefs,
@@ -31,6 +32,11 @@ export interface CssRootOptions {
   unoEnabled?: boolean
   /** 示例数据覆盖（userData overlay，2026-11-24 #189）：存在时替代版本目录 sample.yaml（只读系统内容的用户自改示例） */
   sampleOverride?: Record<string, unknown>
+  /**
+   * 组合预览的模板数据（#212）：由调用方经 resolveEntitySample 解析后传入。
+   * 注入模板 ctx 平铺变量（{{ leftGap }}）与片段侧 template.*，与单渲同一数据源。
+   */
+  templateData?: Record<string, unknown>
   /** 模板四级 meta（2026-11-25 修订 1/13，注入 meta.*） */
   meta?: RenderMeta
 }
@@ -138,7 +144,8 @@ export async function renderSystemPreview(
   const dir = versionDirOf(root, sel)
   const source = await readSourceOf(dir)
   if (!source) throw new Error(`找不到源文件：${dir}`)
-  const sample = opts.sampleOverride ?? ((await readYaml<Record<string, unknown>>(path.join(dir, 'sample.yaml'))) ?? {})
+  // #212：单渲与组合共用 resolveEntitySample，保证模板数据读取口径一致
+  const sample = await resolveEntitySample(root, sel, { sampleOverride: opts.sampleOverride })
 
   const sources: CssResolveSource[] = [{ html: source, ctx: cssCtx(root, dir, opts) }]
   const explicit = hasExplicitCssRefs(sources)
@@ -251,7 +258,8 @@ export async function renderSystemCompose(
   const stages = await compose({
     templateHtml: htmls[0] ?? templateHtml,
     placements: items,
-    data: {},
+    // #212：模板数据必须注入——原写死 {} 导致模板 {{ leftGap }} 与片段 {{ template.leftGap }} 恒空
+    data: opts.templateData ?? {},
     meta: opts.meta,
     strict: false,
     resolvedCss: bundle.css,

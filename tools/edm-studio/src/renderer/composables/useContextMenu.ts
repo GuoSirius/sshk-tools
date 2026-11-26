@@ -199,9 +199,8 @@ export function useContextMenu(deps: ContextMenuDeps): ContextMenu {
         if (!got) return
         const parent = `${brandCode}/${cat}`
         if (await deps.existsIn(`${parent}/${got.code}/meta.yaml`, src)) { ElMessage.error(`族「${got.code}」已存在`); return }
+        // #213：新族 meta 只写身份字段——slots 由 njk 源码提取，片段无 type
         const meta: Record<string, unknown> = { code: got.code, name: got.name }
-        if (cat === 'fragment') meta.type = 'product'
-        else meta.slots = []
         await deps.write(`${parent}/${got.code}/meta.yaml`, yaml.dump(meta, { lineWidth: -1 }), src)
         ElMessage.success('已创建族'); await deps.load(true); return
       }

@@ -1,7 +1,6 @@
 code: header
 name: 页头
 description: 页头：品牌 logo + 三栏导航（母版页头迁移）
-type: header
 policy:
   blacklist: []
   whitelist: []

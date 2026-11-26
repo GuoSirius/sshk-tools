@@ -13,7 +13,7 @@ import { FormHint } from '@sshk/ui-kit'
 
 /**
  * 统一组合编辑器（R19/R20）：区块布局 + 片段摆放 —— 拖拽排序 / 备注名 / 移动区块。
- * 区块清单（slots）= 模板族 meta slots: + 模板 njk 源码 slot_*（源码新增即时生效）；fragmentOptions 已由父级按黑白名单过滤；
+ * 区块清单（slots）= 模板 njk 源码 slot_*（#213 唯一真相源，增删即时生效）；fragmentOptions 已由父级按黑白名单过滤；
  * placement.data 的编辑由父级处理（edit-data 事件），本组件只管布局。
  * mailMode（2026-11-25 用户反馈）：备注名输入与「片段数据」仅邮件组装场景出现——
  * 模板/片段的布局配置为内存态、无处保存，出现可编辑项反而误导。
@@ -48,11 +48,9 @@ function toggleBlock(key: string): void {
   collapsedKeys.value = next
 }
 
-/** 按区块类型过滤片段选项（无 type 约束时全给），供各区块头部独立下拉使用 */
-function pickOptions(slotKey: string): FragmentOption[] {
-  const slotType = props.slots.find((s) => s.key === slotKey)?.type
-  if (!slotType) return props.fragmentOptions
-  return props.fragmentOptions.filter((o) => !o.type || o.type === slotType)
+/** #213：slot 类型已取消，所有片段可应用到任何插槽（可用范围由 policy 在来源侧限定） */
+function pickOptions(_slotKey: string): FragmentOption[] {
+  return props.fragmentOptions
 }
 
 /** 源码新增/删除 slot 后清理失效的按区块选择（有效选择保留，不因连续添加而清空） */
@@ -80,11 +78,6 @@ function addPlacement(slotKey: string): void {
   const opt = pickOptions(slotKey).find((o) => o.id === pickBySlot.value[slotKey])
   if (!opt) {
     ElMessage.warning('请先选择片段')
-    return
-  }
-  const slotType = props.slots.find((s) => s.key === slotKey)?.type
-  if (slotType && opt.type && opt.type !== slotType) {
-    ElMessage.warning(`片段类型「${opt.type}」与区块类型「${slotType}」不匹配`)
     return
   }
   emitChange([

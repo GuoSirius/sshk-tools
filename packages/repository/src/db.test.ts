@@ -93,20 +93,20 @@ describe('片段候选两道过滤（数据契约 §2.2 黑名单优先）', () 
   it('黑名单命中模板族 ID → 禁用（黑名单优先）', async () => {
     const repo = makeRepo()
     await seed(repo, { blacklist: ['tpl_1'], whitelist: ['tplv_1'] })
-    expect(await repo.listCandidateFragmentVersions(tv, 'product')).toHaveLength(0)
+    expect(await repo.listCandidateFragmentVersions(tv)).toHaveLength(0)
   })
 
   it('白名单为空 → 全可用', async () => {
     const repo = makeRepo()
     await seed(repo, { blacklist: [], whitelist: [] })
-    expect(await repo.listCandidateFragmentVersions(tv, 'product')).toHaveLength(1)
+    expect(await repo.listCandidateFragmentVersions(tv)).toHaveLength(1)
   })
 
   it('白名单非空且不含 → 禁用；含版本 ID → 可用', async () => {
     const repo = makeRepo()
     await seed(repo, { blacklist: [], whitelist: ['tplv_其他'] }, 1)
     await seed(repo, { blacklist: [], whitelist: ['tplv_1'] }, 2)
-    const allowed = await repo.listCandidateFragmentVersions(tv, 'product')
+    const allowed = await repo.listCandidateFragmentVersions(tv)
     expect(allowed).toHaveLength(1)
     expect(allowed[0]?.version).toBe(2)
   })

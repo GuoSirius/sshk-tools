@@ -27,12 +27,12 @@ describe('R2 validateMeta', () => {
     expect(validateMeta('fragmentVersion', { version: 1 }).valid).toBe(false)
   })
 
-  it('模板族：slots 每项必须含 key/type', () => {
-    expect(validateMeta('templateFamily', {
-      code: 'standard', name: '标准', slots: [{ key: 'header', type: 'header' }],
-    }).valid).toBe(true)
-    const bad = validateMeta('templateFamily', { code: 's', name: 's', slots: [{ type: 'header' }] })
-    expect(bad.valid).toBe(false)
+  it('#213 模板族/片段族：slots 与 type 不再校验（njk 源码为插槽唯一真相，旧 YAML 兼容不报错）', () => {
+    expect(validateMeta('templateFamily', { code: 'standard', name: '标准' }).valid).toBe(true)
+    // 存量 yaml 仍带 slots/type 时靠 additionalProperties 惰性忽略，不阻塞加载
+    expect(validateMeta('templateFamily', { code: 's', name: 's', slots: [{ type: 'header' }] }).valid).toBe(true)
+    expect(validateMeta('fragmentFamily', { code: 'banner', name: '横幅' }).valid).toBe(true)
+    expect(validateMeta('fragmentFamily', { code: 'banner', name: '横幅', type: 'product' }).valid).toBe(true)
   })
 
   it('模板版本：code/name/version + changelog 通过，favicon 不冲突', () => {

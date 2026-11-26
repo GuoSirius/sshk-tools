@@ -1,13 +1,6 @@
 code: standard
 name: 标准邮件模板
 description: 伊莱瑞特标准邮件骨架：页头 / 正文 / 页尾三槽
-slots:
-  - key: header
-    type: header
-  - key: body
-    type: product
-  - key: footer
-    type: footer
 dataSchema: {}
 tags:
   - 通用

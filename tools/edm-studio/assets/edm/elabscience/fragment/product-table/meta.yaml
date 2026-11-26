@@ -1,7 +1,6 @@
 code: product-table
 name: 产品表格
 description: 母版模式族：产品表格（plans/14 批次 5 保真迁移）
-type: product
 policy:
   blacklist: []
   whitelist: []

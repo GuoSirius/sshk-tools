@@ -54,7 +54,7 @@ const detail = useNodeDetail({
   write: treeDomain.write,
   load: treeDomain.load,
   toolId,
-  // meta.slots / 源码 slot_* 变更后刷新组合预览的区块缓存（弹框开着也即时生效）
+  // 源码 slot_* 变更后刷新组合预览的区块缓存（#213 唯一真相源，弹框开着也即时生效）
   onAfterSave: () => compose?.prefetchFamilyMetas(),
 })
 /* ── css 多 tab 域 ── */
@@ -191,27 +191,6 @@ async function onImportConfirm(): Promise<void> {
     ElMessage.error((err as Error).message)
   }
 }
-
-/** 片段类型候选：双根模板族 meta.slots 的 type 聚合，供片段族 type 下拉；仍允许自定义输入 */
-const typeOptions = computed<string[]>(() => {
-  const out = new Set<string>()
-  for (const model of [treeDomain.sysModel.value, treeDomain.cusModel.value]) {
-    for (const brand of (model?.brands ?? []) as any[]) {
-      for (const fam of (brand.templates ?? []) as any[]) {
-        for (const slot of (fam.meta?.slots ?? []) as any[]) {
-          const t = String(slot?.type ?? '').trim()
-          if (t) out.add(t)
-        }
-      }
-      // 自定义输入的片段类型也在选项里：保存后 load 刷新模型，切到其他片段即可复用该选项（#2）
-      for (const fam of (brand.fragments ?? []) as any[]) {
-        const t = String(fam.meta?.type ?? '').trim()
-        if (t) out.add(t)
-      }
-    }
-  }
-  return [...out].sort()
-})
 
 /**
  * 黑白名单候选：仅当前片段所属品牌的模板族/版本 ID（硬规定：片段/模板不得跨品牌混用，#34）。
@@ -457,13 +436,6 @@ onUnmounted(() => {
                   <el-option v-for="t in form.tags" :key="t" :value="t" :label="t" />
                 </el-select>
                 <FormHint>自由标签，回车新建；写入 meta.yaml 的 tags</FormHint>
-              </el-form-item>
-              <el-form-item v-if="showForm.typeField" label="类型" required>
-                <el-select v-model="form.type" filterable allow-create default-first-option clearable :disabled="!canEdit" placeholder="选择或输入，如 header / product">
-                  <el-option v-for="t in typeOptions" :key="t" :value="t" :label="t" />
-                </el-select>
-                <div v-if="!form.type.trim()" class="meta-field-tip">类型必填（需与模板 slot 的 type 一致）</div>
-                <FormHint>片段按此类型匹配模板插槽；一个片段族单值，多选请建多个族</FormHint>
               </el-form-item>
               <template v-if="showForm.policy">
                 <el-form-item label="黑名单">

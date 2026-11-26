@@ -1,7 +1,6 @@
 code: triple-gallery
 name: 三列图卡
 description: 母版模式族：三列图卡（plans/14 批次 5 保真迁移）
-type: product
 policy:
   blacklist: []
   whitelist: []

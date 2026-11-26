@@ -2,35 +2,7 @@
 .app {
   max-width: 750px;
   min-width: 320px;
+  /*min-height: 100%;*/
   margin: 0 auto;
-}
-
-.header .banner img {
-  width: 100%;
-}
-
-.header .navigation a {
-  color: #006DB8;
-}
-
-.footer .connect-us-title {
-  padding-bottom: 5px;
-}
-
-.footer .connect-us-separator {
-  padding-top: 8px;
-  border-bottom: 1px dashed #828282;
-}
-
-.footer .contact-us-qrcode img {
-  width: 60px;
-}
-
-.footer .contact-us-whatsApp {
-  padding: 5px 0;
-  margin-top: 6px;
-  color: #fff;
-  font-size: 12px;
-  border-radius: 12px;
-  background-color: rgb(43, 176, 181);
+  box-shadow: 0.5px 0.666px 14.1px 0.9px rgba(13, 2, 3, 0.1);
 }

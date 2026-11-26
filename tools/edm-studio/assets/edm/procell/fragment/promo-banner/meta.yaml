@@ -1,7 +1,6 @@
 code: promo-banner
 name: 促销通栏
 description: 母版模式族：促销通栏（plans/14 批次 5 保真迁移）
-type: product
 policy:
   blacklist: []
   whitelist: []

@@ -181,10 +181,11 @@ export class Repository {
     return fv.policy.whitelist.some((x) => ids.has(x))
   }
 
-  async listCandidateFragmentVersions(tv: TemplateVersion, slotType: string): Promise<FragmentVersion[]> {
+  /** 候选片段（#213：片段不绑定插槽类型，可用范围只由品牌隔离 + 黑白名单决定） */
+  async listCandidateFragmentVersions(tv: TemplateVersion): Promise<FragmentVersion[]> {
     const rows = await this.list<FragmentVersion>(
       'fragmentVersions',
-      { brandId: tv.brandId, type: slotType, archived: false },
+      { brandId: tv.brandId, archived: false },
       { version: -1 },
     )
     return rows.filter((fv) => this.policyAllows(fv, tv))

@@ -2,9 +2,16 @@ import { minify } from 'html-minifier-terser'
 
 const OPTIONS = {
   collapseWhitespace: true,
+  conservativeCollapse: true,
   removeComments: true,
+  removeConditionalComments: false,
   minifyCSS: true,
-  minifyJS: false, // 邮件内不执行 JS，保持原样避免误伤
+  minifyJS: false,
+  removeEmptyAttributes: false,
+  collapseBooleanAttributes: false,
+  removeRedundantAttributes: true,
+  useShortDoctype: true,
+  preserveLineBreaks: false,
   keepClosingSlash: true,
 }
 

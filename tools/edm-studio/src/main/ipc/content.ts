@@ -4,15 +4,11 @@ import * as yaml from 'js-yaml'
 import { AppError } from '@sshk/shared'
 import { loadEdmModel } from '../edm-manifest.js'
 import { validateMetaIdentity } from '../../core/meta-contract.js'
-import { renderSystemPreview, renderSystemCompose, type SystemSelector, type CssRootOptions } from '../../core/system-css.js'
+import { renderSystemPreview, renderSystemCompose, type SystemSelector } from '../../core/system-css.js'
+import { resolveEntitySample } from '../../core/sample-data.js'
 import { resolveRenderMeta } from '../render-meta.js'
-import { hasSampleOverride, isSampleFile, readSampleOverride, readSampleOverrideYaml, resetSampleOverride, writeSampleOverride } from '../sample-overlay.js'
+import { hasSampleOverride, isSampleFile, readSampleOverride, resetSampleOverride, writeSampleOverride } from '../sample-overlay.js'
 import { SYSTEM_FILE_EXTS, type ActionHandler, type EdmIpcContext, type Payload } from './context'
-
-/** selector → 版本目录相对路径下的 sample.yaml（brand/kind/family[/version]/sample.yaml；折叠版缺省 versionDir） */
-function sampleRelOf(sel: SystemSelector): string {
-  return `${[sel.brandCode, sel.kind, sel.familyCode, sel.versionDir].filter(Boolean).join('/')}/sample.yaml`
-}
 
 /**
  * R24 content:* 域 action：按 source 路由到系统 / 自定义文件根。
@@ -179,16 +175,13 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
         : path.join(root, s.brandCode, s.kind, s.familyCode),
     })
     const templateMeta = await metaOf(sel)
-    if (raw.length === 0) {
-      // 只读系统内容：单渲用覆盖层 sample.yaml（用户改过的示例数据），缺省回落系统根
-      const opts: CssRootOptions = { ...cssRoots, meta: templateMeta }
-      if (source === 'system') {
-        const over = await readSampleOverrideYaml(ctx.resolveOverrideRoot(), sampleRelOf(sel))
-        if (over) opts.sampleOverride = over
-      }
-      return await renderSystemPreview(root, sel, opts)
-    }
     const overrideRoot = ctx.resolveOverrideRoot()
+    // #212：单渲/组合共用 resolveEntitySample——覆盖层优先、回落版本目录 sample.yaml，
+    // 保证模板 njk 的 {{ leftGap }} 与片段 {{ template.leftGap }} 在任意组合下同一语法生效
+    const templateData = await resolveEntitySample(root, sel, { source, overrideRoot })
+    if (raw.length === 0) {
+      return await renderSystemPreview(root, sel, { ...cssRoots, meta: templateMeta, sampleOverride: templateData })
+    }
     return await renderSystemCompose(
       root,
       sel,
@@ -197,7 +190,7 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
           const ps = p['selector'] as unknown as SystemSelector
           let d = (p['data'] as Record<string, unknown> | undefined) ?? undefined
           // placement 未带独立数据时，只读系统内容优先用覆盖层 sample（片段自身的示例数据改动参与组合）
-          if (!d && source === 'system') d = (await readSampleOverrideYaml(overrideRoot, sampleRelOf(ps))) ?? undefined
+          if (!d) d = await resolveEntitySample(root, ps, { source, overrideRoot })
           return {
             selector: ps,
             slot: String(p['slot'] ?? ''),
@@ -208,7 +201,7 @@ export function registerContentActions(ctx: EdmIpcContext, handlers: Map<string,
           }
         }),
       ),
-      { ...cssRoots, meta: templateMeta },
+      { ...cssRoots, meta: templateMeta, templateData },
     )
   })
 

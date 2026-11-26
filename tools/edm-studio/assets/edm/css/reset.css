@@ -50,41 +50,33 @@ th,
 td {
   margin: 0;
   padding: 0;
-  border: 0;
-  font-size: 100%;
-  font: inherit;
-  vertical-align: baseline;
+  box-sizing: border-box;
+  mso-line-height-rule: exactly;
+  /* mso-line-height-rule: at-least; */
 }
 
 /* 通配符兜底（juice 实测可内联纯 * 规则） */
-* {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
-  line-height: 1.5;
-  word-break: break-word;
   box-sizing: border-box;
+  mso-line-height-rule: exactly;
+  /* mso-line-height-rule: at-least; */
 }
 
-ol,
-ul {
-  list-style: none;
-}
-blockquote,
-q {
-  quotes: none;
-}
-
-/* 文档基线 */
-html,
-body {
+/* 继承类属性放「根」，不要放 * 逐个元素刷 */
+html, body {
   width: 100%;
   height: 100%;
   line-height: 1.5;
   color: #000;
   font-size: 16px;
-}
-body {
+  -ms-text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
+  background-color: #fff;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* 表格：邮件布局主体 */
@@ -103,8 +95,13 @@ th {
 }
 
 /* 元素基线 */
-span {
-  display: inline-block;
+ul, ol { list-style: none; }
+blockquote, q { quotes: none; }
+a[href] {
+  cursor: pointer;
+}
+a[href]:hover {
+  text-decoration: underline;
 }
 img {
   display: inline-block;
@@ -112,28 +109,18 @@ img {
   max-height: 100%;
   border: 0;
   outline: none;
-  text-decoration: none;
+  user-select: none;
   -ms-interpolation-mode: bicubic;
 }
-a {
-  display: inline-block;
-  color: #000;
-  cursor: pointer;
-  text-decoration: none;
-}
-body,
-table,
-td,
-a {
-  -webkit-text-size-adjust: 100%;
-  -ms-text-size-adjust: 100%;
+
+.image-box {
+  line-height: 0;
+  font-size: 0;
+  user-select: none;
+  mso-line-height-rule: at-least;  /* ← 新增，防止 0 行高被压成真 0 */
 }
 
-/* Outlook.com 的 .ExternalClass 包装层规则已删除（#205）：
-   juice(removeStyleTags:true) 全内联时源码无该元素、规则随 <style> 被剥掉，对最终邮件无效（死代码）。 */
-
-/* 标题装饰统一用真实元素，邮件客户端不内联伪元素 */
-.title-mark {
+.pseudo-mark {
   display: inline-block;
   vertical-align: middle;
 }

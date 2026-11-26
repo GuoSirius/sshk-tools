@@ -1,7 +1,6 @@
 code: literature
 name: 文献推广
 description: 最新研究文献推广，含产品引用表格
-type: product
 policy:
   blacklist: []
   whitelist: []

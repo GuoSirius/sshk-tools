@@ -15,11 +15,6 @@ export interface FragmentPolicy {
   blacklist?: string[]
 }
 
-export interface Slot {
-  key: string
-  type: string
-}
-
 /** 品牌元数据：<brandCode>/meta.yaml */
 export interface BrandMeta {
   code: string
@@ -38,7 +33,6 @@ export interface FragmentFamilyMeta {
   description?: string
   /** 族图标；空则继承所属类型（再回退品牌） */
   favicon?: string
-  type?: string
   /** 黑白名单：本族片段可服务的模板族/版本 ID（D14） */
   policy?: FragmentPolicy
   dataSchema?: Record<string, unknown>
@@ -69,7 +63,6 @@ export interface TemplateFamilyMeta {
   description?: string
   /** 族图标；空则继承所属类型（再回退品牌） */
   favicon?: string
-  slots?: Slot[]
   dataSchema?: Record<string, unknown>
   tags?: string[]
 }

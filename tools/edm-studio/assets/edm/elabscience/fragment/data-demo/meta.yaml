@@ -1,7 +1,6 @@
 code: data-demo
 name: 数据展示
 description: 母版模式族：数据展示（plans/14 批次 5 保真迁移）
-type: product
 policy:
   blacklist: []
   whitelist: []

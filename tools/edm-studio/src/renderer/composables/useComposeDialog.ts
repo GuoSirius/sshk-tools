@@ -83,8 +83,9 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
   )
 
   const currentTv = computed<VersionRow | undefined>(() => tplVersionsAll.value.find((v) => v._id === draft.value.templateVersionId))
+  // #213：slot 类型已取消，插槽只按 key 标识；DB 存量 slots[].type 不再读取
   const templateSlots = computed<SlotDef[]>(() =>
-    (currentTv.value?.slots ?? []).map((s) => ({ key: s.key, label: s.type || s.key, type: s.type })),
+    (currentTv.value?.slots ?? []).map((s) => ({ key: s.key, label: s.key })),
   )
   const fragmentOptions = computed<FragmentOption[]>(() => {
     const tv = currentTv.value
@@ -94,7 +95,8 @@ export function useComposeDialog(deps: ComposeDialogDeps) {
     return frgvVersions.value
       .filter((v) => v.brandId === draft.value.brandId)
       .filter((v) => policyAllows(v.policy, ids))
-      .map((v) => ({ id: v._id, label: `${fragName(v.fragmentId ?? '')} / ${v.label ?? `v${v.version}`}`, type: v.type }))
+      // #213：片段不预先绑定插槽类型，可应用到任何位置（可用范围只由 policy 限定）
+      .map((v) => ({ id: v._id, label: `${fragName(v.fragmentId ?? '')} / ${v.label ?? `v${v.version}`}` }))
   })
 
   function toPlacements(bindings: MailRow['bindings']): PlacementItem[] {

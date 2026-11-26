@@ -5,7 +5,7 @@ import type { PlacementItem, SlotDef } from '../compose-types'
 import { normalizeFields, type FieldDef } from '../sample-schema'
 import { api } from '../tool-api'
 import { mergeFragmentPolicy, policyAllows, type FragmentPolicy } from '../../core/fragment-policy'
-import { extractSlotKeysFromSource, mergeSourceSlots, type SourceSlotDef } from '../../core/slots'
+import { extractSlotKeysFromSource } from '../../core/slots'
 import type { Source, TreeNode } from './useContentTree'
 
 /**
@@ -14,7 +14,7 @@ import type { Source, TreeNode } from './useContentTree'
  * R22 布局配置收进弹框（预览页只留预览）；placement 独立数据编辑（Q12：有 fields schema 用表单，否则 YAML）。
  */
 export interface SysSelector { brandCode: string; kind: string; familyCode: string; versionDir: string }
-interface FamilyMetaLite { policy?: FragmentPolicy; slots?: { key: string; type?: string }[]; fields?: unknown[] }
+interface FamilyMetaLite { policy?: FragmentPolicy; fields?: unknown[] }
 
 export interface ComposePreviewDeps {
   selected: Ref<TreeNode | null>
@@ -132,14 +132,10 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
   /** 双根同路径需带 source 区分缓存键 */
   const slotCacheKey = (node: TreeNode): string => `${node.data.source}:${node.data.sourcePath ?? node.data.path}`
 
-  /** 区块清单统一收敛：meta.slots 声明优先，源码新增 slot_* 追加其后 */
-  function slotDefsOf(declared: SourceSlotDef[] | undefined, versionNode: TreeNode | null): SlotDef[] {
+  /** #213：插槽唯一真相源 = njk 源码（按出现顺序），meta 声明与 type 已取消 */
+  function slotDefsOf(versionNode: TreeNode | null): SlotDef[] {
     const keys = versionNode ? templateSourceSlotCache.value[slotCacheKey(versionNode)] ?? [] : []
-    return mergeSourceSlots(declared ?? [], keys).map((s) => ({
-      key: s.key,
-      label: s.type || s.label || s.key,
-      type: s.type ?? '',
-    }))
+    return keys.map((key) => ({ key, label: key }))
   }
 
   /** 片段预览：宿主模板选项（本品牌模板族×版本，按当前片段黑白名单过滤） */
@@ -154,14 +150,13 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     const tplCat = bNode?.children?.find((n) => n.kind === 'category' && n.data.cat === 'template')
     for (const fam of tplCat?.children?.filter((n) => n.kind === 'family') ?? []) {
       const famCode = fam.data.familyCode ?? ''
-      const declared = familyMetaCache.value[fam.data.path]?.slots as SourceSlotDef[] | undefined
       for (const ver of fam.children?.filter((n) => n.kind === 'version') ?? []) {
         const dir = ver.data.versionDir ?? ''
         if (!policyAllows(policy, templateIds(brand, famCode, dir))) continue
         out.push({
           id: JSON.stringify({ brandCode: brand, kind: 'template', familyCode: famCode, versionDir: dir }),
           label: `${fam.label} / ${ver.label}`,
-          slots: slotDefsOf(declared, ver),
+          slots: slotDefsOf(ver),
         })
       }
     }
@@ -197,8 +192,7 @@ export function useComposePreview(deps: ComposePreviewDeps): ComposePreview {
     if (composeSlots.value.length) return composeSlots.value
     const node = deps.selected.value
     if (node?.kind === 'version' && node.data.cat === 'template') {
-      const famMeta = familyMetaCache.value[`${node.data.brandCode}/template/${node.data.familyCode}`]
-      return slotDefsOf(famMeta?.slots as SourceSlotDef[] | undefined, node)
+      return slotDefsOf(node)
     }
     return []
   })

@@ -1,7 +1,6 @@
 code: new-arrivals
 name: 上新推广
 description: 上新推广，含产词云、品引用表格
-type: product
 policy:
   blacklist: []
   whitelist: []

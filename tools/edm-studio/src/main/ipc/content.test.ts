@@ -165,6 +165,25 @@ describe('content:render 读覆盖层示例数据（预览反映改动）', () =
     expect(res.html).toContain('改过')
     expect(res.html).not.toContain('原始')
   })
+
+  it('#212 组合：模板示例数据平铺变量与片段 template.* 同时生效', async () => {
+    const tplDir = path.join(roots.system, 'elab/template/standard/v1')
+    const fragDir = path.join(roots.system, 'elab/fragment/header/v1')
+    mkdirSync(tplDir, { recursive: true })
+    mkdirSync(fragDir, { recursive: true })
+    writeFileSync(path.join(tplDir, 'standard.njk'),
+      '<table><colgroup><col width="{{ leftGap }}" /></colgroup><tr><td>{{ slot_header | safe }}</td></tr></table>')
+    writeFileSync(path.join(tplDir, 'sample.yaml'), 'leftGap: 12\n')
+    writeFileSync(path.join(fragDir, 'header.njk'), '<b>{{ template.leftGap }}</b>')
+    const res = (await handlersOf(false).get('content:render')!({
+      source: 'system',
+      selector: { brandCode: 'elab', kind: 'template', familyCode: 'standard', versionDir: 'v1' },
+      placements: [{ selector: { brandCode: 'elab', kind: 'fragment', familyCode: 'header', versionDir: 'v1' }, slot: 'header' }],
+    })) as { html: string }
+    expect(res.html).toContain('width="12"')
+    expect(res.html).toContain('<b>12</b>')
+    expect(res.html).not.toContain('{{ leftGap }}')
+  })
 })
 
 describe('content:sampleOverrideState / resetSampleOverride 闭环', () => {

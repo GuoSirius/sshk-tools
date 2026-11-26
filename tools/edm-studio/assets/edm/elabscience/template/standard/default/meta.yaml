@@ -1,7 +1,6 @@
 version: 1
 code: default
-name: 标准骨架·迁移版
-changelog: 旧母版骨架重建（plans/14 批次 4）
+name: 标准默认骨架
 fields:
   - type: input
     key: subject
@@ -15,4 +14,15 @@ fields:
     required: false
     placeholder: 收件箱预览文字
     maxLength: 120
-
+  - type: input
+    key: leftGap
+    label: 左边距
+    required: false
+    default: 10px
+    placeholder: 页面左边留白空间
+  - type: input
+    key: rightGap
+    label: 右边距
+    required: false
+    default: 10px
+    placeholder: 页面右边留白空间

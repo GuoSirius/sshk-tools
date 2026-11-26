@@ -88,9 +88,8 @@ describe('R8 系统内容播种', () => {
     const fv = await repo.get<FragmentVersion>('fragmentVersions', 'frgv_sys_elabscience_banner_v1')
     if (!fv) throw new Error('播种片段版本缺失')
     expect(fv.origin).toBe('system')
-    // type / version 都从真实资产解析：用户在应用里改了 meta 也不误报（文件才是真相源）
-    const srcFam = srcBrand?.fragments.find((f) => f.code === 'banner')
-    expect(fv.type).toBe(String(srcFam?.meta.type ?? 'product'))
+    // #213：片段族 type 已取消，DB 字段保留兼容写空串
+    expect(fv.type).toBe('')
     expect(fv.policy).toEqual({ blacklist: [], whitelist: [] })
     // 版本号恒按目录名 vN 派生（只读派生，忽略手填 version）
     expect(fv.version).toBe(srcFv ? Number(/v(\d+)/i.exec(srcFv.dir)?.[1] ?? 1) : 1)
@@ -100,17 +99,15 @@ describe('R8 系统内容播种', () => {
     expect(fv.source.css?.length ?? 0).toBeGreaterThan(0)
   })
 
-  it('播种后候选片段两道过滤查询可用（品牌隔离 + 同槽位类型）', async () => {
+  it('播种后候选片段按品牌隔离 + 黑白名单过滤（#213 无类型过滤）', async () => {
     const repo = makeRepo()
     await seedSystemContent(repo, EDM_ROOT)
 
     const tv = await repo.get<TemplateVersion>('templateVersions', 'tplv_sys_elabscience_standard_v1')
     if (!tv) throw new Error('播种模板版本缺失')
     expect(tv.origin).toBe('system')
-    // 槽位类型从真实资产解析（用户改了片段 type 也不误报）
-    const model = await loadEdmModel(EDM_ROOT)
-    const fragType = String(model.brands.find((b) => b.code === 'elabscience')?.fragments.find((f) => f.code === 'banner')?.meta.type ?? 'product')
-    const candidates = await repo.listCandidateFragmentVersions(tv, fragType)
+    // #213：候选片段不按类型过滤，只按品牌隔离 + 黑白名单
+    const candidates = await repo.listCandidateFragmentVersions(tv)
     const sysIds = candidates.map((c) => c._id)
     expect(sysIds).toContain('frgv_sys_elabscience_banner_default')
     expect(sysIds).toContain('frgv_sys_elabscience_banner_v1')

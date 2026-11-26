@@ -5,7 +5,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { collectSystemCss, renderSystemPreview } from './system-css'
+import { collectSystemCss, renderSystemCompose, renderSystemPreview } from './system-css'
+import { resolveEntitySample } from './sample-data'
 
 const dirs: string[] = []
 
@@ -62,5 +63,47 @@ describe('R5 renderSystemPreview', () => {
 
     const preview = await renderSystemPreview(root, { brandCode: 'elab', kind: 'template', familyCode: 'standard', versionDir: 'v1' })
     expect(preview.html).toContain('<table>')
+  })
+})
+
+describe('#212 模板数据固定语法（单渲/组合/片段侧同口径）', () => {
+  const tplSel = { brandCode: 'elab', kind: 'template', familyCode: 'standard', versionDir: 'v1' }
+  const fragSel = { brandCode: 'elab', kind: 'fragment', familyCode: 'header', versionDir: 'v1' }
+
+  function seed(): string {
+    const root = tempEdm()
+    writeFile(join(root, 'elab/template/standard/v1/template.njk'),
+      '<table><colgroup><col width="{{ leftGap }}" /></colgroup><tr><td>{{ slot_header | safe }}</td></tr></table>')
+    writeFile(join(root, 'elab/template/standard/v1/sample.yaml'), 'leftGap: 12\n')
+    writeFile(join(root, 'elab/fragment/header/v1/fragment.njk'),
+      '<div>{{ template.leftGap }}|{{ own }}</div>')
+    writeFile(join(root, 'elab/fragment/header/v1/sample.yaml'), 'own: fragment-data\n')
+    return root
+  }
+
+  it('单渲：模板 sample.yaml 的 leftGap 生效', async () => {
+    const html = (await renderSystemPreview(seed(), tplSel)).html
+    expect(html).toContain('width="12"')
+    expect(html).not.toContain('{{ leftGap }}')
+  })
+
+  it('组合预览：模板 {{ leftGap }} 与片段 {{ template.leftGap }} 均生效', async () => {
+    const root = seed()
+    const html = (await renderSystemCompose(root, tplSel, [
+      { selector: fragSel, slot: 'header' },
+    ], { templateData: await resolveEntitySample(root, tplSel) })).html
+    expect(html).toContain('width="12"')
+    expect(html).toContain('12|fragment-data')
+    expect(html).not.toContain('{{ template.leftGap }}')
+  })
+
+  it('resolveEntitySample：显式覆盖 > 覆盖层 > sample.yaml > {}', async () => {
+    const root = seed()
+    expect(await resolveEntitySample(root, tplSel)).toEqual({ leftGap: 12 })
+    expect(await resolveEntitySample(root, tplSel, { sampleOverride: { leftGap: 99 } })).toEqual({ leftGap: 99 })
+    const overlay = tempEdm()
+    writeFile(join(overlay, 'elab/template/standard/v1/sample.yaml'), 'leftGap: 88\n')
+    expect(await resolveEntitySample(root, tplSel, { source: 'system', overrideRoot: overlay })).toEqual({ leftGap: 88 })
+    expect(await resolveEntitySample(root, { ...tplSel, familyCode: 'missing' })).toEqual({})
   })
 })

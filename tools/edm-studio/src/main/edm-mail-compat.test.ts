@@ -118,7 +118,7 @@ describe('EDM 迁移资产邮件兼容性', () => {
     const classDefs = [...css.matchAll(/^\.([\w-]+)\s*\{/gm)].map((m) => m[1] ?? '')
     // 真实装饰基类白名单：title-mark（#205 遗留）/ image-box（图片行高兜底）/ pseudo-mark（伪元素转真实元素载体，#210）；
     // ExternalClass 因 juice 全内联剥除已删除（#205），其余原子类一律交 unocss 运行时生成。
-    const ALLOWED_DECOR_BASES = ['image-box', 'pseudo-mark', 'title-mark']
+    const ALLOWED_DECOR_BASES = ['image-box', 'pseudo-mark']
     expect(classDefs.every((c) => ALLOWED_DECOR_BASES.includes(c))).toBe(true)
   })
 
@@ -212,11 +212,16 @@ describe('EDM 迁移资产邮件兼容性', () => {
         }
       }
       const { css: unoCss } = await uno.generate([...used].join(' '), { preflights: false })
+      // arbitrary value class（名含 `[`）的色值是显式写死的，如 color-[#006DB8] →
+      // rgb(0 109 184 / var(--un-text-opacity))，不取 Tailwind 默认色板，无需品牌 css 兜底。
+      // 真正需要兜底的是语义色 class（color-blue/bg-white/color-black…）：它们取 Tailwind 默认色，
+      // 若品牌 css 未覆盖同名 class，unocss 默认值会覆盖品牌色（#204 教训）。
       const risky = unoCss
         .split('\n')
         .filter((line) => line.includes('--un-'))
         .map((line) => line.match(/^\.([^{]+)\{/)?.[1]?.replace(/\\/g, ''))
         .filter((name): name is string => Boolean(name))
+        .filter((name) => !name.includes('['))
       expect(risky.length, `${brand} 未检出需兜底的 class，测试可能已失效`).toBeGreaterThan(0)
 
       // ④ 每个 risky class 必须在品牌 css（standard-default.css 已收编 palette + brand-utils）中有定义

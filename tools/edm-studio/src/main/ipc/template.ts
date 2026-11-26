@@ -1,6 +1,7 @@
 import { AppError } from '@sshk/shared'
 import type { Template, TemplateVersion } from '@sshk/repository'
 import { compose } from '../../core/compose.js'
+import { extractSlotKeysFromSource } from '../../core/slots.js'
 import { resolveMetaByVersionId } from '../render-meta.js'
 import type { ActionHandler, EdmIpcContext, Payload } from './context'
 
@@ -48,7 +49,8 @@ export function registerTemplateActions(ctx: EdmIpcContext, handlers: Map<string
       version,
       label: `v${version}`,
       source: obj(data, 'source') as unknown as TemplateVersion['source'],
-      slots: (data['slots'] ?? []) as unknown as TemplateVersion['slots'],
+      // #213：slots 由 njk 源码唯一决定，不再从入参落库
+      slots: extractSlotKeysFromSource(String(obj(data, 'source')?.['html'] ?? '')).map((key) => ({ key, type: '', required: false, multiple: false })),
       dataSchema: obj(data, 'dataSchema'),
       sampleData: obj(data, 'sampleData'),
       origin: 'custom',

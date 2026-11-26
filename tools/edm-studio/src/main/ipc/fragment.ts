@@ -43,7 +43,7 @@ export function registerFragmentActions(ctx: EdmIpcContext, handlers: Map<string
       brandId: frg.brandId,
       version,
       label: `v${version}`,
-      type: frg.type,
+      type: '' /* #213：片段无 type */,
       source: obj(data, 'source') as unknown as FragmentVersion['source'],
       policy: (obj(data, 'policy') as unknown as FragmentVersion['policy']) ?? { blacklist: [], whitelist: [] },
       dataSchema: obj(data, 'dataSchema'),
@@ -59,10 +59,10 @@ export function registerFragmentActions(ctx: EdmIpcContext, handlers: Map<string
     if (!src) throw new AppError('源版本不存在', 'io')
     const brandId = str(data, 'brandId') || src.brandId
     const newFrg = await repo.insert<Fragment>('fragments', {
-      brandId, name: str(data, 'name') || `${src.label} 副本`, type: src.type, origin: 'custom',
+      brandId, name: str(data, 'name') || `${src.label} 副本`, type: '' /* #213：片段无 type */, origin: 'custom',
     })
     const newV = await repo.insert<FragmentVersion>('fragmentVersions', {
-      fragmentId: newFrg._id, brandId, version: 1, label: 'v1', type: src.type,
+      fragmentId: newFrg._id, brandId, version: 1, label: 'v1', type: '' /* #213：片段无 type */,
       source: src.source, policy: { blacklist: [], whitelist: [] },
       dataSchema: src.dataSchema, sampleData: src.sampleData, origin: 'custom',
     })
@@ -97,6 +97,7 @@ export function registerFragmentActions(ctx: EdmIpcContext, handlers: Map<string
   handlers.set('candidates:pick', async (data: Payload) => {
     const tv = await repo.get<TemplateVersion>('templateVersions', str(data, 'templateVersionId'))
     if (!tv) throw new AppError('模板版本不存在', 'io')
-    return repo.listCandidateFragmentVersions(tv, str(data, 'slotType'))
+    // #213：片段类型已取消，候选只按品牌 + 黑白名单过滤
+    return repo.listCandidateFragmentVersions(tv)
   })
 }

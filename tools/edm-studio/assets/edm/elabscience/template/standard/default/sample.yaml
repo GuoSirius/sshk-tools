@@ -1,2 +1,4 @@
-subject: 您的会员权益已升级，尊享双重礼遇
-preheader: 点击立即激活，获取专属优惠券与优先发货服务
+subject: 自定义邮件主题
+preheader: 自定义邮件摘要信息
+leftGap: 10px
+rightGap: 10px

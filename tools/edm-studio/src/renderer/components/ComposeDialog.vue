@@ -266,7 +266,7 @@ function saveEditData(data: Record<string, unknown>): void {
 .md-body { flex: 1; min-height: 0; display: flex; }
 .md-body > * { flex: 1; min-width: 0; min-height: 0; }
 .md-body :deep(.code-editor) { height: 100% !important; }
-.preview-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
+.preview-bar { display: flex; align-items: center; justify-content: end; gap: 8px; padding-bottom: 6px; }
 .preview-frame { width: 100%; height: 100%; border: 1px solid rgba(128,128,128,.2); border-radius: 4px; background: #fff; }
 .footer { display: flex; align-items: center; justify-content: center; }
 .footer .el-button + .el-button { margin-left: 8px; }
