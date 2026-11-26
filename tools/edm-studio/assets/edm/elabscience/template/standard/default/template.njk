@@ -27,8 +27,8 @@
     {% endif %}
 
     <link rel="stylesheet" href="@system/css/reset.css" />
-    <link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
-    <link rel="stylesheet" href="@root/elabscience/template/standard/default/css/template.css" />
+    <link rel="stylesheet" href="@root/elabscience/css/standard-default.css" />
+    <link rel="stylesheet" href="./css/template.css" />
   </head>
   <body>
     <!-- 1) 真正的预览文案：必须是 body 第一个文本节点 -->
@@ -61,7 +61,6 @@
         </tr>
         <tr>
           <td colspan="4">{{ slot_body | safe }}</td>
-          <td colspan="4">{{ slot_body2 | safe }}</td>
         </tr>
         <tr>
           <td colspan="4">{{ slot_footer | safe }}</td>

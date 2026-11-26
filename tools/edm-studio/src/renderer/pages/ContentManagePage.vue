@@ -45,6 +45,20 @@ const toolId = useToolId()
 /* ── 组合预览域先声明占位：树 load 完成后的族 meta 预读回调经它转发（构造顺序：树 → 详情 → 组合） ── */
 let compose: ComposePreview | null = null
 
+/**
+ * 保存后预览刷新（2026-11-26 修复）：已配片段布局时走组合渲染，避免单渲覆盖共享 previewHtml。
+ * 现象：保存源码/CSS 后组合预览消失，重开布局弹框点确认即恢复（placements 内存态从未丢失）。
+ */
+async function refreshPreviewAfterChange(node: TreeNode): Promise<void> {
+  const composing = node.kind === 'version' && composePlacements.value.length > 0 &&
+    (node.data.cat !== 'fragment' || Boolean(composeTemplate.value))
+  if (composing && compose) {
+    await compose.renderComposePreview()
+    return
+  }
+  await detail.renderPreview(node)
+}
+
 /* ── 树域：双顶层树 + 基础 IO + 冲突抉择 ── */
 const treeDomain = useContentTree({ onLoaded: () => { void compose?.prefetchFamilyMetas() } })
 /* ── 详情编辑域：元数据/示例/源码/样式 + 单渲预览 ── */
@@ -56,13 +70,15 @@ const detail = useNodeDetail({
   toolId,
   // 源码 slot_* 变更后刷新组合预览的区块缓存（#213 唯一真相源，弹框开着也即时生效）
   onAfterSave: () => compose?.prefetchFamilyMetas(),
+  // 保存后按组合态刷新预览，防止单渲冲掉已配好的片段布局
+  afterSavePreview: refreshPreviewAfterChange,
 })
 /* ── css 多 tab 域 ── */
 const cssTabsDomain = useCssTabs({
   read: treeDomain.read,
   write: treeDomain.write,
   selected: treeDomain.selected,
-  renderPreview: detail.renderPreview,
+  renderPreview: refreshPreviewAfterChange,
 })
 /* ── 组合预览域（R19/R22/Q12） ── */
 compose = useComposePreview({

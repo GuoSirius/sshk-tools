@@ -27,6 +27,8 @@ export interface NodeDetailDeps {
   toolId: Ref<string>
   /** 元数据/源码保存后的派生缓存刷新（组合预览 slot 定义来自模板 njk 源码） */
   onAfterSave?(kind: 'meta' | 'source'): void | Promise<void>
+  /** 保存后预览刷新策略：由壳按组合预览态决定单渲/组合渲；不提供时内部单渲兜底 */
+  afterSavePreview?(node: TreeNode): void | Promise<void>
 }
 
 export interface NodeDetail {
@@ -154,6 +156,16 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     } finally {
       previewing.value = false
     }
+  }
+
+  /**
+   * 保存后刷新预览：由壳按组合预览态决定单渲还是组合渲染。
+   * 直接单渲会把共享 previewHtml 冲成「本版本单渲」，表现为配好的片段布局失效；
+   * 组合态下由壳调 renderComposePreview，placements 内存态保持不动。
+   */
+  async function refreshPreviewAfterSave(node: TreeNode): Promise<void> {
+    if (deps.afterSavePreview) await deps.afterSavePreview(node)
+    else await renderPreview(node)
   }
 
   function fillForm(raw: Record<string, unknown>, node: TreeNode | null): void {
@@ -332,7 +344,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       if (node.kind !== 'root') await deps.load(true) // 元数据名称/code 变更实时反馈到左树（#4）
       await deps.onAfterSave?.('meta') // 模板族 slots 声明变更同步到组合预览缓存
       ElMessage.success('元数据已保存')
-      if (node.kind === 'version') await renderPreview(node)
+      if (node.kind === 'version') await refreshPreviewAfterSave(node)
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }
@@ -355,7 +367,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       await deps.write(node.data.sourcePath, sourceText.value, node.data.source)
       await deps.onAfterSave?.('source') // njk 新增 {{ slot_x }} 后，布局配置/落点下拉立即刷新
       ElMessage.success('源码已保存')
-      await renderPreview(node)
+      await refreshPreviewAfterSave(node)
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }
@@ -378,7 +390,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
     try {
       await deps.write(`${node.data.path}/style.css`, styleText.value, node.data.source)
       ElMessage.success('样式已保存')
-      await renderPreview(node)
+      await refreshPreviewAfterSave(node)
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }
@@ -415,7 +427,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       }
       await deps.write(node.data.samplePath, sampleText.value, node.data.source)
       ElMessage.success('示例数据已保存')
-      await renderPreview(node)
+      await refreshPreviewAfterSave(node)
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }
@@ -450,7 +462,7 @@ export function useNodeDetail(deps: NodeDetailDeps): NodeDetail {
       metaText.value = updated
       metaRaw.value = (yaml.load(updated) as Record<string, unknown>) ?? {}
       ElMessage.success('字段定义已保存（meta.yaml fields:）')
-      await renderPreview(node)
+      await refreshPreviewAfterSave(node)
     } catch (err) {
       ElMessage.error(`保存失败：${(err as Error).message}`)
     }

@@ -42,7 +42,10 @@ describe('系统 EDM 资产迁移不变量', () => {
     for (const v of versions) {
       // njk 严格渲染：sample 必须覆盖模板用到的全部字段（slot_* 由组合引擎注入，单版本预览 tolerated）
       if (v.sel.kind === 'fragment') {
-        expect(() => env.renderString(v.html, v.sample)).not.toThrow()
+        // #212：片段可用 template.* 访问宿主模板数据（如 header 的 leftGap/rightGap），
+        // 单渲时该命名空间本就为空。注入 template stub 豁免此类引用，其余字段仍严格校验 sample 覆盖。
+        const ctx = { ...v.sample, template: new Proxy({}, { get: () => '' }) }
+        expect(() => env.renderString(v.html, ctx)).not.toThrow()
       }
       const preview = await renderSystemPreview(EDM_ROOT, v.sel, { outputRoot: OUTPUT })
       // #188 纪律针对 css link（须剥离内联）；favicon 等 head link 是合法功能标签，不在剥离范围
