@@ -2,7 +2,7 @@
  * ④ 归一化层（plans/13 B0 重组）：容错解析 yaml 载入 / NeDB 读出的脏 fields，
  * 按类型白名单收口，得到干净的 FieldDef[]；外加数据模型默认值补齐。
  */
-import { retypeField } from './catalog'
+import { coerceDefault, retypeField } from './catalog'
 import { FIELD_TYPES, CONTAINER_TYPES, type FieldDef, type FieldOption, type FieldType, type TableColumn } from './schema'
 
 function toNum(v: unknown): number | undefined {
@@ -49,6 +49,9 @@ export function normalizeFields(raw: unknown): FieldDef[] {
     const type = String(f.type ?? '').trim()
     if (!key || !FIELD_TYPES.has(type)) continue
     const typed = type as FieldType
+    // #211：default 按类型清洗，存量 yaml 里切类型/改选项残留的非法默认值在此丢弃
+    const options = normalizeOptions(f.options)
+    const defaultVal = coerceDefault(typed, f.default, options)
     // 按类型白名单收口：存量 yaml 里切类型残留的脏属性在此丢弃，不再随保存回写（体检 #3）
     const full: FieldDef = {
       key,
@@ -56,8 +59,8 @@ export function normalizeFields(raw: unknown): FieldDef[] {
       type: typed,
       group: f.group ? String(f.group) : undefined,
       required: f.required === true,
-      options: normalizeOptions(f.options),
-      default: f.default,
+      options,
+      default: defaultVal,
       placeholder: f.placeholder ? String(f.placeholder) : undefined,
       minLength: toNum(f.minLength),
       maxLength: toNum(f.maxLength),

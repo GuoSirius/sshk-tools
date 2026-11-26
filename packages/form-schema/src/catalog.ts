@@ -66,12 +66,64 @@ const TYPE_KEYS: Record<FieldType, readonly (keyof FieldDef)[]> = {
   table: [...CONTAINER_KEYS, 'columns'],
 }
 
-/** 切换类型后只保留新类型适用属性（体检 #3）：调用方传完整旧字段，返回干净的新类型字段 */
+/** 默认值的值类型白名单（与 FormFieldRenderer 各控件的取值形态严格对齐） */
+const TEXTUAL_TYPES: ReadonlySet<FieldType> = new Set<FieldType>([
+  'input', 'textarea', 'richtext', 'url', 'date', 'color', 'image',
+])
+const SINGLE_CHOICE_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['radio', 'select'])
+const MULTI_CHOICE_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['checkbox', 'select-multi'])
+
+/**
+ * 按字段类型清洗默认值（#211）：值类型必须与 FormFieldRenderer 的控件取值形态一致，
+ * 否则切类型/改选项后会留下渲染器读不出来的脏默认值。
+ * - 文本类/单图 → string；number → number；switch → boolean；
+ * - radio/select → options 中的 value（string）；
+ * - checkbox/select-multi → options 中 value 的 string[]（单个合法 string 容错升为数组，兼容单选切多选）；
+ * - image-list → string[]（逗号分隔串由 UI 拆好传入）；
+ * - repeater/table 容器 → 不提供默认值（applyDefaults 兜底 []）。
+ * 空值（undefined/null/''）一律视为「未设置」返回 undefined。
+ */
+export function coerceDefault(
+  type: FieldType,
+  value: unknown,
+  options?: ReadonlyArray<{ value: string }>,
+): unknown | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  const allowed = new Set((options ?? []).map((o) => o.value))
+
+  if (TEXTUAL_TYPES.has(type)) return typeof value === 'string' ? value : undefined
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  if (type === 'switch') return typeof value === 'boolean' ? value : undefined
+  if (SINGLE_CHOICE_TYPES.has(type)) {
+    return typeof value === 'string' && allowed.has(value) ? value : undefined
+  }
+  if (MULTI_CHOICE_TYPES.has(type)) {
+    // 单选切多选时旧值是单个 string，无损迁移为 [value]（常见切换，避免默认选择凭空丢失）
+    const raw = typeof value === 'string' ? [value] : value
+    if (!Array.isArray(raw)) return undefined
+    const picked = raw.filter((v): v is string => typeof v === 'string' && allowed.has(v))
+    return picked.length ? picked : undefined
+  }
+  if (type === 'image-list') {
+    if (!Array.isArray(value)) return undefined
+    const urls = value.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    return urls.length ? urls : undefined
+  }
+  // repeater / table：容器默认值不支持
+  return undefined
+}
+
+/** 切换类型后只保留新类型适用属性（体检 #3）：调用方传完整旧字段，返回干净的新类型字段。
+ *  #211：default 按新类型清洗——BASE_KEYS 含 default，旧类型的值（如 input 的字符串）切到
+ *  checkbox/select-multi 会变成渲染器读不出来的非法值，必须在此收口。 */
 export function retypeField(f: FieldDef, type: FieldType): FieldDef {
   const keep = TYPE_KEYS[type]
   const out: Record<string, unknown> = { type }
   for (const k of keep) {
     if (k !== 'type' && f[k] !== undefined) out[k] = f[k]
   }
+  const coerced = coerceDefault(type, f.default, f.options)
+  if (coerced === undefined) delete out.default
+  else out.default = coerced
   return out as unknown as FieldDef
 }

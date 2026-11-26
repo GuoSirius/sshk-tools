@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyDefaults, normalizeFields, parseYamlObject, retypeField, validateModel, validateSchema } from './index'
+import { applyDefaults, coerceDefault, normalizeFields, parseYamlObject, retypeField, validateModel, validateSchema } from './index'
 
 describe('normalizeFields', () => {
   it('丢弃缺 key / 未知 type 的项，归一化 options', () => {
@@ -26,6 +26,73 @@ describe('normalizeFields', () => {
   it('非数组输入返回空', () => {
     expect(normalizeFields(null)).toEqual([])
     expect(normalizeFields('x')).toEqual([])
+  })
+})
+
+describe('默认值按类型清洗（#211，与 FormFieldRenderer 值形态对齐）', () => {
+  const opts = [{ label: '甲', value: 'a' }, { label: '乙', value: 'b' }]
+
+  it('文本类/number/switch：类型不符或空值一律丢弃', () => {
+    expect(coerceDefault('input', 'hello')).toBe('hello')
+    expect(coerceDefault('url', '')).toBeUndefined()
+    expect(coerceDefault('input', 123)).toBeUndefined()
+    expect(coerceDefault('number', 42)).toBe(42)
+    expect(coerceDefault('number', '42')).toBeUndefined()
+    // switch 的 false 是合法默认值，不能被当作空值丢掉
+    expect(coerceDefault('switch', false)).toBe(false)
+    expect(coerceDefault('switch', 'false')).toBeUndefined()
+  })
+
+  it('单选 radio/select：只接受 options 中的 value', () => {
+    expect(coerceDefault('radio', 'a', opts)).toBe('a')
+    expect(coerceDefault('select', 'z', opts)).toBeUndefined()
+    expect(coerceDefault('select', ['a'], opts)).toBeUndefined()
+  })
+
+  it('多选 checkbox/select-multi：只保留在 options 中的 value[]，单个 string 无损升为数组', () => {
+    expect(coerceDefault('checkbox', ['a', 'b'], opts)).toEqual(['a', 'b'])
+    expect(coerceDefault('select-multi', ['a', 'z'], opts)).toEqual(['a'])
+    expect(coerceDefault('checkbox', 'a', opts)).toEqual(['a']) // 单选切多选 / yaml 简写容错
+    expect(coerceDefault('checkbox', 123, opts)).toBeUndefined()
+    expect(coerceDefault('select-multi', ['z'], opts)).toBeUndefined()
+  })
+
+  it('多图 image-list：string[] 去空项；容器类型不支持默认值', () => {
+    expect(coerceDefault('image-list', ['https://a.png', ''])).toEqual(['https://a.png'])
+    expect(coerceDefault('image-list', 'https://a.png')).toBeUndefined()
+    expect(coerceDefault('repeater', [{}])).toBeUndefined()
+    expect(coerceDefault('table', [{}])).toBeUndefined()
+  })
+
+  it('normalizeFields 载入脏 default 时按类型清洗', () => {
+    const fields = normalizeFields([
+      { key: 'a', type: 'checkbox', options: opts, default: 123 },        // 数字→丢弃
+      { key: 'b', type: 'select', options: opts, default: 'z' },          // 非选项值→丢弃
+      { key: 'c', type: 'input', default: 'ok' },                         // 合法→保留
+      { key: 'd', type: 'select-multi', options: opts, default: ['a', 'z'] },
+    ])
+    expect(fields[0]!.default).toBeUndefined()
+    expect(fields[1]!.default).toBeUndefined()
+    expect(fields[2]!.default).toBe('ok')
+    expect(fields[3]!.default).toEqual(['a'])
+  })
+
+  it('切类型时旧默认值不残留：input 字符串切到 checkbox 被丢弃', () => {
+    const input = normalizeFields([{ key: 'x', type: 'input', default: 'hi' }])[0]!
+    expect(retypeField(input, 'checkbox').default).toBeUndefined()
+    expect(retypeField(input, 'number').default).toBeUndefined()
+    expect(retypeField(input, 'textarea').default).toBe('hi')
+    // 单选切多选：值形态从 string 转 [string]
+    const radio = normalizeFields([{ key: 'y', type: 'radio', options: opts, default: 'a' }])[0]!
+    expect(retypeField(radio, 'checkbox').default).toEqual(['a'])
+  })
+
+  it('applyDefaults 应用合法默认值；switch 的 false 不被漏掉', () => {
+    const fields = normalizeFields([
+      { key: 'off', type: 'switch', default: false },
+      { key: 'title', type: 'input', default: 'Hi' },
+    ])
+    expect(applyDefaults(fields, {})).toEqual({ off: false, title: 'Hi' })
   })
 })
 

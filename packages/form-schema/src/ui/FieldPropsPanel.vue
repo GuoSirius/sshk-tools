@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
-import { CONTAINER_TYPES, FIELD_CATALOG, FIELD_TYPE_LABEL, type FieldDef, type FieldType, type TableColumn } from '../index'
+import { CONTAINER_TYPES, FIELD_CATALOG, FIELD_TYPE_LABEL, coerceDefault, type FieldDef, type FieldType, type TableColumn } from '../index'
 
 /**
  * 字段属性面板（plans/13 B0 自 FieldSchemaDesigner 拆出）：右侧选中字段的属性编辑。
@@ -33,6 +33,47 @@ const CHOICE: FieldType[] = ['radio', 'checkbox', 'select', 'select-multi']
 /** 需要「占位提示」的类型白名单（其余类型显示该属性无意义） */
 const PLACEHOLDER_TYPES: FieldType[] = ['input', 'textarea', 'url', 'number', 'date', 'select', 'select-multi']
 
+// ── 默认值控件分派（#211）──
+/** 文本/字符串类默认值：与 FormFieldRenderer 的 strVal 形态一致 */
+const DEFAULT_TEXT_TYPES: FieldType[] = ['input', 'textarea', 'richtext', 'url', 'date', 'color', 'image']
+/** 单选类：默认值取 options 里的 value（string），用下拉从选项值中选 */
+const DEFAULT_SINGLE_CHOICE: FieldType[] = ['radio', 'select']
+/** 多选类：默认值取 options 里的 value[]（string[]），用多选下拉 */
+const DEFAULT_MULTI_CHOICE: FieldType[] = ['checkbox', 'select-multi']
+/** 多图：默认值是 URL 数组，UI 用逗号分隔输入 */
+const DEFAULT_LIST_TYPES: FieldType[] = ['image-list']
+/** 是否展示默认值一行：容器（repeater/table）为复杂对象，由 applyDefaults 兜底 []，不提供填写 */
+function hasDefault(type: FieldType): boolean {
+  return DEFAULT_TEXT_TYPES.includes(type) || type === 'number' || type === 'switch'
+    || DEFAULT_SINGLE_CHOICE.includes(type) || DEFAULT_MULTI_CHOICE.includes(type)
+    || DEFAULT_LIST_TYPES.includes(type)
+}
+/** 默认值 → 控件绑定值（多选/多图数组在 UI 内是 string[]；文本 number switch 原样） */
+function defaultModel(): unknown {
+  const d = cf.value.default
+  if (DEFAULT_MULTI_CHOICE.includes(cf.value.type) || DEFAULT_LIST_TYPES.includes(cf.value.type)) {
+    return Array.isArray(d) ? d.filter((x): x is string => typeof x === 'string') : []
+  }
+  return d
+}
+function patchDefault(v: unknown): void {
+  const cleaned = coerceDefault(cf.value.type, v, cf.value.options)
+  patch({ default: cleaned })
+}
+/** 多图默认值的逗号串 ⇄ string[]（trim + 去空项） */
+function listDefaultText(): string {
+  return (defaultModel() as string[]).join(', ')
+}
+function patchListDefault(text: string): void {
+  const arr = text.split(',').map((s) => s.trim()).filter(Boolean)
+  patchDefault(arr)
+}
+/** 选项变更后清洗默认值：删掉的选项若正被用作默认值，剔除以免留下无效默认 */
+function patchOptionsCleanDefault(opts: { label: string; value: string }[]): void {
+  const cleaned = coerceDefault(cf.value.type, cf.value.default, opts)
+  patch({ options: opts, default: cleaned })
+}
+
 /** 模板内非空视图：外层 v-if="field" 保证只在与非空时渲染；cf 保证 vue-tsc 类型收窄 */
 const cf = computed<FieldDef>(() => props.field ?? ({ key: '', label: '', type: 'input' } as FieldDef))
 
@@ -59,14 +100,14 @@ function addOption(): void {
   const used = new Set(opts.map((o) => o.value))
   let n = opts.length + 1
   while (used.has(`opt${n}`)) n++
-  patch({ options: [...opts, { label: `选项opt${n}`, value: `opt${n}` }] })
+  patchOptionsCleanDefault([...opts, { label: `选项opt${n}`, value: `opt${n}` }])
 }
 function updateOption(oi: number, p: { label?: string; value?: string }): void {
   const opts = (props.field?.options ?? []).map((o, k) => (k === oi ? { ...o, ...p } : o))
-  patch({ options: opts })
+  patchOptionsCleanDefault(opts)
 }
 function removeOption(oi: number): void {
-  patch({ options: (props.field?.options ?? []).filter((_, k) => k !== oi) })
+  patchOptionsCleanDefault((props.field?.options ?? []).filter((_, k) => k !== oi))
 }
 
 // ── table 列定义编辑 ──
@@ -135,6 +176,39 @@ const type = (): FieldType => cf.value.type
       </el-form-item>
       <el-form-item v-if="PLACEHOLDER_TYPES.includes(type())" label="占位提示">
         <el-input clearable :model-value="cf.placeholder ?? ''" :disabled="readonly" @update:model-value="(v: string) => patch({ placeholder: v || undefined })" />
+      </el-form-item>
+
+      <!-- 默认值（#211）：按类型分派控件；值形态与 FormFieldRenderer 一一对应 -->
+      <el-form-item v-if="hasDefault(type())" label="默认值">
+        <!-- 单选（radio/select）：从选项值里选一个 -->
+        <el-select v-if="DEFAULT_SINGLE_CHOICE.includes(type())" clearable
+          :model-value="(defaultModel() as string) || undefined" :disabled="readonly" placeholder="不选=无默认值" style="width: 100%"
+          @update:model-value="(v: unknown) => patchDefault(v)">
+          <el-option v-for="o in cf.options ?? []" :key="o.value" :value="o.value" :label="`${o.label} (${o.value})`" />
+        </el-select>
+        <!-- 多选（checkbox/select-multi）：从选项值里选多个 -->
+        <el-select v-else-if="DEFAULT_MULTI_CHOICE.includes(type())" multiple clearable collapse-tags
+          :model-value="defaultModel() as string[]" :disabled="readonly" placeholder="不选=无默认值" style="width: 100%"
+          @update:model-value="(v: unknown) => patchDefault(v)">
+          <el-option v-for="o in cf.options ?? []" :key="o.value" :value="o.value" :label="`${o.label} (${o.value})`" />
+        </el-select>
+        <!-- 数字 -->
+        <el-input-number v-else-if="type() === 'number'" :model-value="(defaultModel() as number | undefined)" :min="cf.min" :max="cf.max"
+          :disabled="readonly" controls-position="right" @update:model-value="(v: number | undefined) => patchDefault(v)" />
+        <!-- 开关：false 也是合法默认值，用下拉三态区分「未设置/开/关」 -->
+        <el-select v-else-if="type() === 'switch'" :model-value="defaultModel() === undefined ? '' : (defaultModel() ? 'true' : 'false')"
+          :disabled="readonly" style="width: 100%" @update:model-value="(v: unknown) => patchDefault(v === '' ? undefined : v === 'true')">
+          <el-option value="" label="未设置" />
+          <el-option value="true" label="开 (true)" />
+          <el-option value="false" label="关 (false)" />
+        </el-select>
+        <!-- 多图：逗号分隔 URL -->
+        <el-input v-else-if="DEFAULT_LIST_TYPES.includes(type())" clearable :model-value="listDefaultText()" :disabled="readonly"
+          placeholder="多个图片 URL 用逗号分隔，留空=无默认值" @update:model-value="(v: string) => patchListDefault(v)" />
+        <!-- 文本/URL/日期/颜色/单图 -->
+        <el-input v-else clearable :model-value="String(defaultModel() ?? '')" :disabled="readonly"
+          :placeholder="type() === 'date' ? '如 2026-01-01' : type() === 'color' ? '如 #0066cc' : '留空=无默认值'"
+          @update:model-value="(v: string) => patchDefault(v)" />
       </el-form-item>
 
       <template v-if="['input', 'textarea', 'richtext'].includes(type())">

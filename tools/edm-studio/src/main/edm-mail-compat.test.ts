@@ -124,8 +124,9 @@ describe('EDM 迁移资产邮件兼容性', () => {
 
   it('njk 无伪 unocss 数字/颜色类，均改用 arbitrary 语法', () => {
     const files = walk(EDM_ROOT).filter((f) => f.endsWith('.njk'))
-    // #206 起 w-100/h-100 已统一为 unocss 等价的 w-full/h-full（unocss 的 -100 是 25rem≠100%），禁用检测纳入
-    const legacy = /(?:^|\s)(?:h-\d+|w-100|pt-\d+|pb-\d+|px-\d+|py-\d+)(?:\s|$)|border-rd-\d+|color-(?:333|white|orange|red)(?:\s|$)/g
+    // #206 起 w-100/h-100 已统一为 unocss 等价的 w-full/h-full（unocss 的 -100 是 25rem≠100%），禁用检测纳入。
+    // h-\d+ 不可一刀切禁用：h-16 等是 Tailwind 标准类（4rem）有正确语义；真正要禁的只是 h-100（25rem≠100%）。
+    const legacy = /(?:^|\s)(?:h-100|w-100|pt-\d+|pb-\d+|px-\d+|py-\d+)(?:\s|$)|border-rd-\d+|color-(?:333|white|orange|red)(?:\s|$)/g
     for (const file of files) {
       const text = readFileSync(file, 'utf8')
       // 只检查 class="..." 内的 token，避免误伤文案里的数字

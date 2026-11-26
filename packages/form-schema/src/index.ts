@@ -15,6 +15,7 @@ export {
   FIELD_CATALOG,
   FIELD_GROUP_LABEL,
   FIELD_TYPE_LABEL,
+  coerceDefault,
   retypeField,
   type FieldCatalogGroup,
   type FieldTypeInfo,
