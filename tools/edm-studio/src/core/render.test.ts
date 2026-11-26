@@ -98,3 +98,54 @@ describe('njk 分层上下文（2026-11-25 修订 1/13）', () => {
     expect(out).not.toContain('<b>')
   })
 })
+
+describe('juice 全套邮件兼容选项（#210，对齐 juice-email-cli 默认配置）', () => {
+  it('img 宽高补 HTML 属性、table 样式转 bgcolor、CSS 变量解析、伪元素 span 化', async () => {
+    const stages = await renderMail({
+      templateHtml: `<style>
+:root{--brand:#123456}
+.badge::before{content:"★";color:red}
+img.hero{width:120px;height:60px}
+table.t{background-color:#eee}
+</style><p class="badge" style="color:var(--brand)">Hi</p><img class="hero" src="x.png"><table class="t"><tr><td>c</td></tr></table>`,
+      bindings: {},
+      data: {},
+      render: { strict: false, autoEscape: true },
+    })
+    // applyWidthAttributes / applyHeightAttributes
+    expect(stages.inlined).toContain('width="120"')
+    expect(stages.inlined).toContain('height="60"')
+    // applyAttributesTableElements
+    expect(stages.inlined.toLowerCase()).toMatch(/bgcolor="#eee"/)
+    // resolveCSSVariables：var() 已被替换成具体色值
+    expect(stages.inlined).not.toContain('var(--brand)')
+    expect(stages.inlined).toContain('#123456')
+    // inlinePseudoElements：::before 内容作为可见 span 插入
+    expect(stages.inlined).toMatch(/<span[^>]*>★<\/span>/)
+  })
+
+  it('保留 @font-face/@keyframes/@media/伪类/preservedSelectors，其余 style 仍被移除内联', async () => {
+    const stages = await renderMail({
+      templateHtml: `<style>
+td{color:red}
+a:hover{color:blue}
+.gmail-fix{letter-spacing:0}
+@font-face{font-family:X;src:url(x.woff)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media screen and (max-width:600px){td{color:green}}
+</style><table><tr><td>c</td></tr></table>`,
+      bindings: {},
+      data: {},
+      render: { strict: false, autoEscape: true },
+    })
+    const kept = stages.inlined
+    // 保留块存在（preserveFontFaces / preserveKeyFrames / preserveMediaQueries / preservePseudos / preservedSelectors）
+    expect(kept).toContain('@font-face')
+    expect(kept).toContain('@keyframes')
+    expect(kept).toContain('@media')
+    expect(kept).toContain(':hover')
+    expect(kept).toContain('.gmail-fix')
+    // 普通规则已内联到元素、未残留在 style 块
+    expect(kept.replace(/\s/g, '').toLowerCase()).toContain('color:red')
+  })
+})

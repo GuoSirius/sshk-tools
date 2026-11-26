@@ -1,5 +1,6 @@
 import nunjucks from 'nunjucks'
 import juice from 'juice'
+import { EDM_JUICE_OPTIONS } from './juice-options.js'
 import { htmlMinify } from './minify.js'
 import { createHash } from 'node:crypto'
 import { injectCss } from './css-bundle.js'
@@ -61,11 +62,8 @@ export async function renderMail(input: RenderInput): Promise<RenderStages> {
   // css 汇集结果放最前，juice 的 applyStyleTags 会把它内联到 style 属性
   const assembled = injectCss(rendered, input.cssBundle ?? '')
 
-  const inlined = juice(assembled, {
-    removeStyleTags: true,
-    preserveMediaQueries: true,
-    applyStyleTags: true,
-  })
+  // 全套邮件兼容选项见 juice-options.ts（对齐 juice-email-cli 默认配置，静态打进 exe）
+  const inlined = juice(assembled, EDM_JUICE_OPTIONS)
   const final = await htmlMinify(inlined)
   return {
     assembled,
