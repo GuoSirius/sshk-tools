@@ -9,13 +9,13 @@
   <tbody>
     <tr>
       <td colspan="4" class="image-box">
-        {% if banner_link %}
-          <a href="{{ banner_link }}" class="w-full">
-            <img src="{{ banner_image }}" class="w-full"/>
+        {% if bannerLink %}
+          <a href="{{ bannerLink }}" class="w-full">
+            <img src="{{ bannerImage }}" class="w-full"/>
           </a>
         {% endif %}
-        {% if not banner_link %}
-          <img src="{{ banner_image }}" class="w-full"/>
+        {% if not bannerLink %}
+          <img src="{{ bannerImage }}" class="w-full"/>
         {% endif %}
       </td>
     </tr>
@@ -30,15 +30,14 @@
             <col/>
           </colgroup>
           <tbody>
-            <tr>
-              <td>{{ banner_keywords }}</td>
-            </tr>
-            {% for it0 in banner_moreKeywords %}
+            {% for it0 in abstractInformation %}
+              {% if not loop.first %}
+                <tr>
+                  <td class="h-[12px]"></td>
+                </tr>
+              {% endif %}
               <tr>
-                <td class="h-[12px]"></td>
-              </tr>
-              <tr>
-                <td>{{ it0 }}</td>
+                <td>{{ it0.value | safe }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -59,7 +58,7 @@
           <tbody class="align-middle">
             <tr>
               <td class="bg-white p-[8px_16px_0]">
-                <span class="title {{ introduction_className }}">{{ introduction_title }}</span>
+                <span class="title {{ introductionTitleClassName }}">{{ introductionTitle }}</span>
               </td>
             </tr>
             <tr>
@@ -67,15 +66,15 @@
             </tr>
             <tr>
               <td class="px-[16px]">
-                {% for it1 in introduction_lists %}
-                  <p class="pb-[5px] {{ introduction_itemClassName }}">{{ it1 | safe }}</p>
+                {% for it1 in introductionLists %}
+                  <p class="pb-[5px] {{ introductionItemClassName | default('') }}">{{ it1.value | safe }}</p>
                 {% endfor %}
               </td>
             </tr>
-            {% if introduction_buttonText %}
+            {% if introductionButtonText %}
               <tr>
                 <td class="text-right pt-[18px] pr-[16px]">
-                  <a {% if introduction_buttonLink %} href="{{ introduction_buttonLink }}" {% endif %} class="button-linear-orange font-bold decoration-none">{{ introduction_buttonText }}</a>
+                  <a {% if introductionButtonLink %} href="{{ introductionButtonLink }}" {% endif %} class="button-linear-orange font-bold decoration-none">{{ introductionButtonText }}</a>
                 </td>
               </tr>
             {% endif %}
@@ -97,7 +96,7 @@
           <tbody class="align-middle">
             <tr>
               <td class="bg-white p-[8px_16px_0]">
-                <span class="title {{ reserve_className }}">{{ reserve_title }}</span>
+                <span class="title {{ reserveTitleClassName }}">{{ reserveTitle }}</span>
               </td>
             </tr>
             <tr>
@@ -105,21 +104,21 @@
             </tr>
             <tr>
               <td class="px-[16px]">
-                {% for it2 in reserve_lists %}
-                  <p class="pb-[5px] {{ reserve_itemClassName }}">{{ it2 }}</p>
+                {% for it2 in reserveLists %}
+                  <p class="pb-[5px] {{ reserveItemClassName | default('') }}">{{ it2.value }}</p>
                 {% endfor %}
-                <p class="pb-[5px] calendar {{ reserve_itemClassName }}">
-                  <strong>{{ reserve_weekDate }}</strong>
+                <p class="pb-[5px] calendar {{ reserveItemClassName | default('') }}">
+                  <strong>{{ reserveDate }}</strong>
                 </p>
-                <p class="pb-[5px] {{ reserve_itemClassName }}">
+                <p class="pb-[5px] {{ reserveItemClassName | default('') }}">
                   <span class="clock inline-block w-[18px] h-[24px] -mb-[3px]"></span>
-                  {{ reserve_time }}</p>
+                  {{ reserveTime }}</p>
               </td>
             </tr>
-            {% if reserve_buttonText %}
+            {% if reserveButtonText %}
               <tr>
                 <td class="text-right pt-[18px] pr-[16px]">
-                  <a {% if reserve_buttonLink %} href="{{ reserve_buttonLink }}" {% endif %} class="button-linear-orange font-bold decoration-none">{{ reserve_buttonText }}</a>
+                  <a {% if reserveButtonLink %} href="{{ reserveButtonLink }}" {% endif %} class="button-linear-orange font-bold decoration-none">{{ reserveButtonText }}</a>
                 </td>
               </tr>
             {% endif %}
@@ -128,14 +127,14 @@
       </td>
       <td></td>
     </tr>
-    {% if gift %}
+    {% if goodNews %}
       <tr>
         <td colspan="4" class="h-[24px]"></td>
       </tr>
       <tr>
         <td></td>
         <td colspan="2">
-          <p class="color-blue gift">{{ gift }}</p>
+          <p class="color-blue gift">{{ goodNews }}</p>
         </td>
         <td></td>
       </tr>
@@ -154,23 +153,23 @@
           <tbody class="align-top">
             <tr>
               <td rowspan="2" class="image-box pr-[12px]">
-                <img src="{{ speaker_avatar }}"/>
+                <img src="{{ speakerAvatar }}"/>
               </td>
               <td class="h-[0px] pb-[24px]">
                 <p>
                   <strong class="text-size-[27px] font-bold mr-[20px]">Speaker</strong>
-                  {{ speaker_username }}</p>
-                <p>{{ speaker_jobTitle }}</p>
+                  {{ speakerUsername }}</p>
+                <p>{{ speakerJobTitle }}</p>
               </td>
             </tr>
             <tr>
               <td>
                 <p class="pb-[3px]">Limited seats available.
-                  <a {% if speaker_registerLink %} href="{{ speaker_registerLink }}" {% endif %} class="finger color-blue">Register in 30 seconds</a>
+                  <a {% if registerLink %} href="{{ registerLink }}" {% endif %} class="finger color-blue">Register in 30 seconds</a>
                 </p>
                 <p>Questions?
-                  {% if speaker_email %}
-                    <a href="mailto:{{ speaker_email }}" class="color-blue">{{ speaker_email }}</a>
+                  {% if questionEmail %}
+                    <a href="mailto:{{ questionEmail }}" class="color-blue">{{ questionEmail }}</a>
                   {% endif %}
                 </p>
               </td>

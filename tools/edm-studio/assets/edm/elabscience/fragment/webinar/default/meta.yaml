@@ -10,111 +10,131 @@ fields:
     key: bannerLink
     label: banner 链接
     required: false
-  - type: textarea
-    key: banner_keywords
-    label: banner keywords
+  - type: repeater
+    key: abstractInformation
+    label: 摘要信息
+    required: false
+    itemFields:
+      - type: textarea
+        key: value
+        label: 摘要项
+        required: false
+  - type: input
+    key: introductionTitle
+    label: 介绍标题
+    required: false
+    default: In this webinar, you will learn
+  - type: input
+    key: introductionTitleClassName
+    label: 介绍标题类名
+    required: false
+    default: color-black
+  - type: input
+    key: introductionItemClassName
+    label: 介绍项类名
     required: false
   - type: repeater
-    key: banner_moreKeywords
-    label: banner moreKeywords
+    key: introductionLists
+    label: 介绍列表
+    required: false
+    itemFields:
+      - type: textarea
+        key: value
+        label: 介绍项
+        required: false
+  - type: input
+    key: introductionButtonText
+    label: 介绍按钮文本
+    required: false
+    default: View Webinar Details
+  - type: url
+    key: introductionButtonLink
+    label: 介绍按钮链接
+    required: false
+  - type: input
+    key: reserveTitle
+    label: 预定标题
+    required: false
+    default: Secure Your Spot
+  - type: input
+    key: reserveTitleClassName
+    label: 预定标题类名
+    required: false
+    default: color-black
+  - type: input
+    key: reserveItemClassName
+    label: 预定项类名
+    required: false
+  - type: repeater
+    key: reserveLists
+    label: 预定列表
     required: false
     itemFields:
       - type: input
         key: value
-        label: 值
+        label: 预定项
         required: false
   - type: input
-    key: introduction_title
-    label: introduction title
-    required: false
-  - type: input
-    key: introduction_className
-    label: introduction className
-    required: false
-  - type: input
-    key: introduction_itemClassName
-    label: introduction itemClassName
-    required: false
-  - type: repeater
-    key: introduction_lists
-    label: introduction lists
-    required: false
-    itemFields:
-      - type: richtext
-        key: value
-        label: 富文本条目
-        required: false
-  - type: url
-    key: introduction_buttonLink
-    label: introduction buttonLink
-    required: false
-  - type: input
-    key: introduction_buttonText
-    label: introduction buttonText
-    required: false
-  - type: input
-    key: reserve_title
-    label: reserve title
-    required: false
-  - type: input
-    key: reserve_className
-    label: reserve className
-    required: false
-  - type: input
-    key: reserve_itemClassName
-    label: reserve itemClassName
-    required: false
-  - type: repeater
-    key: reserve_lists
-    label: reserve lists
-    required: false
-    itemFields:
-      - type: input
-        key: value
-        label: 值
-        required: false
-  - type: input
-    key: reserve_weekDate
-    label: reserve weekDate
+    key: reserveDate
+    label: 预定日期
     required: false
   - type: textarea
-    key: reserve_time
-    label: reserve time
-    required: false
-  - type: url
-    key: reserve_buttonLink
-    label: reserve buttonLink
+    key: reserveTime
+    label: 预定时间
     required: false
   - type: input
-    key: reserve_buttonText
-    label: reserve buttonText
+    key: reserveButtonText
+    label: 预定按钮文本
+    required: false
+    default: Reserve Your Seat
+  - type: url
+    key: reserveButtonLink
+    label: 预定按钮链接
     required: false
   - type: textarea
-    key: gift
-    label: gift
+    key: goodNews
+    label: 好消息
     required: false
   - type: image
-    key: speaker_avatar
-    label: speaker avatar
+    key: speakerAvatar
+    label: 发言者头像
     required: false
   - type: input
-    key: speaker_username
-    label: speaker username
+    key: speakerUsername
+    label: 发言者用户名
     required: false
   - type: input
-    key: speaker_jobTitle
-    label: speaker jobTitle
+    key: speakerJobTitle
+    label: 发言者职称
     required: false
   - type: url
-    key: speaker_registerLink
-    label: speaker registerLink
+    key: registerLink
+    label: 登记链接
     required: false
   - type: input
-    key: speaker_email
-    label: speaker email
+    key: questionEmail
+    label: 提问邮箱
     required: false
+    default: events@elabscience.com
 policy:
   blacklist: []
   whitelist: []
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

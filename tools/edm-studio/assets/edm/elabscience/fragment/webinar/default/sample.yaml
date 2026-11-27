@@ -1,32 +1,27 @@
-banner_image: https://file.elabscience.com/edm/202607201058/banner.webp
-banner_link: https://www.elabscience.com/events/webinars/2109
-banner_keywords: CAR-T cell therapy has achieved remarkable success in hematological malignancies. However, translating this success to solid tumors remains challenging due to antigen heterogeneity, limited tumor infiltration, an immunosuppressive tumor microenvironment, and insufficient CAR-T cell persistence.
-banner_moreKeywords:
-  - Join our upcoming webinar, we will discuss how advances in cell engineering, synthetic biology, and immune modulation are helping researchers develop more effective CAR-T strategies for solid tumors.
-introduction_title: What You'll Get
-introduction_className: color-black
-introduction_itemClassName: color-primary
-introduction_lists:
-  - <span class="color-blue text-size-[12px]">·</span>Key biological barriers limiting CAR-T efficacy in solid tumors
-  - <span class="color-blue text-size-[12px]">·</span>Emerging approaches to improve CAR-T cell persistence and tumor targeting
-  - <span class="color-blue text-size-[12px]">·</span>Innovations in receptor design and immune modulation
-  - <span class="color-blue text-size-[12px]">·</span>Strategies for remodeling the tumor microenvironment
-  - <span class="color-blue text-size-[12px]">·</span>Translational considerations for next-generation cellular therapies
-introduction_buttonLink: https://www.elabscience.com/events/webinars/2109
-introduction_buttonText: Register for the Webinar
-reserve_title: Secure Your Spot
-reserve_className: color-black
-reserve_itemClassName: color-primary
-reserve_lists:
-  - Next-Generation CAR-T Cell Engineering for Solid Tumors
-  - Overcoming Biological Barriers and Advancing Clinical Translation
-reserve_weekDate: Thursday, 6 August 2026
-reserve_time: 12:00 CEST (Berlin, UTC+2); 14:00 GST (Dubai, UTC+4); 15:30 IST (Delhi, UTC+5:30); 17:00 WIB (Jakarta, UTC+7); 06:00 EDT (New York, UTC−4)
-reserve_buttonLink: https://events.teams.microsoft.com/event/4be890b6-3d74-4f23-960b-ff7adccca9d9@493ee340-6918-46c6-bc3c-52bca3d37e35
-reserve_buttonText: Reserve Your Seat
-gift: Participants will receive a digital certificate of participation and will also have the opportunity to receive a free sample.
-speaker_avatar: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202607201058/speaker.webp
-speaker_username: Dr. Faheem Ahmed Khan
-speaker_jobTitle: Senior Researcher, Stem Cell & Cancer Research (SCCR) Indonesia
-speaker_registerLink: https://events.teams.microsoft.com/event/4be890b6-3d74-4f23-960b-ff7adccca9d9@493ee340-6918-46c6-bc3c-52bca3d37e35
-speaker_email: events@elabscience.com
+abstractInformation:
+  - value: High quality immune cell isolation is essential for reliable downstream research. The right isolation strategy helps preserve cell identity and function, giving you greater confidence in your experimental results.
+  - value: Join our upcoming webinar to learn how immune cell isolation methods can improve sample quality and support applications such as immune profiling, functional assays, and cell analysis.
+introductionTitle: In this webinar, you will learn
+introductionTitleClassName: color-black
+introductionLists:
+  - value: <span class="color-blue text-size-[12px]">·</span>Approaches for isolating immune cell populations with high purity
+  - value: <span class="color-blue text-size-[12px]">·</span>How to maintain cell identity and biological function throughout isolation
+  - value: <span class="color-blue text-size-[12px]">·</span>Examples of downstream applications using isolated immune cells
+introductionButtonText: View Webinar Details
+reserveTitle: Secure Your Spot
+reserveTitleClassName: color-black
+reserveLists:
+  - value: 'Isolate What Matters: The Right Immune Cells for Downstream Discovery'
+reserveButtonText: Reserve Your Seat
+reserveButtonLink: https://events.teams.microsoft.com/event/28385e16-7191-4611-8f7c-70468831e0ef@493ee340-6918-46c6-bc3c-52bca3d37e35
+registerLink: https://events.teams.microsoft.com/event/28385e16-7191-4611-8f7c-70468831e0ef@493ee340-6918-46c6-bc3c-52bca3d37e35
+questionEmail: events@elabscience.com
+bannerImage: https://file.elabscience.com/edm/202608121621/banner.webp
+bannerLink: https://www.elabscience.com/events/webinars/2126
+introductionButtonLink: https://www.elabscience.com/events/webinars/2126
+reserveDate: Thursday, 10 September 2026
+reserveTime: 12:00 CEST (Berlin, UTC+2); 14:00 GST (Dubai, UTC+4); 15:30 IST (Delhi, UTC+5:30); 06:00 EDT (New York, UTC−4) 18:00 CST (China, UTC+8)
+goodNews: All registered attendees will receive a digital certificate and have the opportunity to request a free sample.
+speakerAvatar: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202608121621/speaker.webp
+speakerUsername: Dr Sundas R Qureshi
+speakerJobTitle: Global Scientific Liaison, Elabscience Bionovation Inc.
