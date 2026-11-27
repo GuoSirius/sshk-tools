@@ -1,7 +1,0 @@
-code: spec-compare
-name: 规格对比表
-description: 母版模式族：规格对比表（plans/14 批次 5 保真迁移）
-policy:
-  blacklist: []
-  whitelist: []
-tags: []

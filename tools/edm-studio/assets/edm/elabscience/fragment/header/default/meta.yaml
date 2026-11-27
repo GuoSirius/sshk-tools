@@ -1,6 +1,6 @@
 version: 1
 code: default
-name: 页头
+name: 页头：logo + 三栏导航
 fields:
   - type: image
     key: logoImage
@@ -24,7 +24,7 @@ fields:
     key: navLinks
     label: 导航链接
     required: false
-    minRows: 1
+    minRows: 3
     maxRows: 3
     itemFields:
       - type: input
@@ -38,3 +38,4 @@ fields:
 policy:
   blacklist: []
   whitelist: []
+description: 页头：品牌 logo + 三栏导航

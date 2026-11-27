@@ -10,12 +10,12 @@
     <tr>
       <td colspan="4" class="image-box">
         {% if bannerLink %}
-          <a href="{{ bannerLink }}">
-            <img src="{{ bannerImage }}"/>
+          <a href="{{ bannerLink }}" class="w-full">
+            <img src="{{ bannerImage }}" class="w-full"/>
           </a>
         {% endif %}
         {% if not bannerLink %}
-          <img src="{{ bannerImage }}"/>
+          <img src="{{ bannerImage }}" class="w-full"/>
         {% endif %}
       </td>
     </tr>
@@ -34,8 +34,8 @@
       <td colspan="4">
         <table cellspacing="0" cellpadding="0" border="0" class="bg-light-primary">
           <colgroup>
-            <col width="10px"/>
-            <col/> <col width="10px"/>
+            <col width="{{ template.leftGap | default('10px', true) }}"/>
+            <col/> <col width="{{ template.rightGap | default('10px', true) }}"/>
           </colgroup>
           <tbody>
             <tr>
@@ -52,7 +52,7 @@
             {% endif %}
             <tr>
               <td></td>
-              <td class="pb-[5px]" {% if not wordCloudNeedCondensed %} style="padding-left: 6px; padding-right: 6px;" {% endif %}>
+              <td class="pb-[5px] {% if not wordCloudNeedCondensed %}px-[6px]{% endif %}">
                 {% for it0 in wordCloudLists %}
                   <span class="word-cloud-item">
                     <a class="cursor-default" style="color: {{ it0.color }}" {% if it0.link %} href="{{ it0.link }}" {% endif %}>{{ it0.text }}</a>
@@ -87,7 +87,7 @@
             <tr>
               <td>
                 {% for it1 in advantageLists %}
-                  <p class="pb-[5px] {{ advantageItemClassName }} color-primary">{{ it1.value }}</p>
+                  <p class="pb-[5px] {{ advantageItemClassName }} color-primary">{{ it1.value | safe }}</p>
                 {% endfor %}
               </td>
             </tr>
@@ -138,6 +138,11 @@
         {% if perRowCount is defined and perRowCount > 1 %}
           {# 网格：每行 perRowCount 个产品，单元格内纵向排图/名/按钮 #}
           <table cellspacing="0" cellpadding="0" border="0" class="text-center">
+            <colgroup>
+              {% for i in range(0, perRowCount) %}
+                <col/>
+              {% endfor %}
+            </colgroup>
             <tbody>
               {% for row in productLists | batch(perRowCount) %}
                 <tr>
@@ -148,7 +153,7 @@
                         </p>
                         <p class="pt-[8px]">{{ it3.name }}</p>
                         <p class="pt-[12px]">
-                          <a href="{{ it3.link }}" class="button font-bold decoration-none rounded-[16px]">{{ it3.buttonText }}</a>
+                          <a href="{{ it3.link }}" class="button font-bold decoration-none rounded-[16px] inline-block">{{ it3.buttonText }}</a>
                         </p>
                       </td>
                     {% endif %}
@@ -162,7 +167,7 @@
           <table cellspacing="0" cellpadding="0" border="0" class="text-center">
             <colgroup>
               {% for it4 in productLists %}
-                <col/>
+                <col {% if it4.width %} width="it4.width" {% endif %}/>
               {% endfor %}
             </colgroup>
             <tbody>

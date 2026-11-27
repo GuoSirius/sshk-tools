@@ -1,6 +1,5 @@
 code: footer
 name: 页尾
-description: 页尾：社交图标 + 虚线分隔 + 公司联系信息
 policy:
   blacklist: []
   whitelist: []

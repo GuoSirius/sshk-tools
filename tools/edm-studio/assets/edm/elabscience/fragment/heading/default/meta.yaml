@@ -1,9 +1,0 @@
-version: 1
-code: default
-name: 标题条·迁移版
-changelog: juice-cli/edm 母版 L1257-L1261 提取
-fields:
-  - type: input
-    key: text1
-    label: 文案 1
-    required: false

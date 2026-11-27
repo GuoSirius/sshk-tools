@@ -62,10 +62,16 @@ describe('R8 系统内容播种', () => {
     expect((await repo.get<FragmentVersion>('fragmentVersions', fvId))?.archived).toBe(true)
     expect((await repo.get<FragmentVersion>('fragmentVersions', fvId))?.source.html).toContain('refreshed')
 
-    // 未归档实体文件被删 → 索引清理
-    const otherId = 'frgv_sys_elabscience_banner_v1'
+    // 未归档实体文件被删 → 索引清理（临时造一个 v2 版本目录再删，保持测试自包含，不依赖资产现状）
+    const v2Dir = join(root, 'elabscience/fragment/banner/v2')
+    mkdirSync(v2Dir, { recursive: true })
+    writeFileSync(join(v2Dir, 'meta.yaml'), 'version: 1\ncode: v2\nname: 临时版本\nfields: []\npolicy:\n  blacklist: []\n  whitelist: []\n')
+    writeFileSync(join(v2Dir, 'fragment.njk'), '<div>{{ title }}</div>')
+    await seedSystemContent(repo, root)
+    const otherId = 'frgv_sys_elabscience_banner_v2'
+    expect(await repo.get<FragmentVersion>('fragmentVersions', otherId)).not.toBeNull()
     await repo.update<FragmentVersion>('fragmentVersions', otherId, { archived: false })
-    rmSync(join(root, 'elabscience/fragment/banner/v1'), { recursive: true, force: true })
+    rmSync(v2Dir, { recursive: true, force: true })
     const cleaned = await seedSystemContent(repo, root)
     expect(cleaned.removed).toBeGreaterThan(0)
     expect(await repo.get<FragmentVersion>('fragmentVersions', otherId)).toBeNull()
@@ -97,14 +103,16 @@ describe('R8 系统内容播种', () => {
     // 期望值从真实资产解析而非硬编码：用户在应用里改了 meta 也不会误报（文件才是真相源）
     const model = await loadEdmModel(EDM_ROOT)
     const srcBrand = model.brands.find((b) => b.code === 'elabscience')
-    const srcFv = srcBrand?.fragments.find((f) => f.code === 'banner')?.versions.find((v) => v.dir === 'v1')
+    // 从真实资产取一个现存版本（资产增删不影响断言）
+    const srcFam = srcBrand?.fragments.find((f) => f.code === 'banner')
+    const srcFv = srcFam?.versions[0]
 
     const brand = await repo.get<Brand>('brands', 'brd_elabscience')
     if (!brand) throw new Error('播种品牌缺失')
     expect(brand.origin).toBe('system')
     expect(brand.name).toBe(String(srcBrand?.meta.name ?? 'Elabscience'))
 
-    const fv = await repo.get<FragmentVersion>('fragmentVersions', 'frgv_sys_elabscience_banner_v1')
+    const fv = await repo.get<FragmentVersion>('fragmentVersions', `frgv_sys_elabscience_banner_${srcFv?.dir ?? 'default'}`)
     if (!fv) throw new Error('播种片段版本缺失')
     expect(fv.origin).toBe('system')
     // #213：片段族 type 已取消，DB 字段保留兼容写空串
@@ -128,8 +136,10 @@ describe('R8 系统内容播种', () => {
     // #213：候选片段不按类型过滤，只按品牌隔离 + 黑白名单
     const candidates = await repo.listCandidateFragmentVersions(tv)
     const sysIds = candidates.map((c) => c._id)
-    expect(sysIds).toContain('frgv_sys_elabscience_banner_default')
-    expect(sysIds).toContain('frgv_sys_elabscience_banner_v1')
+    const model = await loadEdmModel(EDM_ROOT)
+    const bannerDirs = model.brands.find((b) => b.code === 'elabscience')?.fragments.find((f) => f.code === 'banner')?.versions.map((v) => v.dir) ?? []
+    expect(bannerDirs.length).toBeGreaterThan(0)
+    for (const dir of bannerDirs) expect(sysIds).toContain(`frgv_sys_elabscience_banner_${dir}`)
     // 其它品牌片段不得混入（品牌隔离 R10）
     expect(sysIds.every((id) => id.startsWith('frgv_sys_elabscience_'))).toBe(true)
   })

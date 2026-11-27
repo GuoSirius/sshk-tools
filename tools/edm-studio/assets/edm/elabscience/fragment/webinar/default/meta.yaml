@@ -1,15 +1,14 @@
 version: 1
 code: default
-name: 网络研讨会·迁移版
-changelog: juice-cli/edm series 迁移（plans/14）
+name: 网络研讨会
 fields:
   - type: image
-    key: banner_image
-    label: banner image
+    key: bannerImage
+    label: banner 图
     required: false
   - type: url
-    key: banner_link
-    label: banner link
+    key: bannerLink
+    label: banner 链接
     required: false
   - type: textarea
     key: banner_keywords
@@ -19,7 +18,6 @@ fields:
     key: banner_moreKeywords
     label: banner moreKeywords
     required: false
-    minRows: 0
     itemFields:
       - type: input
         key: value
@@ -41,7 +39,6 @@ fields:
     key: introduction_lists
     label: introduction lists
     required: false
-    minRows: 0
     itemFields:
       - type: richtext
         key: value
@@ -71,7 +68,6 @@ fields:
     key: reserve_lists
     label: reserve lists
     required: false
-    minRows: 0
     itemFields:
       - type: input
         key: value
@@ -117,3 +113,8 @@ fields:
     key: speaker_email
     label: speaker email
     required: false
+policy:
+  blacklist: []
+  whitelist: []
+
+

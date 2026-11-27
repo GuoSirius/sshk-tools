@@ -142,3 +142,4 @@ advantageItemClassName: circle
 indicatorTitle: New Indicators Introduction (Paticial)
 indicatorTitleClassName: title
 indicatorItemClassName: gold-star
+perRowCount: 2

@@ -1,7 +1,6 @@
 version: 1
 code: default
-name: 上新推广·迁移版
-changelog: juice-cli/edm series 迁移（plans/14）
+name: 上新推广
 fields:
   - type: image
     key: bannerImage
@@ -120,15 +119,10 @@ fields:
         key: buttonText
         label: 按钮文字
         required: false
-
-
-
-
-
-
-
-
-
-
-
-
+      - type: input
+        key: width
+        label: 列宽
+        required: false
+policy:
+  blacklist: []
+  whitelist: []
