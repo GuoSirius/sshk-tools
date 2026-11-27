@@ -3,76 +3,70 @@ code: default
 name: 文献推广
 fields:
   - type: image
-    key: overview_image
-    label: overview image
+    key: coverImage
+    label: 封面图
     required: false
   - type: textarea
-    key: overview_title
-    label: overview title
+    key: literatureTitle
+    label: 文献标题
     required: false
   - type: url
-    key: overview_link
-    label: overview link
+    key: literatureLink
+    label: 文献链接
     required: false
   - type: input
-    key: overview_publicationDate
-    label: overview publicationDate
+    key: publicationDate
+    label: 发布日期
     required: false
   - type: input
-    key: overview_journal
-    label: overview journal
+    key: journal
+    label: 期刊
     required: false
   - type: input
-    key: overview_impactFactor
-    label: overview impactFactor
+    key: impactFactor
+    label: 影响因子
     required: false
   - type: input
-    key: overview_doi
-    label: overview doi
+    key: doi
+    label: DOI
+    required: false
+  - type: textarea
+    key: literatureKeywords
+    label: 文献关键词
+    required: false
+  - type: input
+    key: imageColumnWidth
+    label: 图片列宽
+    required: false
+  - type: image-list
+    key: detailImageLists
+    label: 详情图册
     required: false
   - type: richtext
-    key: overview_keywords
-    label: overview keywords
+    key: literatureAbstract
+    label: 文献摘要
     required: false
   - type: input
-    key: information_imageWidth
-    label: information imageWidth
+    key: abstractButtonText
+    label: 摘要按钮文本
     required: false
-  - type: repeater
-    key: information_image
-    label: information image
-    required: false
-    minRows: 0
-    itemFields:
-      - type: input
-        key: value
-        label: 值
-        required: false
-  - type: richtext
-    key: information_content
-    label: information content
-    required: false
+    default: View More Publications
   - type: url
-    key: information_link
-    label: information link
+    key: abstractButtonLink
+    label: 摘要按钮链接
+    required: false
+  - type: richtext
+    key: literatureSummary
+    label: 文献小节
     required: false
   - type: input
-    key: information_buttonText
-    label: information buttonText
-    required: false
-  - type: richtext
-    key: information_summary
-    label: information summary
-    required: false
-  - type: richtext
-    key: productTitle
-    label: productTitle
+    key: literatureProductTitle
+    label: 文献产品标题
     required: false
   - type: repeater
-    key: productLists
-    label: productLists
+    key: literatureProductLists
+    label: 文献产品列表
     required: false
-    minRows: 0
     itemFields:
       - type: input
         key: name
@@ -80,7 +74,7 @@ fields:
         required: false
       - type: input
         key: catNo
-        label: catNo
+        label: 货号
         required: false
       - type: url
         key: link
@@ -89,3 +83,29 @@ fields:
 policy:
   blacklist: []
   whitelist: []
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

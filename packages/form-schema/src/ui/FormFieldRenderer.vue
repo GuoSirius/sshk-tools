@@ -91,6 +91,10 @@ function rowErr(f: FieldDef): string | undefined {
 function strErr(key: string): string | undefined {
   return errors.value[key]
 }
+/** 颜色字段：仅合法 HEX（3/6 位）回显给取色器，空值/非法值保持白色色块 */
+function validColorHex(v: string): boolean {
+  return /^#(?:[\da-fA-F]{3}|[\da-fA-F]{6})$/.test(v)
+}
 
 function updateRow(key: string, index: number, row: Record<string, unknown>): void {
   const next = [...arrVal(key)]
@@ -167,13 +171,21 @@ function onPolish(f: FieldDef): void {
             style="width: 100%"
             @update:model-value="(v: unknown) => set(f.key, v)"
           />
-          <!-- 颜色 -->
-          <el-color-picker
-            v-else-if="f.type === 'color'"
-            :model-value="strVal(f.key) || undefined"
-            :disabled="readonly"
-            @update:model-value="(v: string | null) => set(f.key, v ?? '')"
-          />
+          <!-- 颜色：色块点选 + HEX 输入（空值白色，仅合法 hex 交给取色器回显，面板输出统一 hex） -->
+          <div v-else-if="f.type === 'color'" class="color-control">
+            <el-color-picker
+              :model-value="validColorHex(strVal(f.key)) ? strVal(f.key) : undefined"
+              color-format="hex"
+              :disabled="readonly"
+              @update:model-value="(v: string | null) => set(f.key, v ?? '')"
+            />
+            <el-input clearable
+              :model-value="strVal(f.key)"
+              placeholder="#RRGGBB"
+              :disabled="readonly"
+              @update:model-value="(v: string) => set(f.key, v)"
+            />
+          </div>
           <!-- 开关 -->
           <el-switch
             v-else-if="f.type === 'switch'"
@@ -371,6 +383,9 @@ function onPolish(f: FieldDef): void {
 .req { color: var(--el-color-danger); margin-left: 2px; }
 .field-control { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .image-row { display: flex; gap: 8px; align-items: center; }
+.color-control { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.color-control .el-input { flex: 1; min-width: 0; }
+.color-control .el-color-picker { flex: none; }
 .list-row { border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 6px; padding: 8px 10px; }
 .list-row.row-error { border-color: var(--el-color-danger); }
 .list-row-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: .7; padding-bottom: 6px; }

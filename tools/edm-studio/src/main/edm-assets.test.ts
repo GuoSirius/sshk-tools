@@ -2,7 +2,7 @@
  * 迁移资产不变量测试（plans/14）：系统内容库所有版本
  * ① 可渲染（sample 严格填充，无未定义字段 / 无 njk 残留）；
  * ② 显式 link 在预览侧被剥离并注入 <style>；
- * ③ 仅 richtext 字段允许 `| safe`（slot_* 例外）。
+ * ③ `| safe` 字段必须在 meta.fields 声明（所有文本输入都可能含 HTML，不限字段类型；slot_* 例外）。
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,7 +18,7 @@ const OUTPUT = mkdtempSync(path.join(tmpdir(), 'sshk-edm-assets-'))
 afterAll(() => rmSync(OUTPUT, { recursive: true, force: true }))
 
 describe('系统 EDM 资产迁移不变量', () => {
-  it('所有版本：显式 link 生效、njk 全字段可渲染、safe 仅用于 richtext', async () => {
+  it('所有版本：显式 link 生效、njk 全字段可渲染、safe 字段均已声明', async () => {
     const model = await loadEdmModel(EDM_ROOT)
     const env = new nunjucks.Environment(null, { autoescape: true, throwOnUndefined: true })
     const versions: Array<{ sel: SystemSelector; html: string; sample: Record<string, unknown>; fields: unknown[]; dir: string }> = []
@@ -59,7 +59,9 @@ describe('系统 EDM 资产迁移不变量', () => {
       expect(preview.html).toContain('mso-table-lspace') // reset.css 经显式 link 解析后确实内联
       type FieldLike = { key?: string; type?: string; itemFields?: FieldLike[] }
       const fields = v.fields as FieldLike[]
-      const declared = new Set(fields.filter((f) => f.type === 'richtext').map((f) => f.key))
+      // 所有文本类输入都可能携带 HTML，模板按需要对字段使用 | safe；
+      // 这里只校验字段已在 meta.fields 声明，防止拼错 key 后静默输出空值。
+      const declared = new Set(fields.map((f) => f.key))
       const loopFields = new Map<string, string>()
       for (const m of v.html.matchAll(/\{%\s*for\s+(it\d+)\s+in\s+(\w+)\s*%\}/g)) {
         if (m[1] && m[2]) loopFields.set(m[1], m[2])
@@ -69,11 +71,11 @@ describe('系统 EDM 资产迁移不变量', () => {
         if (key.startsWith('slot_')) continue
         if (/^it\d+$/.test(key)) {
           const fk = loopFields.get(key)
-          const item = fields.find((f) => f.key === fk)?.itemFields?.some((i) => i.type === 'richtext')
-          expect(item, `${v.sel.brandCode}/${v.sel.familyCode}: ${fk} 的列表项未声明为 richtext`).toBe(true)
+          // 循环变量 itN 本身是列表项值，不对应 itemFields 的某个子 key，改为校验列表字段已声明
+          expect(fields.some((f) => f.key === fk), `${v.sel.brandCode}/${v.sel.familyCode}: ${fk} 的列表字段未声明`).toBe(true)
           continue
         }
-        expect(declared.has(key), `${v.sel.brandCode}/${v.sel.familyCode}: ${key} 未声明为 richtext`).toBe(true)
+        expect(declared.has(key), `${v.sel.brandCode}/${v.sel.familyCode}: ${key} 未在 meta.fields 声明`).toBe(true)
       }
     }
   })

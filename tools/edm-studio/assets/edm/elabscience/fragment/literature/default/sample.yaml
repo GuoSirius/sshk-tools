@@ -1,23 +1,23 @@
-overview_image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605211020/overview.webp
-overview_title: 'Low-dose oral nicotinamide mononucleotide for immune thrombocytopenia: a phase 1/2 trial'
-overview_link: https://www.nature.com/articles/s41591-026-04366-x
-overview_publicationDate: April 29 2026
-overview_journal: Nature Medicine
-overview_impactFactor: 50
-overview_doi: 10.1038/s41591-026-04366-x
-overview_keywords: Immune Thrombocytopenia (ITP), Nicotinamide Mononucleotide (NMN), CD38-NAD<sup>+</sup> Axis
-information_imageWidth: 40%
-information_image:
-  - https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605211020/information.webp
-information_content: 'This study identifies the CD38-NAD<sup>+</sup> axis as an immunometabolic checkpoint in ITP. Anti-CD38 antibodies deplete NAD<sup>+</sup>, driving M1 macrophages and FcγRI upregulation, which increases platelet phagocytosis. Restoring NAD<sup>+</sup> via CD38 inhibition or NMN reprograms macrophages to a resting state and blocks platelet destruction without affecting humoral immunity. In 25 refractory ITP patients, low-dose NMN (450 mg bid × 2 weeks) was well tolerated: 20% achieved platelets ≥50×10<sup>9</sup>/L, and 52% maintained response at week 8, with stable immunoglobulin levels. Thus, targeting CD38-NAD<sup>+</sup> metabolism offers a non-antibody-depleting therapeutic strategy.'
-information_link: https://www.procellsystem.com/resources/publications
-information_buttonText: View More Publications
-information_summary: Human plasma and mouse cell supernatant iNOS level were measured using Elabscience<sup>&reg;</sup> Human/Mouse NOS2/iNOS(Nitric Oxide Synthase 2, Inducible) ELISA Kit, respectively.
-productTitle: Elabscience<sup>&reg;</sup> Product Cited in This Literature
-productLists:
-  - name: Human NOS2/iNOS(Nitric Oxide Synthase 2, Inducible) ELISA Kit
-    catNo: E-EL-H0753
-    link: https://www.elabscience.com/p/human-nos2-inos-nitric-oxide-synthase-2-inducible-elisa-kit--e-el-h0753
-  - name: Mouse NOS2/iNOS(Nitric Oxide Synthase 2, Inducible) ELISA Kit
-    catNo: E-EL-M0696
-    link: https://www.elabscience.com/p/mouse-nos2-inos-nitric-oxide-synthase-2-inducible-elisa-kit--e-el-m0696
+coverImage: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121534/overview.webp
+literatureTitle: Arrayed Magnetic Accelerator Synergistically Enhances Orthodontic Tooth Movement via Microtubule Assembly-Mediated Periodontal Remodeling
+literatureLink: https://pmc.ncbi.nlm.nih.gov/articles/PMC13634475/#advs77447-sec-0110
+publicationDate: Oct 4 2026
+impactFactor: '14.1'
+doi: 10.1002/advs.77447
+detailImageLists:
+  - https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121534/information.webp
+abstractButtonLink: https://www.procellsystem.com/resources/publications
+literatureProductLists:
+  - name: APC Anti-Mouse CD86 Antibody[GL-1]
+    catNo: E-AB-F0994E
+    link: https://www.elabscience.com/p/apc-anti-mouse-cd86-antibody-gl-1--e-ab-f0994e
+  - name: PE Anti-Mouse CD206/MMR Antibody[C068C2]
+    catNo: E-AB-F1135D
+    link: https://www.elabscience.com/p/pe-anti-mouse-cd206-mmr-antibody-c068c2--e-ab-f1135d
+literatureProductTitle: Elabscience<sup>&reg;</sup> Product Cited in This Literature
+journal: Advanced Science
+literatureKeywords: Accelerated orthodontic tooth movement technology, Orthodontics, Static magnetic field, Tooth movement efficiency
+literatureAbstract: <p>Mechanical orthodontic treatment is a classical strategy for directional tooth movement, but prolonged remodeling periods and complication risks—mainly due to inadequate sensation of bio-mechanical cues—limit clinical outcomes. This study demonstrates that biophysical static magnetic fields (SMFs) accelerate tooth movement and bone remodeling by amplifying mechanical sensing. To achieve this, a 3D-printed arrayed magnetic orthodontic accelerator (AMOA) with precisely controllable SMFs was fabricated. SMFs enhance pro-inflammatory cytokine production from periodontal ligament cells (PDLCs) through mechanical sensitization, facilitating M1-like macrophage polarization and osteoclast differentiation for improved bone remodeling. Pre-clinical studies show that AMOA significantly promotes alveolar bone remodeling and osteoclastic activity on the compression side. In summary, SMFs-upregulated sensing of biological force in PDLCs plays a pivotal role in accelerating tooth movement, shedding light on the therapeutic transformation of AMOA to improve classical orthodontic treatment.'</p>
+abstractButtonText: View More Publications
+literatureSummary: <p>Human plasma and mouse cell supernatant iNOS level were measured using Elabscience<sup>&reg;</sup> Human/Mouse NOS2/iNOS(Nitric Oxide Synthase 2, Inducible) ELISA Kit, respectively.</p>
+imageColumnWidth: ''

@@ -4,104 +4,113 @@ name: 上新推广·迁移版
 changelog: juice-cli/edm series 迁移（plans/14）
 fields:
   - type: image
-    key: banner_image
-    label: banner image
+    key: bannerImage
+    label: banner 图
     required: false
   - type: url
-    key: banner_link
-    label: banner link
+    key: bannerLink
+    label: banner 链接
     required: false
   - type: richtext
-    key: banner_keywords
-    label: banner keywords
+    key: abstractInformation
+    label: 摘要信息
     required: false
   - type: input
-    key: indicator_title
-    label: indicator title
+    key: wordCloudTitle
+    label: 词云标题
     required: false
+    default: Indicators
   - type: input
-    key: indicator_className
-    label: indicator className
+    key: wordCloudTitleClassName
+    label: 词云标题类名
     required: false
+    default: title
   - type: switch
-    key: indicator_needCondensed
-    label: indicator needCondensed
+    key: wordCloudNeedCondensed
+    label: 词云紧凑模式
     required: false
+    default: true
   - type: repeater
-    key: indicator_lists
-    label: indicator lists
+    key: wordCloudLists
+    label: 词云列表
     required: false
-    minRows: 0
     itemFields:
       - type: input
         key: text
         label: 文字
         required: false
-      - type: input
+      - type: color
         key: color
         label: 颜色
         required: false
+      - type: url
+        key: link
+        label: 链接
+        required: false
   - type: input
-    key: antibodyOffer_title
-    label: antibodyOffer title
+    key: advantageTitle
+    label: 优势标题
     required: false
+    default: 'Designed for Multicolor Panel Flexibility, These Antibodies Offer:'
   - type: input
-    key: antibodyOffer_className
-    label: antibodyOffer className
+    key: advantageTitleClassName
+    label: 优势标题类名
     required: false
+    default: title
   - type: input
-    key: antibodyOffer_itemClassName
-    label: antibodyOffer itemClassName
+    key: advantageItemClassName
+    label: 优势项类名
     required: false
+    default: circle
   - type: repeater
-    key: antibodyOffer_lists
-    label: antibodyOffer lists
+    key: advantageLists
+    label: 优势列表
     required: false
-    minRows: 0
     itemFields:
       - type: input
         key: value
-        label: 值
+        label: 优势项
         required: false
   - type: input
-    key: indicatorIntroduction_title
-    label: indicatorIntroduction title
+    key: indicatorTitle
+    label: 指标标题
     required: false
+    default: New Indicators Introduction (Paticial)
   - type: input
-    key: indicatorIntroduction_className
-    label: indicatorIntroduction className
+    key: indicatorTitleClassName
+    label: 指标标题类名
     required: false
+    default: title
   - type: input
-    key: indicatorIntroduction_itemClassName
-    label: indicatorIntroduction itemClassName
+    key: indicatorItemClassName
+    label: 指标项类名
     required: false
+    default: gold-star
   - type: repeater
-    key: indicatorIntroduction_lists
-    label: indicatorIntroduction lists
+    key: indicatorLists
+    label: 指标列表
     required: false
-    minRows: 0
     itemFields:
-      - type: richtext
+      - type: input
         key: value
-        label: 富文本条目
+        label: 指标项
         required: false
-  - type: switch
-    key: isGridProduct
-    label: isGridProduct
+  - type: number
+    key: perRowCount
+    label: 每行展示数量
     required: false
   - type: repeater
     key: productLists
-    label: productLists
+    label: 产品列表
     required: false
-    minRows: 0
     itemFields:
-      - type: input
-        key: name
-        label: 名称
-        required: false
       - type: image
         key: image
         label: 图片
+        required: false
+      - type: input
+        key: name
+        label: 名称
         required: false
       - type: url
         key: link
@@ -111,3 +120,15 @@ fields:
         key: buttonText
         label: 按钮文字
         required: false
+
+
+
+
+
+
+
+
+
+
+
+

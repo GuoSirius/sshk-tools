@@ -1,160 +1,160 @@
-<link rel="stylesheet" href="@system/css/reset.css">
-<link rel="stylesheet" href="@root/elabscience/css/standard-default.css">
-<link rel="stylesheet" href="./css/literature.css">
-
-<tr>
-  <td></td>
-  <td colspan="2">
-    <table cellspacing="0" cellpadding="0" border="0">
-      <colgroup>
-        <col width="25%" />
-        <col />
-      </colgroup>
-
-      <tbody class="align-top">
-        <tr>
-          <td rowspan="2" class="image-box pr-[12px]">
-            <img src="{{ overview_image }}" />
-          </td>
-          <td class="h-[0px] pb-[24px]">
-            <a href="{{ overview_link }}" class="decoration-none">
-              <strong>{{ overview_title }}</strong>
-            </a>
-          </td>
-        </tr>
-
-        <tr>
-          <td>
-            <p class="mb-[12px]"><strong>Publication Date:</strong> {{ overview_publicationDate }}</p>
-            <p class="mb-[12px]"><strong>Journal:</strong> <i>{{ overview_journal }}</i></p>
-            <p class="mb-[12px]"><strong>Impact Factor:</strong> {{ overview_impactFactor }}</p>
-            <p><strong>DOI:</strong> {{ overview_doi }}</p>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </td>
-  <td></td>
-</tr>
-
-<tr>
-  <td colspan="4" class="h-[24px]"></td>
-</tr>
-
-<tr>
-  <td></td>
-  <td colspan="2"><strong>Keywords:</strong> {{ overview_keywords | safe }}</td>
-  <td></td>
-</tr>
-
-<tr>
-  <td colspan="4" class="h-[24px]"></td>
-</tr>
-
-<tr>
-  <td></td>
-  <td colspan="2">
-    <table cellspacing="0" cellpadding="0" border="0" class="table-dashed border-separate p-[16px]">
-      <colgroup>
-        {% if information_imageWidth %}
-          <col width="{{ information_imageWidth }}" />
-        {% endif %}
-        <col />
-      </colgroup>
-
-      <tbody class="align-top">
-        <tr>
-          <td {% if information_imageWidth %}colspan="2"{% endif %}></td>
-        </tr>
-
-        <tr>
-          <td {% if information_imageWidth %}rowspan="2"{% endif %} {% if information_imageWidth %}style="padding-right: 12px;"{% endif %} class="image-box align-middle {% if not information_imageWidth %}pb-[12px] text-center{% endif %}">
-            {% for it0 in information_image %}
-              <img src="{{ it0 }}" />
-            {% endfor %}
-          </td>
-          {% if not information_imageWidth %}
-          </tr>
-
-          <tr>
-          {% endif %}
-          <td class="h-[0px] {% if information_link %}pb-[24px]{% endif %}">
-            <p>{{ information_content | safe }}</p>
-          </td>
-        </tr>
-
-        <tr>
-          <td class="{% if not information_imageWidth %}text-center{% endif %}">
-            {% if information_link %}
-              <a href="{{ information_link }}" class="button decoration-none">{{ information_buttonText }}</a>
+<link rel="stylesheet" href="@system/css/reset.css"/>
+<link rel="stylesheet" href="@root/elabscience/css/standard-default.css"/>
+<link rel="stylesheet" href="./css/literature.css"/>
+<table cellspacing="0" cellpadding="0" border="0">
+  <colgroup>
+    <col width="{{ template.leftGap | default('10px', true) }}"/>
+    <col/> <col/> <col width="{{ template.rightGap | default('10px', true) }}"/>
+  </colgroup>
+  <tbody>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <table cellspacing="0" cellpadding="0" border="0">
+          <colgroup>
+            <col width="25%"/>
+          <col/>
+          </colgroup>
+          <tbody class="align-top">
+            <tr>
+              <td rowspan="2" class="image-box pr-[12px]">
+                <img src="{{ coverImage }}"/>
+              </td>
+              <td class="h-[0px] pb-[24px]">
+                <a href="{{ literatureLink }}" class="decoration-none">
+                  <strong>{{ literatureTitle | safe }}</strong>
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <p class="mb-[12px]">
+                  <strong>Publication Date:</strong>
+                  {{ publicationDate }}</p>
+                <p class="mb-[12px]">
+                  <strong>Journal:</strong>
+                  <i>{{ journal }}</i>
+                </p>
+                <p class="mb-[12px]">
+                  <strong>Impact Factor:</strong>
+                  {{ impactFactor }}</p>
+                <p>
+                  <strong>DOI:</strong>
+                  {{ doi }}</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="4" class="h-[24px]"></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <strong>Keywords:</strong>
+        {{ literatureKeywords | safe }}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="4" class="h-[24px]"></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <table cellspacing="0" cellpadding="0" border="0" class="table-dashed border-separate p-[16px]">
+          <colgroup>
+            {% if imageColumnWidth %}
+              <col width="{{ imageColumnWidth }}"/>
             {% endif %}
-          </td>
-        </tr>
-
-        <tr>
-          <td {% if information_imageWidth %}colspan="2"{% endif %}></td>
-        </tr>
-      </tbody>
-    </table>
-  </td>
-  <td></td>
-</tr>
-
-{% if information_summary %}
-  <tr>
-    <td colspan="4" class="h-[24px]"></td>
-  </tr>
-
-  <tr>
-    <td></td>
-    <td colspan="2">{{ information_summary | safe }}</td>
-    <td></td>
-  </tr>
-{% endif %}
-
-<tr>
-  <td colspan="4" class="h-[24px]"></td>
-</tr>
-
-<tr>
-  <td></td>
-  <td colspan="2">
-    <span class="square-title"><span class="title-mark title-mark-square"></span>{{ productTitle | safe }}</span>
-  </td>
-  <td></td>
-</tr>
-
-<tr>
-  <td colspan="4" class="h-[12px]"></td>
-</tr>
-
-<tr>
-  <td></td>
-  <td colspan="2">
-    <table cellspacing="0" cellpadding="0" border="0" class="table-stripe text-center">
-      <colgroup>
-        <col />
-        <col width="30%" />
-      </colgroup>
-
-      <tbody>
-        <tr>
-          <td>Product Name</td>
-          <td>Cat. No.</td>
-        </tr>
-
-        {% for it1 in productLists %}
-          <tr{% if loop.index0 % 2 == 0 %} class="stripe-row"{% endif %}>
-            <td>
-              <a href="{{ it1.link }}" class="text-link">{{ it1.name }}</a>
-            </td>
-            <td>
-              <a href="{{ it1.link }}" class="text-link">{{ it1.catNo }}</a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </td>
-  <td></td>
-</tr>
+            <col/>
+          </colgroup>
+          <tbody class="align-top">
+            <tr>
+              <td {% if imageColumnWidth %} colspan="2" {% endif %}></td>
+            </tr>
+            <tr>
+              <td {% if imageColumnWidth %} rowspan="2" {% endif %} class="image-box align-middle {% if imageColumnWidth %}pr-[12px]{% else %}pb-[12px] text-center{% endif %}">
+                {% for item in detailImageLists %}
+                  <img src="{{ item }}"/>
+                {% endfor %}
+              </td>
+              {% if not imageColumnWidth %}
+              </tr>
+              <tr>
+              {% endif %}
+              <td class="h-[0px] {% if abstractButtonLink %}pb-[24px]{% endif %}">
+                <p>{{ literatureAbstract | safe }}</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="{% if not imageColumnWidth %}text-center{% endif %}">
+                {% if abstractButtonLink %}
+                  <a href="{{ abstractButtonLink }}" class="button decoration-none">{{ abstractButtonText }}</a>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td {% if imageColumnWidth %} colspan="2" {% endif %}></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+      <td></td>
+    </tr>
+    {% if literatureSummary %}
+      <tr>
+        <td colspan="4" class="h-[24px]"></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td colspan="2">{{ literatureSummary | safe }}</td>
+        <td></td>
+      </tr>
+    {% endif %}
+    <tr>
+      <td colspan="4" class="h-[24px]"></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <span class="square-title">
+          <span class="title-mark title-mark-square"></span>
+          {{ literatureProductTitle | safe }}</span>
+      </td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="4" class="h-[12px]"></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="2">
+        <table cellspacing="0" cellpadding="0" border="0" class="table-stripe text-center">
+          <colgroup>
+            <col/> <col width="30%"/>
+          </colgroup>
+          <tbody>
+            <tr>
+              <td>Product Name</td>
+              <td>Cat. No.</td>
+            </tr>
+            {% for it1 in literatureProductLists %}
+              <tr {% if loop.index0 % 2 == 0 %} class="stripe-row" {% endif %}>
+                <td>
+                  <a href="{{ it1.link }}" class="text-link">{{ it1.name }}</a>
+                </td>
+                <td>
+                  <a href="{{ it1.link }}" class="text-link">{{ it1.catNo }}</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>

@@ -1,10 +1,4 @@
-banner_image: https://file.elabscience.com/edm/202605201608/banner.webp
-banner_link: https://www.elabscience.com/products/flow-cytometry-antibodies
-banner_keywords: We're excited to announce the launch of <strong class="color-red text-size-[20px]">66</strong> new flow cytometry antibodies, now available with 34 indicators and 35 clone numbers.
-indicator_title: Indicators
-indicator_className: title
-indicator_needCondensed: true
-indicator_lists:
+wordCloudLists:
   - text: CD14
     color: '#D100DE'
     link: null
@@ -110,33 +104,41 @@ indicator_lists:
   - text: ......
     color: '#FF7805'
     link: null
-antibodyOffer_title: 'Designed for Multicolor Panel Flexibility, These Antibodies Offer:'
-antibodyOffer_className: title
-antibodyOffer_itemClassName: circle
-antibodyOffer_lists:
-  - More FCM experimental panel design options
-  - Lower background interference in FCM staining with optimized fluorescence coupling technique
-  - Good separation effect across multiple concentration gradientss
-indicatorIntroduction_title: New Indicators Introduction (Paticial)
-indicatorIntroduction_className: title
-indicatorIntroduction_itemClassName: gold-star
-indicatorIntroduction_lists:
-  - <strong>Immune Disorder-Related Diseases:</strong> Rat CD5
-  - <strong>Adaptive Immune Function:</strong> Human TRAV5
-  - <strong>Tumor Immunotherapy:</strong> Human T/B/NK Antibody Cocktail
-  - <strong>Non-Human Primate (NHP) Animal Models:</strong> Monkey CD45
-isGridProduct: false
+advantageLists:
+  - value: More FCM experimental panel design options
+  - value: Lower background interference in FCM staining with optimized fluorescence coupling technique
+  - value: Good separation effect across multiple concentration gradientss
+indicatorLists:
+  - value: <strong>Allergic disease research:</strong> Human IgE
+  - value: <strong>B cell development research:</strong> Mouse CD79b
+  - value: <strong>Immune cell chemotaxis and migration:</strong> Mouse CD192(CCR2)
+  - value: <strong>Inflammation and leukocyte recruitment research:</strong> Human CD162
 productLists:
-  - name: Human TCR Vβ7.1
-    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20TCR%20V%CE%B27.1.webp
-    link: https://www.elabscience.com/search?keywords=Human%20TCR%20V%25CE%25B27.1
+  - name: Human IgE
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121708/Human IgE.webp
+    link: https://www.elabscience.com/search?keywords=Human%20IgE
     buttonText: Learn More
-  - name: Human TCR Vβ1
-    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20TCR%20V%CE%B21.webp
-    link: https://www.elabscience.com/search?keywords=Human%20TCR%20V%25CE%25B21
+  - name: Mouse CD79b
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121708/Mouse CD79b.webp
+    link: https://www.elabscience.com/search?keywords=Mouse%20CD79b
     buttonText: Learn More
-  - name: Human CD151
-    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202605201608/Human%20CD151.webp
-    link: https://www.elabscience.com/search?keywords=Human%20CD151
-    buttonText: Learn More
-    width: 20%
+  - buttonText: Learn More
+    name: Mouse CD192(CCR2)
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121708/Mouse CD192(CCR2).webp
+    link: https://www.elabscience.com/search?keywords=Mouse%20CD192(CCR2)
+  - buttonText: Learn More
+    name: Human CD162
+    image: https://elabcomfile.oss-us-west-1.aliyuncs.com/edm/202611121708/Human CD162.webp
+    link: https://www.elabscience.com/search?keywords=Human%20CD162
+abstractInformation: '<p>We''re excited to announce the launch of <span style="color: rgb(207, 19, 34); font-size: 19px;"><strong>300+</strong></span> new flow cytometry antibodies, now available with <span style="color: rgb(207, 19, 34); font-size: 19px;"><strong>180+</strong></span> indicators and <span style="color: rgb(207, 19, 34); font-size: 19px;"><strong>190+</strong></span> clone numbers.</p>'
+bannerImage: https://file.elabscience.com/edm/202611121708/banner.webp
+bannerLink: http://www.elabscience.com/products/flow-cytometry-antibodies
+wordCloudTitle: Indicators
+wordCloudTitleClassName: title
+wordCloudNeedCondensed: true
+advantageTitle: 'Designed for Multicolor Panel Flexibility, These Antibodies Offer:'
+advantageTitleClassName: title
+advantageItemClassName: circle
+indicatorTitle: New Indicators Introduction (Paticial)
+indicatorTitleClassName: title
+indicatorItemClassName: gold-star
